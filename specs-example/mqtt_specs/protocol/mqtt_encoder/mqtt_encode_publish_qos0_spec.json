@@ -1,0 +1,77 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "mqtt/protocol/mqtt_encoder/mqtt_encode_publish_qos0",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "编码 MQTT PUBLISH(QoS0) 报文用于消息转发",
+  "SIGNATURE": {
+    "RAW": "mqtt_bytes_t mqtt_encode_publish_qos0(const char* topic_name, const uint8_t* payload, size_t payload_len, bool retain)",
+    "NAME": "mqtt_encode_publish_qos0",
+    "RETURN": "mqtt_bytes_t",
+    "PARAMS": [
+      {
+        "TYPE": "const char*",
+        "NAME": "topic_name",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "const uint8_t*",
+        "NAME": "payload",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "size_t",
+        "NAME": "payload_len",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "bool",
+        "NAME": "retain",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "mqtt_bytes_t",
+        "ROLE": "编码字节缓冲结构体"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "remaining_length_bytes",
+        "KIND": "CALL",
+        "ROLE": "计算剩余长度编码字节数"
+      },
+      {
+        "NAME": "make_bytes",
+        "KIND": "CALL",
+        "ROLE": "分配输出缓冲"
+      },
+      {
+        "NAME": "put_remaining_length",
+        "KIND": "CALL",
+        "ROLE": "写入 Remaining Length"
+      },
+      {
+        "NAME": "put_u16",
+        "KIND": "CALL",
+        "ROLE": "写入 topic 长度"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入为 topic_name、payload、payload_len 与 retain 标志",
+    "ACTION": "校验 topic_name 非空且长度<=65535；计算可变头与总长度；分配缓冲；写入固定头、Remaining Length、topic 长度与字符串、payload",
+    "OUTPUT": "返回 PUBLISH 字节流；参数或分配不合法时返回空 bytes",
+    "INVARIANTS_USED": [
+      "QoS 固定为 0，不写 packet_id",
+      "retain 位仅由 retain 参数决定"
+    ]
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "mqtt/broker/broker/mqtt_broker_stop",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "请求停止 Broker 底层 TCP 服务与事件循环",
+  "SIGNATURE": {
+    "RAW": "void mqtt_broker_stop(mqtt_broker_t* b)",
+    "NAME": "mqtt_broker_stop",
+    "RETURN": "void",
+    "PARAMS": [
+      {
+        "TYPE": "mqtt_broker_t*",
+        "NAME": "b",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct mqtt_broker",
+        "ROLE": "Broker 运行时内部状态结构"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "mqtt_tcp_server_stop",
+        "KIND": "CALL",
+        "ROLE": "停止 TCP 服务器并回收连接"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入为 broker 指针 b（可为 NULL）",
+    "ACTION": "当 b 或 b->server 无效时直接返回；否则调用 mqtt_tcp_server_stop 发出停止请求",
+    "OUTPUT": "无返回值；有效输入下会让 run 循环在底层可停止点退出",
+    "INVARIANTS_USED": [
+      "停止操作不释放 Broker 自身内存",
+      "重复调用在空对象或已停止状态下保持安全"
+    ]
+  }
+}

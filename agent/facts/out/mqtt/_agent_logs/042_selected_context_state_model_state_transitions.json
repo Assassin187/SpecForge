@@ -1,0 +1,132 @@
+{
+  "stage": "state_model_state_transitions",
+  "char_budget": 10000,
+  "char_count": 9964,
+  "selected_chunk_ids": [
+    "MQTT_3.1.1-s16-p3",
+    "MQTT_3.1.1-s16-p14",
+    "MQTT_3.1.1-s16-p7",
+    "MQTT_3.1.1-s10-p28",
+    "MQTT_3.1.1-s3-p17",
+    "MQTT_3.1.1-s10-p2",
+    "MQTT_3.1.1-s8-p1",
+    "MQTT_3.1.1-s12-p1",
+    "MQTT_3.1.1-s11-p1"
+  ],
+  "selected_chunks": [
+    {
+      "chunk_id": "MQTT_3.1.1-s16-p3",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix B. Mandatory normative statements (non normative)",
+      "section_id": "MQTT_3.1.1-s16",
+      "char_count": 1748
+    },
+    {
+      "chunk_id": "MQTT_3.1.1-s16-p14",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix B. Mandatory normative statements (non normative)",
+      "section_id": "MQTT_3.1.1-s16",
+      "char_count": 1768
+    },
+    {
+      "chunk_id": "MQTT_3.1.1-s16-p7",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix B. Mandatory normative statements (non normative)",
+      "section_id": "MQTT_3.1.1-s16",
+      "char_count": 1668
+    },
+    {
+      "chunk_id": "MQTT_3.1.1-s10-p28",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "section_id": "MQTT_3.1.1-s10",
+      "char_count": 1762
+    },
+    {
+      "chunk_id": "MQTT_3.1.1-s3-p17",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix C. Revision history (non normative) 80",
+      "section_id": "MQTT_3.1.1-s3",
+      "char_count": 1696
+    },
+    {
+      "chunk_id": "MQTT_3.1.1-s10-p2",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "section_id": "MQTT_3.1.1-s10",
+      "char_count": 354
+    },
+    {
+      "chunk_id": "MQTT_3.1.1-s8-p1",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "2. The Server MUST perform the processing of CleanSession that is",
+      "section_id": "MQTT_3.1.1-s8",
+      "char_count": 45
+    },
+    {
+      "chunk_id": "MQTT_3.1.1-s12-p1",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "3. It satisfies all of the MUST level requirements in the following",
+      "section_id": "MQTT_3.1.1-s12",
+      "char_count": 879
+    },
+    {
+      "chunk_id": "MQTT_3.1.1-s11-p1",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "1. The format of all Control Packets that the Server sends matches the",
+      "section_id": "MQTT_3.1.1-s11",
+      "char_count": 44
+    }
+  ],
+  "selected_sections": {
+    "MQTT_3.1.1-s16": 3,
+    "MQTT_3.1.1-s10": 2,
+    "MQTT_3.1.1-s3": 1,
+    "MQTT_3.1.1-s2": 0,
+    "MQTT_3.1.1-s8": 1,
+    "MQTT_3.1.1-s12": 1,
+    "MQTT_3.1.1-s1": 0,
+    "MQTT_3.1.1-s11": 1,
+    "MQTT_3.1.1-s13": 0
+  },
+  "candidate_count": 31,
+  "ordered_chunk_ids": [
+    "MQTT_3.1.1-s16-p3",
+    "MQTT_3.1.1-s16-p14",
+    "MQTT_3.1.1-s16-p7",
+    "MQTT_3.1.1-s10-p28",
+    "MQTT_3.1.1-s3-p17",
+    "MQTT_3.1.1-s10-p3",
+    "MQTT_3.1.1-s16-p12",
+    "MQTT_3.1.1-s10-p22",
+    "MQTT_3.1.1-s16-p4",
+    "MQTT_3.1.1-s16-p5",
+    "MQTT_3.1.1-s3-p18",
+    "MQTT_3.1.1-s3-p16",
+    "MQTT_3.1.1-s10-p21",
+    "MQTT_3.1.1-s10-p39",
+    "MQTT_3.1.1-s3-p22",
+    "MQTT_3.1.1-s2-p5",
+    "MQTT_3.1.1-s10-p2",
+    "MQTT_3.1.1-s10-p7",
+    "MQTT_3.1.1-s16-p6",
+    "MQTT_3.1.1-s10-p27",
+    "MQTT_3.1.1-s3-p4",
+    "MQTT_3.1.1-s16-p1",
+    "MQTT_3.1.1-s8-p1",
+    "MQTT_3.1.1-s3-p5",
+    "MQTT_3.1.1-s3-p19",
+    "MQTT_3.1.1-s3-p8",
+    "MQTT_3.1.1-s12-p1",
+    "MQTT_3.1.1-s1-p3",
+    "MQTT_3.1.1-s2-p4",
+    "MQTT_3.1.1-s11-p1",
+    "MQTT_3.1.1-s13-p1"
+  ],
+  "rerank_used": true,
+  "rerank_high_priority_ids": [
+    "MQTT_3.1.1-s16-p3",
+    "MQTT_3.1.1-s16-p14",
+    "MQTT_3.1.1-s16-p7"
+  ]
+}

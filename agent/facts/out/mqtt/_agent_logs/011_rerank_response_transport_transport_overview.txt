@@ -1,0 +1,7 @@
+{
+  "category": "transport_transport_overview",
+  "ranked_chunk_ids": ["MQTT_3.1.1-s14-p1", "MQTT_3.1.1-s12-p1", "MQTT_3.1.1-s1-p2", "MQTT_3.1.1-s10-p34", "MQTT_3.1.1-s16-p16", "MQTT_3.1.1-s10-p40", "MQTT_3.1.1-s10-p4", "MQTT_3.1.1-s4-p1", "MQTT_3.1.1-s5-p1", "MQTT_3.1.1-s6-p1"],
+  "high_priority_chunk_ids": ["MQTT_3.1.1-s14-p1", "MQTT_3.1.1-s12-p1", "MQTT_3.1.1-s1-p2"],
+  "notes": ["Top chunks define core transport requirements: ordered, lossless byte stream over TCP/IP or equivalent; conformance clauses for Client/Server transport support; and introductory protocol-over-transport statement.", "Chunks about transient errors and connection closure (e.g., s10-p34, s16-p16) provide error behavior relevant to transport reliability.", "Security-over-transport details (s10-p40) are secondary but still relevant to transport profiles."],
+  "open_questions": ["Does the task require explicit mention of WebSocket as a transport option?", "Should TLS-specific transport behavior be included in 'transport overview' or treated as a security layer?"]
+}

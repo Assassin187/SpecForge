@@ -1,0 +1,56 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "mqtt/protocol/mqtt_decoder/read_string",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "读取 MQTT 长度前缀字符串并分配以 \u0000 结尾的新内存",
+  "SIGNATURE": {
+    "RAW": "static bool read_string(const uint8_t* body, size_t body_len, size_t* pos, char** out)",
+    "NAME": "read_string",
+    "RETURN": "bool",
+    "PARAMS": [
+      {
+        "TYPE": "const uint8_t*",
+        "NAME": "body",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "size_t",
+        "NAME": "body_len",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "size_t*",
+        "NAME": "pos",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "char**",
+        "NAME": "out",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [],
+    "FUNC": [
+      {
+        "NAME": "read_u16",
+        "KIND": "CALL",
+        "ROLE": "先读取字符串长度前缀"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入来自函数参数。",
+    "ACTION": "先读取长度前缀，再复制字符串内容并以 NUL 结尾返回。",
+    "OUTPUT": "通过返回值或副作用反映处理结果。",
+    "INVARIANTS_USED": [
+      "函数执行保持本模块内部状态一致性。"
+    ]
+  }
+}

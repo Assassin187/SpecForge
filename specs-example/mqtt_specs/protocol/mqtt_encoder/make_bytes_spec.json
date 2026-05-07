@@ -1,0 +1,37 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "mqtt/protocol/mqtt_encoder/make_bytes",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "分配指定长度的 mqtt_bytes_t 缓冲包装对象",
+  "SIGNATURE": {
+    "RAW": "static mqtt_bytes_t make_bytes(size_t len)",
+    "NAME": "make_bytes",
+    "RETURN": "mqtt_bytes_t",
+    "PARAMS": [
+      {
+        "TYPE": "size_t",
+        "NAME": "len",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "mqtt_bytes_t",
+        "ROLE": "编码缓冲封装结构体"
+      }
+    ],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入来自函数参数。",
+    "ACTION": "按请求长度分配 mqtt_bytes_t.data 并设置 len。",
+    "OUTPUT": "通过返回值或副作用反映处理结果。",
+    "INVARIANTS_USED": [
+      "函数执行保持本模块内部状态一致性。"
+    ]
+  }
+}

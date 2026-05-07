@@ -1,0 +1,60 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "mqtt/broker/broker/on_close_cb",
+  "FUNCTION_TYPE": "EVENT",
+  "ROLE": "连接关闭回调：移除路由订阅关系并从会话管理器删除会话",
+  "SIGNATURE": {
+    "RAW": "static void on_close_cb(void* user, mqtt_connection_t* c)",
+    "NAME": "on_close_cb",
+    "RETURN": "void",
+    "PARAMS": [
+      {
+        "TYPE": "void*",
+        "NAME": "user",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "mqtt_connection_t*",
+        "NAME": "c",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct mqtt_broker",
+        "ROLE": "Broker 运行时内部状态结构"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "mqtt_connection_fd",
+        "KIND": "CALL",
+        "ROLE": "读取关闭连接的会话 ID"
+      },
+      {
+        "NAME": "mqtt_message_router_remove_session",
+        "KIND": "CALL",
+        "ROLE": "清理该会话所有订阅"
+      },
+      {
+        "NAME": "mqtt_session_manager_remove",
+        "KIND": "CALL",
+        "ROLE": "从会话管理器删除会话"
+      }
+    ],
+    "VAR": []
+  },
+  "EVENT": {
+    "TRIGGER": "tcp_server 检测到连接关闭或错误并执行 close_connection 时触发",
+    "PRECONDITION": "user 对应 broker，上报连接 c 有效",
+    "INPUT": "事件输入为 broker 上下文与关闭连接 c",
+    "ACTION": "校验 b/c；取 sid=mqtt_connection_fd(c)；调用 mqtt_message_router_remove_session 清理订阅，再调用 mqtt_session_manager_remove 删除会话并打印关闭日志",
+    "STATE_CHANGE": "订阅树与会话管理器中该 sid 的记录被移除",
+    "RESPONSE": "无返回值；连接相关业务状态被回收",
+    "EVENT_TYPE": "RUNTIME_EVENT"
+  }
+}

@@ -1,0 +1,155 @@
+#include "protocol/mqtt_encoder.h"
+
+#include <stdlib.h>
+#include <string.h>
+
+#define MQTT_PKT_CONNACK 2
+#define MQTT_PKT_PUBLISH 3
+#define MQTT_PKT_SUBACK 9
+#define MQTT_PKT_PINGRESP 13
+
+static size_t remaining_length_bytes(size_t len);
+static void put_remaining_length(uint8_t* out, size_t* pos, size_t len);
+static void put_u16(uint8_t* out, size_t* pos, uint16_t v);
+static mqtt_bytes_t make_bytes(size_t len);
+
+void mqtt_bytes_free(mqtt_bytes_t* b) {
+    if (b == NULL) {
+        return;
+    }
+    free(b->data);
+    b->data = NULL;
+    b->len = 0;
+}
+
+static mqtt_bytes_t make_bytes(size_t len) {
+    mqtt_bytes_t b = {0};
+    if (len == 0) {
+        return b;
+    }
+    b.data = (uint8_t*)malloc(len);
+    if (b.data == NULL) {
+        b.len = 0;
+        return b;
+    }
+    b.len = len;
+    return b;
+}
+
+static size_t remaining_length_bytes(size_t len) {
+    size_t count = 0;
+    do {
+        len /= 128;
+        count++;
+    } while (len > 0);
+    return count;
+}
+
+static void put_remaining_length(uint8_t* out, size_t* pos, size_t len) {
+    uint8_t encoded_byte;
+    do {
+        encoded_byte = len % 128;
+        len /= 128;
+        if (len > 0) {
+            encoded_byte |= 128;
+        }
+        out[(*pos)++] = encoded_byte;
+    } while (len > 0);
+}
+
+static void put_u16(uint8_t* out, size_t* pos, uint16_t v) {
+    out[(*pos)++] = (uint8_t)((v >> 8) & 0xFF);
+    out[(*pos)++] = (uint8_t)(v & 0xFF);
+}
+
+mqtt_bytes_t mqtt_encode_connack(bool session_present, uint8_t return_code) {
+    const size_t variable_header_len = 2;
+    size_t remaining_len = variable_header_len;
+    size_t rl_bytes = remaining_length_bytes(remaining_len);
+    size_t total_len = 1 + rl_bytes + remaining_len;
+
+    mqtt_bytes_t b = make_bytes(total_len);
+    if (b.data == NULL) {
+        return b;
+    }
+
+    size_t pos = 0;
+    b.data[pos++] = (MQTT_PKT_CONNACK << 4) | 0x00; // no flags for CONNACK
+    put_remaining_length(b.data, &pos, remaining_len);
+    b.data[pos++] = session_present ? 0x01 : 0x00;
+    b.data[pos++] = return_code;
+
+    return b;
+}
+
+mqtt_bytes_t mqtt_encode_suback(uint16_t packet_id, const uint8_t* return_codes, size_t return_code_count) {
+    size_t payload_len = return_code_count;
+    size_t variable_header_len = 2 + payload_len;
+    size_t remaining_len = variable_header_len;
+    size_t rl_bytes = remaining_length_bytes(remaining_len);
+    size_t total_len = 1 + rl_bytes + remaining_len;
+
+    mqtt_bytes_t b = make_bytes(total_len);
+    if (b.data == NULL) {
+        return b;
+    }
+
+    size_t pos = 0;
+    b.data[pos++] = (MQTT_PKT_SUBACK << 4) | 0x00; // no flags for SUBACK
+    put_remaining_length(b.data, &pos, remaining_len);
+    put_u16(b.data, &pos, packet_id);
+    if (return_codes != NULL && payload_len > 0) {
+        memcpy(&b.data[pos], return_codes, payload_len);
+    }
+
+    return b;
+}
+
+mqtt_bytes_t mqtt_encode_pingresp(void) {
+    mqtt_bytes_t b = make_bytes(2);
+    if (b.data == NULL) {
+        return b;
+    }
+    b.data[0] = (MQTT_PKT_PINGRESP << 4) | 0x00;
+    b.data[1] = 0x00; // Remaining Length = 0
+    return b;
+}
+
+mqtt_bytes_t mqtt_encode_publish_qos0(const char* topic_name, const uint8_t* payload, size_t payload_len, bool retain) {
+    if (topic_name == NULL) {
+        mqtt_bytes_t b = {0};
+        return b;
+    }
+
+    size_t topic_len = strlen(topic_name);
+    if (topic_len > 65535) {
+        mqtt_bytes_t b = {0};
+        return b;
+    }
+
+    size_t variable_header_len = 2 + topic_len;
+    size_t remaining_len = variable_header_len + payload_len;
+    size_t rl_bytes = remaining_length_bytes(remaining_len);
+    size_t total_len = 1 + rl_bytes + remaining_len;
+
+    mqtt_bytes_t b = make_bytes(total_len);
+    if (b.data == NULL) {
+        return b;
+    }
+
+    size_t pos = 0;
+    uint8_t flags = 0x00; // QoS=0, DUP=0, RETAIN as given
+    if (retain) {
+        flags |= 0x01;
+    }
+    b.data[pos++] = (MQTT_PKT_PUBLISH << 4) | flags;
+    put_remaining_length(b.data, &pos, remaining_len);
+    put_u16(b.data, &pos, (uint16_t)topic_len);
+    memcpy(&b.data[pos], topic_name, topic_len);
+    pos += topic_len;
+    if (payload != NULL && payload_len > 0) {
+        memcpy(&b.data[pos], payload, payload_len);
+    }
+
+    return b;
+}

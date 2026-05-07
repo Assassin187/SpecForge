@@ -1,0 +1,29 @@
+{
+  "category": "message_model_message_entry_details",
+  "ranked_chunk_ids": [
+    "MQTT_3.1.1-s10-p8",
+    "MQTT_3.1.1-s10-p7",
+    "MQTT_3.1.1-s16-p8",
+    "MQTT_3.1.1-s10-p9",
+    "MQTT_3.1.1-s10-p16",
+    "MQTT_3.1.1-s16-p11",
+    "MQTT_3.1.1-s10-p10",
+    "MQTT_3.1.1-s10-p11",
+    "MQTT_3.1.1-s16-p10",
+    "MQTT_3.1.1-s3-p24"
+  ],
+  "high_priority_chunk_ids": [
+    "MQTT_3.1.1-s10-p8",
+    "MQTT_3.1.1-s10-p7",
+    "MQTT_3.1.1-s16-p8"
+  ],
+  "notes": [
+    "Top chunks define core PUBLISH message fields (Topic Name, RETAIN flag, QoS interaction), routing rules (topic matching, retained message handling), and delivery semantics.",
+    "Chunks from Appendix B (normative statements) are valuable despite appendix penalty because they restate mandatory protocol behavior relevant to message entry structure.",
+    "De-prioritized low-density or purely structural/formatting excerpts (e.g., fixed header bit layouts without semantic context)."
+  ],
+  "open_questions": [
+    "Should normative statements in Appendix B be weighted more heavily than their section location suggests?",
+    "Is the interaction between Will Message and PUBLISH message model sufficiently covered?"
+  ]
+}

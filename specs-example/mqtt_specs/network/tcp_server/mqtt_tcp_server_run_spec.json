@@ -1,0 +1,107 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "mqtt/network/tcp_server/mqtt_tcp_server_run",
+  "FUNCTION_TYPE": "EVENT",
+  "ROLE": "运行 epoll 驱动主循环并分发连接读写关闭事件",
+  "SIGNATURE": {
+    "RAW": "void mqtt_tcp_server_run(mqtt_tcp_server_t* s)",
+    "NAME": "mqtt_tcp_server_run",
+    "RETURN": "void",
+    "PARAMS": [
+      {
+        "TYPE": "mqtt_tcp_server_t*",
+        "NAME": "s",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct mqtt_tcp_server",
+        "ROLE": "TCP 服务器私有状态结构体"
+      },
+      {
+        "NAME": "struct conn_node",
+        "ROLE": "连接链表节点"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "mqtt_connection_want_write",
+        "KIND": "CALL",
+        "ROLE": "判断连接是否待写"
+      },
+      {
+        "NAME": "accept_loop",
+        "KIND": "CALL",
+        "ROLE": "处理新连接接入"
+      },
+      {
+        "NAME": "find_conn",
+        "KIND": "CALL",
+        "ROLE": "按 fd 定位连接对象"
+      },
+      {
+        "NAME": "close_connection",
+        "KIND": "CALL",
+        "ROLE": "处理错误/关闭路径"
+      },
+      {
+        "NAME": "mqtt_connection_read",
+        "KIND": "CALL",
+        "ROLE": "读取连接输入缓冲"
+      },
+      {
+        "NAME": "mqtt_connection_flush",
+        "KIND": "CALL",
+        "ROLE": "刷新连接输出队列"
+      },
+      {
+        "NAME": "update_interest",
+        "KIND": "CALL",
+        "ROLE": "更新 epoll 关注事件"
+      }
+    ],
+    "VAR": []
+  },
+  "CALL_CONTRACTS": [
+    {
+      "NAME": "mqtt_connection_read",
+      "SIGNATURE": "bool mqtt_connection_read(mqtt_connection_t* c, bool* peer_closed)",
+      "PARAMS": [
+        "c is the connection selected from the fd event",
+        "peer_closed points to a local bool initialized false before the call"
+      ],
+      "RETURN": "true means read phase completed or would block; false means fatal read error",
+      "FAILURE": "On false or peer_closed=true, caller must close_connection(s, c)"
+    },
+    {
+      "NAME": "mqtt_connection_flush",
+      "SIGNATURE": "bool mqtt_connection_flush(mqtt_connection_t* c)",
+      "PARAMS": [
+        "c is the connection selected for EPOLLOUT or active write draining"
+      ],
+      "RETURN": "true means queued writes are consistent; false means fatal write error"
+    },
+    {
+      "NAME": "update_interest",
+      "SIGNATURE": "static void update_interest(mqtt_tcp_server_t* s, mqtt_connection_t* c)",
+      "PARAMS": [
+        "server owns epoll fd",
+        "connection fd remains valid"
+      ],
+      "RETURN": "void"
+    }
+  ],
+  "EVENT": {
+    "TRIGGER": "服务器 start 成功后由上层调用进入运行阶段",
+    "PRECONDITION": "s 非空且 s->running=true，epoll/listen fd 已初始化",
+    "INPUT": "输入为服务器对象 s；事件输入由 epoll_wait 返回",
+    "ACTION": "循环 epoll_wait：监听 fd 触发 accept_loop；连接 fd 触发 read/flush/错误处理；调用 on_data/on_close 回调；并在每轮末尾主动推进待写队列与兴趣集更新",
+    "STATE_CHANGE": "连接链表随接入/关闭动态变化，连接缓冲区与发送队列持续更新",
+    "RESPONSE": "无直接返回值；通过回调与网络 I/O 驱动上层协议行为，循环在 stop 后退出",
+    "EVENT_TYPE": "RUNTIME_EVENT"
+  }
+}

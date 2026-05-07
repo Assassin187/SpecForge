@@ -1,0 +1,169 @@
+{
+  "KIND": "FILE_SPEC",
+  "FILE": {
+    "TRACE_ID": "mqtt/protocol/mqtt_decoder",
+    "LANG": "C",
+    "ROLE": "MQTT 报文解码模块：从连接输入缓冲按固定头与 Remaining Length 切包，解析 CONNECT/SUBSCRIBE/PUBLISH/PINGREQ/DISCONNECT 并回调上层",
+    "DOC_REF": []
+  },
+  "HEADER": {
+    "PATH": "../protocol/mqtt_decoder.h",
+    "DEPENDENCY": [
+      "../protocol/mqtt_packet.h"
+    ],
+    "DATA": [
+      {
+        "NAME": "mqtt_on_packet_fn",
+        "KIND": "TYPE",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "解码成功后上报单个 mqtt_packet_t 的回调函数类型",
+        "TYPE_SPEC": {
+          "TYPE_KIND": "CALLBACK",
+          "CALLBACK_SIGNATURE": "void (*mqtt_on_packet_fn)(void* user, const mqtt_packet_t* pkt)"
+        }
+      }
+    ],
+    "INTERFACE": [
+      {
+        "SIGNATURE": "bool mqtt_decoder_feed(const uint8_t* buffer, size_t buffer_len, size_t* out_consumed, mqtt_on_packet_fn on_packet, void* user)",
+        "NAME": "mqtt_decoder_feed",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "增量解码入口：消费输入缓冲中完整报文并逐个回调上层处理",
+        "VISIBILITY": "public"
+      }
+    ]
+  },
+  "SOURCE": {
+    "PATH": "../protocol/mqtt_decoder.c",
+    "DEPENDENCY": [
+      "../protocol/mqtt_decoder.h"
+    ],
+    "DATA": [
+      {
+        "NAME": "struct remaining_length",
+        "KIND": "TYPE",
+        "VISIBILITY": "PRIVATE",
+        "ROLE": "Remaining Length 解析结果结构，记录数值与编码占用字节数"
+      },
+      {
+        "NAME": "remaining_length_t",
+        "KIND": "TYPE",
+        "VISIBILITY": "PRIVATE",
+        "ROLE": "struct remaining_length 的 typedef 别名，记录 Remaining Length 的 value 与编码字节数"
+      }
+    ],
+    "INTERFACE": [
+      {
+        "TRACE_ID": "mqtt/protocol/mqtt_decoder/mqtt_decoder_feed",
+        "SIGNATURE": "bool mqtt_decoder_feed(const uint8_t* buffer, size_t buffer_len, size_t* out_consumed, mqtt_on_packet_fn on_packet, void* user)",
+        "NAME": "mqtt_decoder_feed",
+        "KIND": "FUNC",
+        "ROLE": "循环解析输入缓冲中的完整报文，回调后释放临时报文并通过 out_consumed 返回可消费字节数",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用前对象指针应有效；并发访问需由上层同步控制"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数执行后维持模块内部状态一致性，并向调用方返回结果/副作用"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "mqtt/protocol/mqtt_decoder/try_parse_remaining_length",
+        "SIGNATURE": "static bool try_parse_remaining_length(const uint8_t* buf, size_t buf_len, size_t start, remaining_length_t* out)",
+        "NAME": "try_parse_remaining_length",
+        "KIND": "FUNC",
+        "ROLE": "解析 MQTT 可变长 Remaining Length 字段，处理最多 4 字节编码约束",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用前对象指针应有效；并发访问需由上层同步控制"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数执行后维持模块内部状态一致性，并向调用方返回结果/副作用"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "mqtt/protocol/mqtt_decoder/read_u16",
+        "SIGNATURE": "static bool read_u16(const uint8_t* body, size_t body_len, size_t* pos, uint16_t* out)",
+        "NAME": "read_u16",
+        "KIND": "FUNC",
+        "ROLE": "从报文体按网络字节序读取 uint16 并推进游标",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用前对象指针应有效；并发访问需由上层同步控制"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数执行后维持模块内部状态一致性，并向调用方返回结果/副作用"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "mqtt/protocol/mqtt_decoder/read_string",
+        "SIGNATURE": "static bool read_string(const uint8_t* body, size_t body_len, size_t* pos, char** out)",
+        "NAME": "read_string",
+        "KIND": "FUNC",
+        "ROLE": "读取 MQTT 长度前缀字符串并分配以 \u0000 结尾的新内存",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用前对象指针应有效；并发访问需由上层同步控制"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数执行后维持模块内部状态一致性，并向调用方返回结果/副作用"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "mqtt/protocol/mqtt_decoder/decode_one",
+        "SIGNATURE": "static bool decode_one(uint8_t header1, const uint8_t* body, size_t body_len, mqtt_packet_t* out)",
+        "NAME": "decode_one",
+        "KIND": "FUNC",
+        "ROLE": "按报文类型解码单个 MQTT 报文体并填充 mqtt_packet_t",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用前对象指针应有效；并发访问需由上层同步控制"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数执行后维持模块内部状态一致性，并向调用方返回结果/副作用"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "private"
+      }
+    ]
+  }
+}

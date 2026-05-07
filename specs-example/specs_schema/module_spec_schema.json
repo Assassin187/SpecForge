@@ -1,0 +1,272 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "specs_schema/module_spec_schema.json",
+  "title": "Protocol Module Spec Schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "KIND",
+    "PROTOCOL",
+    "MODULES",
+    "GENERATION_ORDER",
+    "CONSISTENCY_RULES"
+  ],
+  "properties": {
+    "KIND": {
+      "type": "string",
+      "const": "PROTOCOL_MODULE_SPEC"
+    },
+    "PROTOCOL": {
+      "$ref": "#/$defs/protocol_meta"
+    },
+    "MODULES": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/module_entry"
+      }
+    },
+    "GENERATION_ORDER": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "CONSISTENCY_RULES": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/consistency_rule"
+      }
+    },
+    "PUBLIC_SYMBOLS": {
+      "$ref": "#/$defs/symbol_array"
+    },
+    "FORBIDDEN_SYMBOLS": {
+      "$ref": "#/$defs/forbidden_symbol_array"
+    },
+    "TEST_VECTORS": {
+      "$ref": "#/$defs/test_vector_array"
+    }
+  },
+  "$defs": {
+    "symbol_array": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/symbol_item"
+      }
+    },
+    "symbol_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "NAME",
+        "KIND"
+      ],
+      "properties": {
+        "NAME": {
+          "type": "string",
+          "minLength": 1
+        },
+        "KIND": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ROLE": {
+          "type": "string"
+        }
+      }
+    },
+    "forbidden_symbol_array": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/forbidden_symbol_item"
+      }
+    },
+    "forbidden_symbol_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "NAME",
+        "REASON"
+      ],
+      "properties": {
+        "NAME": {
+          "type": "string",
+          "minLength": 1
+        },
+        "KIND": {
+          "type": "string"
+        },
+        "REASON": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "test_vector_array": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/test_vector_item"
+      }
+    },
+    "test_vector_item": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "NAME",
+        "INPUT",
+        "EXPECT"
+      ],
+      "properties": {
+        "NAME": {
+          "type": "string",
+          "minLength": 1
+        },
+        "INPUT": {
+          "type": "object"
+        },
+        "EXPECT": {
+          "type": "object"
+        }
+      }
+    },
+    "string_array": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "doc_ref_array": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "protocol_meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "NAME",
+        "SPEC_VERSION",
+        "ROLES"
+      ],
+      "properties": {
+        "NAME": {
+          "type": "string",
+          "minLength": 1
+        },
+        "SPEC_VERSION": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ROLES": {
+          "$ref": "#/$defs/string_array"
+        },
+        "SCOPE": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/string_array"
+            }
+          ]
+        }
+      }
+    },
+    "artifact_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "NAME",
+        "KIND",
+        "ROLE"
+      ],
+      "properties": {
+        "NAME": {
+          "type": "string",
+          "minLength": 1
+        },
+        "KIND": {
+          "type": "string",
+          "enum": [
+            "TYPE",
+            "FUNC",
+            "VAR",
+            "CONST",
+            "MACRO"
+          ]
+        },
+        "ROLE": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "module_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "NAME",
+        "ROLE",
+        "DEPENDENCIES",
+        "ARTIFACTS",
+        "FILES",
+        "DOC_REF"
+      ],
+      "properties": {
+        "NAME": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_./\\-]+$"
+        },
+        "ROLE": {
+          "type": "string",
+          "minLength": 1
+        },
+        "DEPENDENCIES": {
+          "$ref": "#/$defs/string_array"
+        },
+        "ARTIFACTS": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/artifact_item"
+          }
+        },
+        "FILES": {
+          "$ref": "#/$defs/string_array"
+        },
+        "DOC_REF": {
+          "$ref": "#/$defs/doc_ref_array"
+        }
+      }
+    },
+    "consistency_rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ID",
+        "RULE",
+        "DOC_REF"
+      ],
+      "properties": {
+        "ID": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_./\\-]+$"
+        },
+        "RULE": {
+          "type": "string",
+          "minLength": 1
+        },
+        "DOC_REF": {
+          "$ref": "#/$defs/doc_ref_array"
+        }
+      }
+    }
+  }
+}

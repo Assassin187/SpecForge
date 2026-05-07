@@ -1,0 +1,30 @@
+#ifndef SMTP_CONNECTION_H
+#define SMTP_CONNECTION_H
+
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+typedef struct smtp_connection smtp_connection_t;
+
+smtp_connection_t* smtp_connection_create(int fd);
+void smtp_connection_destroy(smtp_connection_t* conn);
+
+int smtp_connection_fd(const smtp_connection_t* conn);
+int smtp_connection_read(smtp_connection_t* conn);
+char* smtp_connection_pop_line(smtp_connection_t* conn);
+
+int smtp_connection_queue(smtp_connection_t* conn, const void* data, size_t len);
+int smtp_connection_queue_str(smtp_connection_t* conn, const char* text);
+int smtp_connection_flush(smtp_connection_t* conn);
+bool smtp_connection_has_pending(const smtp_connection_t* conn);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif

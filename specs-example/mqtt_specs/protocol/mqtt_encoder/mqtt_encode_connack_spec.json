@@ -1,0 +1,60 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "mqtt/protocol/mqtt_encoder/mqtt_encode_connack",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "编码 MQTT CONNACK 响应报文",
+  "SIGNATURE": {
+    "RAW": "mqtt_bytes_t mqtt_encode_connack(bool session_present, uint8_t return_code)",
+    "NAME": "mqtt_encode_connack",
+    "RETURN": "mqtt_bytes_t",
+    "PARAMS": [
+      {
+        "TYPE": "bool",
+        "NAME": "session_present",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "uint8_t",
+        "NAME": "return_code",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "mqtt_bytes_t",
+        "ROLE": "编码字节缓冲结构体"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "remaining_length_bytes",
+        "KIND": "CALL",
+        "ROLE": "计算剩余长度编码字节数"
+      },
+      {
+        "NAME": "make_bytes",
+        "KIND": "CALL",
+        "ROLE": "分配输出缓冲"
+      },
+      {
+        "NAME": "put_remaining_length",
+        "KIND": "CALL",
+        "ROLE": "写入 Remaining Length"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入为 session_present 标志与 return_code",
+    "ACTION": "计算可变头长度与 Remaining Length 编码长度；分配输出缓冲；写入固定头、Remaining Length、会话标志与返回码",
+    "OUTPUT": "返回包含完整 CONNACK 字节流的 mqtt_bytes_t；分配失败时 len=0,data=NULL",
+    "INVARIANTS_USED": [
+      "输出格式符合 MQTT 3.1.1 CONNACK 结构",
+      "返回缓冲由调用方通过 mqtt_bytes_free 释放"
+    ]
+  }
+}

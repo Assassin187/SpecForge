@@ -1,0 +1,645 @@
+{
+  "protocol_name": "mqtt",
+  "schema_version": "protocol_facts/v2alpha1",
+  "source_documents": [
+    "/home/ljf/new/document/MQTT_3.1.1.txt"
+  ],
+  "document_count": 1,
+  "chunk_count": 104,
+  "categories": [
+    "transport",
+    "interaction_model",
+    "message_model",
+    "state_model",
+    "routing_model",
+    "resource_model",
+    "error_and_limits",
+    "minimum_v1"
+  ],
+  "model": "qwen3-max-2026-01-23",
+  "facts_path": "/home/ljf/new/agent/facts/out/mqtt/protocol_facts.json",
+  "llm_call_usage": [
+    {
+      "category": "__shared__",
+      "stage": "surface_discovery",
+      "subtask": null,
+      "call_type": "rerank",
+      "usage": {
+        "prompt_tokens": 12857,
+        "completion_tokens": 903,
+        "total_tokens": 13760
+      }
+    },
+    {
+      "category": "__shared__",
+      "stage": "surface_discovery",
+      "subtask": null,
+      "call_type": "extract",
+      "usage": {
+        "prompt_tokens": 5073,
+        "completion_tokens": 3936,
+        "total_tokens": 9009
+      }
+    },
+    {
+      "category": "transport",
+      "stage": "transport_transport_overview",
+      "subtask": "transport_overview",
+      "call_type": "rerank",
+      "usage": {
+        "prompt_tokens": 11391,
+        "completion_tokens": 359,
+        "total_tokens": 11750
+      }
+    },
+    {
+      "category": "transport",
+      "stage": "transport_transport_overview",
+      "subtask": "transport_overview",
+      "call_type": "extract",
+      "usage": {
+        "prompt_tokens": 5864,
+        "completion_tokens": 861,
+        "total_tokens": 6725
+      }
+    },
+    {
+      "category": "interaction_model",
+      "stage": "interaction_model_interaction_overview",
+      "subtask": "interaction_overview",
+      "call_type": "rerank",
+      "usage": {
+        "prompt_tokens": 12552,
+        "completion_tokens": 340,
+        "total_tokens": 12892
+      }
+    },
+    {
+      "category": "interaction_model",
+      "stage": "interaction_model_interaction_overview",
+      "subtask": "interaction_overview",
+      "call_type": "extract",
+      "usage": {
+        "prompt_tokens": 7086,
+        "completion_tokens": 1625,
+        "total_tokens": 8711
+      }
+    },
+    {
+      "category": "message_model",
+      "stage": "message_model_message_surface_catalog",
+      "subtask": "message_surface_catalog",
+      "call_type": "rerank",
+      "usage": {
+        "prompt_tokens": 12230,
+        "completion_tokens": 823,
+        "total_tokens": 13053
+      }
+    },
+    {
+      "category": "message_model",
+      "stage": "message_model_message_surface_catalog",
+      "subtask": "message_surface_catalog",
+      "call_type": "extract",
+      "usage": {
+        "prompt_tokens": 6425,
+        "completion_tokens": 4364,
+        "total_tokens": 10789
+      }
+    },
+    {
+      "category": "message_model",
+      "stage": "message_model_message_entry_details",
+      "subtask": "message_entry_details",
+      "call_type": "rerank",
+      "usage": {
+        "prompt_tokens": 11274,
+        "completion_tokens": 388,
+        "total_tokens": 11662
+      }
+    },
+    {
+      "category": "message_model",
+      "stage": "message_model_message_entry_details",
+      "subtask": "message_entry_details",
+      "call_type": "extract",
+      "usage": {
+        "prompt_tokens": 6417,
+        "completion_tokens": 3535,
+        "total_tokens": 9952
+      }
+    },
+    {
+      "category": "state_model",
+      "stage": "state_model_state_structure",
+      "subtask": "state_structure",
+      "call_type": "rerank",
+      "usage": {
+        "prompt_tokens": 10552,
+        "completion_tokens": 345,
+        "total_tokens": 10897
+      }
+    },
+    {
+      "category": "state_model",
+      "stage": "state_model_state_structure",
+      "subtask": "state_structure",
+      "call_type": "extract",
+      "usage": {
+        "prompt_tokens": 5900,
+        "completion_tokens": 2985,
+        "total_tokens": 8885
+      }
+    },
+    {
+      "category": "state_model",
+      "stage": "state_model_state_transitions",
+      "subtask": "state_transitions",
+      "call_type": "rerank",
+      "usage": {
+        "prompt_tokens": 10190,
+        "completion_tokens": 384,
+        "total_tokens": 10574
+      }
+    },
+    {
+      "category": "state_model",
+      "stage": "state_model_state_transitions",
+      "subtask": "state_transitions",
+      "call_type": "extract",
+      "usage": {
+        "prompt_tokens": 6216,
+        "completion_tokens": 3250,
+        "total_tokens": 9466
+      }
+    },
+    {
+      "category": "routing_model",
+      "stage": "routing_model_routing_rules",
+      "subtask": "routing_rules",
+      "call_type": "rerank",
+      "usage": {
+        "prompt_tokens": 10782,
+        "completion_tokens": 304,
+        "total_tokens": 11086
+      }
+    },
+    {
+      "category": "routing_model",
+      "stage": "routing_model_routing_rules",
+      "subtask": "routing_rules",
+      "call_type": "extract",
+      "usage": {
+        "prompt_tokens": 6022,
+        "completion_tokens": 1350,
+        "total_tokens": 7372
+      }
+    },
+    {
+      "category": "resource_model",
+      "stage": "resource_model_resource_objects",
+      "subtask": "resource_objects",
+      "call_type": "rerank",
+      "usage": {
+        "prompt_tokens": 10375,
+        "completion_tokens": 385,
+        "total_tokens": 10760
+      }
+    },
+    {
+      "category": "resource_model",
+      "stage": "resource_model_resource_objects",
+      "subtask": "resource_objects",
+      "call_type": "extract",
+      "usage": {
+        "prompt_tokens": 6045,
+        "completion_tokens": 1774,
+        "total_tokens": 7819
+      }
+    },
+    {
+      "category": "resource_model",
+      "stage": "resource_model_resource_lifecycle",
+      "subtask": "resource_lifecycle",
+      "call_type": "rerank",
+      "usage": {
+        "prompt_tokens": 9926,
+        "completion_tokens": 331,
+        "total_tokens": 10257
+      }
+    },
+    {
+      "category": "resource_model",
+      "stage": "resource_model_resource_lifecycle",
+      "subtask": "resource_lifecycle",
+      "call_type": "extract",
+      "usage": {
+        "prompt_tokens": 6108,
+        "completion_tokens": 2201,
+        "total_tokens": 8309
+      }
+    },
+    {
+      "category": "error_and_limits",
+      "stage": "error_and_limits_error_matrix",
+      "subtask": "error_matrix",
+      "call_type": "rerank",
+      "usage": {
+        "prompt_tokens": 9495,
+        "completion_tokens": 493,
+        "total_tokens": 9988
+      }
+    },
+    {
+      "category": "error_and_limits",
+      "stage": "error_and_limits_error_matrix",
+      "subtask": "error_matrix",
+      "call_type": "extract",
+      "usage": {
+        "prompt_tokens": 6856,
+        "completion_tokens": 1914,
+        "total_tokens": 8770
+      }
+    },
+    {
+      "category": "error_and_limits",
+      "stage": "error_and_limits_limits_and_security",
+      "subtask": "limits_and_security",
+      "call_type": "rerank",
+      "usage": {
+        "prompt_tokens": 12124,
+        "completion_tokens": 367,
+        "total_tokens": 12491
+      }
+    },
+    {
+      "category": "error_and_limits",
+      "stage": "error_and_limits_limits_and_security",
+      "subtask": "limits_and_security",
+      "call_type": "extract",
+      "usage": {
+        "prompt_tokens": 6699,
+        "completion_tokens": 3318,
+        "total_tokens": 10017
+      }
+    },
+    {
+      "category": "minimum_v1",
+      "stage": "minimum_v1_minimum_boundary",
+      "subtask": "minimum_boundary",
+      "call_type": "rerank",
+      "usage": {
+        "prompt_tokens": 12304,
+        "completion_tokens": 837,
+        "total_tokens": 13141
+      }
+    },
+    {
+      "category": "minimum_v1",
+      "stage": "minimum_v1_minimum_boundary",
+      "subtask": "minimum_boundary",
+      "call_type": "extract",
+      "usage": {
+        "prompt_tokens": 6227,
+        "completion_tokens": 2297,
+        "total_tokens": 8524
+      }
+    },
+    {
+      "category": "__shared__",
+      "stage": "cross_category_reconciliation",
+      "subtask": null,
+      "call_type": "extract",
+      "usage": {
+        "prompt_tokens": 16140,
+        "completion_tokens": 934,
+        "total_tokens": 17074
+      }
+    }
+  ],
+  "category_token_usage": {
+    "transport": {
+      "subtasks": {
+        "transport_overview": {
+          "rerank": {
+            "prompt_tokens": 11391,
+            "completion_tokens": 359,
+            "total_tokens": 11750
+          },
+          "extract": {
+            "prompt_tokens": 5864,
+            "completion_tokens": 861,
+            "total_tokens": 6725
+          },
+          "subtask_total": {
+            "prompt_tokens": 17255,
+            "completion_tokens": 1220,
+            "total_tokens": 18475
+          }
+        }
+      },
+      "category_total": {
+        "prompt_tokens": 17255,
+        "completion_tokens": 1220,
+        "total_tokens": 18475
+      }
+    },
+    "interaction_model": {
+      "subtasks": {
+        "interaction_overview": {
+          "rerank": {
+            "prompt_tokens": 12552,
+            "completion_tokens": 340,
+            "total_tokens": 12892
+          },
+          "extract": {
+            "prompt_tokens": 7086,
+            "completion_tokens": 1625,
+            "total_tokens": 8711
+          },
+          "subtask_total": {
+            "prompt_tokens": 19638,
+            "completion_tokens": 1965,
+            "total_tokens": 21603
+          }
+        }
+      },
+      "category_total": {
+        "prompt_tokens": 19638,
+        "completion_tokens": 1965,
+        "total_tokens": 21603
+      }
+    },
+    "message_model": {
+      "subtasks": {
+        "message_surface_catalog": {
+          "rerank": {
+            "prompt_tokens": 12230,
+            "completion_tokens": 823,
+            "total_tokens": 13053
+          },
+          "extract": {
+            "prompt_tokens": 6425,
+            "completion_tokens": 4364,
+            "total_tokens": 10789
+          },
+          "subtask_total": {
+            "prompt_tokens": 18655,
+            "completion_tokens": 5187,
+            "total_tokens": 23842
+          }
+        },
+        "message_entry_details": {
+          "rerank": {
+            "prompt_tokens": 11274,
+            "completion_tokens": 388,
+            "total_tokens": 11662
+          },
+          "extract": {
+            "prompt_tokens": 6417,
+            "completion_tokens": 3535,
+            "total_tokens": 9952
+          },
+          "subtask_total": {
+            "prompt_tokens": 17691,
+            "completion_tokens": 3923,
+            "total_tokens": 21614
+          }
+        }
+      },
+      "category_total": {
+        "prompt_tokens": 36346,
+        "completion_tokens": 9110,
+        "total_tokens": 45456
+      }
+    },
+    "state_model": {
+      "subtasks": {
+        "state_structure": {
+          "rerank": {
+            "prompt_tokens": 10552,
+            "completion_tokens": 345,
+            "total_tokens": 10897
+          },
+          "extract": {
+            "prompt_tokens": 5900,
+            "completion_tokens": 2985,
+            "total_tokens": 8885
+          },
+          "subtask_total": {
+            "prompt_tokens": 16452,
+            "completion_tokens": 3330,
+            "total_tokens": 19782
+          }
+        },
+        "state_transitions": {
+          "rerank": {
+            "prompt_tokens": 10190,
+            "completion_tokens": 384,
+            "total_tokens": 10574
+          },
+          "extract": {
+            "prompt_tokens": 6216,
+            "completion_tokens": 3250,
+            "total_tokens": 9466
+          },
+          "subtask_total": {
+            "prompt_tokens": 16406,
+            "completion_tokens": 3634,
+            "total_tokens": 20040
+          }
+        }
+      },
+      "category_total": {
+        "prompt_tokens": 32858,
+        "completion_tokens": 6964,
+        "total_tokens": 39822
+      }
+    },
+    "routing_model": {
+      "subtasks": {
+        "routing_rules": {
+          "rerank": {
+            "prompt_tokens": 10782,
+            "completion_tokens": 304,
+            "total_tokens": 11086
+          },
+          "extract": {
+            "prompt_tokens": 6022,
+            "completion_tokens": 1350,
+            "total_tokens": 7372
+          },
+          "subtask_total": {
+            "prompt_tokens": 16804,
+            "completion_tokens": 1654,
+            "total_tokens": 18458
+          }
+        }
+      },
+      "category_total": {
+        "prompt_tokens": 16804,
+        "completion_tokens": 1654,
+        "total_tokens": 18458
+      }
+    },
+    "resource_model": {
+      "subtasks": {
+        "resource_objects": {
+          "rerank": {
+            "prompt_tokens": 10375,
+            "completion_tokens": 385,
+            "total_tokens": 10760
+          },
+          "extract": {
+            "prompt_tokens": 6045,
+            "completion_tokens": 1774,
+            "total_tokens": 7819
+          },
+          "subtask_total": {
+            "prompt_tokens": 16420,
+            "completion_tokens": 2159,
+            "total_tokens": 18579
+          }
+        },
+        "resource_lifecycle": {
+          "rerank": {
+            "prompt_tokens": 9926,
+            "completion_tokens": 331,
+            "total_tokens": 10257
+          },
+          "extract": {
+            "prompt_tokens": 6108,
+            "completion_tokens": 2201,
+            "total_tokens": 8309
+          },
+          "subtask_total": {
+            "prompt_tokens": 16034,
+            "completion_tokens": 2532,
+            "total_tokens": 18566
+          }
+        }
+      },
+      "category_total": {
+        "prompt_tokens": 32454,
+        "completion_tokens": 4691,
+        "total_tokens": 37145
+      }
+    },
+    "error_and_limits": {
+      "subtasks": {
+        "error_matrix": {
+          "rerank": {
+            "prompt_tokens": 9495,
+            "completion_tokens": 493,
+            "total_tokens": 9988
+          },
+          "extract": {
+            "prompt_tokens": 6856,
+            "completion_tokens": 1914,
+            "total_tokens": 8770
+          },
+          "subtask_total": {
+            "prompt_tokens": 16351,
+            "completion_tokens": 2407,
+            "total_tokens": 18758
+          }
+        },
+        "limits_and_security": {
+          "rerank": {
+            "prompt_tokens": 12124,
+            "completion_tokens": 367,
+            "total_tokens": 12491
+          },
+          "extract": {
+            "prompt_tokens": 6699,
+            "completion_tokens": 3318,
+            "total_tokens": 10017
+          },
+          "subtask_total": {
+            "prompt_tokens": 18823,
+            "completion_tokens": 3685,
+            "total_tokens": 22508
+          }
+        }
+      },
+      "category_total": {
+        "prompt_tokens": 35174,
+        "completion_tokens": 6092,
+        "total_tokens": 41266
+      }
+    },
+    "minimum_v1": {
+      "subtasks": {
+        "minimum_boundary": {
+          "rerank": {
+            "prompt_tokens": 12304,
+            "completion_tokens": 837,
+            "total_tokens": 13141
+          },
+          "extract": {
+            "prompt_tokens": 6227,
+            "completion_tokens": 2297,
+            "total_tokens": 8524
+          },
+          "subtask_total": {
+            "prompt_tokens": 18531,
+            "completion_tokens": 3134,
+            "total_tokens": 21665
+          }
+        }
+      },
+      "category_total": {
+        "prompt_tokens": 18531,
+        "completion_tokens": 3134,
+        "total_tokens": 21665
+      }
+    }
+  },
+  "shared_stage_token_usage": {
+    "surface_discovery": {
+      "prompt_tokens": 17930,
+      "completion_tokens": 4839,
+      "total_tokens": 22769
+    },
+    "cross_category_reconciliation": {
+      "prompt_tokens": 16140,
+      "completion_tokens": 934,
+      "total_tokens": 17074
+    }
+  },
+  "workflow_token_usage": {
+    "prompt_tokens": 243130,
+    "completion_tokens": 40603,
+    "total_tokens": 283733
+  },
+  "subtasks": {
+    "transport": [
+      "transport_overview"
+    ],
+    "interaction_model": [
+      "interaction_overview"
+    ],
+    "message_model": [
+      "message_surface_catalog",
+      "message_entry_details"
+    ],
+    "state_model": [
+      "state_structure",
+      "state_transitions"
+    ],
+    "routing_model": [
+      "routing_rules"
+    ],
+    "resource_model": [
+      "resource_objects",
+      "resource_lifecycle"
+    ],
+    "error_and_limits": [
+      "error_matrix",
+      "limits_and_security"
+    ],
+    "minimum_v1": [
+      "minimum_boundary"
+    ]
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "category": "resource_model_resource_objects",
+  "ranked_chunk_ids": [
+    "MQTT_3.1.1-s10-p33",
+    "MQTT_3.1.1-s10-p13",
+    "MQTT_3.1.1-s16-p9",
+    "MQTT_3.1.1-s10-p15",
+    "MQTT_3.1.1-s16-p8",
+    "MQTT_3.1.1-s10-p8",
+    "MQTT_3.1.1-s16-p10",
+    "MQTT_3.1.1-s16-p11",
+    "MQTT_3.1.1-s10-p19",
+    "MQTT_3.1.1-s16-p15"
+  ],
+  "high_priority_chunk_ids": [
+    "MQTT_3.1.1-s10-p33",
+    "MQTT_3.1.1-s10-p13",
+    "MQTT_3.1.1-s16-p9"
+  ],
+  "notes": [
+    "Top chunks define core resource objects: Topic Names and Topic Filters as UTF-8 strings with length limits, encoding rules, wildcard semantics, and matching behavior.",
+    "Chunks from Section 4.7 and related normative statements in Appendix B provide essential constraints on resource identity, format, and routing semantics.",
+    "Examples, revision history, and generic control packet overviews were deprioritized per task focus on resource model semantics."
+  ],
+  "open_questions": [
+    "How are retained messages modeled as resources relative to topics?",
+    "Are topic levels or hierarchies treated as distinct resource objects or only full topic names?"
+  ]
+}

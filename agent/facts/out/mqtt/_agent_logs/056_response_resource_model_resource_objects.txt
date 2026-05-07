@@ -1,0 +1,148 @@
+{
+  "category": "resource_model",
+  "task": "resource_objects",
+  "facts": {
+    "resource_objects": [
+      {
+        "name": "Topic",
+        "kind": "logical_resource",
+        "creation_rules": [
+          "The topic resource MAY be either predefined in the Server by an administrator or it MAY be dynamically created by the Server when it receives the first subscription or an Application Message with that Topic Name."
+        ],
+        "lifetime_rules": [
+          "Topic Names are UTF-8 encoded strings that MUST NOT encode to more than 65535 bytes.",
+          "There is no limit to the number of levels in a Topic Name other than the overall UTF-8 string length constraint."
+        ],
+        "deletion_rules": [
+          "A PUBLISH Packet with a RETAIN flag set to 1 and a payload containing zero bytes causes any existing retained message with the same topic name to be removed; future subscribers will not receive a retained message for that topic.",
+          "A zero-byte retained message MUST NOT be stored as a retained message on the Server."
+        ],
+        "persistence": "server_persistent",
+        "ownership": "server",
+        "linked_surface_units": ["PUBLISH", "Topic Name", "RETAIN flag"],
+        "evidence_refs": ["resource_e1", "resource_e2", "resource_e3"]
+      },
+      {
+        "name": "Subscription",
+        "kind": "logical_resource",
+        "creation_rules": [
+          "Where the Topic Filter is not identical to any existing Subscription’s filter, a new Subscription is created and all matching retained messages are sent.",
+          "A Subscription is established via a SUBSCRIBE packet containing at least one Topic Filter / QoS pair."
+        ],
+        "lifetime_rules": [
+          "Subscriptions are tied to client sessions; they persist across network disconnections if CleanSession=0.",
+          "The Server MUST deliver messages respecting the maximum QoS granted for the Subscription."
+        ],
+        "deletion_rules": [
+          "Subscriptions are removed upon receipt of an UNSUBSCRIBE command from the client.",
+          "Subscriptions may be implicitly removed when a session ends if CleanSession=1."
+        ],
+        "persistence": "session_scoped",
+        "ownership": "client",
+        "linked_surface_units": ["SUBSCRIBE", "UNSUBSCRIBE", "Topic Filter", "QoS level"],
+        "evidence_refs": ["resource_e4", "resource_e5"]
+      },
+      {
+        "name": "ClientId",
+        "kind": "logical_resource",
+        "creation_rules": [
+          "ClientId is provided by the client in the CONNECT packet.",
+          "If a zero-byte ClientId is provided with CleanSession=1, the server MUST assign a unique ClientId."
+        ],
+        "lifetime_rules": [
+          "ClientId is used to manage sessions and retained message delivery.",
+          "Maximum ClientId length is at least 23 UTF-8 encoded bytes; servers may allow longer."
+        ],
+        "deletion_rules": [
+          "ClientId association ends when the session ends (depending on CleanSession setting)."
+        ],
+        "persistence": "session_scoped",
+        "ownership": "client",
+        "linked_surface_units": ["CONNECT", "ClientId"],
+        "evidence_refs": ["resource_e6"]
+      }
+    ],
+    "business_operations": [
+      {
+        "name": "PublishMessage",
+        "summary": "Deliver an application message to a topic, optionally storing it as the retained message.",
+        "resource_objects": ["Topic"],
+        "linked_surface_units": ["PUBLISH", "RETAIN flag", "QoS level"],
+        "evidence_refs": ["resource_e2", "resource_e3"]
+      },
+      {
+        "name": "SubscribeToTopic",
+        "summary": "Establish a subscription to one or more topics using topic filters, enabling message delivery based on matches.",
+        "resource_objects": ["Subscription", "Topic"],
+        "linked_surface_units": ["SUBSCRIBE", "Topic Filter", "QoS level"],
+        "evidence_refs": ["resource_e4"]
+      },
+      {
+        "name": "UnsubscribeFromTopic",
+        "summary": "Remove one or more subscriptions associated with topic filters.",
+        "resource_objects": ["Subscription"],
+        "linked_surface_units": ["UNSUBSCRIBE", "Topic Filter"],
+        "evidence_refs": ["resource_e7"]
+      },
+      {
+        "name": "EstablishSession",
+        "summary": "Initiate a connection with a unique ClientId, managing session state and message delivery guarantees.",
+        "resource_objects": ["ClientId"],
+        "linked_surface_units": ["CONNECT", "CONNACK"],
+        "evidence_refs": ["resource_e6"]
+      }
+    ]
+  },
+  "evidence": [
+    {
+      "evidence_id": "resource_e1",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p33",
+      "excerpt": "An Application Message is sent to each Client Subscription whose Topic Filter matches the Topic Name attached to an Application Message. The topic resource MAY be either predefined in the Server by an administrator or it MAY be dynamically created by the Server when it receives the first subscription or an Application Message with that Topic Name."
+    },
+    {
+      "evidence_id": "resource_e2",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix B. Mandatory normative statements (non normative)",
+      "chunk_id": "MQTT_3.1.1-s16-p8",
+      "excerpt": "If the RETAIN flag is set to 1, in a PUBLISH Packet sent by a Client to a Server, the Server MUST store the Application Message and its QoS, so that it can be delivered to future subscribers whose subscriptions match its topic name."
+    },
+    {
+      "evidence_id": "resource_e3",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix B. Mandatory normative statements (non normative)",
+      "chunk_id": "MQTT_3.1.1-s16-p8",
+      "excerpt": "A PUBLISH Packet with a RETAIN flag set to 1 and a payload containing zero bytes will be processed as normal by the Server and sent to Clients with a subscription matching the topic name. Additionally any existing retained message with the same topic name MUST be removed and any future subscribers for the topic will not receive a retained message."
+    },
+    {
+      "evidence_id": "resource_e4",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p15",
+      "excerpt": "Where the Topic Filter is not identical to any existing Subscription’s filter, a new Subscription is created and all matching retained messages are sent."
+    },
+    {
+      "evidence_id": "resource_e5",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p15",
+      "excerpt": "The Server MUST deliver the message to the Client respecting the maximum QoS of all the matching subscriptions."
+    },
+    {
+      "evidence_id": "resource_e6",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "Discovery context",
+      "chunk_id": "disc_e8",
+      "excerpt": "CONNECT: Initiates a connection with authentication, session, and will parameters."
+    },
+    {
+      "evidence_id": "resource_e7",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "Discovery context",
+      "chunk_id": "disc_e7",
+      "excerpt": "UNSUBSCRIBE: Requests removal of one or more topic filter subscriptions."
+    }
+  ],
+  "open_questions": []
+}

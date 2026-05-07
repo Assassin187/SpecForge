@@ -1,0 +1,48 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "mqtt/network/connection/mqtt_connection_destroy",
+  "FUNCTION_TYPE": "EVENT",
+  "ROLE": "销毁连接对象及其所有动态资源",
+  "SIGNATURE": {
+    "RAW": "void mqtt_connection_destroy(mqtt_connection_t* c)",
+    "NAME": "mqtt_connection_destroy",
+    "RETURN": "void",
+    "PARAMS": [
+      {
+        "TYPE": "mqtt_connection_t*",
+        "NAME": "c",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct mqtt_connection",
+        "ROLE": "连接私有状态结构体"
+      },
+      {
+        "NAME": "struct out_chunk",
+        "ROLE": "输出队列块结构体"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "mqtt_connection_close",
+        "KIND": "CALL",
+        "ROLE": "销毁前先关闭 fd"
+      }
+    ],
+    "VAR": []
+  },
+  "EVENT": {
+    "TRIGGER": "连接移除或服务器停止时触发",
+    "PRECONDITION": "c 可为空；非空时为合法连接对象",
+    "INPUT": "输入为连接指针 c",
+    "ACTION": "先调用 mqtt_connection_close，再释放 in_data、输出链表各节点数据与 peer 字符串，最后释放对象",
+    "STATE_CHANGE": "连接对象及其缓存资源全部回收",
+    "RESPONSE": "无返回值",
+    "EVENT_TYPE": "RUNTIME_EVENT"
+  }
+}

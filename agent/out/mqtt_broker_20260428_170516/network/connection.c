@@ -1,0 +1,292 @@
+#include "network/connection.h"
+
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <errno.h>
+#include <sys/socket.h>
+
+struct out_chunk {
+    uint8_t* data;
+    size_t len;
+    size_t off;
+    struct out_chunk* next;
+};
+
+typedef struct out_chunk out_chunk_t;
+
+struct mqtt_connection {
+    int fd;
+    bool closed;
+    char* peer;
+
+    uint8_t* in_data;
+    size_t in_len;
+    size_t in_cap;
+
+    out_chunk_t* out_head;
+    out_chunk_t* out_tail;
+};
+
+static bool ensure_in_cap(mqtt_connection_t* c, size_t need)
+{
+    if (need <= c->in_cap) {
+        return true;
+    }
+
+    size_t new_cap = c->in_cap;
+    if (new_cap == 0) {
+        new_cap = 1024;
+    }
+    while (new_cap < need) {
+        new_cap *= 2;
+    }
+
+    uint8_t* new_data = realloc(c->in_data, new_cap);
+    if (!new_data) {
+        return false;
+    }
+
+    c->in_data = new_data;
+    c->in_cap = new_cap;
+    return true;
+}
+
+mqtt_connection_t* mqtt_connection_create(int fd)
+{
+    mqtt_connection_t* c = calloc(1, sizeof(mqtt_connection_t));
+    if (!c) {
+        return NULL;
+    }
+
+    c->fd = fd;
+    c->closed = false;
+    c->peer = NULL;
+    c->in_data = NULL;
+    c->in_len = 0;
+    c->in_cap = 0;
+    c->out_head = NULL;
+    c->out_tail = NULL;
+
+    return c;
+}
+
+void mqtt_connection_destroy(mqtt_connection_t* c)
+{
+    if (!c) {
+        return;
+    }
+
+    mqtt_connection_close(c);
+
+    free(c->in_data);
+    c->in_data = NULL;
+
+    out_chunk_t* chunk = c->out_head;
+    while (chunk) {
+        out_chunk_t* next = chunk->next;
+        free(chunk->data);
+        free(chunk);
+        chunk = next;
+    }
+
+    free(c->peer);
+    free(c);
+}
+
+int mqtt_connection_fd(const mqtt_connection_t* c)
+{
+    if (!c) {
+        return -1;
+    }
+    return c->fd;
+}
+
+bool mqtt_connection_closed(const mqtt_connection_t* c)
+{
+    if (!c) {
+        return true;
+    }
+    return c->closed;
+}
+
+const char* mqtt_connection_peer(const mqtt_connection_t* c)
+{
+    if (!c || !c->peer) {
+        return "";
+    }
+    return c->peer;
+}
+
+void mqtt_connection_set_peer(mqtt_connection_t* c, const char* peer)
+{
+    if (!c) {
+        return;
+    }
+
+    free(c->peer);
+    c->peer = NULL;
+
+    if (peer) {
+        c->peer = strdup(peer);
+    }
+}
+
+bool mqtt_connection_read(mqtt_connection_t* c, bool* peer_closed)
+{
+    if (!c || c->closed) {
+        if (peer_closed) {
+            *peer_closed = true;
+        }
+        return true;
+    }
+
+    if (peer_closed) {
+        *peer_closed = false;
+    }
+
+    while (true) {
+        size_t avail = c->in_cap - c->in_len;
+        if (avail == 0) {
+            if (!ensure_in_cap(c, c->in_len + 1)) {
+                return false;
+            }
+            avail = c->in_cap - c->in_len;
+        }
+
+        ssize_t n = recv(c->fd, c->in_data + c->in_len, avail, MSG_DONTWAIT);
+        if (n > 0) {
+            c->in_len += n;
+            continue;
+        } else if (n == 0) {
+            if (peer_closed) {
+                *peer_closed = true;
+            }
+            return true;
+        } else {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                return true;
+            } else if (errno == EINTR) {
+                continue;
+            } else {
+                return false;
+            }
+        }
+    }
+}
+
+bool mqtt_connection_flush(mqtt_connection_t* c)
+{
+    if (!c || c->closed) {
+        return true;
+    }
+
+    while (c->out_head) {
+        out_chunk_t* head = c->out_head;
+        ssize_t n = send(c->fd, head->data + head->off, head->len - head->off, MSG_NOSIGNAL | MSG_DONTWAIT);
+        if (n > 0) {
+            head->off += n;
+            if (head->off == head->len) {
+                c->out_head = head->next;
+                if (!c->out_head) {
+                    c->out_tail = NULL;
+                }
+                free(head->data);
+                free(head);
+            }
+            continue;
+        } else if (n < 0) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                return true;
+            } else if (errno == EINTR) {
+                continue;
+            } else {
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
+void mqtt_connection_send(mqtt_connection_t* c, const uint8_t* data, size_t len)
+{
+    if (!c || c->closed || len == 0) {
+        return;
+    }
+
+    out_chunk_t* chunk = malloc(sizeof(out_chunk_t));
+    if (!chunk) {
+        return;
+    }
+
+    chunk->data = malloc(len);
+    if (!chunk->data) {
+        free(chunk);
+        return;
+    }
+
+    memcpy(chunk->data, data, len);
+    chunk->len = len;
+    chunk->off = 0;
+    chunk->next = NULL;
+
+    if (c->out_tail) {
+        c->out_tail->next = chunk;
+        c->out_tail = chunk;
+    } else {
+        c->out_head = c->out_tail = chunk;
+    }
+}
+
+uint8_t* mqtt_connection_in_data(mqtt_connection_t* c)
+{
+    if (!c) {
+        return NULL;
+    }
+    return c->in_data;
+}
+
+size_t mqtt_connection_in_len(const mqtt_connection_t* c)
+{
+    if (!c) {
+        return 0;
+    }
+    return c->in_len;
+}
+
+void mqtt_connection_in_consume(mqtt_connection_t* c, size_t n)
+{
+    if (!c || n == 0) {
+        return;
+    }
+
+    if (n >= c->in_len) {
+        c->in_len = 0;
+    } else {
+        memmove(c->in_data, c->in_data + n, c->in_len - n);
+        c->in_len -= n;
+    }
+}
+
+bool mqtt_connection_want_write(const mqtt_connection_t* c)
+{
+    if (!c) {
+        return false;
+    }
+    return c->out_head != NULL;
+}
+
+void mqtt_connection_close(mqtt_connection_t* c)
+{
+    if (!c || c->closed) {
+        return;
+    }
+
+    c->closed = true;
+
+    if (c->fd >= 0) {
+        close(c->fd);
+        c->fd = -1;
+    }
+}

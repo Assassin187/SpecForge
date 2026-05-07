@@ -1,0 +1,42 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "mqtt/topic/topic_tree/mqtt_topic_tree_destroy",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "销毁主题树及全部订阅条目资源",
+  "SIGNATURE": {
+    "RAW": "void mqtt_topic_tree_destroy(mqtt_topic_tree_t* t)",
+    "NAME": "mqtt_topic_tree_destroy",
+    "RETURN": "void",
+    "PARAMS": [
+      {
+        "TYPE": "mqtt_topic_tree_t*",
+        "NAME": "t",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct mqtt_topic_tree",
+        "ROLE": "主题树私有结构体"
+      },
+      {
+        "NAME": "struct filter_entry",
+        "ROLE": "过滤器条目结构体"
+      }
+    ],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入为主题树指针 t（可为空）",
+    "ACTION": "t 为空直接返回；遍历释放每个条目的 filter 与 sids；释放 entries 数组和 t 本体",
+    "OUTPUT": "无返回值",
+    "INVARIANTS_USED": [
+      "每个条目资源最多释放一次",
+      "NULL 输入不产生副作用"
+    ]
+  }
+}

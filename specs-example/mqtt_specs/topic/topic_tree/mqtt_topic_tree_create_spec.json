@@ -1,0 +1,31 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "mqtt/topic/topic_tree/mqtt_topic_tree_create",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "创建空主题树对象",
+  "SIGNATURE": {
+    "RAW": "mqtt_topic_tree_t* mqtt_topic_tree_create(void)",
+    "NAME": "mqtt_topic_tree_create",
+    "RETURN": "mqtt_topic_tree_t*",
+    "PARAMS": []
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct mqtt_topic_tree",
+        "ROLE": "主题树私有结构体"
+      }
+    ],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "无输入参数",
+    "ACTION": "调用 calloc 分配并零初始化 mqtt_topic_tree_t",
+    "OUTPUT": "成功返回主题树指针，失败返回 NULL",
+    "INVARIANTS_USED": [
+      "初始 entry_count/entry_cap 为 0",
+      "初始 entries 指针为空"
+    ]
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "mqtt/network/tcp_server/set_nonblocking",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "设置 fd 为非阻塞模式的通用辅助函数",
+  "SIGNATURE": {
+    "RAW": "static bool set_nonblocking(int fd)",
+    "NAME": "set_nonblocking",
+    "RETURN": "bool",
+    "PARAMS": [
+      {
+        "TYPE": "int",
+        "NAME": "fd",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入来自函数参数。",
+    "ACTION": "读取 fd 当前 flags，若成功则追加 O_NONBLOCK 并写回。",
+    "OUTPUT": "通过返回值或副作用反映处理结果。",
+    "INVARIANTS_USED": [
+      "函数执行保持本模块内部状态一致性。"
+    ]
+  }
+}

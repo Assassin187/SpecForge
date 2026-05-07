@@ -1,0 +1,44 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "mqtt/network/connection/mqtt_connection_set_peer",
+  "FUNCTION_TYPE": "EVENT",
+  "ROLE": "更新并保存连接对端地址字符串副本",
+  "SIGNATURE": {
+    "RAW": "void mqtt_connection_set_peer(mqtt_connection_t* c, const char* peer)",
+    "NAME": "mqtt_connection_set_peer",
+    "RETURN": "void",
+    "PARAMS": [
+      {
+        "TYPE": "mqtt_connection_t*",
+        "NAME": "c",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "const char*",
+        "NAME": "peer",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct mqtt_connection",
+        "ROLE": "连接私有状态结构体"
+      }
+    ],
+    "FUNC": [],
+    "VAR": []
+  },
+  "EVENT": {
+    "TRIGGER": "accept 新连接后设置对端 ip:port 时触发",
+    "PRECONDITION": "c 应有效；peer 可为空",
+    "INPUT": "输入为连接 c 与 peer 字符串",
+    "ACTION": "释放旧 peer；peer 非空则 strdup 保存新值，空值则保持 NULL",
+    "STATE_CHANGE": "连接的 peer 标识被覆盖更新",
+    "RESPONSE": "无返回值",
+    "EVENT_TYPE": "RUNTIME_EVENT"
+  }
+}

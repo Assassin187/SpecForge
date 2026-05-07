@@ -1,0 +1,414 @@
+{
+  "KIND": "FILE_SPEC",
+  "FILE": {
+    "TRACE_ID": "mqtt/protocol/mqtt_packet",
+    "LANG": "C",
+    "ROLE": "MQTT 报文对象清理模块：按报文类型释放解码阶段分配的动态字段",
+    "DOC_REF": []
+  },
+  "HEADER": {
+    "PATH": "../protocol/mqtt_packet.h",
+    "DEPENDENCY": [],
+    "DATA": [
+      {
+        "NAME": "mqtt_packet_type_t",
+        "KIND": "TYPE",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "MQTT 报文类型枚举，标识 CONNECT/PUBLISH/SUBSCRIBE/PING 等控制报文类别",
+        "TYPE_SPEC": {
+          "TYPE_KIND": "ENUM",
+          "ENUM_VALUES": [
+            {
+              "NAME": "MQTT_PKT_RESERVED",
+              "VALUE": 0,
+              "ROLE": "保留/未初始化类型"
+            },
+            {
+              "NAME": "MQTT_PKT_CONNECT",
+              "VALUE": 1,
+              "ROLE": "CONNECT 控制报文"
+            },
+            {
+              "NAME": "MQTT_PKT_CONNACK",
+              "VALUE": 2,
+              "ROLE": "CONNACK 控制报文"
+            },
+            {
+              "NAME": "MQTT_PKT_PUBLISH",
+              "VALUE": 3,
+              "ROLE": "PUBLISH 控制报文"
+            },
+            {
+              "NAME": "MQTT_PKT_SUBSCRIBE",
+              "VALUE": 8,
+              "ROLE": "SUBSCRIBE 控制报文"
+            },
+            {
+              "NAME": "MQTT_PKT_SUBACK",
+              "VALUE": 9,
+              "ROLE": "SUBACK 控制报文"
+            },
+            {
+              "NAME": "MQTT_PKT_PINGREQ",
+              "VALUE": 12,
+              "ROLE": "PINGREQ 控制报文"
+            },
+            {
+              "NAME": "MQTT_PKT_PINGRESP",
+              "VALUE": 13,
+              "ROLE": "PINGRESP 控制报文"
+            },
+            {
+              "NAME": "MQTT_PKT_DISCONNECT",
+              "VALUE": 14,
+              "ROLE": "DISCONNECT 控制报文"
+            }
+          ]
+        }
+      },
+      {
+        "NAME": "mqtt_connect_payload_t",
+        "KIND": "TYPE",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "CONNECT 报文载荷结构，包含 client_id、keep_alive 与 clean_session",
+        "TYPE_SPEC": {
+          "TYPE_KIND": "STRUCT",
+          "FIELDS": [
+            {
+              "NAME": "client_id",
+              "TYPE": "char*",
+              "ROLE": "客户端 ID 字符串"
+            },
+            {
+              "NAME": "keep_alive",
+              "TYPE": "uint16_t",
+              "ROLE": "Keep Alive 秒数"
+            },
+            {
+              "NAME": "clean_session",
+              "TYPE": "bool",
+              "ROLE": "Clean Session 标志"
+            }
+          ]
+        }
+      },
+      {
+        "NAME": "mqtt_publish_payload_t",
+        "KIND": "TYPE",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "PUBLISH 报文载荷结构，包含主题、payload、QoS/retain/dup 与 packet_id 信息",
+        "TYPE_SPEC": {
+          "TYPE_KIND": "STRUCT",
+          "FIELDS": [
+            {
+              "NAME": "topic_name",
+              "TYPE": "char*",
+              "ROLE": "主题名"
+            },
+            {
+              "NAME": "payload",
+              "TYPE": "uint8_t*",
+              "ROLE": "消息载荷字节"
+            },
+            {
+              "NAME": "payload_len",
+              "TYPE": "size_t",
+              "ROLE": "消息载荷长度"
+            },
+            {
+              "NAME": "qos",
+              "TYPE": "uint8_t",
+              "ROLE": "QoS 等级"
+            },
+            {
+              "NAME": "retain",
+              "TYPE": "bool",
+              "ROLE": "Retain 标志"
+            },
+            {
+              "NAME": "dup",
+              "TYPE": "bool",
+              "ROLE": "DUP 标志"
+            },
+            {
+              "NAME": "has_packet_id",
+              "TYPE": "bool",
+              "ROLE": "是否携带 packet_id"
+            },
+            {
+              "NAME": "packet_id",
+              "TYPE": "uint16_t",
+              "ROLE": "QoS>0 时使用的报文 ID"
+            }
+          ]
+        }
+      },
+      {
+        "NAME": "mqtt_subscribe_topic_t",
+        "KIND": "TYPE",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "SUBSCRIBE 单个主题项结构，包含过滤器与请求 QoS",
+        "TYPE_SPEC": {
+          "TYPE_KIND": "STRUCT",
+          "FIELDS": [
+            {
+              "NAME": "filter",
+              "TYPE": "char*",
+              "ROLE": "订阅过滤器"
+            },
+            {
+              "NAME": "qos",
+              "TYPE": "uint8_t",
+              "ROLE": "请求 QoS"
+            }
+          ]
+        }
+      },
+      {
+        "NAME": "mqtt_subscribe_payload_t",
+        "KIND": "TYPE",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "SUBSCRIBE 报文载荷结构，包含 packet_id 与订阅主题数组",
+        "TYPE_SPEC": {
+          "TYPE_KIND": "STRUCT",
+          "FIELDS": [
+            {
+              "NAME": "packet_id",
+              "TYPE": "uint16_t",
+              "ROLE": "订阅报文 ID"
+            },
+            {
+              "NAME": "topics",
+              "TYPE": "mqtt_subscribe_topic_t*",
+              "ROLE": "订阅主题数组"
+            },
+            {
+              "NAME": "topic_count",
+              "TYPE": "size_t",
+              "ROLE": "订阅主题数量"
+            }
+          ]
+        }
+      },
+      {
+        "NAME": "mqtt_packet_t",
+        "KIND": "TYPE",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "统一 MQTT 报文结构，使用 type + union 表达不同报文载荷",
+        "TYPE_SPEC": {
+          "TYPE_KIND": "STRUCT",
+          "FIELDS": [
+            {
+              "NAME": "type",
+              "TYPE": "mqtt_packet_type_t",
+              "ROLE": "报文类型"
+            },
+            {
+              "NAME": "v",
+              "TYPE": "union",
+              "ROLE": "按 type 选择的载荷 union",
+              "TYPE_SPEC": {
+                "TYPE_KIND": "UNION",
+                "VARIANTS": [
+                  {
+                    "NAME": "connect",
+                    "TYPE": "mqtt_connect_payload_t",
+                    "ROLE": "CONNECT 载荷，访问路径 mqtt_packet_t.v.connect"
+                  },
+                  {
+                    "NAME": "publish",
+                    "TYPE": "mqtt_publish_payload_t",
+                    "ROLE": "PUBLISH 载荷，访问路径 mqtt_packet_t.v.publish"
+                  },
+                  {
+                    "NAME": "subscribe",
+                    "TYPE": "mqtt_subscribe_payload_t",
+                    "ROLE": "SUBSCRIBE 载荷，访问路径 mqtt_packet_t.v.subscribe"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "INTERFACE": [
+      {
+        "SIGNATURE": "void mqtt_packet_free(mqtt_packet_t* p)",
+        "NAME": "mqtt_packet_free",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "按类型释放 mqtt_packet_t 内部动态内存并复位类型",
+        "VISIBILITY": "public"
+      }
+    ]
+  },
+  "SOURCE": {
+    "PATH": "../protocol/mqtt_packet.c",
+    "DEPENDENCY": [
+      "../protocol/mqtt_packet.h"
+    ],
+    "DATA": [],
+    "INTERFACE": [
+      {
+        "TRACE_ID": "mqtt/protocol/mqtt_packet/mqtt_packet_free",
+        "SIGNATURE": "void mqtt_packet_free(mqtt_packet_t* p)",
+        "NAME": "mqtt_packet_free",
+        "KIND": "FUNC",
+        "ROLE": "针对 CONNECT/PUBLISH/SUBSCRIBE 分支释放字符串与数组，最后将类型置为 RESERVED",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用前对象指针应有效；并发访问需由上层同步控制"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数执行后维持模块内部状态一致性，并向调用方返回结果/副作用"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "public"
+      }
+    ]
+  },
+  "PUBLIC_SYMBOLS": [
+    {
+      "NAME": "mqtt_packet_type_t",
+      "KIND": "TYPE",
+      "ROLE": "唯一公开 MQTT packet enum 类型"
+    },
+    {
+      "NAME": "mqtt_packet_t",
+      "KIND": "TYPE",
+      "ROLE": "唯一公开 MQTT packet union 容器类型"
+    },
+    {
+      "NAME": "MQTT_PKT_CONNECT",
+      "KIND": "ENUM",
+      "ROLE": "CONNECT 枚举名；不得使用 MQTT_PACKET_TYPE_CONNECT 等别名"
+    },
+    {
+      "NAME": "mqtt_packet_free",
+      "KIND": "FUNC",
+      "SIGNATURE": "void mqtt_packet_free(mqtt_packet_t* p)",
+      "ROLE": "唯一 packet 清理函数"
+    }
+  ],
+  "ACCESS_PATHS": [
+    {
+      "PATH": "mqtt_packet_t.type",
+      "TYPE": "mqtt_packet_type_t",
+      "ROLE": "packet 类型字段"
+    },
+    {
+      "PATH": "mqtt_packet_t.v.connect.client_id",
+      "TYPE": "char*",
+      "ROLE": "CONNECT client id"
+    },
+    {
+      "PATH": "mqtt_packet_t.v.connect.keep_alive",
+      "TYPE": "uint16_t",
+      "ROLE": "CONNECT keep alive"
+    },
+    {
+      "PATH": "mqtt_packet_t.v.connect.clean_session",
+      "TYPE": "bool",
+      "ROLE": "CONNECT clean session"
+    },
+    {
+      "PATH": "mqtt_packet_t.v.publish.topic_name",
+      "TYPE": "char*",
+      "ROLE": "PUBLISH topic"
+    },
+    {
+      "PATH": "mqtt_packet_t.v.publish.payload",
+      "TYPE": "uint8_t*",
+      "ROLE": "PUBLISH payload bytes"
+    },
+    {
+      "PATH": "mqtt_packet_t.v.publish.payload_len",
+      "TYPE": "size_t",
+      "ROLE": "PUBLISH payload length"
+    },
+    {
+      "PATH": "mqtt_packet_t.v.publish.qos",
+      "TYPE": "uint8_t",
+      "ROLE": "PUBLISH qos"
+    },
+    {
+      "PATH": "mqtt_packet_t.v.publish.retain",
+      "TYPE": "bool",
+      "ROLE": "PUBLISH retain"
+    },
+    {
+      "PATH": "mqtt_packet_t.v.publish.dup",
+      "TYPE": "bool",
+      "ROLE": "PUBLISH dup"
+    },
+    {
+      "PATH": "mqtt_packet_t.v.publish.has_packet_id",
+      "TYPE": "bool",
+      "ROLE": "PUBLISH packet id presence"
+    },
+    {
+      "PATH": "mqtt_packet_t.v.publish.packet_id",
+      "TYPE": "uint16_t",
+      "ROLE": "PUBLISH packet id when QoS > 0"
+    },
+    {
+      "PATH": "mqtt_packet_t.v.subscribe.packet_id",
+      "TYPE": "uint16_t",
+      "ROLE": "SUBSCRIBE packet id"
+    },
+    {
+      "PATH": "mqtt_packet_t.v.subscribe.topics",
+      "TYPE": "mqtt_subscribe_topic_t*",
+      "ROLE": "SUBSCRIBE topic array"
+    },
+    {
+      "PATH": "mqtt_packet_t.v.subscribe.topic_count",
+      "TYPE": "size_t",
+      "ROLE": "SUBSCRIBE topic count"
+    },
+    {
+      "PATH": "mqtt_packet_t.v.subscribe.topics[i].filter",
+      "TYPE": "char*",
+      "ROLE": "SUBSCRIBE topic filter"
+    },
+    {
+      "PATH": "mqtt_packet_t.v.subscribe.topics[i].qos",
+      "TYPE": "uint8_t",
+      "ROLE": "SUBSCRIBE topic qos"
+    }
+  ],
+  "FORBIDDEN_SYMBOLS": [
+    {
+      "NAME": "mqtt_packet_t.data",
+      "KIND": "FIELD",
+      "REASON": "mqtt_packet_t 的 union 字段名是 v，不是 data"
+    },
+    {
+      "NAME": "mqtt_packet_t.connect",
+      "KIND": "FIELD",
+      "REASON": "CONNECT 载荷必须通过 mqtt_packet_t.v.connect 访问"
+    },
+    {
+      "NAME": "MQTT_PACKET_TYPE_CONNECT",
+      "KIND": "ENUM",
+      "REASON": "公开 enum 名称只允许 MQTT_PKT_CONNECT"
+    },
+    {
+      "NAME": "MQTT_PACKET_CONNECT",
+      "KIND": "ENUM",
+      "REASON": "公开 enum 名称只允许 MQTT_PKT_CONNECT"
+    },
+    {
+      "NAME": "mqtt_topic_filter_t",
+      "KIND": "TYPE",
+      "REASON": "订阅项类型是 mqtt_subscribe_topic_t"
+    }
+  ]
+}

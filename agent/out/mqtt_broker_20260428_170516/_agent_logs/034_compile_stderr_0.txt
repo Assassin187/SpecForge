@@ -1,0 +1,318 @@
+network/tcp_server.c: In function ‘mqtt_tcp_server_run’:
+network/tcp_server.c:300:22: error: too few arguments to function ‘mqtt_connection_read’
+  300 |                 if (!mqtt_connection_read(conn)) {
+      |                      ^~~~~~~~~~~~~~~~~~~~
+In file included from ./network/tcp_server.h:3,
+                 from network/tcp_server.c:1:
+./network/connection.h:19:6: note: declared here
+   19 | bool mqtt_connection_read(mqtt_connection_t* c, bool* peer_closed);
+      |      ^~~~~~~~~~~~~~~~~~~~
+protocol/mqtt_decoder.c: In function ‘decode_one’:
+protocol/mqtt_decoder.c:143:14: error: ‘MQTT_PACKET_TYPE_CONNECT’ undeclared (first use in this function); did you mean ‘MQTT_PKT_DISCONNECT’?
+  143 |         case MQTT_PACKET_TYPE_CONNECT: {
+      |              ^~~~~~~~~~~~~~~~~~~~~~~~
+      |              MQTT_PKT_DISCONNECT
+protocol/mqtt_decoder.c:143:14: note: each undeclared identifier is reported only once for each function it appears in
+protocol/mqtt_decoder.c:175:16: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘connect’
+  175 |             out->connect.clean_session = (connect_flags & 0x02) != 0;
+      |                ^~
+protocol/mqtt_decoder.c:182:16: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘connect’
+  182 |             out->connect.keep_alive = keep_alive;
+      |                ^~
+protocol/mqtt_decoder.c:185:56: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘connect’
+  185 |             if (!read_string(body, body_len, &pos, &out->connect.client_id)) {
+      |                                                        ^~
+protocol/mqtt_decoder.c:191:20: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘connect’
+  191 |                 out->connect.will_flag = true;
+      |                    ^~
+protocol/mqtt_decoder.c:194:20: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘connect’
+  194 |                 out->connect.will_qos = (connect_flags >> 3) & 0x03;
+      |                    ^~
+protocol/mqtt_decoder.c:195:24: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘connect’
+  195 |                 if (out->connect.will_qos > 2) {
+      |                        ^~
+protocol/mqtt_decoder.c:196:29: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘connect’
+  196 |                     free(out->connect.client_id);
+      |                             ^~
+protocol/mqtt_decoder.c:201:20: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘connect’
+  201 |                 out->connect.will_retain = (connect_flags & 0x20) != 0;
+      |                    ^~
+protocol/mqtt_decoder.c:204:60: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘connect’
+  204 |                 if (!read_string(body, body_len, &pos, &out->connect.will_topic)) {
+      |                                                            ^~
+protocol/mqtt_decoder.c:205:29: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘connect’
+  205 |                     free(out->connect.client_id);
+      |                             ^~
+protocol/mqtt_decoder.c:210:60: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘connect’
+  210 |                 if (!read_string(body, body_len, &pos, &out->connect.will_message)) {
+      |                                                            ^~
+protocol/mqtt_decoder.c:211:29: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘connect’
+  211 |                     free(out->connect.client_id);
+      |                             ^~
+protocol/mqtt_decoder.c:212:29: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘connect’
+  212 |                     free(out->connect.will_topic);
+      |                             ^~
+protocol/mqtt_decoder.c:216:20: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘connect’
+  216 |                 out->connect.will_flag = false;
+      |                    ^~
+protocol/mqtt_decoder.c:217:20: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘connect’
+  217 |                 out->connect.will_topic = NULL;
+      |                    ^~
+protocol/mqtt_decoder.c:218:20: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘connect’
+  218 |                 out->connect.will_message = NULL;
+      |                    ^~
+protocol/mqtt_decoder.c:223:60: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘connect’
+  223 |                 if (!read_string(body, body_len, &pos, &out->connect.username)) {
+      |                                                            ^~
+protocol/mqtt_decoder.c:224:29: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘connect’
+  224 |                     free(out->connect.client_id);
+      |                             ^~
+protocol/mqtt_decoder.c:225:28: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘connect’
+  225 |                     if (out->connect.will_flag) {
+      |                            ^~
+protocol/mqtt_decoder.c:226:33: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘connect’
+  226 |                         free(out->connect.will_topic);
+      |                                 ^~
+protocol/mqtt_decoder.c:227:33: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘connect’
+  227 |                         free(out->connect.will_message);
+      |                                 ^~
+protocol/mqtt_decoder.c:232:20: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘connect’
+  232 |                 out->connect.username = NULL;
+      |                    ^~
+protocol/mqtt_decoder.c:237:60: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘connect’
+  237 |                 if (!read_string(body, body_len, &pos, &out->connect.password)) {
+      |                                                            ^~
+protocol/mqtt_decoder.c:238:29: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘connect’
+  238 |                     free(out->connect.client_id);
+      |                             ^~
+protocol/mqtt_decoder.c:239:28: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘connect’
+  239 |                     if (out->connect.will_flag) {
+      |                            ^~
+protocol/mqtt_decoder.c:240:33: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘connect’
+  240 |                         free(out->connect.will_topic);
+      |                                 ^~
+protocol/mqtt_decoder.c:241:33: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘connect’
+  241 |                         free(out->connect.will_message);
+      |                                 ^~
+protocol/mqtt_decoder.c:243:28: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘connect’
+  243 |                     if (out->connect.username) {
+      |                            ^~
+protocol/mqtt_decoder.c:244:33: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘connect’
+  244 |                         free(out->connect.username);
+      |                                 ^~
+protocol/mqtt_decoder.c:249:20: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘connect’
+  249 |                 out->connect.password = NULL;
+      |                    ^~
+protocol/mqtt_decoder.c:255:14: error: ‘MQTT_PACKET_TYPE_PUBLISH’ undeclared (first use in this function); did you mean ‘MQTT_PKT_PUBLISH’?
+  255 |         case MQTT_PACKET_TYPE_PUBLISH: {
+      |              ^~~~~~~~~~~~~~~~~~~~~~~~
+      |              MQTT_PKT_PUBLISH
+protocol/mqtt_decoder.c:257:56: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘publish’
+  257 |             if (!read_string(body, body_len, &pos, &out->publish.topic_name)) {
+      |                                                        ^~
+protocol/mqtt_decoder.c:264:25: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘publish’
+  264 |                 free(out->publish.topic_name);
+      |                         ^~
+protocol/mqtt_decoder.c:267:16: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘publish’
+  267 |             out->publish.qos = qos;
+      |                ^~
+protocol/mqtt_decoder.c:269:16: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘publish’
+  269 |             out->publish.retain = (header1 & 0x01) != 0;
+      |                ^~
+protocol/mqtt_decoder.c:270:16: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘publish’
+  270 |             out->publish.dup = (header1 & 0x08) != 0;
+      |                ^~
+protocol/mqtt_decoder.c:273:57: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘publish’
+  273 |                 if (!read_u16(body, body_len, &pos, &out->publish.packet_id)) {
+      |                                                         ^~
+protocol/mqtt_decoder.c:274:29: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘publish’
+  274 |                     free(out->publish.topic_name);
+      |                             ^~
+protocol/mqtt_decoder.c:278:20: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘publish’
+  278 |                 out->publish.packet_id = 0;
+      |                    ^~
+protocol/mqtt_decoder.c:282:16: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘publish’
+  282 |             out->publish.payload_len = body_len - pos;
+      |                ^~
+protocol/mqtt_decoder.c:283:20: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘publish’
+  283 |             if (out->publish.payload_len > 0) {
+      |                    ^~
+protocol/mqtt_decoder.c:284:20: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘publish’
+  284 |                 out->publish.payload = malloc(out->publish.payload_len);
+      |                    ^~
+protocol/mqtt_decoder.c:284:50: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘publish’
+  284 |                 out->publish.payload = malloc(out->publish.payload_len);
+      |                                                  ^~
+protocol/mqtt_decoder.c:285:25: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘publish’
+  285 |                 if (!out->publish.payload) {
+      |                         ^~
+protocol/mqtt_decoder.c:286:29: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘publish’
+  286 |                     free(out->publish.topic_name);
+      |                             ^~
+protocol/mqtt_decoder.c:289:27: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘publish’
+  289 |                 memcpy(out->publish.payload, body + pos, out->publish.payload_len);
+      |                           ^~
+protocol/mqtt_decoder.c:289:61: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘publish’
+  289 |                 memcpy(out->publish.payload, body + pos, out->publish.payload_len);
+      |                                                             ^~
+protocol/mqtt_decoder.c:291:20: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘publish’
+  291 |                 out->publish.payload = NULL;
+      |                    ^~
+protocol/mqtt_decoder.c:297:14: error: ‘MQTT_PACKET_TYPE_SUBSCRIBE’ undeclared (first use in this function); did you mean ‘MQTT_PKT_SUBSCRIBE’?
+  297 |         case MQTT_PACKET_TYPE_SUBSCRIBE: {
+      |              ^~~~~~~~~~~~~~~~~~~~~~~~~~
+      |              MQTT_PKT_SUBSCRIBE
+protocol/mqtt_decoder.c:301:53: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘subscribe’
+  301 |             if (!read_u16(body, body_len, &pos, &out->subscribe.packet_id)) {
+      |                                                     ^~
+protocol/mqtt_decoder.c:324:16: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘subscribe’
+  324 |             out->subscribe.topic_count = topic_count;
+      |                ^~
+protocol/mqtt_decoder.c:325:16: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘subscribe’
+  325 |             out->subscribe.topics = calloc(topic_count, sizeof(mqtt_topic_filter_t));
+      |                ^~
+protocol/mqtt_decoder.c:325:64: error: ‘mqtt_topic_filter_t’ undeclared (first use in this function)
+  325 |             out->subscribe.topics = calloc(topic_count, sizeof(mqtt_topic_filter_t));
+      |                                                                ^~~~~~~~~~~~~~~~~~~
+protocol/mqtt_decoder.c:326:21: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘subscribe’
+  326 |             if (!out->subscribe.topics) {
+      |                     ^~
+protocol/mqtt_decoder.c:331:60: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘subscribe’
+  331 |                 if (!read_string(body, body_len, &pos, &out->subscribe.topics[i].filter)) {
+      |                                                            ^~
+protocol/mqtt_decoder.c:334:33: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘subscribe’
+  334 |                         free(out->subscribe.topics[j].filter);
+      |                                 ^~
+protocol/mqtt_decoder.c:336:29: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘subscribe’
+  336 |                     free(out->subscribe.topics);
+      |                             ^~
+protocol/mqtt_decoder.c:341:29: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘subscribe’
+  341 |                     free(out->subscribe.topics[i].filter);
+      |                             ^~
+protocol/mqtt_decoder.c:343:33: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘subscribe’
+  343 |                         free(out->subscribe.topics[j].filter);
+      |                                 ^~
+protocol/mqtt_decoder.c:345:29: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘subscribe’
+  345 |                     free(out->subscribe.topics);
+      |                             ^~
+protocol/mqtt_decoder.c:351:29: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘subscribe’
+  351 |                     free(out->subscribe.topics[i].filter);
+      |                             ^~
+protocol/mqtt_decoder.c:353:33: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘subscribe’
+  353 |                         free(out->subscribe.topics[j].filter);
+      |                                 ^~
+protocol/mqtt_decoder.c:355:29: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘subscribe’
+  355 |                     free(out->subscribe.topics);
+      |                             ^~
+protocol/mqtt_decoder.c:358:20: error: ‘mqtt_packet_t’ {aka ‘struct mqtt_packet’} has no member named ‘subscribe’
+  358 |                 out->subscribe.topics[i].qos = qos;
+      |                    ^~
+protocol/mqtt_decoder.c:364:14: error: ‘MQTT_PACKET_TYPE_PINGREQ’ undeclared (first use in this function); did you mean ‘MQTT_PKT_PINGREQ’?
+  364 |         case MQTT_PACKET_TYPE_PINGREQ:
+      |              ^~~~~~~~~~~~~~~~~~~~~~~~
+      |              MQTT_PKT_PINGREQ
+protocol/mqtt_decoder.c:368:14: error: ‘MQTT_PACKET_TYPE_DISCONNECT’ undeclared (first use in this function); did you mean ‘MQTT_PKT_DISCONNECT’?
+  368 |         case MQTT_PACKET_TYPE_DISCONNECT:
+      |              ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |              MQTT_PKT_DISCONNECT
+topic/topic_tree.c: In function ‘mqtt_topic_match.part.0’:
+topic/topic_tree.c:274:13: warning: ‘f_seg_len’ may be used uninitialized [-Wmaybe-uninitialized]
+  274 |         if (memcmp(f_seg, t_seg, f_seg_len) != 0) {
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+topic/topic_tree.c:233:16: note: ‘f_seg_len’ was declared here
+  233 |         size_t f_seg_len;
+      |                ^~~~~~~~~
+topic/topic_tree.c:274:13: warning: ‘f_seg’ may be used uninitialized [-Wmaybe-uninitialized]
+  274 |         if (memcmp(f_seg, t_seg, f_seg_len) != 0) {
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+topic/topic_tree.c:232:21: note: ‘f_seg’ was declared here
+  232 |         const char* f_seg;
+      |                     ^~~~~
+router/message_router.c: In function ‘mqtt_message_router_publish’:
+router/message_router.c:76:5: error: unknown type name ‘mqtt_subscriber_array_t’; did you mean ‘mqtt_subscribe_payload_t’?
+   76 |     mqtt_subscriber_array_t subs = mqtt_topic_tree_match_subscribers(r->topics, publish->topic_name);
+      |     ^~~~~~~~~~~~~~~~~~~~~~~
+      |     mqtt_subscribe_payload_t
+router/message_router.c:76:36: error: too few arguments to function ‘mqtt_topic_tree_match_subscribers’
+   76 |     mqtt_subscriber_array_t subs = mqtt_topic_tree_match_subscribers(r->topics, publish->topic_name);
+      |                                    ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from ./router/message_router.h:5,
+                 from router/message_router.c:1:
+./topic/topic_tree.h:17:6: note: declared here
+   17 | bool mqtt_topic_tree_match_subscribers(const mqtt_topic_tree_t* t, const char* topic, int** out_sids, size_t* out_count);
+      |      ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+router/message_router.c:78:32: error: request for member ‘count’ in something not a structure or union
+   78 |     for (size_t i = 0; i < subs.count; ++i) {
+      |                                ^
+router/message_router.c:79:77: error: request for member ‘session_ids’ in something not a structure or union
+   79 |         mqtt_session_t* session = mqtt_session_manager_get(r->sessions, subs.session_ids[i]);
+      |                                                                             ^
+router/message_router.c:97:14: error: request for member ‘session_ids’ in something not a structure or union
+   97 |     free(subs.session_ids);
+      |              ^
+router/message_router.c:76:29: warning: variable ‘subs’ set but not used [-Wunused-but-set-variable]
+   76 |     mqtt_subscriber_array_t subs = mqtt_topic_tree_match_subscribers(r->topics, publish->topic_name);
+      |                             ^~~~
+broker/broker.c: In function ‘mqtt_broker_create’:
+broker/broker.c:59:14: error: ‘mqtt_tcp_callbacks_t’ {aka ‘struct mqtt_tcp_callbacks’} has no member named ‘user’
+   59 |     callbacks.user = b;
+      |              ^
+broker/broker.c:61:46: error: incompatible type for argument 2 of ‘mqtt_tcp_server_create’
+   61 |     b->server = mqtt_tcp_server_create(port, &callbacks);
+      |                                              ^~~~~~~~~~
+      |                                              |
+      |                                              mqtt_tcp_callbacks_t * {aka struct mqtt_tcp_callbacks *}
+In file included from ./broker/broker.h:3,
+                 from broker/broker.c:1:
+./network/tcp_server.h:22:79: note: expected ‘mqtt_tcp_callbacks_t’ {aka ‘struct mqtt_tcp_callbacks’} but argument is of type ‘mqtt_tcp_callbacks_t *’ {aka ‘struct mqtt_tcp_callbacks *’}
+   22 | mqtt_tcp_server_t* mqtt_tcp_server_create(uint16_t port, mqtt_tcp_callbacks_t cb, void* user);
+      |                                                          ~~~~~~~~~~~~~~~~~~~~~^~
+broker/broker.c:61:17: error: too few arguments to function ‘mqtt_tcp_server_create’
+   61 |     b->server = mqtt_tcp_server_create(port, &callbacks);
+      |                 ^~~~~~~~~~~~~~~~~~~~~~
+./network/tcp_server.h:22:20: note: declared here
+   22 | mqtt_tcp_server_t* mqtt_tcp_server_create(uint16_t port, mqtt_tcp_callbacks_t cb, void* user);
+      |                    ^~~~~~~~~~~~~~~~~~~~~~
+broker/broker.c: In function ‘handle_packet’:
+broker/broker.c:124:14: error: ‘MQTT_PACKET_CONNECT’ undeclared (first use in this function); did you mean ‘MQTT_PKT_CONNECT’?
+  124 |         case MQTT_PACKET_CONNECT: {
+      |              ^~~~~~~~~~~~~~~~~~~
+      |              MQTT_PKT_CONNECT
+broker/broker.c:124:14: note: each undeclared identifier is reported only once for each function it appears in
+broker/broker.c:133:13: error: too few arguments to function ‘mqtt_session_mark_connected’
+  133 |             mqtt_session_mark_connected(sess);
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from ./broker/session_manager.h:3,
+                 from broker/broker.c:5:
+./broker/session.h:21:6: note: declared here
+   21 | void mqtt_session_mark_connected(mqtt_session_t* s, const char* client_id, bool clean_session, uint16_t keep_alive);
+      |      ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+broker/broker.c:137:14: error: ‘MQTT_PACKET_SUBSCRIBE’ undeclared (first use in this function); did you mean ‘MQTT_PKT_SUBSCRIBE’?
+  137 |         case MQTT_PACKET_SUBSCRIBE: {
+      |              ^~~~~~~~~~~~~~~~~~~~~
+      |              MQTT_PKT_SUBSCRIBE
+broker/broker.c:143:55: error: ‘mqtt_packet_t’ {aka ‘const struct mqtt_packet’} has no member named ‘subscribe’
+  143 |             const mqtt_subscribe_payload_t* sub = &pkt->subscribe;
+      |                                                       ^~
+broker/broker.c:144:38: error: ‘mqtt_subscribe_payload_t’ {aka ‘const struct mqtt_subscribe_payload’} has no member named ‘filter_count’
+  144 |             size_t filter_count = sub->filter_count;
+      |                                      ^~
+broker/broker.c:152:41: error: ‘mqtt_subscribe_payload_t’ {aka ‘const struct mqtt_subscribe_payload’} has no member named ‘filters’
+  152 |                 const char* filter = sub->filters[i].topic_filter;
+      |                                         ^~
+broker/broker.c:164:14: error: ‘MQTT_PACKET_PUBLISH’ undeclared (first use in this function); did you mean ‘MQTT_PKT_PUBLISH’?
+  164 |         case MQTT_PACKET_PUBLISH: {
+      |              ^~~~~~~~~~~~~~~~~~~
+      |              MQTT_PKT_PUBLISH
+broker/broker.c:169:53: error: ‘mqtt_packet_t’ {aka ‘const struct mqtt_packet’} has no member named ‘publish’
+  169 |             const mqtt_publish_payload_t* pub = &pkt->publish;
+      |                                                     ^~
+broker/broker.c:179:14: error: ‘MQTT_PACKET_PINGREQ’ undeclared (first use in this function); did you mean ‘MQTT_PKT_PINGREQ’?
+  179 |         case MQTT_PACKET_PINGREQ: {
+      |              ^~~~~~~~~~~~~~~~~~~
+      |              MQTT_PKT_PINGREQ
+broker/broker.c:191:14: error: ‘MQTT_PACKET_DISCONNECT’ undeclared (first use in this function); did you mean ‘MQTT_PKT_DISCONNECT’?
+  191 |         case MQTT_PACKET_DISCONNECT: {
+      |              ^~~~~~~~~~~~~~~~~~~~~~
+      |              MQTT_PKT_DISCONNECT
+make: *** [Makefile:23: mqtt_broker] Error 1

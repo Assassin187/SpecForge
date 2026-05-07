@@ -1,0 +1,40 @@
+#pragma once
+
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <sys/socket.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+typedef struct coap_endpoint {
+    struct sockaddr_storage addr;
+    socklen_t addr_len;
+} coap_endpoint_t;
+
+typedef void (*coap_udp_on_datagram_fn)(void* user,
+                                        const coap_endpoint_t* peer,
+                                        const uint8_t* data,
+                                        size_t len);
+
+typedef struct coap_udp_callbacks {
+    coap_udp_on_datagram_fn on_datagram;
+} coap_udp_callbacks_t;
+
+typedef struct coap_udp_server coap_udp_server_t;
+
+coap_udp_server_t* coap_udp_server_create(uint16_t port, coap_udp_callbacks_t cb, void* user);
+void coap_udp_server_destroy(coap_udp_server_t* s);
+
+bool coap_udp_server_start(coap_udp_server_t* s);
+void coap_udp_server_run(coap_udp_server_t* s);
+void coap_udp_server_stop(coap_udp_server_t* s);
+
+bool coap_udp_server_sendto(coap_udp_server_t* s, const coap_endpoint_t* peer, const uint8_t* data, size_t len);
+const char* coap_endpoint_to_string(const coap_endpoint_t* peer, char* buf, size_t buf_sz);
+
+#ifdef __cplusplus
+}
+#endif

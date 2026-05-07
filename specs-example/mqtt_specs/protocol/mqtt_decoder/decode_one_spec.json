@@ -1,0 +1,401 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "mqtt/protocol/mqtt_decoder/decode_one",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "按报文类型解码单个 MQTT 报文体并填充 mqtt_packet_t",
+  "SIGNATURE": {
+    "RAW": "static bool decode_one(uint8_t header1, const uint8_t* body, size_t body_len, mqtt_packet_t* out)",
+    "NAME": "decode_one",
+    "RETURN": "bool",
+    "PARAMS": [
+      {
+        "TYPE": "uint8_t",
+        "NAME": "header1",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "const uint8_t*",
+        "NAME": "body",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "size_t",
+        "NAME": "body_len",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "mqtt_packet_t*",
+        "NAME": "out",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "mqtt_packet_t",
+        "ROLE": "解码输出报文结构体"
+      },
+      {
+        "NAME": "mqtt_subscribe_payload_t",
+        "ROLE": "SUBSCRIBE 载荷结构体"
+      },
+      {
+        "NAME": "mqtt_publish_payload_t",
+        "ROLE": "PUBLISH 载荷结构体"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "read_string",
+        "KIND": "CALL",
+        "ROLE": "解析协议字符串/主题/过滤器"
+      },
+      {
+        "NAME": "read_u16",
+        "KIND": "CALL",
+        "ROLE": "解析 keep_alive/packet_id 等字段"
+      },
+      {
+        "NAME": "mqtt_packet_free",
+        "KIND": "CALL",
+        "ROLE": "错误分支释放已分配字段"
+      }
+    ],
+    "VAR": []
+  },
+  "ACCESS_PATHS": [
+    {
+      "PATH": "out->type",
+      "TYPE": "mqtt_packet_type_t",
+      "ROLE": "写入解码出的 packet type；等价公开路径 mqtt_packet_t.type"
+    },
+    {
+      "PATH": "out->v.connect.client_id",
+      "TYPE": "char*",
+      "ROLE": "CONNECT client id 存储位置"
+    },
+    {
+      "PATH": "out->v.connect.keep_alive",
+      "TYPE": "uint16_t",
+      "ROLE": "CONNECT keep alive 存储位置"
+    },
+    {
+      "PATH": "out->v.connect.clean_session",
+      "TYPE": "bool",
+      "ROLE": "CONNECT clean session 存储位置"
+    },
+    {
+      "PATH": "out->v.subscribe.packet_id",
+      "TYPE": "uint16_t",
+      "ROLE": "SUBSCRIBE packet id 存储位置"
+    },
+    {
+      "PATH": "out->v.subscribe.topics[i].filter",
+      "TYPE": "char*",
+      "ROLE": "SUBSCRIBE topic filter 存储位置"
+    },
+    {
+      "PATH": "out->v.subscribe.topics[i].qos",
+      "TYPE": "uint8_t",
+      "ROLE": "SUBSCRIBE requested qos 存储位置"
+    },
+    {
+      "PATH": "out->v.subscribe.topic_count",
+      "TYPE": "size_t",
+      "ROLE": "SUBSCRIBE topic count 存储位置"
+    },
+    {
+      "PATH": "out->v.publish.topic_name",
+      "TYPE": "char*",
+      "ROLE": "PUBLISH topic name 存储位置"
+    },
+    {
+      "PATH": "out->v.publish.payload",
+      "TYPE": "uint8_t*",
+      "ROLE": "PUBLISH payload 存储位置"
+    },
+    {
+      "PATH": "out->v.publish.payload_len",
+      "TYPE": "size_t",
+      "ROLE": "PUBLISH payload length 存储位置"
+    },
+    {
+      "PATH": "out->v.publish.qos",
+      "TYPE": "uint8_t",
+      "ROLE": "PUBLISH qos 存储位置"
+    },
+    {
+      "PATH": "out->v.publish.retain",
+      "TYPE": "bool",
+      "ROLE": "PUBLISH retain 存储位置"
+    },
+    {
+      "PATH": "out->v.publish.dup",
+      "TYPE": "bool",
+      "ROLE": "PUBLISH dup 存储位置"
+    },
+    {
+      "PATH": "out->v.publish.has_packet_id",
+      "TYPE": "bool",
+      "ROLE": "PUBLISH packet id presence 存储位置"
+    },
+    {
+      "PATH": "out->v.publish.packet_id",
+      "TYPE": "uint16_t",
+      "ROLE": "PUBLISH packet id 存储位置"
+    }
+  ],
+  "WIRE_MAPPING": [
+    {
+      "PACKET": "CONNECT",
+      "WIRE_FIELD": "fixed_header.type",
+      "STRATEGY": "store_in_field",
+      "TARGET": "out->type",
+      "RULE": "header1 >> 4 must equal MQTT_PKT_CONNECT"
+    },
+    {
+      "PACKET": "CONNECT",
+      "WIRE_FIELD": "protocol_name",
+      "STRATEGY": "parse_and_skip",
+      "RULE": "MQTT UTF-8 string must equal \"MQTT\""
+    },
+    {
+      "PACKET": "CONNECT",
+      "WIRE_FIELD": "protocol_level",
+      "STRATEGY": "parse_and_skip",
+      "RULE": "single byte must equal 4 for MQTT 3.1.1"
+    },
+    {
+      "PACKET": "CONNECT",
+      "WIRE_FIELD": "connect_flags.clean_session",
+      "STRATEGY": "store_in_field",
+      "TARGET": "out->v.connect.clean_session",
+      "RULE": "bit 1 maps to bool"
+    },
+    {
+      "PACKET": "CONNECT",
+      "WIRE_FIELD": "keep_alive",
+      "STRATEGY": "store_in_field",
+      "TARGET": "out->v.connect.keep_alive",
+      "RULE": "uint16 network byte order"
+    },
+    {
+      "PACKET": "CONNECT",
+      "WIRE_FIELD": "client_id",
+      "STRATEGY": "store_in_field",
+      "TARGET": "out->v.connect.client_id",
+      "RULE": "MQTT length-prefixed string allocated for packet lifetime"
+    },
+    {
+      "PACKET": "CONNECT",
+      "WIRE_FIELD": "will_topic",
+      "STRATEGY": "parse_and_skip",
+      "RULE": "if will flag is set, parse the length-prefixed topic and do not store it"
+    },
+    {
+      "PACKET": "CONNECT",
+      "WIRE_FIELD": "will_message",
+      "STRATEGY": "parse_and_skip",
+      "RULE": "if will flag is set, parse the length-prefixed bytes/string and do not store it"
+    },
+    {
+      "PACKET": "CONNECT",
+      "WIRE_FIELD": "username",
+      "STRATEGY": "parse_and_skip",
+      "RULE": "if username flag is set, parse the length-prefixed string and do not store it"
+    },
+    {
+      "PACKET": "CONNECT",
+      "WIRE_FIELD": "password",
+      "STRATEGY": "parse_and_skip",
+      "RULE": "if password flag is set, parse the length-prefixed bytes/string and do not store it"
+    },
+    {
+      "PACKET": "SUBSCRIBE",
+      "WIRE_FIELD": "fixed_header.flags",
+      "STRATEGY": "parse_and_skip",
+      "RULE": "low nibble must equal 0x02"
+    },
+    {
+      "PACKET": "SUBSCRIBE",
+      "WIRE_FIELD": "packet_id",
+      "STRATEGY": "store_in_field",
+      "TARGET": "out->v.subscribe.packet_id",
+      "RULE": "uint16 network byte order"
+    },
+    {
+      "PACKET": "SUBSCRIBE",
+      "WIRE_FIELD": "topic_filter[i]",
+      "STRATEGY": "store_in_field",
+      "TARGET": "out->v.subscribe.topics[i].filter",
+      "RULE": "each length-prefixed filter allocates one mqtt_subscribe_topic_t entry"
+    },
+    {
+      "PACKET": "SUBSCRIBE",
+      "WIRE_FIELD": "requested_qos[i]",
+      "STRATEGY": "store_in_field",
+      "TARGET": "out->v.subscribe.topics[i].qos",
+      "RULE": "low two bits are stored as uint8_t"
+    },
+    {
+      "PACKET": "SUBSCRIBE",
+      "WIRE_FIELD": "topic_count",
+      "STRATEGY": "store_in_field",
+      "TARGET": "out->v.subscribe.topic_count",
+      "RULE": "number of parsed topic filters; zero-topic SUBSCRIBE is invalid"
+    },
+    {
+      "PACKET": "PUBLISH",
+      "WIRE_FIELD": "topic_name",
+      "STRATEGY": "store_in_field",
+      "TARGET": "out->v.publish.topic_name",
+      "RULE": "MQTT length-prefixed string"
+    },
+    {
+      "PACKET": "PUBLISH",
+      "WIRE_FIELD": "fixed_header.qos",
+      "STRATEGY": "store_in_field",
+      "TARGET": "out->v.publish.qos",
+      "RULE": "bits 1..2; QoS 3 is invalid"
+    },
+    {
+      "PACKET": "PUBLISH",
+      "WIRE_FIELD": "fixed_header.retain",
+      "STRATEGY": "store_in_field",
+      "TARGET": "out->v.publish.retain",
+      "RULE": "bit 0 maps to bool"
+    },
+    {
+      "PACKET": "PUBLISH",
+      "WIRE_FIELD": "fixed_header.dup",
+      "STRATEGY": "store_in_field",
+      "TARGET": "out->v.publish.dup",
+      "RULE": "bit 3 maps to bool"
+    },
+    {
+      "PACKET": "PUBLISH",
+      "WIRE_FIELD": "packet_id",
+      "STRATEGY": "store_in_field",
+      "TARGET": "out->v.publish.packet_id",
+      "RULE": "read only when qos > 0; set has_packet_id=true"
+    },
+    {
+      "PACKET": "PUBLISH",
+      "WIRE_FIELD": "packet_id",
+      "STRATEGY": "store_in_field",
+      "TARGET": "out->v.publish.has_packet_id",
+      "RULE": "false for QoS0; true for QoS1/2"
+    },
+    {
+      "PACKET": "PUBLISH",
+      "WIRE_FIELD": "payload",
+      "STRATEGY": "store_in_field",
+      "TARGET": "out->v.publish.payload",
+      "RULE": "remaining bytes after topic and optional packet_id"
+    },
+    {
+      "PACKET": "PUBLISH",
+      "WIRE_FIELD": "payload_len",
+      "STRATEGY": "store_in_field",
+      "TARGET": "out->v.publish.payload_len",
+      "RULE": "body_len - pos after variable header"
+    }
+  ],
+  "FORBIDDEN_SYMBOLS": [
+    {
+      "NAME": "out->data",
+      "KIND": "FIELD",
+      "REASON": "mqtt_packet_t 的 union 字段名是 v"
+    },
+    {
+      "NAME": "out->connect",
+      "KIND": "FIELD",
+      "REASON": "CONNECT 必须通过 out->v.connect 访问"
+    },
+    {
+      "NAME": "MQTT_PACKET_TYPE_CONNECT",
+      "KIND": "ENUM",
+      "REASON": "唯一 enum 名称是 MQTT_PKT_CONNECT"
+    }
+  ],
+  "TEST_VECTORS": [
+    {
+      "NAME": "connect_minimal",
+      "INPUT": {
+        "header1_hex": "10",
+        "body_hex": "00044d5154540402003c0003636964"
+      },
+      "EXPECT": {
+        "return": true,
+        "type": "MQTT_PKT_CONNECT",
+        "fields": {
+          "out->v.connect.client_id": "cid",
+          "out->v.connect.keep_alive": 60,
+          "out->v.connect.clean_session": true
+        }
+      }
+    },
+    {
+      "NAME": "connect_username_password_skipped",
+      "INPUT": {
+        "header1_hex": "10",
+        "body_hex": "00044d51545404c2003c0003636964000475736572000470617373"
+      },
+      "EXPECT": {
+        "return": true,
+        "type": "MQTT_PKT_CONNECT",
+        "not_stored": [
+          "username",
+          "password"
+        ]
+      }
+    },
+    {
+      "NAME": "publish_qos0",
+      "INPUT": {
+        "header1_hex": "30",
+        "body_hex": "0003612f626869"
+      },
+      "EXPECT": {
+        "return": true,
+        "type": "MQTT_PKT_PUBLISH",
+        "fields": {
+          "out->v.publish.topic_name": "a/b",
+          "out->v.publish.payload_hex": "6869",
+          "out->v.publish.qos": 0,
+          "out->v.publish.has_packet_id": false
+        }
+      }
+    },
+    {
+      "NAME": "subscribe_one_topic",
+      "INPUT": {
+        "header1_hex": "82",
+        "body_hex": "00010003612f6200"
+      },
+      "EXPECT": {
+        "return": true,
+        "type": "MQTT_PKT_SUBSCRIBE",
+        "fields": {
+          "out->v.subscribe.packet_id": 1,
+          "out->v.subscribe.topic_count": 1,
+          "out->v.subscribe.topics[0].filter": "a/b",
+          "out->v.subscribe.topics[0].qos": 0
+        }
+      }
+    }
+  ],
+  "LOGIC": {
+    "INPUT": "输入来自函数参数。",
+    "ACTION": "依据 header1 报文类型分支解析 CONNECT/SUBSCRIBE/PUBLISH/PINGREQ/DISCONNECT，并填充 mqtt_packet_t。",
+    "OUTPUT": "通过返回值或副作用反映处理结果。",
+    "INVARIANTS_USED": [
+      "函数执行保持本模块内部状态一致性。"
+    ]
+  }
+}

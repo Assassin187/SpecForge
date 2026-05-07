@@ -1,0 +1,55 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "mqtt/protocol/mqtt_decoder/try_parse_remaining_length",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "解析 MQTT 可变长 Remaining Length 字段，处理最多 4 字节编码约束",
+  "SIGNATURE": {
+    "RAW": "static bool try_parse_remaining_length(const uint8_t* buf, size_t buf_len, size_t start, remaining_length_t* out)",
+    "NAME": "try_parse_remaining_length",
+    "RETURN": "bool",
+    "PARAMS": [
+      {
+        "TYPE": "const uint8_t*",
+        "NAME": "buf",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "size_t",
+        "NAME": "buf_len",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "size_t",
+        "NAME": "start",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "remaining_length_t*",
+        "NAME": "out",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct remaining_length",
+        "ROLE": "Remaining Length 解析结果结构体"
+      }
+    ],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入来自函数参数。",
+    "ACTION": "按 MQTT 可变长编码逐字节解析 Remaining Length，输出 value 与 bytes。",
+    "OUTPUT": "通过返回值或副作用反映处理结果。",
+    "INVARIANTS_USED": [
+      "函数执行保持本模块内部状态一致性。"
+    ]
+  }
+}

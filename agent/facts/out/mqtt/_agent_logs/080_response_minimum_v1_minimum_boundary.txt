@@ -1,0 +1,190 @@
+{
+  "category": "minimum_v1",
+  "task": "minimum_boundary",
+  "facts": {
+    "must_support_surface": [
+      {
+        "name": "CONNECT",
+        "reason": "Required to initiate a connection; without it, no session or message exchange is possible.",
+        "evidence_refs": ["v1_e7"]
+      },
+      {
+        "name": "CONNACK",
+        "reason": "Required response to CONNECT; defines whether the client is allowed to proceed.",
+        "evidence_refs": ["v1_e8"]
+      },
+      {
+        "name": "PUBLISH",
+        "reason": "Core message delivery primitive; required for any data exchange.",
+        "evidence_refs": ["v1_e9"]
+      },
+      {
+        "name": "SUBSCRIBE",
+        "reason": "Required to express interest in topics; without it, server cannot deliver messages based on filters.",
+        "evidence_refs": ["v1_e1"]
+      },
+      {
+        "name": "SUBACK",
+        "reason": "Mandatory response to SUBSCRIBE; conveys granted QoS or failure per filter.",
+        "evidence_refs": ["v1_e5"]
+      },
+      {
+        "name": "Topic Name",
+        "reason": "Mandatory field in PUBLISH; identifies the channel for message delivery.",
+        "evidence_refs": ["v1_e9"]
+      },
+      {
+        "name": "Topic Filter",
+        "reason": "Mandatory payload element in SUBSCRIBE; defines matching rules for subscriptions.",
+        "evidence_refs": ["v1_e1"]
+      },
+      {
+        "name": "QoS level",
+        "reason": "Controls delivery semantics for PUBLISH and subscription; must be supported at values 0, 1, 2.",
+        "evidence_refs": ["v1_e1", "v1_e3"]
+      },
+      {
+        "name": "Packet Identifier",
+        "reason": "Required for correlating QoS 1 and QoS 2 message flows; must be assigned and managed.",
+        "evidence_refs": ["v1_e4"]
+      }
+    ],
+    "must_support_state_behaviors": [
+      {
+        "summary": "Maintain in-flight state for QoS 1 PUBLISH until PUBACK is received.",
+        "linked_state_objects": ["In-flight QoS 2 Exchange"],
+        "evidence_refs": ["v1_e4"]
+      },
+      {
+        "summary": "Maintain in-flight state for QoS 2 PUBLISH through PUBREC/PUBREL/PUBCOMP sequence.",
+        "linked_state_objects": ["In-flight QoS 2 Exchange"],
+        "evidence_refs": ["v1_e6"]
+      },
+      {
+        "summary": "Replace existing subscription when identical Topic Filter is resubscribed.",
+        "linked_state_objects": ["Session"],
+        "evidence_refs": ["v1_e5"]
+      }
+    ],
+    "must_support_error_paths": [
+      {
+        "condition": "SUBSCRIBE packet contains reserved bits set or invalid QoS (not 0/1/2).",
+        "required_action": "Treat as malformed and close network connection.",
+        "evidence_refs": ["v1_e2"]
+      },
+      {
+        "condition": "SUBSCRIBE packet has empty payload.",
+        "required_action": "Treat as protocol violation.",
+        "evidence_refs": ["v1_e2"]
+      },
+      {
+        "condition": "Client connects with ClientId already in use.",
+        "required_action": "Disconnect the existing client.",
+        "evidence_refs": ["v1_e7"]
+      }
+    ],
+    "must_support_limits": [
+      {
+        "name": "Topic Filter encoding",
+        "value_or_rule": "Must be UTF-8 encoded strings.",
+        "evidence_refs": ["v1_e1"]
+      },
+      {
+        "name": "Topic Name encoding",
+        "value_or_rule": "Must be UTF-8 encoded and must not contain wildcards.",
+        "evidence_refs": ["v1_e9"]
+      },
+      {
+        "name": "Packet Identifier reuse",
+        "value_or_rule": "MUST NOT reuse while original QoS 1/2 packet is unacknowledged.",
+        "evidence_refs": ["v1_e4"]
+      }
+    ],
+    "may_defer_features": [
+      {
+        "summary": "Support for wildcard characters in Topic Filters is optional; server may reject such subscriptions.",
+        "evidence_refs": ["v1_e1"]
+      }
+    ],
+    "implementation_assumptions": [
+      {
+        "summary": "Server assumes ownership of Application Message upon sending PUBACK (QoS 1) or PUBREC (QoS 2).",
+        "evidence_refs": ["v1_e4", "v1_e6"]
+      }
+    ]
+  },
+  "evidence": [
+    {
+      "evidence_id": "v1_e1",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p13",
+      "excerpt": "The payload of a SUBSCRIBE Packet contains a list of Topic Filters indicating the Topics to which the Client wants to subscribe. The Topic Filters in a SUBSCRIBE packet payload MUST be UTF-8 encoded strings... A Server SHOULD support Topic filters that contain the wildcard characters... If it chooses not to support topic filters that contain wildcard characters it MUST reject any Subscription request whose filter contains them."
+    },
+    {
+      "evidence_id": "v1_e2",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix B. Mandatory normative statements (non normative)",
+      "chunk_id": "MQTT_3.1.1-s16-p10",
+      "excerpt": "The Server MUST treat a SUBSCRIBE packet as malformed and close the Network Connection if any of Reserved bits in the payload are non-zero, or QoS is not 0,1 or 2. A SUBSCRIBE packet with no payload is a protocol violation."
+    },
+    {
+      "evidence_id": "v1_e3",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p15",
+      "excerpt": "The requested maximum QoS field is encoded in the byte following each UTF-8 encoded topic name... QoS is not 0,1 or 2 [MQTT-3-8.3-4]."
+    },
+    {
+      "evidence_id": "v1_e4",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p25",
+      "excerpt": "MUST assign an unused Packet Identifier each time it has a new Application Message to publish... MUST treat the PUBLISH Packet as “unacknowledged” until it has received the corresponding PUBACK packet... The Packet Identifier becomes available for reuse once the Sender has received the PUBACK Packet."
+    },
+    {
+      "evidence_id": "v1_e5",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix B. Mandatory normative statements (non normative)",
+      "chunk_id": "MQTT_3.1.1-s16-p10",
+      "excerpt": "If a Server receives a SUBSCRIBE Packet containing a Topic Filter that is identical to an existing Subscription’s Topic Filter then it MUST completely replace that existing Subscription with a new Subscription... The Server MUST respond with a SUBACK Packet... The SUBACK Packet MUST have the same Packet Identifier as the SUBSCRIBE Packet."
+    },
+    {
+      "evidence_id": "v1_e6",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p27",
+      "excerpt": "Until it has received the corresponding PUBREL packet, the Receiver MUST acknowledge any subsequent PUBLISH packet with the same Packet Identifier by sending a PUBREC... MUST respond to a PUBREL packet by sending a PUBCOMP packet... After it has sent a PUBCOMP, the receiver MUST treat any subsequent PUBLISH packet that contains that Packet Identifier as being a new publication."
+    },
+    {
+      "evidence_id": "v1_e7",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "1. If the ClientId represents a Client already connected to the Server",
+      "chunk_id": "MQTT_3.1.1-s7-p1",
+      "excerpt": "then the Server MUST disconnect the existing Client [MQTT-3.1.4-2]."
+    },
+    {
+      "evidence_id": "v1_e8",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix B. Mandatory normative statements (non normative)",
+      "chunk_id": "MQTT_3.1.1-s16-p9",
+      "excerpt": "When its original sender receives the PUBACK packet, ownership of the Application Message is transferred to the receiver."
+    },
+    {
+      "evidence_id": "v1_e9",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix B. Mandatory normative statements (non normative)",
+      "chunk_id": "MQTT_3.1.1-s16-p9",
+      "excerpt": "The Topic Name MUST be present as the first field in the PUBLISH Packet Variable header. It MUST be a UTF-8 encoded string. The Topic Name in the PUBLISH Packet MUST NOT contain wildcard characters."
+    }
+  ],
+  "open_questions": [
+    {
+      "category": "minimum_v1",
+      "question_type": "implementation_policy_needed",
+      "question": "What is the minimum required behavior for handling unauthorized PUBLISH attempts by a client?",
+      "blocking_impact": "medium",
+      "suggested_followup": "Clarify whether closing the connection is mandatory or if silent drop with QoS acknowledgment is sufficient."
+    }
+  ]
+}

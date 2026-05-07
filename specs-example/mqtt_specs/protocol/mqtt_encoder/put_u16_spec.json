@@ -1,0 +1,44 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "mqtt/protocol/mqtt_encoder/put_u16",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "按网络字节序写入 16 位无符号整数并推进写游标",
+  "SIGNATURE": {
+    "RAW": "static void put_u16(uint8_t* out, size_t* pos, uint16_t v)",
+    "NAME": "put_u16",
+    "RETURN": "void",
+    "PARAMS": [
+      {
+        "TYPE": "uint8_t*",
+        "NAME": "out",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "size_t*",
+        "NAME": "pos",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "uint16_t",
+        "NAME": "v",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入来自函数参数。",
+    "ACTION": "将 16 位整数按高字节在前写入输出缓冲并推进位置。",
+    "OUTPUT": "通过返回值或副作用反映处理结果。",
+    "INVARIANTS_USED": [
+      "函数执行保持本模块内部状态一致性。"
+    ]
+  }
+}

@@ -1,0 +1,8 @@
+X-SMTP-HELO: localhost
+X-SMTP-Auth-User: smtpuser
+X-SMTP-Envelope-From: alice@example.com
+X-SMTP-Envelope-To: bob@example.com
+
+Subject: test mail
+
+hello smtp

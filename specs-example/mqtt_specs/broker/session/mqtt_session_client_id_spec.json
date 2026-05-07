@@ -1,0 +1,38 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "mqtt/broker/session/mqtt_session_client_id",
+  "FUNCTION_TYPE": "EVENT",
+  "ROLE": "读取会话保存的 MQTT client_id 字符串",
+  "SIGNATURE": {
+    "RAW": "const char* mqtt_session_client_id(const mqtt_session_t* s)",
+    "NAME": "mqtt_session_client_id",
+    "RETURN": "const char*",
+    "PARAMS": [
+      {
+        "TYPE": "const mqtt_session_t*",
+        "NAME": "s",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct mqtt_session",
+        "ROLE": "会话私有实现结构"
+      }
+    ],
+    "FUNC": [],
+    "VAR": []
+  },
+  "EVENT": {
+    "TRIGGER": "日志打印、会话识别或路由诊断需要 client_id 时触发",
+    "PRECONDITION": "允许 s 为空，允许 client_id 尚未设置",
+    "INPUT": "输入为会话指针 s",
+    "ACTION": "若 s 与 s->client_id 有效则返回该字符串，否则返回空字符串 \"\"",
+    "STATE_CHANGE": "只读访问，不修改会话状态",
+    "RESPONSE": "返回非 NULL 的字符串指针，便于调用方免空指针判断",
+    "EVENT_TYPE": "RUNTIME_EVENT"
+  }
+}

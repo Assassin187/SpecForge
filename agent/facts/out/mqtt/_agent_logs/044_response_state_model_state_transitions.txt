@@ -1,0 +1,250 @@
+{
+  "category": "state_model",
+  "task": "state_transitions",
+  "facts": {
+    "transitions": [
+      {
+        "name": "session_establishment_clean_0_new",
+        "from_state": "disconnected",
+        "trigger": "CONNECT with CleanSession=0 and no existing session",
+        "conditions": ["Server has no stored session for ClientId"],
+        "actions": ["Create new session", "Store session state after disconnection"],
+        "to_state": "connected_session_new",
+        "retained_data_effects": ["Session state initialized empty", "Subscriptions start empty"],
+        "cleanup_effects": [],
+        "evidence_refs": ["state_e1"]
+      },
+      {
+        "name": "session_establishment_clean_0_resume",
+        "from_state": "disconnected",
+        "trigger": "CONNECT with CleanSession=0 and existing session",
+        "conditions": ["Server has stored session for ClientId"],
+        "actions": ["Resume communications based on stored session"],
+        "to_state": "connected_session_resumed",
+        "retained_data_effects": ["Existing subscriptions restored", "Unacknowledged QoS 1/2 messages retained"],
+        "cleanup_effects": [],
+        "evidence_refs": ["state_e1"]
+      },
+      {
+        "name": "session_establishment_clean_1",
+        "from_state": "disconnected",
+        "trigger": "CONNECT with CleanSession=1",
+        "conditions": [],
+        "actions": ["Discard any previous session", "Start new transient session"],
+        "to_state": "connected_session_transient",
+        "retained_data_effects": ["No prior session data reused"],
+        "cleanup_effects": ["Previous session state discarded"],
+        "evidence_refs": ["state_e2"]
+      },
+      {
+        "name": "session_disconnect_persistent",
+        "from_state": "connected_session_new|connected_session_resumed",
+        "trigger": "Network disconnection with CleanSession=0",
+        "conditions": [],
+        "actions": ["Store session state including subscriptions and unacknowledged QoS 1/2 messages"],
+        "to_state": "disconnected",
+        "retained_data_effects": ["QoS 1/2 matching messages stored for future delivery", "Subscriptions preserved"],
+        "cleanup_effects": [],
+        "evidence_refs": ["state_e3"]
+      },
+      {
+        "name": "session_disconnect_transient",
+        "from_state": "connected_session_transient",
+        "trigger": "Network disconnection with CleanSession=1",
+        "conditions": [],
+        "actions": ["Discard session state"],
+        "to_state": "disconnected",
+        "retained_data_effects": [],
+        "cleanup_effects": ["All session state deleted"],
+        "evidence_refs": ["state_e2"]
+      },
+      {
+        "name": "qos2_publish_received_first_time",
+        "from_state": "idle",
+        "trigger": "PUBLISH QoS=2 received with new Packet Identifier",
+        "conditions": ["Packet Identifier not in current in-flight set"],
+        "actions": ["Store message as unacknowledged QoS 2 receive", "Send PUBREC"],
+        "to_state": "qos2_wait_pubrel",
+        "retained_data_effects": ["Message stored in session until PUBCOMP sent"],
+        "cleanup_effects": [],
+        "evidence_refs": ["state_e4"]
+      },
+      {
+        "name": "qos2_publish_duplicate_received",
+        "from_state": "qos2_wait_pubrel",
+        "trigger": "PUBLISH QoS=2 re-received with same Packet Identifier",
+        "conditions": ["Packet Identifier matches in-flight receive transaction"],
+        "actions": ["Send PUBREC again", "Do not deliver duplicate onward"],
+        "to_state": "qos2_wait_pubrel",
+        "retained_data_effects": [],
+        "cleanup_effects": [],
+        "evidence_refs": ["state_e5"]
+      },
+      {
+        "name": "qos2_pubrel_received",
+        "from_state": "qos2_wait_pubrel",
+        "trigger": "PUBREL received with matching Packet Identifier",
+        "conditions": [],
+        "actions": ["Send PUBCOMP", "Mark message as fully acknowledged"],
+        "to_state": "idle",
+        "retained_data_effects": [],
+        "cleanup_effects": ["Remove in-flight QoS 2 receive state"],
+        "evidence_refs": ["state_e6"]
+      },
+      {
+        "name": "qos2_publish_after_pubcomp",
+        "from_state": "idle",
+        "trigger": "PUBLISH QoS=2 received with previously used Packet Identifier (after PUBCOMP)",
+        "conditions": ["Packet Identifier was used in completed transaction"],
+        "actions": ["Treat as new publication"],
+        "to_state": "qos2_wait_pubrel",
+        "retained_data_effects": ["New message stored"],
+        "cleanup_effects": [],
+        "evidence_refs": ["state_e7"]
+      },
+      {
+        "name": "reconnect_resend_unacked",
+        "from_state": "disconnected",
+        "trigger": "Reconnect with CleanSession=0",
+        "conditions": ["Unacknowledged QoS>0 PUBLISH or PUBREL exist in session"],
+        "actions": ["Resend all unacknowledged PUBLISH and PUBREL with original Packet Identifiers", "Preserve send order"],
+        "to_state": "connected_session_resumed",
+        "retained_data_effects": ["Original Packet Identifiers reused", "Message ordering preserved"],
+        "cleanup_effects": [],
+        "evidence_refs": ["state_e8"]
+      }
+    ],
+    "timers_and_constants": [
+      {
+        "name": "Packet Identifier reuse prohibition",
+        "kind": "recommended",
+        "value_or_rule": "MUST NOT reuse Packet Identifier while original packet is in flight for QoS 1 or 2",
+        "scope": "session",
+        "evidence_refs": ["state_e9"]
+      },
+      {
+        "name": "Retained message persistence",
+        "kind": "constant",
+        "value_or_rule": "Retained messages are not part of Session state and MUST NOT be deleted when Session ends",
+        "scope": "server_global",
+        "evidence_refs": ["state_e10"]
+      },
+      {
+        "name": "Session state contents (Client)",
+        "kind": "constant",
+        "value_or_rule": "Client session state includes: QoS 1/2 sent but unacknowledged; QoS 2 received but unacknowledged",
+        "scope": "client_session",
+        "evidence_refs": ["state_e11"]
+      },
+      {
+        "name": "Session state contents (Server)",
+        "kind": "constant",
+        "value_or_rule": "Server session state includes: session existence flag, subscriptions, QoS 1/2 sent but unacknowledged, QoS 1/2 pending transmission, QoS 2 received but unacknowledged, optionally QoS 0 pending",
+        "scope": "server_session",
+        "evidence_refs": ["state_e11"]
+      }
+    ]
+  },
+  "evidence": [
+    {
+      "evidence_id": "state_e1",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix B. Mandatory normative statements (non normative)",
+      "chunk_id": "MQTT_3.1.1-s16-p3",
+      "excerpt": "If CleanSession is set to 0, the Server MUST resume communications with the Client based on state from the current Session (as identified by the Client identifier). If there is no Session associated with the Client identifier the Server MUST create a new Session. The Client and Server MUST store the Session after the Client and Server are disconnected."
+    },
+    {
+      "evidence_id": "state_e2",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix B. Mandatory normative statements (non normative)",
+      "chunk_id": "MQTT_3.1.1-s16-p3",
+      "excerpt": "If CleanSession is set to 1, the Client and Server MUST discard any previous Session and start a new one. This Session lasts as long as the Network Connection. State data associated with this Session MUST NOT be reused in any subsequent Session."
+    },
+    {
+      "evidence_id": "state_e3",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix B. Mandatory normative statements (non normative)",
+      "chunk_id": "MQTT_3.1.1-s16-p3",
+      "excerpt": "After the disconnection of a Session that had CleanSession set to 0, the Server MUST store further QoS 1 and QoS 2 messages that match any subscriptions that the client had at the time of disconnection as part of the Session state."
+    },
+    {
+      "evidence_id": "state_e4",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix B. Mandatory normative statements (non normative)",
+      "chunk_id": "MQTT_3.1.1-s16-p14",
+      "excerpt": "- Until it has received the corresponding PUBREL packet, the Receiver MUST acknowledge any subsequent PUBLISH packet with the same Packet Identifier by sending a PUBREC. It MUST NOT cause duplicate messages to be delivered to any onward recipients in this case."
+    },
+    {
+      "evidence_id": "state_e5",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix B. Mandatory normative statements (non normative)",
+      "chunk_id": "MQTT_3.1.1-s16-p14",
+      "excerpt": "- Until it has received the corresponding PUBREL packet, the Receiver MUST acknowledge any subsequent PUBLISH packet with the same Packet Identifier by sending a PUBREC. It MUST NOT cause duplicate messages to be delivered to any onward recipients in this case."
+    },
+    {
+      "evidence_id": "state_e6",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix B. Mandatory normative statements (non normative)",
+      "chunk_id": "MQTT_3.1.1-s16-p14",
+      "excerpt": "- MUST respond to a PUBREL packet by sending a PUBCOMP packet containing the same Packet Identifier as the PUBREL."
+    },
+    {
+      "evidence_id": "state_e7",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix B. Mandatory normative statements (non normative)",
+      "chunk_id": "MQTT_3.1.1-s16-p14",
+      "excerpt": "- After it has sent a PUBCOMP, the receiver MUST treat any subsequent PUBLISH packet that contains that Packet Identifier as being a new publication."
+    },
+    {
+      "evidence_id": "state_e8",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p28",
+      "excerpt": "When a Client reconnects with CleanSession set to 0, both the Client and Server MUST re-send any unacknowledged PUBLISH Packets (where QoS > 0) and PUBREL Packets using their original Packet Identifiers [MQTT-4.4.0-1]."
+    },
+    {
+      "evidence_id": "state_e9",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "Discovery context parameter_candidates",
+      "chunk_id": "disc_e12",
+      "excerpt": "MUST NOT reuse Packet Identifier while original packet is in flight for QoS 1 or 2."
+    },
+    {
+      "evidence_id": "state_e10",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix B. Mandatory normative statements (non normative)",
+      "chunk_id": "MQTT_3.1.1-s16-p3",
+      "excerpt": "Retained messages do not form part of the Session state in the Server, they MUST NOT be deleted when the Session ends."
+    },
+    {
+      "evidence_id": "state_e11",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix C. Revision history (non normative) 80",
+      "chunk_id": "MQTT_3.1.1-s3-p17",
+      "excerpt": "The Session state in the Client consists of: · QoS 1 and QoS 2 messages which have been sent to the Server, but have not been completely acknowledged. · QoS 2 messages which have been received from the Server, but have not been completely acknowledged. The Session state in the Server consists of: · The existence of a Session, even if the rest of the Session state is empty. · The Client’s subscriptions. · QoS 1 and QoS 2 messages which have been sent to the Client, but have not been completely acknowledged. · QoS 1 and QoS 2 messages pending transmission to the Client. · QoS 2 messages which have been received from the Client, but have not been completely acknowledged. · Optionally, QoS 0 messages pending transmission to the Client."
+    }
+  ],
+  "open_questions": [
+    {
+      "category": "state_model",
+      "question_type": "document_not_extracted",
+      "question": "What are the exact state names and full state machine diagrams for MQTT client and server session states beyond the high-level descriptions?",
+      "blocking_impact": "high",
+      "suggested_followup": "Extract explicit state enumeration and transition tables from the MQTT 3.1.1 specification sections on operational behavior."
+    },
+    {
+      "category": "state_model",
+      "question_type": "document_not_extracted",
+      "question": "Are there protocol-defined timers (e.g., retry intervals, keep-alive timeouts) that govern state transitions?",
+      "blocking_impact": "medium",
+      "suggested_followup": "Investigate MQTT keep-alive mechanism and message retry timing constraints in the specification."
+    },
+    {
+      "category": "state_model",
+      "question_type": "document_not_extracted",
+      "question": "What are the boundary values and validation rules for session-related fields like ClientId length that affect state creation?",
+      "blocking_impact": "low",
+      "suggested_followup": "Map field validation rules from CONNECT processing to session establishment failure transitions."
+    }
+  ]
+}

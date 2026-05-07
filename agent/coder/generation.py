@@ -1,0 +1,535 @@
+from __future__ import annotations
+
+import json
+import re
+import shutil
+import subprocess
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+from .header_recipes import render_public_declarations
+from .llm_client import FixedQwenClient, LLMRequest, LLMResponse, LLMUsage
+from .models import FileSpec, ModuleEntry, SpecBundle
+from .prompts import build_repair_prompt, build_source_prompt
+from .specs import (
+    canonical_signature_for_header,
+    function_specs_for_file,
+    normalize_repo_path,
+)
+
+
+@dataclass
+class GenerationResult:
+    success: bool
+    manifest_path: Path
+    compile_stdout: str
+    compile_stderr: str
+    repaired_files: list[str]
+
+
+class GenerationLogger:
+    def __init__(self, root: Path) -> None:
+        self.root = root
+        self.root.mkdir(parents=True, exist_ok=True)
+        self._counter = 0
+
+    def write(self, label: str, content: str, suffix: str = ".txt") -> Path:
+        self._counter += 1
+        safe_label = re.sub(r"[^A-Za-z0-9_.-]+", "_", label).strip("_") or "log"
+        path = self.root / f"{self._counter:03d}_{safe_label}{suffix}"
+        path.write_text(content, encoding="utf-8")
+        return path
+
+    def write_named(self, filename: str, content: str) -> Path:
+        path = self.root / filename
+        path.write_text(content, encoding="utf-8")
+        return path
+
+
+def _bundle_slug(bundle: SpecBundle) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "_", bundle.protocol.name.lower()).strip("_")
+    return slug or "protocol"
+
+
+def _bundle_binary_name(bundle: SpecBundle) -> str:
+    roles = [role.lower() for role in bundle.protocol.roles]
+    suffix = "broker" if "broker" in roles else "server" if "server" in roles else "app"
+    return f"{_bundle_slug(bundle)}_{suffix}"
+
+
+def _usage_to_dict(usage: LLMUsage) -> dict[str, int]:
+    return {
+        "prompt_tokens": int(usage.prompt_tokens),
+        "completion_tokens": int(usage.completion_tokens),
+        "total_tokens": int(usage.total_tokens),
+    }
+
+
+def _add_usage(left: LLMUsage, right: LLMUsage) -> LLMUsage:
+    return LLMUsage(
+        prompt_tokens=left.prompt_tokens + right.prompt_tokens,
+        completion_tokens=left.completion_tokens + right.completion_tokens,
+        total_tokens=left.total_tokens + right.total_tokens,
+    )
+
+
+def _ensure_semicolon(signature: str) -> str:
+    signature = signature.strip()
+    return signature if signature.endswith(";") else signature + ";"
+
+
+def _collect_std_headers(texts: list[str]) -> list[str]:
+    merged = "\n".join(texts)
+    headers: list[str] = []
+    if "bool" in merged:
+        headers.append("stdbool.h")
+    if "size_t" in merged:
+        headers.append("stddef.h")
+    if re.search(r"\b(?:u?int(?:8|16|32|64)_t)\b", merged):
+        headers.append("stdint.h")
+    return headers
+
+
+def _strip_fences(text: str) -> str:
+    stripped = text.strip()
+    if not stripped.startswith("```"):
+        return stripped + ("\n" if not stripped.endswith("\n") else "")
+    lines = stripped.splitlines()
+    if lines and lines[0].startswith("```"):
+        lines = lines[1:]
+    if lines and lines[-1].startswith("```"):
+        lines = lines[:-1]
+    result = "\n".join(lines).strip()
+    return result + ("\n" if not result.endswith("\n") else "")
+
+
+def render_header(bundle: SpecBundle, file_spec: FileSpec) -> str:
+    public_declarations = render_public_declarations(file_spec)
+    signature_block = [canonical_signature_for_header(bundle, file_spec, item) for item in file_spec.header_interfaces]
+    std_headers = _collect_std_headers([public_declarations, *signature_block])
+
+    lines: list[str] = ["#pragma once", ""]
+    for dependency in file_spec.header_dependencies:
+        lines.append(f'#include "{dependency}"')
+    if file_spec.header_dependencies:
+        lines.append("")
+    for header in std_headers:
+        lines.append(f"#include <{header}>")
+    if std_headers:
+        lines.append("")
+    lines.extend(
+        [
+            "#ifdef __cplusplus",
+            'extern "C" {',
+            "#endif",
+            "",
+        ]
+    )
+    if public_declarations:
+        lines.append(public_declarations.rstrip())
+        lines.append("")
+    for signature in signature_block:
+        lines.append(_ensure_semicolon(signature))
+    lines.append("")
+    lines.extend(
+        [
+            "#ifdef __cplusplus",
+            "}",
+            "#endif",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def _find_app_file_spec(bundle: SpecBundle) -> FileSpec | None:
+    for module in reversed(bundle.modules_in_order):
+        for file_path in reversed(module.files):
+            if not file_path.endswith(".h"):
+                continue
+            file_spec = bundle.file_specs_by_header_path.get(normalize_repo_path(file_path))
+            if file_spec is not None:
+                return file_spec
+    return None
+
+
+def _find_public_type_name(file_spec: FileSpec) -> str | None:
+    for item in file_spec.header_data:
+        if item.get("KIND") == "TYPE" and str(item.get("VISIBILITY", "")).upper() == "PUBLIC":
+            name = str(item.get("NAME", "")).strip()
+            if name:
+                return name
+    return None
+
+
+def _find_interface_name(file_spec: FileSpec, suffix: str) -> str | None:
+    needle = suffix.lower()
+    for item in file_spec.header_interfaces:
+        name = item.name.strip()
+        if name.lower().endswith(needle):
+            return name
+    return None
+
+
+def render_main_c(bundle: SpecBundle) -> str:
+    app_spec = _find_app_file_spec(bundle)
+    if app_spec is None:
+        return "int main(void) {\n    return 0;\n}\n"
+
+    app_type = _find_public_type_name(app_spec) or f"{_bundle_slug(bundle)}_app_t"
+    create_fn = _find_interface_name(app_spec, "_create") or f"{_bundle_slug(bundle)}_app_create"
+    start_fn = _find_interface_name(app_spec, "_start")
+    run_fn = _find_interface_name(app_spec, "_run") or _find_interface_name(app_spec, "_serve")
+    destroy_fn = _find_interface_name(app_spec, "_destroy")
+
+    lines = [
+        f'#include "{app_spec.header_path}"',
+        "",
+        "#include <stdint.h>",
+        "#include <stdio.h>",
+        "#include <stdlib.h>",
+        "",
+        "static uint16_t parse_port(int argc, char** argv) {",
+        "    if (argc < 2) {",
+        "        return 1884;",
+        "    }",
+        "    char* end = NULL;",
+        "    unsigned long raw = strtoul(argv[1], &end, 10);",
+        "    if (!argv[1][0] || (end && *end != '\\0') || raw == 0 || raw > 65535UL) {",
+        "        return 1884;",
+        "    }",
+        "    return (uint16_t)raw;",
+        "}",
+        "",
+        "int main(int argc, char** argv) {",
+        "    const uint16_t port = parse_port(argc, argv);",
+        f"    {app_type}* app = {create_fn}(port);",
+        "    if (!app) {",
+        '        fprintf(stderr, "failed to create application on port %u\\n", (unsigned)port);',
+        "        return 1;",
+        "    }",
+    ]
+    if start_fn:
+        lines.extend(
+            [
+                f"    if (!{start_fn}(app)) {{",
+                '        fprintf(stderr, "failed to start application on port %u\\n", (unsigned)port);',
+            ]
+        )
+        if destroy_fn:
+            lines.append(f"        {destroy_fn}(app);")
+        lines.extend(["        return 1;", "    }"])
+    if run_fn:
+        lines.append(f"    {run_fn}(app);")
+    if destroy_fn:
+        lines.append(f"    {destroy_fn}(app);")
+    lines.extend(["    return 0;", "}", ""])
+    return "\n".join(lines)
+
+
+def render_makefile(bundle: SpecBundle) -> str:
+    broker_srcs: list[str] = []
+    for module in bundle.modules_in_order:
+        for file_path in module.files:
+            normalized = normalize_repo_path(file_path)
+            if normalized.endswith(".c"):
+                broker_srcs.append(normalized)
+    main_candidates = [normalize_repo_path(path) for module in bundle.modules_in_order for path in module.files if path.endswith("/main.c")]
+    for main_path in reversed(main_candidates):
+        if main_path not in broker_srcs:
+            broker_srcs.insert(0, main_path)
+    unique_srcs: list[str] = []
+    seen = set()
+    for src in broker_srcs:
+        if src not in seen:
+            seen.add(src)
+            unique_srcs.append(src)
+    separator = " \\\n\t"
+    body = separator.join(unique_srcs)
+    binary_name = _bundle_binary_name(bundle)
+    return f"""CC ?= gcc
+CFLAGS ?= -std=c11 -O2 -Wall -Wextra -pedantic -D_POSIX_C_SOURCE=200809L -I.
+LDFLAGS ?=
+
+BROKER_SRCS = \\
+\t{body}
+
+TARGET ?= {binary_name}
+
+all: $(TARGET)
+
+$(TARGET): $(BROKER_SRCS)
+\t$(CC) $(CFLAGS) -o $@ $(BROKER_SRCS) $(LDFLAGS)
+
+clean:
+\trm -f $(TARGET)
+
+.PHONY: all clean
+"""
+
+
+def _compile_project(output_dir: Path, binary_name: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["make", binary_name],
+        cwd=output_dir,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+
+def _extract_error_files(stdout: str, stderr: str) -> list[str]:
+    combined = f"{stdout}\n{stderr}"
+    pattern = re.compile(r"(?m)^([A-Za-z0-9_./-]+\.(?:c|h)):\d+:\d+: error:")
+    found = []
+    for match in pattern.finditer(combined):
+        path = normalize_repo_path(match.group(1))
+        if path not in found:
+            found.append(path)
+    return found
+
+
+class ProjectGenerator:
+    def __init__(
+        self,
+        bundle: SpecBundle,
+        llm_client: FixedQwenClient,
+        output_dir: str | Path,
+        max_repair_rounds: int = 3,
+    ) -> None:
+        self.bundle = bundle
+        self.llm_client = llm_client
+        self.output_dir = Path(output_dir)
+        self.project_dir = self.output_dir / _bundle_slug(bundle)
+        self.max_repair_rounds = max_repair_rounds
+        self.logs = GenerationLogger(self.output_dir / "_agent_logs")
+        self._module_by_file = self._build_module_file_index()
+        self.workflow_usage = LLMUsage(0, 0, 0)
+        self.llm_call_usage: list[dict[str, Any]] = []
+        self.stage_token_usage: dict[str, dict[str, int]] = {}
+
+    def _build_module_file_index(self) -> dict[str, ModuleEntry]:
+        mapping: dict[str, ModuleEntry] = {}
+        for module in self.bundle.modules_in_order:
+            for file_path in module.files:
+                mapping[normalize_repo_path(file_path)] = module
+        return mapping
+
+    def _write_file(self, relative_path: str, content: str) -> Path:
+        target = self.project_dir / relative_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding="utf-8")
+        return target
+
+    def _dependency_headers(self, dependencies: list[str]) -> dict[str, str]:
+        contents: dict[str, str] = {}
+        for dependency in dependencies:
+            path = self.project_dir / dependency
+            if path.exists():
+                contents[dependency] = path.read_text(encoding="utf-8")
+        return contents
+
+    def _register_usage(self, stage: str, call_type: str, subject: str, usage: LLMUsage) -> None:
+        self.workflow_usage = _add_usage(self.workflow_usage, usage)
+        self.llm_call_usage.append(
+            {
+                "stage": stage,
+                "call_type": call_type,
+                "subject": subject,
+                "usage": _usage_to_dict(usage),
+            }
+        )
+        existing = self.stage_token_usage.get(stage, _usage_to_dict(LLMUsage(0, 0, 0)))
+        self.stage_token_usage[stage] = _usage_to_dict(_add_usage(LLMUsage(**existing), usage))
+
+    def _generate_with_usage(self, stage: str, call_type: str, subject: str, request: LLMRequest) -> LLMResponse:
+        response = self.llm_client.generate_with_usage(request)
+        if not isinstance(response, LLMResponse):
+            raise RuntimeError(f"Expected LLMResponse from generate_with_usage, got {type(response)!r}")
+        self._register_usage(stage, call_type, subject, response.usage)
+        return response
+
+    def _module_for_spec(self, file_spec: FileSpec) -> ModuleEntry:
+        module = self._module_by_file.get(file_spec.source_path) or self._module_by_file.get(file_spec.header_path)
+        if module is None:
+            raise RuntimeError(f"Unable to determine module for file spec {file_spec.trace_id}")
+        return module
+
+    def prepare_output_dir(self) -> None:
+        if self.output_dir.exists():
+            shutil.rmtree(self.output_dir)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.project_dir = self.output_dir / _bundle_slug(self.bundle)
+        self.project_dir.mkdir(parents=True, exist_ok=True)
+        self.logs = GenerationLogger(self.output_dir / "_agent_logs")
+        self.workflow_usage = LLMUsage(0, 0, 0)
+        self.llm_call_usage = []
+        self.stage_token_usage = {}
+
+    def generate(self) -> GenerationResult:
+        self.llm_client.ensure_ready()
+        self.prepare_output_dir()
+
+        generated_headers: dict[str, str] = {}
+        for module in self.bundle.modules_in_order:
+            print(f"[agent.generate] module={module.name} start", flush=True)
+            header_paths = [path for path in module.files if path.endswith(".h")]
+            source_paths = [path for path in module.files if path.endswith(".c")]
+
+            for header_path in header_paths:
+                file_spec = self.bundle.file_specs_by_header_path.get(header_path)
+                if file_spec is None:
+                    continue
+                print(f"[agent.generate] header={header_path} start", flush=True)
+                header_content = render_header(self.bundle, file_spec)
+                self._write_file(header_path, header_content)
+                generated_headers[header_path] = header_content
+                print(f"[agent.generate] header={header_path} done", flush=True)
+
+            for source_path in source_paths:
+                if Path(source_path).name == "main.c":
+                    print(f"[agent.generate] source={source_path} start", flush=True)
+                    main_content = render_main_c(self.bundle)
+                    self._write_file(source_path, main_content)
+                    print(f"[agent.generate] source={source_path} done", flush=True)
+                    continue
+                file_spec = self.bundle.file_specs_by_source_path.get(source_path)
+                if file_spec is None:
+                    continue
+                print(f"[agent.generate] source={source_path} start", flush=True)
+                module_entry = self._module_for_spec(file_spec)
+                function_specs = function_specs_for_file(self.bundle, file_spec)
+                header_content = generated_headers.get(file_spec.header_path)
+                if header_content is None:
+                    print(f"[agent.generate] source={source_path} header_missing_generate={file_spec.header_path}", flush=True)
+                    header_content = render_header(self.bundle, file_spec)
+                    self._write_file(file_spec.header_path, header_content)
+                    generated_headers[file_spec.header_path] = header_content
+                    print(f"[agent.generate] source={source_path} header_generated={file_spec.header_path}", flush=True)
+                dependency_headers = self._dependency_headers(file_spec.source_dependencies)
+                print(
+                    f"[agent.generate] source={source_path} prompt_build functions={len(function_specs)} deps={len(dependency_headers)}",
+                    flush=True,
+                )
+                messages = build_source_prompt(
+                    self.bundle,
+                    module_entry,
+                    file_spec,
+                    function_specs,
+                    header_content,
+                    dependency_headers,
+                )
+                print(f"[agent.generate] source={source_path} prompt_built messages={len(messages)}", flush=True)
+                self.logs.write(f"prompt_{source_path}", json.dumps(messages, ensure_ascii=False, indent=2))
+                print(f"[agent.generate] source={source_path} prompt_logged", flush=True)
+                print(f"[agent.generate] source={source_path} llm_request_start", flush=True)
+                response = self._generate_with_usage(
+                    "source_generation",
+                    "generate",
+                    source_path,
+                    LLMRequest(messages=messages, top_p=0.2, temperature=0.2, is_stream=True),
+                )
+                print(
+                    f"[agent.generate] source={source_path} llm_response_done chars={len(response.content)} tokens={response.usage.total_tokens}",
+                    flush=True,
+                )
+                content = _strip_fences(response.content)
+                self._write_file(source_path, content)
+                print(f"[agent.generate] source={source_path} file_written", flush=True)
+
+        makefile_content = render_makefile(self.bundle)
+        print("[agent.generate] write=Makefile", flush=True)
+        self._write_file("Makefile", makefile_content)
+
+        repaired_files: list[str] = []
+        binary_name = _bundle_binary_name(self.bundle)
+        print("[agent.generate] compile=initial", flush=True)
+        compile_result = self._repair_until_compiles(repaired_files, binary_name)
+        manifest = {
+            "model": "qwen3-max-2026-01-23",
+            "llm_client": "agent.coder.llm_client.chat_with_llm",
+            "output_dir": str(self.output_dir),
+            "project_dir": str(self.project_dir),
+            "log_dir": str(self.logs.root),
+            "binary_name": binary_name,
+            "max_repair_rounds": self.max_repair_rounds,
+            "generation_order": self.bundle.generation_order,
+            "modules": [module.name for module in self.bundle.modules_in_order],
+            "repaired_files": repaired_files,
+            "compile_success": compile_result.returncode == 0,
+            "llm_call_usage": self.llm_call_usage,
+            "stage_token_usage": self.stage_token_usage,
+            "workflow_token_usage": _usage_to_dict(self.workflow_usage),
+            "diagnostics": [diag.__dict__ for diag in self.bundle.diagnostics],
+        }
+        manifest_path = self.logs.write_named("run_manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2) + "\n")
+        return GenerationResult(
+            success=compile_result.returncode == 0,
+            manifest_path=manifest_path,
+            compile_stdout=compile_result.stdout,
+            compile_stderr=compile_result.stderr,
+            repaired_files=repaired_files,
+        )
+
+    def _repair_until_compiles(self, repaired_files: list[str], binary_name: str) -> subprocess.CompletedProcess[str]:
+        last_result = _compile_project(self.project_dir, binary_name)
+        self.logs.write("compile_stdout_0", last_result.stdout)
+        self.logs.write("compile_stderr_0", last_result.stderr)
+        if last_result.returncode == 0:
+            return last_result
+
+        for round_idx in range(1, self.max_repair_rounds + 1):
+            failing_files = _extract_error_files(last_result.stdout, last_result.stderr)
+            if not failing_files:
+                return last_result
+            print(f"[agent.generate] repair_round={round_idx} files={','.join(failing_files)}", flush=True)
+            for relative_path in failing_files:
+                file_spec = self.bundle.file_specs_by_source_path.get(relative_path) or self.bundle.file_specs_by_header_path.get(relative_path)
+                if file_spec is None:
+                    continue
+                print(f"[agent.generate] repair file={relative_path} start", flush=True)
+                module = self._module_for_spec(file_spec)
+                current_path = self.project_dir / relative_path
+                if not current_path.exists():
+                    print(f"[agent.generate] repair file={relative_path} missing_skip", flush=True)
+                    continue
+                current_content = current_path.read_text(encoding="utf-8")
+                dependency_headers = self._dependency_headers(file_spec.source_dependencies or file_spec.header_dependencies)
+                print(
+                    f"[agent.generate] repair file={relative_path} prompt_build deps={len(dependency_headers)}",
+                    flush=True,
+                )
+                messages = build_repair_prompt(
+                    self.bundle,
+                    module,
+                    file_spec,
+                    current_content,
+                    f"{last_result.stdout}\n{last_result.stderr}",
+                    dependency_headers,
+                )
+                print(f"[agent.generate] repair file={relative_path} prompt_built messages={len(messages)}", flush=True)
+                self.logs.write(f"repair_prompt_{round_idx}_{relative_path}", json.dumps(messages, ensure_ascii=False, indent=2))
+                print(f"[agent.generate] repair file={relative_path} prompt_logged", flush=True)
+                print(f"[agent.generate] repair file={relative_path} llm_request_start", flush=True)
+                response = self._generate_with_usage(
+                    "repair",
+                    f"repair_round_{round_idx}",
+                    relative_path,
+                    LLMRequest(messages=messages, top_p=0.2, temperature=0.2, is_stream=True),
+                )
+                print(
+                    f"[agent.generate] repair file={relative_path} llm_response_done chars={len(response.content)} tokens={response.usage.total_tokens}",
+                    flush=True,
+                )
+                current_path.write_text(_strip_fences(response.content), encoding="utf-8")
+                print(f"[agent.generate] repair file={relative_path} file_written", flush=True)
+                if relative_path not in repaired_files:
+                    repaired_files.append(relative_path)
+            last_result = _compile_project(self.project_dir, binary_name)
+            print(f"[agent.generate] compile=repair_round_{round_idx} returncode={last_result.returncode}", flush=True)
+            self.logs.write(f"compile_stdout_{round_idx}", last_result.stdout)
+            self.logs.write(f"compile_stderr_{round_idx}", last_result.stderr)
+            if last_result.returncode == 0:
+                return last_result
+        return last_result

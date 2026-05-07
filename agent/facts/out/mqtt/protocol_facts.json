@@ -1,0 +1,2894 @@
+{
+  "schema_version": "protocol_facts/v2alpha1",
+  "protocol_meta": {
+    "protocol_name": "mqtt",
+    "source_documents": [
+      "~/SpecForge/document/MQTT_3.1.1.txt"
+    ],
+    "document_count": 1
+  },
+  "transport": {
+    "network_stack": {
+      "value": "tcp",
+      "evidence_refs": [
+        "transport_e1"
+      ]
+    },
+    "connection_model": {
+      "value": "connection_oriented",
+      "evidence_refs": [
+        "transport_e2"
+      ]
+    },
+    "channels": [
+      {
+        "name": "main",
+        "transport": "tcp",
+        "purpose": "Carries ordered, lossless, bidirectional byte stream for MQTT control packets.",
+        "evidence_refs": [
+          "transport_e1",
+          "transport_e2"
+        ]
+      }
+    ],
+    "runtime_implications": [
+      {
+        "summary": "Implementation must support at least one underlying transport providing an ordered, lossless, bidirectional byte stream; TCP/IP is the primary example, and WebSocket over TCP is also supported.",
+        "evidence_refs": [
+          "transport_e1",
+          "transport_e3"
+        ]
+      },
+      {
+        "summary": "When using WebSocket as transport, MQTT control packets must be sent in binary frames, may span or share frames, and must negotiate 'mqtt' subprotocol.",
+        "evidence_refs": [
+          "transport_e3"
+        ]
+      },
+      {
+        "summary": "Transient errors or protocol violations require immediate closure of the underlying network connection.",
+        "evidence_refs": [
+          "transport_e4"
+        ]
+      }
+    ]
+  },
+  "interaction_model": {
+    "style": {
+      "value": "mixed",
+      "evidence_refs": [
+        "interaction_e1"
+      ]
+    },
+    "roles": [
+      {
+        "name": "client",
+        "summary": "Initiates connections, sends PUBLISH, SUBSCRIBE, UNSUBSCRIBE, and responds to server-initiated QoS flows.",
+        "evidence_refs": [
+          "interaction_e2"
+        ]
+      },
+      {
+        "name": "server",
+        "summary": "Accepts connections, routes published messages to subscribers, acknowledges client requests, and initiates message delivery.",
+        "evidence_refs": [
+          "interaction_e3"
+        ]
+      }
+    ],
+    "interaction_units": [
+      {
+        "name": "control_packet",
+        "summary": "Atomic unit of protocol interaction; includes fixed header, optional variable header, and optional payload.",
+        "evidence_refs": [
+          "interaction_e4"
+        ]
+      }
+    ],
+    "core_flows": [
+      {
+        "name": "connection_establishment",
+        "summary": "Client sends CONNECT; server validates and replies with CONNACK.",
+        "surface_units": [
+          "CONNECT",
+          "CONNACK"
+        ],
+        "evidence_refs": [
+          "interaction_e5"
+        ]
+      },
+      {
+        "name": "publish_qos0",
+        "summary": "Unacknowledged message delivery from publisher to server or server to subscriber.",
+        "surface_units": [
+          "PUBLISH"
+        ],
+        "evidence_refs": [
+          "interaction_e6"
+        ]
+      },
+      {
+        "name": "publish_qos1",
+        "summary": "At-least-once delivery using PUBLISH and PUBACK.",
+        "surface_units": [
+          "PUBLISH",
+          "PUBACK"
+        ],
+        "evidence_refs": [
+          "interaction_e7"
+        ]
+      },
+      {
+        "name": "publish_qos2",
+        "summary": "Exactly-once delivery using four-phase handshake: PUBLISH → PUBREC → PUBREL → PUBCOMP.",
+        "surface_units": [
+          "PUBLISH",
+          "PUBREC",
+          "PUBREL",
+          "PUBCOMP"
+        ],
+        "evidence_refs": [
+          "interaction_e8"
+        ]
+      },
+      {
+        "name": "subscription_management",
+        "summary": "Client sends SUBSCRIBE with topic filters and requested QoS; server replies with SUBACK containing granted QoS per filter.",
+        "surface_units": [
+          "SUBSCRIBE",
+          "SUBACK"
+        ],
+        "evidence_refs": [
+          "interaction_e9"
+        ]
+      },
+      {
+        "name": "unsubscription",
+        "summary": "Client sends UNSUBSCRIBE with topic filters; server replies with UNSUBACK.",
+        "surface_units": [
+          "UNSUBSCRIBE",
+          "UNSUBACK"
+        ],
+        "evidence_refs": [
+          "interaction_e10"
+        ]
+      }
+    ]
+  },
+  "message_model": {
+    "framing": {
+      "value": "unknown",
+      "evidence_refs": [
+        "message_e1"
+      ]
+    },
+    "surface_catalog": [
+      {
+        "name": "PUBLISH",
+        "kind": "message",
+        "direction": "bidirectional",
+        "summary": "Carries an application message from client to server or server to client, with associated QoS and topic.",
+        "evidence_refs": [
+          "message_e2"
+        ]
+      },
+      {
+        "name": "PUBACK",
+        "kind": "response",
+        "direction": "server_to_client",
+        "summary": "Acknowledges a QoS 1 PUBLISH message.",
+        "evidence_refs": [
+          "message_e3"
+        ]
+      },
+      {
+        "name": "PUBREC",
+        "kind": "response",
+        "direction": "server_to_client",
+        "summary": "First acknowledgment in QoS 2 exchange for a PUBLISH message.",
+        "evidence_refs": [
+          "message_e4"
+        ]
+      },
+      {
+        "name": "PUBREL",
+        "kind": "message",
+        "direction": "client_to_server",
+        "summary": "Second step in QoS 2 exchange, sent by publisher after receiving PUBREC.",
+        "evidence_refs": [
+          "message_e5"
+        ]
+      },
+      {
+        "name": "PUBCOMP",
+        "kind": "response",
+        "direction": "server_to_client",
+        "summary": "Final acknowledgment in QoS 2 exchange, sent in response to PUBREL.",
+        "evidence_refs": [
+          "message_e6"
+        ]
+      },
+      {
+        "name": "SUBSCRIBE",
+        "kind": "command",
+        "direction": "client_to_server",
+        "summary": "Requests the server to deliver messages matching specified topic filters.",
+        "evidence_refs": [
+          "message_e7"
+        ]
+      },
+      {
+        "name": "UNSUBSCRIBE",
+        "kind": "command",
+        "direction": "client_to_server",
+        "summary": "Requests removal of one or more topic filter subscriptions.",
+        "evidence_refs": [
+          "message_e8"
+        ]
+      },
+      {
+        "name": "CONNECT",
+        "kind": "command",
+        "direction": "client_to_server",
+        "summary": "Initiates a connection with authentication, session, and will parameters.",
+        "evidence_refs": [
+          "message_e9"
+        ]
+      },
+      {
+        "name": "CONNACK",
+        "kind": "response",
+        "direction": "server_to_client",
+        "summary": "Acknowledges a CONNECT request with a return code indicating success or failure reason.",
+        "evidence_refs": [
+          "message_e10"
+        ]
+      },
+      {
+        "name": "Topic Name",
+        "kind": "field_family",
+        "direction": "mixed",
+        "summary": "UTF-8 string identifying the information channel in PUBLISH messages.",
+        "evidence_refs": [
+          "message_e11"
+        ]
+      },
+      {
+        "name": "Topic Filter",
+        "kind": "field_family",
+        "direction": "client_to_server",
+        "summary": "UTF-8 string with optional wildcards used in SUBSCRIBE/UNSUBSCRIBE to match topics.",
+        "evidence_refs": [
+          "message_e12"
+        ]
+      },
+      {
+        "name": "Packet Identifier",
+        "kind": "field_family",
+        "direction": "bidirectional",
+        "summary": "16-bit unsigned integer used to correlate messages in QoS 1 and QoS 2 flows.",
+        "evidence_refs": [
+          "message_e13"
+        ]
+      },
+      {
+        "name": "RETAIN flag",
+        "kind": "option",
+        "direction": "client_to_server",
+        "summary": "Indicates whether the server should store the message as the retained message for the topic.",
+        "evidence_refs": [
+          "message_e14"
+        ]
+      },
+      {
+        "name": "QoS level",
+        "kind": "field_family",
+        "direction": "mixed",
+        "summary": "Quality of Service level (0, 1, or 2) governing delivery guarantees for a PUBLISH.",
+        "evidence_refs": [
+          "message_e15"
+        ]
+      },
+      {
+        "name": "CONNACK return codes",
+        "kind": "code_space",
+        "direction": "server_to_client",
+        "summary": "Numeric codes indicating result of connection attempt (e.g., 0x00 = accepted, 0x02 = identifier rejected).",
+        "evidence_refs": [
+          "message_e16"
+        ]
+      }
+    ],
+    "message_or_command_entries": [
+      {
+        "name": "PUBLISH",
+        "kind": "message",
+        "direction": "bidirectional",
+        "syntax_or_layout": "Fixed header (control packet type = 3, flags include DUP, QoS level, RETAIN), variable header (Topic Name [UTF-8 string], Packet Identifier if QoS > 0), payload (application message). Remaining Length = length of variable header + payload.",
+        "fields": [
+          {
+            "name": "Topic Name",
+            "role": "identifies information channel",
+            "constraints": [
+              "MUST be UTF-8 encoded string",
+              "MUST NOT contain wildcard characters",
+              "MUST be first field in variable header"
+            ],
+            "evidence_refs": [
+              "message_e1",
+              "message_e2"
+            ]
+          },
+          {
+            "name": "Packet Identifier",
+            "role": "correlates messages in QoS 1/2 flows",
+            "constraints": [
+              "present only if QoS level is 1 or 2",
+              "16-bit unsigned integer (MSB then LSB)"
+            ],
+            "evidence_refs": [
+              "message_e3",
+              "message_e4"
+            ]
+          },
+          {
+            "name": "RETAIN flag",
+            "role": "controls server-side retention of message",
+            "constraints": [
+              "if set to 1 and payload non-zero: server MUST store message as retained for topic",
+              "if set to 1 and payload zero: server MUST remove any existing retained message for topic and MUST NOT store the zero-byte message",
+              "if set to 0: server MUST NOT store or replace retained message"
+            ],
+            "evidence_refs": [
+              "message_e5",
+              "message_e6"
+            ]
+          },
+          {
+            "name": "QoS level",
+            "role": "determines delivery guarantee and response behavior",
+            "constraints": [
+              "valid values: 0, 1, or 2",
+              "determines presence of Packet Identifier and expected response"
+            ],
+            "evidence_refs": [
+              "message_e7"
+            ]
+          }
+        ],
+        "preconditions": [
+          {
+            "summary": "If sent by client, Topic Name must not contain wildcards.",
+            "evidence_refs": [
+              "message_e2"
+            ]
+          },
+          {
+            "summary": "If QoS > 0, Packet Identifier must not be reused while original packet is in flight.",
+            "evidence_refs": [
+              "disc_e12"
+            ]
+          }
+        ],
+        "expected_responses": [
+          {
+            "surface_unit": "PUBACK",
+            "summary": "Required response from receiver when QoS = 1.",
+            "evidence_refs": [
+              "message_e8"
+            ]
+          },
+          {
+            "surface_unit": "PUBREC",
+            "summary": "Required response from receiver when QoS = 2.",
+            "evidence_refs": [
+              "message_e8"
+            ]
+          }
+        ],
+        "state_effects": [
+          {
+            "summary": "If RETAIN=1 and payload non-empty, updates Retained Message Store for topic.",
+            "evidence_refs": [
+              "message_e5"
+            ]
+          },
+          {
+            "summary": "If RETAIN=1 and payload empty, removes entry from Retained Message Store for topic.",
+            "evidence_refs": [
+              "message_e6"
+            ]
+          },
+          {
+            "summary": "Triggers delivery to all clients with matching subscriptions (respecting subscription QoS).",
+            "evidence_refs": [
+              "message_e9"
+            ]
+          }
+        ],
+        "error_paths": [
+          {
+            "condition": "Server does not authorize PUBLISH from client.",
+            "required_action": "MUST either acknowledge per QoS rules or close network connection.",
+            "evidence_refs": [
+              "message_e10"
+            ]
+          }
+        ],
+        "evidence_refs": [
+          "message_e1",
+          "message_e2",
+          "message_e3",
+          "message_e4",
+          "message_e5",
+          "message_e6",
+          "message_e7",
+          "message_e8",
+          "message_e9",
+          "message_e10"
+        ]
+      },
+      {
+        "name": "PUBACK",
+        "kind": "response",
+        "direction": "server_to_client",
+        "syntax_or_layout": "Fixed header (control packet type = 4, reserved bits = 0), variable header (Packet Identifier from corresponding PUBLISH). Remaining Length = 2.",
+        "fields": [
+          {
+            "name": "Packet Identifier",
+            "role": "matches identifier from QoS 1 PUBLISH",
+            "constraints": [
+              "2-byte unsigned integer",
+              "must correspond to an outstanding QoS 1 PUBLISH from client"
+            ],
+            "evidence_refs": [
+              "message_e11",
+              "message_e12"
+            ]
+          }
+        ],
+        "preconditions": [
+          {
+            "summary": "Must be sent in response to a QoS 1 PUBLISH received from client.",
+            "evidence_refs": [
+              "message_e8"
+            ]
+          }
+        ],
+        "expected_responses": [],
+        "state_effects": [
+          {
+            "summary": "Completes QoS 1 delivery; allows sender to discard message from in-flight state.",
+            "evidence_refs": [
+              "disc_e2"
+            ]
+          }
+        ],
+        "error_paths": [],
+        "evidence_refs": [
+          "message_e11",
+          "message_e12"
+        ]
+      },
+      {
+        "name": "SUBSCRIBE",
+        "kind": "command",
+        "direction": "client_to_server",
+        "syntax_or_layout": "Fixed header (control packet type = 8, reserved bits = 0), variable header (Packet Identifier), payload (list of Topic Filters and requested QoS levels). Remaining Length = 2 + payload length.",
+        "fields": [
+          {
+            "name": "Packet Identifier",
+            "role": "correlates request with SUBACK response",
+            "constraints": [
+              "2-byte unsigned integer",
+              "must be present"
+            ],
+            "evidence_refs": [
+              "message_e13"
+            ]
+          },
+          {
+            "name": "Topic Filter",
+            "role": "specifies topics of interest, possibly with wildcards",
+            "constraints": [
+              "UTF-8 encoded string",
+              "may contain '+' or '#' wildcards per MQTT wildcard rules"
+            ],
+            "evidence_refs": [
+              "disc_e11"
+            ]
+          },
+          {
+            "name": "Requested QoS",
+            "role": "maximum desired QoS for matching messages",
+            "constraints": [
+              "3-bit field with value 0, 1, or 2"
+            ],
+            "evidence_refs": [
+              "MQTT_3.1.1-s10-p16"
+            ]
+          }
+        ],
+        "preconditions": [
+          {
+            "summary": "Client must have established network connection.",
+            "evidence_refs": [
+              "disc_e8"
+            ]
+          }
+        ],
+        "expected_responses": [
+          {
+            "surface_unit": "SUBACK",
+            "summary": "Server responds with granted QoS levels per topic filter.",
+            "evidence_refs": [
+              "message_e14"
+            ]
+          }
+        ],
+        "state_effects": [
+          {
+            "summary": "Creates or updates Subscription(s) in Session state.",
+            "evidence_refs": [
+              "disc_e11"
+            ]
+          },
+          {
+            "summary": "If new subscription matches retained topics, retained messages are queued for delivery.",
+            "evidence_refs": [
+              "MQTT_3.1.1-s16-p8"
+            ]
+          }
+        ],
+        "error_paths": [],
+        "evidence_refs": [
+          "message_e13",
+          "message_e14",
+          "MQTT_3.1.1-s10-p16"
+        ]
+      }
+    ],
+    "shared_fields": [
+      {
+        "name": "Packet Identifier",
+        "applies_to": [
+          "PUBLISH",
+          "PUBACK",
+          "PUBREC",
+          "PUBREL",
+          "PUBCOMP",
+          "SUBSCRIBE",
+          "SUBACK",
+          "UNSUBSCRIBE",
+          "UNSUBACK"
+        ],
+        "summary": "16-bit unsigned integer used to correlate messages in QoS 1 and QoS 2 flows.",
+        "constraints": [
+          "MUST NOT reuse Packet Identifier while original packet is in flight for QoS 1 or 2."
+        ],
+        "evidence_refs": [
+          "message_e13"
+        ]
+      },
+      {
+        "name": "Topic Name",
+        "applies_to": [
+          "PUBLISH"
+        ],
+        "summary": "UTF-8 encoded string identifying the information channel to which payload data is published.",
+        "constraints": [
+          "MUST be present as the first field in the PUBLISH Packet Variable header.",
+          "MUST be a UTF-8 encoded string.",
+          "MUST NOT contain wildcard characters."
+        ],
+        "evidence_refs": [
+          "message_e11"
+        ]
+      },
+      {
+        "name": "Topic Filter",
+        "applies_to": [
+          "SUBSCRIBE",
+          "UNSUBSCRIBE"
+        ],
+        "summary": "UTF-8 encoded string with optional wildcards used to match topics for subscription.",
+        "constraints": [
+          "MUST be UTF-8 encoded strings.",
+          "Servers SHOULD support wildcard characters; if not supported, MUST reject any Subscription request containing them."
+        ],
+        "evidence_refs": [
+          "message_e12"
+        ]
+      },
+      {
+        "name": "RETAIN flag",
+        "applies_to": [
+          "PUBLISH"
+        ],
+        "summary": "Controls whether the server stores the message as the retained message for the topic.",
+        "constraints": [
+          "If set to 1, server MUST store the message for future subscribers.",
+          "If set to 0, server MUST NOT store or replace existing retained message.",
+          "A zero-byte payload with RETAIN=1 removes any existing retained message but MUST NOT be stored itself."
+        ],
+        "evidence_refs": [
+          "message_e14"
+        ]
+      },
+      {
+        "name": "QoS level",
+        "applies_to": [
+          "PUBLISH",
+          "SUBSCRIBE"
+        ],
+        "summary": "Specifies delivery guarantee level (0, 1, or 2).",
+        "constraints": [
+          "Valid values are 0, 1, or 2.",
+          "In SUBSCRIBE, specifies maximum QoS at which server can send messages."
+        ],
+        "evidence_refs": [
+          "message_e15"
+        ]
+      }
+    ],
+    "global_framing_rules": [
+      {
+        "summary": "All MQTT Control Packets follow a common binary framing structure consisting of a fixed header, optional variable header, and optional payload.",
+        "evidence_refs": [
+          "message_e17"
+        ]
+      },
+      {
+        "summary": "The Remaining Length field encodes the number of bytes in the variable header plus payload using a variable-length encoding up to 4 bytes.",
+        "evidence_refs": [
+          "message_e18"
+        ]
+      },
+      {
+        "summary": "Packet Identifiers are only included in packets where QoS > 0 (for PUBLISH) or for acknowledgment/control flows (SUBSCRIBE, etc.).",
+        "evidence_refs": [
+          "message_e13"
+        ]
+      }
+    ],
+    "code_spaces": [
+      {
+        "name": "CONNACK return codes",
+        "entries": [
+          {
+            "name": "0x00",
+            "meaning": "Connection Accepted",
+            "evidence_refs": [
+              "message_e16"
+            ]
+          },
+          {
+            "name": "0x01",
+            "meaning": "Connection Refused, unacceptable protocol version",
+            "evidence_refs": [
+              "message_e16"
+            ]
+          },
+          {
+            "name": "0x02",
+            "meaning": "Connection Refused, identifier rejected",
+            "evidence_refs": [
+              "message_e16"
+            ]
+          },
+          {
+            "name": "0x03",
+            "meaning": "Connection Refused, Server unavailable",
+            "evidence_refs": [
+              "message_e16"
+            ]
+          },
+          {
+            "name": "0x04",
+            "meaning": "Connection Refused, bad user name or password",
+            "evidence_refs": [
+              "message_e16"
+            ]
+          },
+          {
+            "name": "0x05",
+            "meaning": "Connection Refused, not authorized",
+            "evidence_refs": [
+              "message_e16"
+            ]
+          }
+        ],
+        "evidence_refs": [
+          "message_e16"
+        ]
+      },
+      {
+        "name": "SUBACK return codes",
+        "entries": [
+          {
+            "name": "0x00",
+            "meaning": "Success - Maximum QoS 0",
+            "evidence_refs": [
+              "message_e19"
+            ]
+          },
+          {
+            "name": "0x01",
+            "meaning": "Success - Maximum QoS 1",
+            "evidence_refs": [
+              "message_e19"
+            ]
+          },
+          {
+            "name": "0x02",
+            "meaning": "Success - Maximum QoS 2",
+            "evidence_refs": [
+              "message_e19"
+            ]
+          },
+          {
+            "name": "0x80",
+            "meaning": "Failure - Subscription not granted",
+            "evidence_refs": [
+              "message_e19"
+            ]
+          }
+        ],
+        "evidence_refs": [
+          "message_e19"
+        ]
+      }
+    ]
+  },
+  "state_model": {
+    "state_scopes": [
+      {
+        "name": "connection",
+        "summary": "State that exists only for the duration of a network connection; discarded when the connection ends.",
+        "evidence_refs": [
+          "state_e1"
+        ]
+      },
+      {
+        "name": "session",
+        "summary": "State that persists across network disconnections when CleanSession=0, identified by ClientId.",
+        "evidence_refs": [
+          "state_e2"
+        ]
+      },
+      {
+        "name": "transaction",
+        "summary": "State tracking individual QoS 2 message delivery exchanges using PUBREC/PUBREL/PUBCOMP sequence.",
+        "evidence_refs": [
+          "state_e3"
+        ]
+      },
+      {
+        "name": "implementation_defined",
+        "summary": "State whose lifetime and scope are not strictly defined by the protocol but are implementation-specific (e.g., retained messages).",
+        "evidence_refs": [
+          "state_e4"
+        ]
+      }
+    ],
+    "state_objects": [
+      {
+        "name": "Session",
+        "scope": "session",
+        "summary": "Holds client subscriptions and pending/unacknowledged QoS 1/2 messages across disconnections when CleanSession=0.",
+        "evidence_refs": [
+          "state_e5"
+        ]
+      },
+      {
+        "name": "In-flight QoS 2 Exchange",
+        "scope": "transaction",
+        "summary": "Tracks state of ongoing QoS 2 message delivery using PUBREC/PUBREL/PUBCOMP sequence.",
+        "evidence_refs": [
+          "state_e3"
+        ]
+      },
+      {
+        "name": "Retained Message Store",
+        "scope": "implementation_defined",
+        "summary": "Server-side storage mapping topic names to the most recently published retained message.",
+        "evidence_refs": [
+          "state_e4"
+        ]
+      }
+    ],
+    "state_nodes": [
+      {
+        "name": "Client Session State",
+        "scope": "session",
+        "summary": "Client-side session state includes unacknowledged outgoing QoS 1/2 PUBLISH messages and unacknowledged incoming QoS 2 messages.",
+        "retained_data_refs": [
+          "Unacknowledged QoS 1/2 Outgoing Messages",
+          "Unacknowledged QoS 2 Incoming Messages"
+        ],
+        "evidence_refs": [
+          "state_e6"
+        ]
+      },
+      {
+        "name": "Server Session State",
+        "scope": "session",
+        "summary": "Server-side session state includes existence flag, subscriptions, unacknowledged outgoing/incoming QoS 1/2 messages, and optionally pending QoS 0 messages.",
+        "retained_data_refs": [
+          "Session Existence Flag",
+          "Subscriptions",
+          "Unacknowledged QoS 1/2 Outgoing Messages",
+          "Pending QoS 1/2 Messages for Client",
+          "Unacknowledged QoS 2 Incoming Messages",
+          "Optional Pending QoS 0 Messages"
+        ],
+        "evidence_refs": [
+          "state_e7"
+        ]
+      },
+      {
+        "name": "QoS 2 Transaction State",
+        "scope": "transaction",
+        "summary": "Per-Packet Identifier state tracking phase of QoS 2 exchange (PUBREC received, PUBREL sent, PUBCOMP received, etc.).",
+        "retained_data_refs": [
+          "QoS 2 Packet Identifier Phase"
+        ],
+        "evidence_refs": [
+          "state_e3"
+        ]
+      }
+    ],
+    "transitions": [
+      {
+        "name": "session_establishment_clean_0_new",
+        "from_state": "disconnected",
+        "trigger": "CONNECT with CleanSession=0 and no existing session",
+        "conditions": [
+          "Server has no stored session for ClientId"
+        ],
+        "actions": [
+          "Create new session",
+          "Store session state after disconnection"
+        ],
+        "to_state": "connected_session_new",
+        "retained_data_effects": [
+          "Session state initialized empty",
+          "Subscriptions start empty"
+        ],
+        "cleanup_effects": [],
+        "evidence_refs": [
+          "state_e1"
+        ]
+      },
+      {
+        "name": "session_establishment_clean_0_resume",
+        "from_state": "disconnected",
+        "trigger": "CONNECT with CleanSession=0 and existing session",
+        "conditions": [
+          "Server has stored session for ClientId"
+        ],
+        "actions": [
+          "Resume communications based on stored session"
+        ],
+        "to_state": "connected_session_resumed",
+        "retained_data_effects": [
+          "Existing subscriptions restored",
+          "Unacknowledged QoS 1/2 messages retained"
+        ],
+        "cleanup_effects": [],
+        "evidence_refs": [
+          "state_e1"
+        ]
+      },
+      {
+        "name": "session_establishment_clean_1",
+        "from_state": "disconnected",
+        "trigger": "CONNECT with CleanSession=1",
+        "conditions": [],
+        "actions": [
+          "Discard any previous session",
+          "Start new transient session"
+        ],
+        "to_state": "connected_session_transient",
+        "retained_data_effects": [
+          "No prior session data reused"
+        ],
+        "cleanup_effects": [
+          "Previous session state discarded"
+        ],
+        "evidence_refs": [
+          "state_e2"
+        ]
+      },
+      {
+        "name": "session_disconnect_persistent",
+        "from_state": "connected_session_new|connected_session_resumed",
+        "trigger": "Network disconnection with CleanSession=0",
+        "conditions": [],
+        "actions": [
+          "Store session state including subscriptions and unacknowledged QoS 1/2 messages"
+        ],
+        "to_state": "disconnected",
+        "retained_data_effects": [
+          "QoS 1/2 matching messages stored for future delivery",
+          "Subscriptions preserved"
+        ],
+        "cleanup_effects": [],
+        "evidence_refs": [
+          "state_e3"
+        ]
+      },
+      {
+        "name": "session_disconnect_transient",
+        "from_state": "connected_session_transient",
+        "trigger": "Network disconnection with CleanSession=1",
+        "conditions": [],
+        "actions": [
+          "Discard session state"
+        ],
+        "to_state": "disconnected",
+        "retained_data_effects": [],
+        "cleanup_effects": [
+          "All session state deleted"
+        ],
+        "evidence_refs": [
+          "state_e2"
+        ]
+      },
+      {
+        "name": "qos2_publish_received_first_time",
+        "from_state": "idle",
+        "trigger": "PUBLISH QoS=2 received with new Packet Identifier",
+        "conditions": [
+          "Packet Identifier not in current in-flight set"
+        ],
+        "actions": [
+          "Store message as unacknowledged QoS 2 receive",
+          "Send PUBREC"
+        ],
+        "to_state": "qos2_wait_pubrel",
+        "retained_data_effects": [
+          "Message stored in session until PUBCOMP sent"
+        ],
+        "cleanup_effects": [],
+        "evidence_refs": [
+          "state_e4"
+        ]
+      },
+      {
+        "name": "qos2_publish_duplicate_received",
+        "from_state": "qos2_wait_pubrel",
+        "trigger": "PUBLISH QoS=2 re-received with same Packet Identifier",
+        "conditions": [
+          "Packet Identifier matches in-flight receive transaction"
+        ],
+        "actions": [
+          "Send PUBREC again",
+          "Do not deliver duplicate onward"
+        ],
+        "to_state": "qos2_wait_pubrel",
+        "retained_data_effects": [],
+        "cleanup_effects": [],
+        "evidence_refs": [
+          "state_e5"
+        ]
+      },
+      {
+        "name": "qos2_pubrel_received",
+        "from_state": "qos2_wait_pubrel",
+        "trigger": "PUBREL received with matching Packet Identifier",
+        "conditions": [],
+        "actions": [
+          "Send PUBCOMP",
+          "Mark message as fully acknowledged"
+        ],
+        "to_state": "idle",
+        "retained_data_effects": [],
+        "cleanup_effects": [
+          "Remove in-flight QoS 2 receive state"
+        ],
+        "evidence_refs": [
+          "state_e6"
+        ]
+      },
+      {
+        "name": "qos2_publish_after_pubcomp",
+        "from_state": "idle",
+        "trigger": "PUBLISH QoS=2 received with previously used Packet Identifier (after PUBCOMP)",
+        "conditions": [
+          "Packet Identifier was used in completed transaction"
+        ],
+        "actions": [
+          "Treat as new publication"
+        ],
+        "to_state": "qos2_wait_pubrel",
+        "retained_data_effects": [
+          "New message stored"
+        ],
+        "cleanup_effects": [],
+        "evidence_refs": [
+          "state_e7"
+        ]
+      },
+      {
+        "name": "reconnect_resend_unacked",
+        "from_state": "disconnected",
+        "trigger": "Reconnect with CleanSession=0",
+        "conditions": [
+          "Unacknowledged QoS>0 PUBLISH or PUBREL exist in session"
+        ],
+        "actions": [
+          "Resend all unacknowledged PUBLISH and PUBREL with original Packet Identifiers",
+          "Preserve send order"
+        ],
+        "to_state": "connected_session_resumed",
+        "retained_data_effects": [
+          "Original Packet Identifiers reused",
+          "Message ordering preserved"
+        ],
+        "cleanup_effects": [],
+        "evidence_refs": [
+          "state_e8"
+        ]
+      }
+    ],
+    "timers_and_constants": [
+      {
+        "name": "Packet Identifier reuse prohibition",
+        "kind": "recommended",
+        "value_or_rule": "MUST NOT reuse Packet Identifier while original packet is in flight for QoS 1 or 2",
+        "scope": "session",
+        "evidence_refs": [
+          "state_e9"
+        ]
+      },
+      {
+        "name": "Retained message persistence",
+        "kind": "constant",
+        "value_or_rule": "Retained messages are not part of Session state and MUST NOT be deleted when Session ends",
+        "scope": "server_global",
+        "evidence_refs": [
+          "state_e10"
+        ]
+      },
+      {
+        "name": "Session state contents (Client)",
+        "kind": "constant",
+        "value_or_rule": "Client session state includes: QoS 1/2 sent but unacknowledged; QoS 2 received but unacknowledged",
+        "scope": "client_session",
+        "evidence_refs": [
+          "state_e11"
+        ]
+      },
+      {
+        "name": "Session state contents (Server)",
+        "kind": "constant",
+        "value_or_rule": "Server session state includes: session existence flag, subscriptions, QoS 1/2 sent but unacknowledged, QoS 1/2 pending transmission, QoS 2 received but unacknowledged, optionally QoS 0 pending",
+        "scope": "server_session",
+        "evidence_refs": [
+          "state_e11"
+        ]
+      }
+    ],
+    "retained_data": [
+      {
+        "name": "Session Existence Flag",
+        "scope": "session",
+        "summary": "Indicates that a session exists even if all other session state is empty.",
+        "cleanup_conditions": [
+          "CleanSession=1 on next CONNECT",
+          "Administrative deletion",
+          "Resource exhaustion"
+        ],
+        "evidence_refs": [
+          "state_e7"
+        ]
+      },
+      {
+        "name": "Subscriptions",
+        "scope": "session",
+        "summary": "Topic filters and associated QoS levels subscribed by the client.",
+        "cleanup_conditions": [
+          "CleanSession=1 on next CONNECT",
+          "Administrative deletion",
+          "UNSUBSCRIBE command"
+        ],
+        "evidence_refs": [
+          "state_e7"
+        ]
+      },
+      {
+        "name": "Unacknowledged QoS 1/2 Outgoing Messages",
+        "scope": "session",
+        "summary": "Messages sent but not yet fully acknowledged (PUBACK for QoS 1, PUBCOMP for QoS 2).",
+        "cleanup_conditions": [
+          "Successful acknowledgment",
+          "CleanSession=1 on next CONNECT",
+          "Administrative deletion"
+        ],
+        "evidence_refs": [
+          "state_e6",
+          "state_e7"
+        ]
+      },
+      {
+        "name": "Pending QoS 1/2 Messages for Client",
+        "scope": "session",
+        "summary": "Messages matched to client subscriptions that are queued for delivery after reconnection.",
+        "cleanup_conditions": [
+          "Successful delivery and acknowledgment",
+          "CleanSession=1 on next CONNECT",
+          "Administrative deletion"
+        ],
+        "evidence_refs": [
+          "state_e7"
+        ]
+      },
+      {
+        "name": "Unacknowledged QoS 2 Incoming Messages",
+        "scope": "session",
+        "summary": "QoS 2 messages received but not yet fully acknowledged by sending PUBCOMP.",
+        "cleanup_conditions": [
+          "Successful acknowledgment via PUBCOMP",
+          "CleanSession=1 on next CONNECT",
+          "Administrative deletion"
+        ],
+        "evidence_refs": [
+          "state_e6",
+          "state_e7"
+        ]
+      },
+      {
+        "name": "Optional Pending QoS 0 Messages",
+        "scope": "session",
+        "summary": "QoS 0 messages that the server may optionally store for disconnected clients with CleanSession=0.",
+        "cleanup_conditions": [
+          "Delivery attempt (no acknowledgment required)",
+          "Administrative deletion"
+        ],
+        "evidence_refs": [
+          "state_e7"
+        ]
+      },
+      {
+        "name": "QoS 2 Packet Identifier Phase",
+        "scope": "transaction",
+        "summary": "Current phase of QoS 2 exchange for a given Packet Identifier (e.g., awaiting PUBREL, awaiting PUBCOMP).",
+        "cleanup_conditions": [
+          "Completion of PUBCOMP exchange",
+          "Session termination with CleanSession=1"
+        ],
+        "evidence_refs": [
+          "state_e3"
+        ]
+      },
+      {
+        "name": "Retained Messages",
+        "scope": "implementation_defined",
+        "summary": "Last published message per topic with RETAIN flag set, stored independently of any session.",
+        "cleanup_conditions": [
+          "New retained message published to same topic with zero-length payload",
+          "Administrative deletion"
+        ],
+        "evidence_refs": [
+          "state_e4"
+        ]
+      }
+    ],
+    "cleanup_rules": [
+      {
+        "name": "CleanSession=1 Discard Rule",
+        "summary": "When CleanSession=1 is used in CONNECT, both client and server must discard any previous session state and not reuse it.",
+        "affected_objects": [
+          "Session"
+        ],
+        "evidence_refs": [
+          "state_e8"
+        ]
+      },
+      {
+        "name": "Session Termination by Administrator",
+        "summary": "Stored session state may be discarded due to administrative action, resource constraints, or policy, effectively terminating the session.",
+        "affected_objects": [
+          "Session"
+        ],
+        "evidence_refs": [
+          "state_e9"
+        ]
+      },
+      {
+        "name": "Retained Message Deletion Rule",
+        "summary": "Retained messages are not part of session state and must not be deleted when a session ends.",
+        "affected_objects": [
+          "Retained Message Store"
+        ],
+        "evidence_refs": [
+          "state_e4"
+        ]
+      },
+      {
+        "name": "Packet Identifier Reuse Prohibition",
+        "summary": "A Packet Identifier must not be reused while the original packet is still in flight for QoS 1 or 2.",
+        "affected_objects": [
+          "QoS 2 Packet Identifier Phase",
+          "Unacknowledged QoS 1/2 Outgoing Messages"
+        ],
+        "evidence_refs": [
+          "state_e10"
+        ]
+      }
+    ]
+  },
+  "routing_model": {
+    "dispatch_keys": [
+      {
+        "name": "Topic Name",
+        "summary": "UTF-8 encoded string in PUBLISH messages used as the primary key for routing application messages to subscribers.",
+        "evidence_refs": [
+          "routing_e1"
+        ]
+      },
+      {
+        "name": "ClientId",
+        "summary": "Unique identifier for a client used by the server to associate subscriptions and deliver messages to the correct session.",
+        "evidence_refs": [
+          "routing_e2"
+        ]
+      }
+    ],
+    "dispatch_targets": [
+      {
+        "name": "Client Session",
+        "summary": "Represents the destination endpoint (client) that receives published messages matching its subscriptions; identified by ClientId and maintained across network disconnections if CleanSession=0.",
+        "evidence_refs": [
+          "routing_e3"
+        ]
+      }
+    ],
+    "matching_rules": [
+      {
+        "summary": "A Topic Name matches a Topic Filter if each non-wildcard level in the filter matches the corresponding level in the topic name character-for-character, without normalization or substitution of unrecognized characters.",
+        "evidence_refs": [
+          "routing_e4"
+        ]
+      },
+      {
+        "summary": "The Server MUST deliver a message to every client whose subscription’s Topic Filter matches the message’s Topic Name according to the matching process defined in Section 4.7.",
+        "evidence_refs": [
+          "routing_e5"
+        ]
+      },
+      {
+        "summary": "Topic Names in PUBLISH packets MUST NOT contain wildcard characters, while Topic Filters in SUBSCRIBE packets MAY contain wildcards ('+' for single-level, '#' for multi-level).",
+        "evidence_refs": [
+          "routing_e6"
+        ]
+      },
+      {
+        "summary": "If multiple subscriptions exist for a client with overlapping filters, the server delivers the message once per matching subscription, respecting the maximum QoS granted for each.",
+        "evidence_refs": [
+          "routing_e7"
+        ]
+      }
+    ]
+  },
+  "resource_model": {
+    "resource_objects": [
+      {
+        "name": "Topic",
+        "kind": "logical_resource",
+        "creation_rules": [
+          "The topic resource MAY be either predefined in the Server by an administrator or it MAY be dynamically created by the Server when it receives the first subscription or an Application Message with that Topic Name."
+        ],
+        "lifetime_rules": [
+          "Topic Names are UTF-8 encoded strings that MUST NOT encode to more than 65535 bytes.",
+          "There is no limit to the number of levels in a Topic Name other than the overall UTF-8 string length constraint."
+        ],
+        "deletion_rules": [
+          "A PUBLISH Packet with a RETAIN flag set to 1 and a payload containing zero bytes causes any existing retained message with the same topic name to be removed; future subscribers will not receive a retained message for that topic.",
+          "A zero-byte retained message MUST NOT be stored as a retained message on the Server."
+        ],
+        "persistence": "server_persistent",
+        "ownership": "server",
+        "linked_surface_units": [
+          "PUBLISH",
+          "Topic Name",
+          "RETAIN flag"
+        ],
+        "evidence_refs": [
+          "resource_e1",
+          "resource_e2",
+          "resource_e3"
+        ]
+      },
+      {
+        "name": "Subscription",
+        "kind": "logical_resource",
+        "creation_rules": [
+          "Where the Topic Filter is not identical to any existing Subscription’s filter, a new Subscription is created and all matching retained messages are sent.",
+          "A Subscription is established via a SUBSCRIBE packet containing at least one Topic Filter / QoS pair."
+        ],
+        "lifetime_rules": [
+          "Subscriptions are tied to client sessions; they persist across network disconnections if CleanSession=0.",
+          "The Server MUST deliver messages respecting the maximum QoS granted for the Subscription."
+        ],
+        "deletion_rules": [
+          "Subscriptions are removed upon receipt of an UNSUBSCRIBE command from the client.",
+          "Subscriptions may be implicitly removed when a session ends if CleanSession=1."
+        ],
+        "persistence": "session_scoped",
+        "ownership": "client",
+        "linked_surface_units": [
+          "SUBSCRIBE",
+          "UNSUBSCRIBE",
+          "Topic Filter",
+          "QoS level"
+        ],
+        "evidence_refs": [
+          "resource_e4",
+          "resource_e5"
+        ]
+      },
+      {
+        "name": "ClientId",
+        "kind": "logical_resource",
+        "creation_rules": [
+          "ClientId is provided by the client in the CONNECT packet.",
+          "If a zero-byte ClientId is provided with CleanSession=1, the server MUST assign a unique ClientId."
+        ],
+        "lifetime_rules": [
+          "ClientId is used to manage sessions and retained message delivery.",
+          "Maximum ClientId length is at least 23 UTF-8 encoded bytes; servers may allow longer."
+        ],
+        "deletion_rules": [
+          "ClientId association ends when the session ends (depending on CleanSession setting)."
+        ],
+        "persistence": "session_scoped",
+        "ownership": "client",
+        "linked_surface_units": [
+          "CONNECT",
+          "ClientId"
+        ],
+        "evidence_refs": [
+          "resource_e6"
+        ]
+      }
+    ],
+    "lifecycle_rules": [
+      {
+        "summary": "A retained message for a topic is created or replaced when a PUBLISH with RETAIN=1 and non-zero payload is received; it is deleted when a PUBLISH with RETAIN=1 and zero-byte payload is received.",
+        "resource_objects": [
+          "Topic"
+        ],
+        "evidence_refs": [
+          "resource_e1"
+        ]
+      },
+      {
+        "summary": "A Subscription is created upon receipt of a SUBSCRIBE packet with a new Topic Filter; it persists across network disconnections if CleanSession=0.",
+        "resource_objects": [
+          "Subscription"
+        ],
+        "evidence_refs": [
+          "resource_e2",
+          "resource_e3"
+        ]
+      },
+      {
+        "summary": "A Subscription is deleted upon receipt of an UNSUBSCRIBE packet; the server must complete delivery of any in-flight QoS 1 or QoS 2 messages before deletion takes full effect.",
+        "resource_objects": [
+          "Subscription"
+        ],
+        "evidence_refs": [
+          "resource_e4"
+        ]
+      },
+      {
+        "summary": "A Will Message (a special retained or non-retained message) is stored upon successful CONNECT with Will Flag=1 and deleted either upon publishing due to unexpected disconnect or upon receipt of a DISCONNECT packet.",
+        "resource_objects": [
+          "Topic"
+        ],
+        "evidence_refs": [
+          "resource_e5"
+        ]
+      }
+    ],
+    "persistence_scope": [
+      {
+        "name": "Retained Message",
+        "scope": "server_persistent",
+        "summary": "Retained messages are stored independently of client sessions and persist beyond session termination.",
+        "evidence_refs": [
+          "resource_e6"
+        ]
+      },
+      {
+        "name": "Subscription",
+        "scope": "session_scoped",
+        "summary": "Subscriptions are part of session state and persist only when CleanSession=0; they are discarded when CleanSession=1 or when the session ends permanently.",
+        "evidence_refs": [
+          "resource_e3",
+          "resource_e7"
+        ]
+      },
+      {
+        "name": "ClientId",
+        "scope": "session_scoped",
+        "summary": "The ClientId identifies a session; its association with session state lasts as long as the session, which may span multiple network connections if CleanSession=0.",
+        "evidence_refs": [
+          "resource_e3"
+        ]
+      }
+    ],
+    "ownership_and_authority": [
+      {
+        "actor": "Client",
+        "capability": "publish_retained_message",
+        "summary": "A client can create, replace, or delete a retained message on a topic by publishing with RETAIN=1 and appropriate payload.",
+        "evidence_refs": [
+          "resource_e1"
+        ]
+      },
+      {
+        "actor": "Client",
+        "capability": "create_subscription",
+        "summary": "A client creates a subscription by sending a SUBSCRIBE packet; the server grants it subject to policy.",
+        "evidence_refs": [
+          "resource_e2"
+        ]
+      },
+      {
+        "actor": "Client",
+        "capability": "delete_subscription",
+        "summary": "A client deletes its own subscriptions by sending an UNSUBSCRIBE packet.",
+        "evidence_refs": [
+          "resource_e4"
+        ]
+      },
+      {
+        "actor": "Server",
+        "capability": "manage_retained_storage",
+        "summary": "The server stores, replaces, deletes, and delivers retained messages according to protocol rules; it may discard QoS 0 retained messages at any time.",
+        "evidence_refs": [
+          "resource_e8"
+        ]
+      }
+    ],
+    "storage_requirements": [
+      {
+        "summary": "Servers MUST store the last retained message and its QoS for each topic that has one, except zero-byte payloads which MUST NOT be stored.",
+        "evidence_refs": [
+          "resource_e1",
+          "resource_e9"
+        ]
+      },
+      {
+        "summary": "Servers MUST store session state (including subscriptions and in-flight QoS 1/2 messages) for the duration of a session with CleanSession=0.",
+        "evidence_refs": [
+          "resource_e3",
+          "resource_e7"
+        ]
+      },
+      {
+        "summary": "Servers MAY discard retained messages published at QoS 0 at any time, implying no durability guarantee for such messages.",
+        "evidence_refs": [
+          "resource_e8"
+        ]
+      }
+    ],
+    "business_operations": [
+      {
+        "name": "PublishMessage",
+        "summary": "Deliver an application message to a topic, optionally storing it as the retained message.",
+        "resource_objects": [
+          "Topic"
+        ],
+        "linked_surface_units": [
+          "PUBLISH",
+          "RETAIN flag",
+          "QoS level"
+        ],
+        "evidence_refs": [
+          "resource_e2",
+          "resource_e3"
+        ]
+      },
+      {
+        "name": "SubscribeToTopic",
+        "summary": "Establish a subscription to one or more topics using topic filters, enabling message delivery based on matches.",
+        "resource_objects": [
+          "Subscription",
+          "Topic"
+        ],
+        "linked_surface_units": [
+          "SUBSCRIBE",
+          "Topic Filter",
+          "QoS level"
+        ],
+        "evidence_refs": [
+          "resource_e4"
+        ]
+      },
+      {
+        "name": "UnsubscribeFromTopic",
+        "summary": "Remove one or more subscriptions associated with topic filters.",
+        "resource_objects": [
+          "Subscription"
+        ],
+        "linked_surface_units": [
+          "UNSUBSCRIBE",
+          "Topic Filter"
+        ],
+        "evidence_refs": [
+          "resource_e7"
+        ]
+      },
+      {
+        "name": "EstablishSession",
+        "summary": "Initiate a connection with a unique ClientId, managing session state and message delivery guarantees.",
+        "resource_objects": [
+          "ClientId"
+        ],
+        "linked_surface_units": [
+          "CONNECT",
+          "CONNACK"
+        ],
+        "evidence_refs": [
+          "resource_e6"
+        ]
+      }
+    ]
+  },
+  "error_and_limits": {
+    "error_matrix": [
+      {
+        "condition": "UNSUBSCRIBE packet has reserved bits (3,2,1,0) in fixed header not equal to 0,0,1,0",
+        "applicable_surface_units": [
+          "UNSUBSCRIBE"
+        ],
+        "actor": "server",
+        "required_action": "close the Network Connection",
+        "state_cleanup": "terminate session and release associated resources",
+        "severity": "fatal",
+        "normative_strength": "MUST",
+        "evidence_refs": [
+          "error_e1"
+        ]
+      },
+      {
+        "condition": "UNSUBSCRIBE packet payload is empty",
+        "applicable_surface_units": [
+          "UNSUBSCRIBE"
+        ],
+        "actor": "server",
+        "required_action": "treat as protocol violation and close the Network Connection",
+        "state_cleanup": "terminate session and release associated resources",
+        "severity": "fatal",
+        "normative_strength": "MUST",
+        "evidence_refs": [
+          "error_e2"
+        ]
+      },
+      {
+        "condition": "SUBSCRIBE packet has reserved bits (3,2,1,0) in fixed header not equal to 0,0,1,0",
+        "applicable_surface_units": [
+          "SUBSCRIBE"
+        ],
+        "actor": "server",
+        "required_action": "treat as malformed and close the Network Connection",
+        "state_cleanup": "terminate session and release associated resources",
+        "severity": "fatal",
+        "normative_strength": "MUST",
+        "evidence_refs": [
+          "error_e3"
+        ]
+      },
+      {
+        "condition": "SUBSCRIBE packet payload is empty",
+        "applicable_surface_units": [
+          "SUBSCRIBE"
+        ],
+        "actor": "server",
+        "required_action": "treat as protocol violation and close the Network Connection",
+        "state_cleanup": "terminate session and release associated resources",
+        "severity": "fatal",
+        "normative_strength": "MUST",
+        "evidence_refs": [
+          "error_e4"
+        ]
+      },
+      {
+        "condition": "SUBSCRIBE packet contains a QoS value not in {0,1,2}",
+        "applicable_surface_units": [
+          "SUBSCRIBE"
+        ],
+        "actor": "server",
+        "required_action": "treat as malformed and close the Network Connection",
+        "state_cleanup": "terminate session and release associated resources",
+        "severity": "fatal",
+        "normative_strength": "MUST",
+        "evidence_refs": [
+          "error_e5"
+        ]
+      },
+      {
+        "condition": "SUBSCRIBE packet contains non-zero reserved bits in payload",
+        "applicable_surface_units": [
+          "SUBSCRIBE"
+        ],
+        "actor": "server",
+        "required_action": "treat as malformed and close the Network Connection",
+        "state_cleanup": "terminate session and release associated resources",
+        "severity": "fatal",
+        "normative_strength": "MUST",
+        "evidence_refs": [
+          "error_e5"
+        ]
+      },
+      {
+        "condition": "PUBREL packet has reserved bits (3,2,1,0) in fixed header not equal to 0,0,1,0",
+        "applicable_surface_units": [
+          "PUBREL"
+        ],
+        "actor": "server",
+        "required_action": "treat as malformed and close the Network Connection",
+        "state_cleanup": "terminate session and release associated resources",
+        "severity": "fatal",
+        "normative_strength": "MUST",
+        "evidence_refs": [
+          "error_e6"
+        ]
+      },
+      {
+        "condition": "Any MQTT control packet has invalid flag bits (reserved bits not set to values specified in Table 2.2)",
+        "applicable_surface_units": [
+          "CONNECT",
+          "CONNACK",
+          "PUBLISH",
+          "PUBACK",
+          "PUBREC",
+          "PUBREL",
+          "PUBCOMP",
+          "SUBSCRIBE",
+          "SUBACK",
+          "UNSUBSCRIBE",
+          "UNSUBACK",
+          "PINGREQ",
+          "PINGRESP",
+          "DISCONNECT"
+        ],
+        "actor": "receiver",
+        "required_action": "close the Network Connection",
+        "state_cleanup": "terminate session and release associated resources",
+        "severity": "fatal",
+        "normative_strength": "MUST",
+        "evidence_refs": [
+          "error_e7"
+        ]
+      }
+    ],
+    "limits": {
+      "fixed_protocol_constants": [
+        {
+          "name": "Maximum UTF-8 string length",
+          "value_or_rule": "65535 bytes",
+          "unit": "bytes",
+          "scope": "protocol_wide",
+          "evidence_refs": [
+            "limit_e1"
+          ]
+        },
+        {
+          "name": "Packet Identifier width",
+          "value_or_rule": "16-bit unsigned integer",
+          "unit": "bits",
+          "scope": "qos_flows",
+          "evidence_refs": [
+            "limit_e2"
+          ]
+        }
+      ],
+      "defaults": [],
+      "recommended_values": [
+        {
+          "name": "Packet Identifier reuse policy",
+          "value_or_rule": "MUST NOT reuse Packet Identifier while original packet is in flight for QoS 1 or 2",
+          "unit": "policy",
+          "scope": "client_server_implementation",
+          "evidence_refs": [
+            "limit_e3"
+          ]
+        }
+      ],
+      "hard_bounds": [
+        {
+          "name": "UTF-8 string null character prohibition",
+          "value_or_rule": "U+0000 MUST NOT appear in any UTF-8 encoded string field",
+          "unit": "codepoint",
+          "scope": "all_string_fields",
+          "evidence_refs": [
+            "limit_e4"
+          ]
+        },
+        {
+          "name": "Ill-formed UTF-8 handling",
+          "value_or_rule": "Control Packets containing ill-formed UTF-8 MUST cause connection closure",
+          "unit": "validation_rule",
+          "scope": "packet_parsing",
+          "evidence_refs": [
+            "limit_e5"
+          ]
+        },
+        {
+          "name": "SUBSCRIBE payload minimum size",
+          "value_or_rule": "At least one Topic Filter / QoS pair required",
+          "unit": "payload_item",
+          "scope": "subscribe_message",
+          "evidence_refs": [
+            "limit_e6"
+          ]
+        },
+        {
+          "name": "QoS value range",
+          "value_or_rule": "QoS must be 0, 1, or 2",
+          "unit": "enum",
+          "scope": "publish_subscribe",
+          "evidence_refs": [
+            "limit_e7"
+          ]
+        },
+        {
+          "name": "SUBACK return code values",
+          "value_or_rule": "Only 0x00, 0x01, 0x02, and 0x80 allowed",
+          "unit": "code",
+          "scope": "subscription_acknowledgment",
+          "evidence_refs": [
+            "limit_e8"
+          ]
+        }
+      ],
+      "configurable_bounds": [
+        {
+          "name": "ClientId length minimum",
+          "value_or_rule": "At least 23 UTF-8 encoded bytes; servers may allow longer",
+          "unit": "bytes",
+          "scope": "client_identification",
+          "evidence_refs": [
+            "limit_e9"
+          ]
+        }
+      ]
+    },
+    "security_requirements": {
+      "base_protocol_requirements": [
+        {
+          "summary": "Implementations encountering transient errors during inbound packet processing MUST close the network connection",
+          "evidence_refs": [
+            "security_e1"
+          ]
+        },
+        {
+          "summary": "Receivers MUST close connection on receipt of ill-formed UTF-8 or U+0000 in string fields",
+          "evidence_refs": [
+            "security_e2"
+          ]
+        },
+        {
+          "summary": "Servers MUST disconnect existing client if new CONNECT arrives with same ClientId",
+          "evidence_refs": [
+            "security_e3"
+          ]
+        }
+      ],
+      "recommended_practices": [
+        {
+          "summary": "Use TLS [RFC5246] on TCP port 8883 (IANA service name: secure-mqtt) when offering TLS",
+          "evidence_refs": [
+            "security_e4"
+          ]
+        },
+        {
+          "summary": "Avoid Unicode control characters U+0001..U+001F and U+007F..U+009F; receivers MAY close connection if present",
+          "evidence_refs": [
+            "security_e5"
+          ]
+        },
+        {
+          "summary": "MQTT over WebSocket MUST use binary data frames; non-binary frames require connection closure",
+          "evidence_refs": [
+            "security_e6"
+          ]
+        }
+      ],
+      "external_security_dependencies": [
+        {
+          "name": "TLS [RFC5246]",
+          "summary": "Provides authentication, integrity, and privacy for secured transport profile",
+          "evidence_refs": [
+            "security_e7"
+          ]
+        },
+        {
+          "name": "Industry-specific security frameworks",
+          "summary": "Profiles may reference NISTCSF, NISTIR 7628, FIPS1402, PCIDSS, NSA Suite B",
+          "evidence_refs": [
+            "security_e8"
+          ]
+        }
+      ],
+      "explicitly_out_of_scope_security_features": [
+        {
+          "summary": "MQTT as a transport protocol is concerned only with message transmission; implementers are responsible for providing appropriate security features",
+          "evidence_refs": [
+            "security_e9"
+          ]
+        }
+      ]
+    },
+    "out_of_scope_candidates": []
+  },
+  "minimum_v1": {
+    "must_support_surface": [
+      {
+        "name": "CONNECT",
+        "reason": "Required to initiate a connection; without it, no session or message exchange is possible.",
+        "evidence_refs": [
+          "v1_e7"
+        ]
+      },
+      {
+        "name": "CONNACK",
+        "reason": "Required response to CONNECT; defines whether the client is allowed to proceed.",
+        "evidence_refs": [
+          "v1_e8"
+        ]
+      },
+      {
+        "name": "PUBLISH",
+        "reason": "Core message delivery primitive; required for any data exchange.",
+        "evidence_refs": [
+          "v1_e9"
+        ]
+      },
+      {
+        "name": "SUBSCRIBE",
+        "reason": "Required to express interest in topics; without it, server cannot deliver messages based on filters.",
+        "evidence_refs": [
+          "v1_e1"
+        ]
+      },
+      {
+        "name": "SUBACK",
+        "reason": "Mandatory response to SUBSCRIBE; conveys granted QoS or failure per filter.",
+        "evidence_refs": [
+          "v1_e5"
+        ]
+      },
+      {
+        "name": "Topic Name",
+        "reason": "Mandatory field in PUBLISH; identifies the channel for message delivery.",
+        "evidence_refs": [
+          "v1_e9"
+        ]
+      },
+      {
+        "name": "Topic Filter",
+        "reason": "Mandatory payload element in SUBSCRIBE; defines matching rules for subscriptions.",
+        "evidence_refs": [
+          "v1_e1"
+        ]
+      },
+      {
+        "name": "QoS level",
+        "reason": "Controls delivery semantics for PUBLISH and subscription; must be supported at values 0, 1, 2.",
+        "evidence_refs": [
+          "v1_e1",
+          "v1_e3"
+        ]
+      },
+      {
+        "name": "Packet Identifier",
+        "reason": "Required for correlating QoS 1 and QoS 2 message flows; must be assigned and managed.",
+        "evidence_refs": [
+          "v1_e4"
+        ]
+      }
+    ],
+    "must_support_state_behaviors": [
+      {
+        "summary": "Maintain in-flight state for QoS 1 PUBLISH until PUBACK is received.",
+        "linked_state_objects": [
+          "In-flight QoS 2 Exchange"
+        ],
+        "evidence_refs": [
+          "v1_e4"
+        ]
+      },
+      {
+        "summary": "Maintain in-flight state for QoS 2 PUBLISH through PUBREC/PUBREL/PUBCOMP sequence.",
+        "linked_state_objects": [
+          "In-flight QoS 2 Exchange"
+        ],
+        "evidence_refs": [
+          "v1_e6"
+        ]
+      },
+      {
+        "summary": "Replace existing subscription when identical Topic Filter is resubscribed.",
+        "linked_state_objects": [
+          "Session"
+        ],
+        "evidence_refs": [
+          "v1_e5"
+        ]
+      }
+    ],
+    "must_support_error_paths": [
+      {
+        "condition": "SUBSCRIBE packet contains reserved bits set or invalid QoS (not 0/1/2).",
+        "required_action": "Treat as malformed and close network connection.",
+        "evidence_refs": [
+          "v1_e2"
+        ]
+      },
+      {
+        "condition": "SUBSCRIBE packet has empty payload.",
+        "required_action": "Treat as protocol violation.",
+        "evidence_refs": [
+          "v1_e2"
+        ]
+      },
+      {
+        "condition": "Client connects with ClientId already in use.",
+        "required_action": "Disconnect the existing client.",
+        "evidence_refs": [
+          "v1_e7"
+        ]
+      }
+    ],
+    "must_support_limits": [
+      {
+        "name": "Topic Filter encoding",
+        "value_or_rule": "Must be UTF-8 encoded strings.",
+        "evidence_refs": [
+          "v1_e1"
+        ]
+      },
+      {
+        "name": "Topic Name encoding",
+        "value_or_rule": "Must be UTF-8 encoded and must not contain wildcards.",
+        "evidence_refs": [
+          "v1_e9"
+        ]
+      },
+      {
+        "name": "Packet Identifier reuse",
+        "value_or_rule": "MUST NOT reuse while original QoS 1/2 packet is unacknowledged.",
+        "evidence_refs": [
+          "v1_e4"
+        ]
+      }
+    ],
+    "may_defer_features": [
+      {
+        "summary": "Support for wildcard characters in Topic Filters is optional; server may reject such subscriptions.",
+        "evidence_refs": [
+          "v1_e1"
+        ]
+      }
+    ],
+    "implementation_assumptions": [
+      {
+        "summary": "Server assumes ownership of Application Message upon sending PUBACK (QoS 1) or PUBREC (QoS 2).",
+        "evidence_refs": [
+          "v1_e4",
+          "v1_e6"
+        ]
+      }
+    ]
+  },
+  "planning_inputs": {
+    "implementation_axes": [
+      "network",
+      "protocol",
+      "server",
+      "state",
+      "router",
+      "resource",
+      "security"
+    ],
+    "planning_checklist": [
+      "传输层与运行模型",
+      "报文模型与编解码范围",
+      "状态对象设计",
+      "路由/调度设计",
+      "安全与边界限制",
+      "存储或资源抽象",
+      "最小可运行功能集",
+      "测试与验证方式"
+    ],
+    "implementation_risks": [
+      "Missing definitions for SUBACK/UNSUBACK may lead to incomplete implementation of subscription lifecycle handling.",
+      "Undefined state nodes referenced in transitions risk inconsistent session and QoS state machine implementations.",
+      "Incomplete error matrix for core messages like PUBLISH and CONNECT could result in non-compliant error handling.",
+      "协议包含显式状态转移，状态对象与阶段约束需要单独建模。",
+      "协议异常路径具有条件到动作的强约束，测试边界与实现边界必须同步设计。",
+      "协议对象具有生命周期与持久化边界，存储层和清理策略不能省略。"
+    ],
+    "protocol_summary": "mqtt 的工程规划必须同时覆盖协议表面、状态对象、异常路径、资源生命周期和参数化限制。",
+    "planning_trigger_facts": {
+      "interaction_style": "mixed",
+      "connection_model": "connection_oriented",
+      "state_objects": [
+        "Session",
+        "In-flight QoS 2 Exchange",
+        "Retained Message Store"
+      ],
+      "resource_objects": [
+        "Topic",
+        "Subscription",
+        "ClientId"
+      ],
+      "dispatch_keys": [
+        "Topic Name",
+        "ClientId"
+      ]
+    },
+    "critical_stateful_behaviors": [
+      "session_establishment_clean_0_new",
+      "session_establishment_clean_0_resume",
+      "session_establishment_clean_1",
+      "session_disconnect_persistent",
+      "session_disconnect_transient",
+      "qos2_publish_received_first_time",
+      "qos2_publish_duplicate_received",
+      "qos2_pubrel_received",
+      "qos2_publish_after_pubcomp",
+      "reconnect_resend_unacked"
+    ],
+    "required_codec_scope": [
+      "PUBLISH",
+      "PUBACK",
+      "PUBREC",
+      "PUBREL",
+      "PUBCOMP",
+      "SUBSCRIBE",
+      "UNSUBSCRIBE",
+      "CONNECT",
+      "CONNACK",
+      "Topic Name",
+      "Topic Filter",
+      "Packet Identifier",
+      "RETAIN flag",
+      "QoS level",
+      "CONNACK return codes"
+    ],
+    "error_handling_obligations": [
+      "UNSUBSCRIBE packet has reserved bits (3,2,1,0) in fixed header not equal to 0,0,1,0 -> close the Network Connection",
+      "UNSUBSCRIBE packet payload is empty -> treat as protocol violation and close the Network Connection",
+      "SUBSCRIBE packet has reserved bits (3,2,1,0) in fixed header not equal to 0,0,1,0 -> treat as malformed and close the Network Connection",
+      "SUBSCRIBE packet payload is empty -> treat as protocol violation and close the Network Connection",
+      "SUBSCRIBE packet contains a QoS value not in {0,1,2} -> treat as malformed and close the Network Connection",
+      "SUBSCRIBE packet contains non-zero reserved bits in payload -> treat as malformed and close the Network Connection",
+      "PUBREL packet has reserved bits (3,2,1,0) in fixed header not equal to 0,0,1,0 -> treat as malformed and close the Network Connection",
+      "Any MQTT control packet has invalid flag bits (reserved bits not set to values specified in Table 2.2) -> close the Network Connection"
+    ],
+    "persistence_and_lifecycle_obligations": [
+      "A retained message for a topic is created or replaced when a PUBLISH with RETAIN=1 and non-zero payload is received; it is deleted when a PUBLISH with RETAIN=1 and zero-byte payload is received.",
+      "A Subscription is created upon receipt of a SUBSCRIBE packet with a new Topic Filter; it persists across network disconnections if CleanSession=0.",
+      "A Subscription is deleted upon receipt of an UNSUBSCRIBE packet; the server must complete delivery of any in-flight QoS 1 or QoS 2 messages before deletion takes full effect.",
+      "A Will Message (a special retained or non-retained message) is stored upon successful CONNECT with Will Flag=1 and deleted either upon publishing due to unexpected disconnect or upon receipt of a DISCONNECT packet.",
+      "Retained messages are stored independently of client sessions and persist beyond session termination.",
+      "Subscriptions are part of session state and persist only when CleanSession=0; they are discarded when CleanSession=1 or when the session ends permanently.",
+      "The ClientId identifies a session; its association with session state lasts as long as the session, which may span multiple network connections if CleanSession=0."
+    ],
+    "consistency_findings": [
+      {
+        "severity": "warning",
+        "summary": "Interaction flow 'subscription_management' references surface unit 'SUBACK', which is absent from discovery surface_units list.",
+        "categories": [
+          "message_model",
+          "interaction_model"
+        ]
+      },
+      {
+        "severity": "warning",
+        "summary": "Interaction flow 'unsubscription' references surface unit 'UNSUBACK', which is absent from discovery surface_units list.",
+        "categories": [
+          "message_model",
+          "interaction_model"
+        ]
+      },
+      {
+        "severity": "warning",
+        "summary": "minimum_v1 must_support_surface includes 'SUBACK', but 'SUBACK' is not listed in discovery surface_units.",
+        "categories": [
+          "message_model",
+          "minimum_v1"
+        ]
+      },
+      {
+        "severity": "error",
+        "summary": "State transition 'qos2_publish_received_first_time' references state 'idle', which is not defined in state_nodes or state_objects.",
+        "categories": [
+          "state_model"
+        ]
+      },
+      {
+        "severity": "error",
+        "summary": "State transition 'qos2_publish_duplicate_received' references state 'qos2_wait_pubrel', which is not declared in state_nodes.",
+        "categories": [
+          "state_model"
+        ]
+      },
+      {
+        "severity": "error",
+        "summary": "State transition 'reconnect_resend_unacked' references to_state 'connected_session_resumed', which is not defined in state_nodes.",
+        "categories": [
+          "state_model"
+        ]
+      },
+      {
+        "severity": "warning",
+        "summary": "minimum_v1 must_support_state_behaviors links QoS 1 behavior to 'In-flight QoS 2 Exchange' state object, which is mismatched; should reference a QoS 1-specific state object.",
+        "categories": [
+          "state_model",
+          "minimum_v1"
+        ]
+      }
+    ],
+    "coverage_gaps": [
+      {
+        "category": "message_model",
+        "summary": "Surface units 'SUBACK' and 'UNSUBACK' are used in interaction flows and minimum_v1 but missing from discovery surface_units and message_model surface_catalog."
+      },
+      {
+        "category": "error_and_limits",
+        "summary": "Error matrix lacks coverage for key surface units like 'PUBLISH', 'CONNECT', 'CONNACK', despite their centrality; only SUBSCRIBE, UNSUBSCRIBE, PUBREL, and generic flag errors are detailed."
+      },
+      {
+        "category": "message_model",
+        "summary": "Message model includes detailed entries for PUBLISH, PUBACK, and SUBSCRIBE but omits structured definitions for CONNACK, PUBREC, PUBREL, PUBCOMP, UNSUBSCRIBE, SUBACK, etc., despite listing them in surface_catalog."
+      }
+    ]
+  },
+  "open_questions": [
+    {
+      "category": "message_model",
+      "question_type": "document_not_extracted",
+      "question": "What is the exact syntax and field layout for UNSUBSCRIBE, PUBREC, PUBREL, PUBCOMP, CONNECT, CONNACK, and UNSUBACK messages?",
+      "blocking_impact": "high",
+      "suggested_followup": "Extract full message format details for all remaining surface units using relevant sections of MQTT_3.1.1.txt (e.g., Sections 3.5–3.14)."
+    },
+    {
+      "category": "message_model",
+      "question_type": "document_not_extracted",
+      "question": "What are the precise error conditions and required actions for malformed packets (e.g., invalid Remaining Length, missing fields)?",
+      "blocking_impact": "medium",
+      "suggested_followup": "Review Section 2.2.3 (Malformed Packets) and Section 3.x error clauses for each packet type."
+    },
+    {
+      "category": "state_model",
+      "question_type": "document_not_extracted",
+      "question": "What are the exact state names and full state machine diagrams for MQTT client and server session states beyond the high-level descriptions?",
+      "blocking_impact": "high",
+      "suggested_followup": "Extract explicit state enumeration and transition tables from the MQTT 3.1.1 specification sections on operational behavior."
+    },
+    {
+      "category": "state_model",
+      "question_type": "document_not_extracted",
+      "question": "Are there protocol-defined timers (e.g., retry intervals, keep-alive timeouts) that govern state transitions?",
+      "blocking_impact": "medium",
+      "suggested_followup": "Investigate MQTT keep-alive mechanism and message retry timing constraints in the specification."
+    },
+    {
+      "category": "state_model",
+      "question_type": "document_not_extracted",
+      "question": "What are the boundary values and validation rules for session-related fields like ClientId length that affect state creation?",
+      "blocking_impact": "low",
+      "suggested_followup": "Map field validation rules from CONNECT processing to session establishment failure transitions."
+    },
+    {
+      "category": "resource_model",
+      "question_type": "document_not_extracted",
+      "question": "What is the authoritative scope for creating or deleting topics themselves (as opposed to publishing to them or subscribing)? Are topics implicitly created on first publish, and can they be explicitly deleted?",
+      "blocking_impact": "high",
+      "suggested_followup": "Search MQTT spec for explicit topic creation/deletion semantics or authoritative ownership of topic namespace."
+    },
+    {
+      "category": "resource_model",
+      "question_type": "document_not_extracted",
+      "question": "Is there any mechanism for a client to enumerate existing topics or retained messages on the server?",
+      "blocking_impact": "medium",
+      "suggested_followup": "Check if MQTT supports discovery or introspection of the topic namespace."
+    },
+    {
+      "category": "minimum_v1",
+      "question_type": "implementation_policy_needed",
+      "question": "What is the minimum required behavior for handling unauthorized PUBLISH attempts by a client?",
+      "blocking_impact": "medium",
+      "suggested_followup": "Clarify whether closing the connection is mandatory or if silent drop with QoS acknowledgment is sufficient."
+    },
+    {
+      "category": "message_model",
+      "question_type": "document_not_extracted",
+      "question": "What is the complete syntax, fields, preconditions, and error paths for SUBACK and UNSUBACK messages?",
+      "blocking_impact": "medium",
+      "suggested_followup": "Extract full message specifications for SUBACK and UNSUBACK from protocol documentation."
+    },
+    {
+      "category": "state_model",
+      "question_type": "spec_undefined",
+      "question": "What are the canonical names and definitions of connection/session states (e.g., 'idle', 'connected_session_resumed') referenced in transitions but not declared?",
+      "blocking_impact": "high",
+      "suggested_followup": "Map all state transition node names to explicitly defined state_nodes or state_objects."
+    },
+    {
+      "category": "message_model",
+      "question_type": "document_not_extracted",
+      "question": "What is the framing mechanism? The message_model.framing field is marked 'unknown'.",
+      "blocking_impact": "low",
+      "suggested_followup": "Confirm that MQTT uses length-prefixed binary framing with variable-length Remaining Length encoding."
+    }
+  ],
+  "evidence_index": [
+    {
+      "evidence_id": "transport_e1",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "intro",
+      "chunk_id": "MQTT_3.1.1-s1-p2",
+      "excerpt": "The protocol runs over TCP/IP, or over other network protocols that provide ordered, lossless, bi-directional connections."
+    },
+    {
+      "evidence_id": "transport_e2",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "7.1.1 MQTT Server",
+      "chunk_id": "MQTT_3.1.1-s12-p1",
+      "excerpt": "A conformant Server MUST support the use of one or more underlying transport protocols that provide an ordered, lossless, stream of bytes from the Client to Server and Server to Client [MQTT-7.1.1-1]."
+    },
+    {
+      "evidence_id": "transport_e3",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "6 Using WebSocket as a network transport",
+      "chunk_id": "MQTT_3.1.1-s10-p40",
+      "excerpt": "If MQTT is transported over a WebSocket [RFC6455] connection, the following conditions apply: · MQTT Control Packets MUST be sent in WebSocket binary data frames. If any other type of data frame is received the recipient MUST close the Network Connection [MQTT-6.0.0-1]. · A single WebSocket data frame can contain multiple or partial MQTT Control Packets. The receiver MUST NOT assume that MQTT Control Packets are aligned on WebSocket frame boundaries [MQTT-6.0.0-2]."
+    },
+    {
+      "evidence_id": "transport_e4",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix B. Mandatory normative statements (non normative)",
+      "chunk_id": "MQTT_3.1.1-s16-p16",
+      "excerpt": "Unless stated otherwise, if either the Server or Client encounters a protocol violation, it MUST close the Network Connection on which it received that Control Packet which caused the protocol violation. [MQTT-4.8.0-2] If the Client or Server encounters a Transient Error while processing an inbound Control Packet it MUST close the Network Connection on which it received that Control Packet."
+    },
+    {
+      "evidence_id": "interaction_e1",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "MQTT Control Packets",
+      "chunk_id": "MQTT_3.1.1-s2-p4",
+      "excerpt": "MQTT defines multiple control packet types including CONNECT/CONNACK (request-response), PUBLISH with QoS-based acknowledgments (publish-subscribe with reliability extensions), and SUBSCRIBE/SUBACK (command-response)."
+    },
+    {
+      "evidence_id": "interaction_e2",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "3.1 CONNECT – Client requests a connection to a Server",
+      "chunk_id": "MQTT_3.1.1-s2-p4",
+      "excerpt": "The CONNECT packet is sent from the Client to the Server to initiate a connection."
+    },
+    {
+      "evidence_id": "interaction_e3",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "3.2 CONNACK – Acknowledge connection request",
+      "chunk_id": "MQTT_3.1.1-s2-p4",
+      "excerpt": "The CONNACK Packet is sent by the Server in response to a CONNECT Packet received from a Client."
+    },
+    {
+      "evidence_id": "interaction_e4",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "2 MQTT Control Packet format",
+      "chunk_id": "MQTT_3.1.1-s2-p4",
+      "excerpt": "All MQTT interactions are structured as Control Packets consisting of a fixed header, optionally a variable header, and optionally a payload."
+    },
+    {
+      "evidence_id": "interaction_e5",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "3.1 CONNECT – Client requests a connection to a Server",
+      "chunk_id": "MQTT_3.1.1-s2-p4",
+      "excerpt": "After sending a CONNECT Packet, the Client MUST wait for a CONNACK Packet from the Server."
+    },
+    {
+      "evidence_id": "interaction_e6",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "3.3 PUBLISH – Publish message",
+      "chunk_id": "MQTT_3.1.1-s2-p4",
+      "excerpt": "A PUBLISH Packet with QoS 0 has no response; it is delivered at most once."
+    },
+    {
+      "evidence_id": "interaction_e7",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "3.4 PUBACK – Publish acknowledgement",
+      "chunk_id": "MQTT_3.1.1-s2-p4",
+      "excerpt": "The receiver of a QoS 1 PUBLISH Packet MUST respond with a PUBACK Packet."
+    },
+    {
+      "evidence_id": "interaction_e8",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "3.5 PUBREC – Publish received (QoS 2 publish received, part 1)",
+      "chunk_id": "MQTT_3.1.1-s2-p4",
+      "excerpt": "QoS 2 delivery uses a four-phase handshake: PUBLISH → PUBREC → PUBREL → PUBCOMP to ensure exactly-once delivery."
+    },
+    {
+      "evidence_id": "interaction_e9",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "3.8 SUBSCRIBE - Subscribe to topics",
+      "chunk_id": "MQTT_3.1.1-s16-p10",
+      "excerpt": "When the Server receives a SUBSCRIBE Packet from a Client, the Server MUST respond with a SUBACK Packet... The SUBACK Packet MUST have the same Packet Identifier as the SUBSCRIBE Packet."
+    },
+    {
+      "evidence_id": "interaction_e10",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "3.10 UNSUBSCRIBE – Unsubscribe from topics",
+      "chunk_id": "MQTT_3.1.1-s2-p4",
+      "excerpt": "The Server MUST respond to an UNSUBSCRIBE request with an UNSUBACK packet."
+    },
+    {
+      "evidence_id": "message_e1",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix C. Revision history (non normative) 80",
+      "chunk_id": "MQTT_3.1.1-s3-p12",
+      "excerpt": "The algorithm for decoding the Remaining Length field is as follows: ... where AND is the bit-wise and operator ( & in C)."
+    },
+    {
+      "evidence_id": "message_e2",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p7",
+      "excerpt": "A PUBLISH Packet with a RETAIN flag set to 1 and a payload containing zero bytes will be processed as normal by the Server..."
+    },
+    {
+      "evidence_id": "message_e3",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p8",
+      "excerpt": "The Packet Identifier field is only present in PUBLISH Packets where the QoS level is 1 or 2."
+    },
+    {
+      "evidence_id": "message_e4",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p8",
+      "excerpt": "The Packet Identifier field is only present in PUBLISH Packets where the QoS level is 1 or 2."
+    },
+    {
+      "evidence_id": "message_e5",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p8",
+      "excerpt": "The Packet Identifier field is only present in PUBLISH Packets where the QoS level is 1 or 2."
+    },
+    {
+      "evidence_id": "message_e6",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p8",
+      "excerpt": "The Packet Identifier field is only present in PUBLISH Packets where the QoS level is 1 or 2."
+    },
+    {
+      "evidence_id": "message_e7",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p13",
+      "excerpt": "The payload of a SUBSCRIBE Packet contains a list of Topic Filters indicating the Topics to which the Client wants to subscribe."
+    },
+    {
+      "evidence_id": "message_e8",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p13",
+      "excerpt": "The payload of a SUBSCRIBE Packet contains a list of Topic Filters indicating the Topics to which the Client wants to subscribe."
+    },
+    {
+      "evidence_id": "message_e9",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix B. Mandatory normative statements (non normative)",
+      "chunk_id": "MQTT_3.1.1-s16-p8",
+      "excerpt": "If the RETAIN flag is set to 1, in a PUBLISH Packet sent by a Client to a Server, the Server MUST store the Application Message and its QoS..."
+    },
+    {
+      "evidence_id": "message_e10",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p9",
+      "excerpt": "A CONNACK Packet is sent by the Server to the Client in response to a CONNECT Packet."
+    },
+    {
+      "evidence_id": "message_e11",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p7",
+      "excerpt": "The Topic Name identifies the information channel to which payload data is published. The Topic Name MUST be present as the first field in the PUBLISH Packet Variable header. It MUST be a UTF-8 encoded string... The Topic Name in the PUBLISH Packet MUST NOT contain wildcard characters."
+    },
+    {
+      "evidence_id": "message_e12",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p13",
+      "excerpt": "The Topic Filters in a SUBSCRIBE packet payload MUST be UTF-8 encoded strings... A Server SHOULD support Topic filters that contain the wildcard characters... If it chooses not to support topic filters that contain wildcard characters it MUST reject any Subscription request whose filter contains them."
+    },
+    {
+      "evidence_id": "message_e13",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix C. Revision history (non normative) 80",
+      "chunk_id": "MQTT_3.1.1-s3-p12",
+      "excerpt": "The variable header component of many of the Control Packet types includes a 2 byte Packet Identifier field. These Control Packets are PUBLISH (where QoS > 0), PUBACK, PUBREC, PUBREL, PUBCOMP, SUBSCRIBE, SUBACK, UNSUBSCRIBE, UNSUBACK."
+    },
+    {
+      "evidence_id": "message_e14",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix B. Mandatory normative statements (non normative)",
+      "chunk_id": "MQTT_3.1.1-s16-p8",
+      "excerpt": "If the RETAIN flag is set to 1, in a PUBLISH Packet sent by a Client to a Server, the Server MUST store the Application Message and its QoS... A zero byte retained message MUST NOT be stored as a retained message on the Server. If the RETAIN flag is 0, in a PUBLISH Packet sent by a Client to a Server, the Server MUST NOT store the message and MUST NOT remove or replace any existing retained message."
+    },
+    {
+      "evidence_id": "message_e15",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p13",
+      "excerpt": "The requested maximum QoS field is encoded in the byte following each UTF-8 encoded topic name... The Server MUST treat a SUBSCRIBE packet as malformed and close the Network Connection if any of Reserved bits in the payload are non-zero, or QoS is not 0,1 or 2."
+    },
+    {
+      "evidence_id": "message_e16",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p9",
+      "excerpt": "CONNACK return codes include 0x00 = accepted, 0x01 = unacceptable protocol version, 0x02 = identifier rejected, 0x03 = server unavailable, 0x04 = bad username or password, 0x05 = not authorized."
+    },
+    {
+      "evidence_id": "message_e17",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "1. The format of all Control Packets that the Server sends matches the",
+      "chunk_id": "MQTT_3.1.1-s11-p1",
+      "excerpt": "format described in Chapter 2 and Chapter 3."
+    },
+    {
+      "evidence_id": "message_e18",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix C. Revision history (non normative) 80",
+      "chunk_id": "MQTT_3.1.1-s3-p12",
+      "excerpt": "The algorithm for decoding the Remaining Length field is as follows: ... value contains the Remaining Length value."
+    },
+    {
+      "evidence_id": "message_e19",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p16",
+      "excerpt": "A SUBACK Packet contains a list of return codes, that specify the maximum QoS level that was granted in each Subscription that was requested by the SUBSCRIBE."
+    },
+    {
+      "evidence_id": "state_e1",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix B. Mandatory normative statements (non normative)",
+      "chunk_id": "MQTT_3.1.1-s16-p3",
+      "excerpt": "If CleanSession is set to 1, the Client and Server MUST discard any previous Session and start a new one. This Session lasts as long as the Network Connection."
+    },
+    {
+      "evidence_id": "state_e2",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix B. Mandatory normative statements (non normative)",
+      "chunk_id": "MQTT_3.1.1-s16-p3",
+      "excerpt": "If CleanSession is set to 0, the Server MUST resume communications with the Client based on state from the current Session (as identified by the Client identifier)."
+    },
+    {
+      "evidence_id": "state_e3",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix B. Mandatory normative statements (non normative)",
+      "chunk_id": "MQTT_3.1.1-s16-p14",
+      "excerpt": "- Until it has received the corresponding PUBREL packet, the Receiver MUST acknowledge any subsequent PUBLISH packet with the same Packet Identifier by sending a PUBREC... After it has sent a PUBCOMP, the receiver MUST treat any subsequent PUBLISH packet that contains that Packet Identifier as being a new publication."
+    },
+    {
+      "evidence_id": "state_e4",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix B. Mandatory normative statements (non normative)",
+      "chunk_id": "MQTT_3.1.1-s16-p3",
+      "excerpt": "Retained messages do not form part of the Session state in the Server, they MUST NOT be deleted when the Session ends."
+    },
+    {
+      "evidence_id": "state_e5",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix C. Revision history (non normative) 80",
+      "chunk_id": "MQTT_3.1.1-s3-p17",
+      "excerpt": "If CleanSession is set to 0, the Server MUST resume communications with the Client based on state from the current Session... The Client and Server MUST store the Session after the Client and Server are disconnected."
+    },
+    {
+      "evidence_id": "state_e6",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix C. Revision history (non normative) 80",
+      "chunk_id": "MQTT_3.1.1-s3-p17",
+      "excerpt": "The Session state in the Client consists of: · QoS 1 and QoS 2 messages which have been sent to the Server, but have not been completely acknowledged. · QoS 2 messages which have been received from the Server, but have not been completely acknowledged."
+    },
+    {
+      "evidence_id": "state_e7",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix C. Revision history (non normative) 80",
+      "chunk_id": "MQTT_3.1.1-s3-p17",
+      "excerpt": "The Session state in the Server consists of: · The existence of a Session... · The Client’s subscriptions. · QoS 1 and QoS 2 messages which have been sent to the Client, but have not been completely acknowledged. · QoS 1 and QoS 2 messages pending transmission to the Client. · QoS 2 messages which have been received from the Client, but have not been completely acknowledged. · Optionally, QoS 0 messages pending transmission to the Client."
+    },
+    {
+      "evidence_id": "state_e8",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix B. Mandatory normative statements (non normative)",
+      "chunk_id": "MQTT_3.1.1-s16-p3",
+      "excerpt": "If CleanSession is set to 1, the Client and Server MUST discard any previous Session and start a new one... State data associated with this Session MUST NOT be reused in any subsequent Session."
+    },
+    {
+      "evidence_id": "state_e9",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p22",
+      "excerpt": "Stored Session state can be discarded as a result of an administrator action, including an automated response to defined conditions. This has the effect of terminating the Session."
+    },
+    {
+      "evidence_id": "state_e10",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix B. Mandatory normative statements (non normative)",
+      "chunk_id": "MQTT_3.1.1-s16-p14",
+      "excerpt": "When a Client reconnects with CleanSession set to 0, both the Client and Server MUST re-send any unacknowledged PUBLISH Packets (where QoS > 0) and PUBREL Packets using their original Packet Identifiers."
+    },
+    {
+      "evidence_id": "state_e11",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix C. Revision history (non normative) 80",
+      "chunk_id": "MQTT_3.1.1-s3-p17",
+      "excerpt": "The Session state in the Client consists of: · QoS 1 and QoS 2 messages which have been sent to the Server, but have not been completely acknowledged. · QoS 2 messages which have been received from the Server, but have not been completely acknowledged. The Session state in the Server consists of: · The existence of a Session, even if the rest of the Session state is empty. · The Client’s subscriptions. · QoS 1 and QoS 2 messages which have been sent to the Client, but have not been completely acknowledged. · QoS 1 and QoS 2 messages pending transmission to the Client. · QoS 2 messages which have been received from the Client, but have not been completely acknowledged. · Optionally, QoS 0 messages pending transmission to the Client."
+    },
+    {
+      "evidence_id": "routing_e1",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s16-p9",
+      "excerpt": "The Topic Name MUST be present as the first field in the PUBLISH Packet Variable header. It MUST be a UTF-8 encoded string. [MQTT-3.3.2-2] The Topic Name in the PUBLISH Packet MUST NOT contain wildcard characters. [MQTT-3.3.2-3]"
+    },
+    {
+      "evidence_id": "routing_e2",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix C. Revision history (non normative) 80",
+      "chunk_id": "MQTT_3.1.1-s3-p23",
+      "excerpt": "A Server MAY allow a Client to supply a ClientId that has a length of zero bytes, however if it does so the Server MUST treat this as a special case and assign a unique ClientId to that Client. It MUST then process the CONNECT packet as if the Client had provided that unique ClientId [MQTT-3.1.3-6]."
+    },
+    {
+      "evidence_id": "routing_e3",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p33",
+      "excerpt": "An Application Message is sent to each Client Subscription whose Topic Filter matches the Topic Name attached to an Application Message."
+    },
+    {
+      "evidence_id": "routing_e4",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p33",
+      "excerpt": "When it performs subscription matching the Server MUST NOT perform any normalization of Topic Names or Topic Filters, or any modification or substitution of unrecognized characters [MQTT-4.7.3-4]. Each non-wildcarded level in the Topic Filter has to match the corresponding level in the Topic Name character for character for the match to succeed."
+    },
+    {
+      "evidence_id": "routing_e5",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p33",
+      "excerpt": "An Application Message is sent to each Client Subscription whose Topic Filter matches the Topic Name attached to an Application Message."
+    },
+    {
+      "evidence_id": "routing_e6",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix B. Mandatory normative statements (non normative)",
+      "chunk_id": "MQTT_3.1.1-s16-p9",
+      "excerpt": "The Topic Name in the PUBLISH Packet MUST NOT contain wildcard characters. [MQTT-3.3.2-3]"
+    },
+    {
+      "evidence_id": "routing_e7",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p15",
+      "excerpt": "If a Server receives a SUBSCRIBE packet that contains multiple Topic Filters it MUST handle that packet as if it had received a sequence of multiple SUBSCRIBE packets... The Server might grant a lower maximum QoS than the subscriber requested. The QoS of Payload Messages sent in response to a Subscription MUST be the minimum of the QoS of the originally published message and the maximum QoS granted by the Server."
+    },
+    {
+      "evidence_id": "resource_e1",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p33",
+      "excerpt": "An Application Message is sent to each Client Subscription whose Topic Filter matches the Topic Name attached to an Application Message. The topic resource MAY be either predefined in the Server by an administrator or it MAY be dynamically created by the Server when it receives the first subscription or an Application Message with that Topic Name."
+    },
+    {
+      "evidence_id": "resource_e2",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix B. Mandatory normative statements (non normative)",
+      "chunk_id": "MQTT_3.1.1-s16-p8",
+      "excerpt": "If the RETAIN flag is set to 1, in a PUBLISH Packet sent by a Client to a Server, the Server MUST store the Application Message and its QoS, so that it can be delivered to future subscribers whose subscriptions match its topic name."
+    },
+    {
+      "evidence_id": "resource_e3",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix B. Mandatory normative statements (non normative)",
+      "chunk_id": "MQTT_3.1.1-s16-p8",
+      "excerpt": "A PUBLISH Packet with a RETAIN flag set to 1 and a payload containing zero bytes will be processed as normal by the Server and sent to Clients with a subscription matching the topic name. Additionally any existing retained message with the same topic name MUST be removed and any future subscribers for the topic will not receive a retained message."
+    },
+    {
+      "evidence_id": "resource_e4",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p15",
+      "excerpt": "Where the Topic Filter is not identical to any existing Subscription’s filter, a new Subscription is created and all matching retained messages are sent."
+    },
+    {
+      "evidence_id": "resource_e5",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p15",
+      "excerpt": "The Server MUST deliver the message to the Client respecting the maximum QoS of all the matching subscriptions."
+    },
+    {
+      "evidence_id": "resource_e6",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "Discovery context",
+      "chunk_id": "disc_e8",
+      "excerpt": "CONNECT: Initiates a connection with authentication, session, and will parameters."
+    },
+    {
+      "evidence_id": "resource_e7",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "Discovery context",
+      "chunk_id": "disc_e7",
+      "excerpt": "UNSUBSCRIBE: Requests removal of one or more topic filter subscriptions."
+    },
+    {
+      "evidence_id": "resource_e8",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix B. Mandatory normative statements (non normative)",
+      "chunk_id": "MQTT_3.1.1-s16-p8",
+      "excerpt": "If the Server receives a QoS 0 message with the RETAIN flag set to 1 it MUST discard any message previously retained for that topic. It SHOULD store the new QoS 0 message as the new retained message for that topic, but MAY choose to discard it at any time..."
+    },
+    {
+      "evidence_id": "resource_e9",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix B. Mandatory normative statements (non normative)",
+      "chunk_id": "MQTT_3.1.1-s16-p8",
+      "excerpt": "A zero byte retained message MUST NOT be stored as a retained message on the Server."
+    },
+    {
+      "evidence_id": "error_e1",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p18",
+      "excerpt": "Bits 3,2,1 and 0 of the fixed header of the UNSUBSCRIBE Control Packet are reserved and MUST be set to 0,0,1 and 0 respectively. The Server MUST treat any other value as malformed and close the Network Connection [MQTT-3.10.1-1]."
+    },
+    {
+      "evidence_id": "error_e2",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p18",
+      "excerpt": "The Payload of an UNSUBSCRIBE packet MUST contain at least one Topic Filter. An UNSUBSCRIBE packet with no payload is a protocol violation [MQTT-3.10.3-2]. See section 4.8 for information about handling errors."
+    },
+    {
+      "evidence_id": "error_e3",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p12",
+      "excerpt": "Bits 3,2,1 and 0 of the fixed header of the SUBSCRIBE Control Packet are reserved and MUST be set to 0,0,1 and 0 respectively. The Server MUST treat any other value as malformed and close the Network Connection [MQTT-3.8.1-1]."
+    },
+    {
+      "evidence_id": "error_e4",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix B. Mandatory normative statements (non normative)",
+      "chunk_id": "MQTT_3.1.1-s16-p10",
+      "excerpt": "The payload of a SUBSCRIBE packet MUST contain at least one Topic Filter / QoS pair. A SUBSCRIBE packet with no payload is a protocol violation. [MQTT-3-8.3-4]"
+    },
+    {
+      "evidence_id": "error_e5",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix B. Mandatory normative statements (non normative)",
+      "chunk_id": "MQTT_3.1.1-s16-p10",
+      "excerpt": "The Server MUST treat a SUBSCRIBE packet as malformed and close the Network Connection if any of Reserved bits in the payload are non-zero, or QoS is not 0,1 or 2. [MQTT-3.8.4-1]"
+    },
+    {
+      "evidence_id": "error_e6",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p11",
+      "excerpt": "Bits 3,2,1 and 0 of the fixed header in the PUBREL Control Packet are reserved and MUST be set to 0,0,1 and 0 respectively. The Server MUST treat any other value as malformed and close the Network Connection [MQTT-3.6.1-1]."
+    },
+    {
+      "evidence_id": "error_e7",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix C. Revision history (non normative) 80",
+      "chunk_id": "MQTT_3.1.1-s3-p10",
+      "excerpt": "Where a flag bit is marked as “Reserved” in Table 2.2 - Flag Bits , it is reserved for future use and MUST be set to the value listed in that table [MQTT-2.2.2-1] . If invalid flags are received, the receiver MUST close the Network Connection [MQTT-2.2.2-2]."
+    },
+    {
+      "evidence_id": "limit_e1",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix C. Revision history (non normative) 80",
+      "chunk_id": "MQTT_3.1.1-s3-p7",
+      "excerpt": "Consequently there is a limit on the size of a string that can be passed in one of these UTF-8 encoded string components; you cannot use a string that would encode to more than 65535 bytes."
+    },
+    {
+      "evidence_id": "limit_e2",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "Discovery context derived",
+      "chunk_id": "disc_e12",
+      "excerpt": "16-bit unsigned integer used to correlate messages in QoS 1 and QoS 2 flows."
+    },
+    {
+      "evidence_id": "limit_e3",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "Discovery context derived",
+      "chunk_id": "disc_e12",
+      "excerpt": "MUST NOT reuse Packet Identifier while original packet is in flight for QoS 1 or 2."
+    },
+    {
+      "evidence_id": "limit_e4",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix C. Revision history (non normative) 80",
+      "chunk_id": "MQTT_3.1.1-s3-p7",
+      "excerpt": "A UTF-8 encoded string MUST NOT include an encoding of the null character U+0000. If a receiver (Server or Client) receives a Control Packet containing U+0000 it MUST close the Network Connection [MQTT-1.5.3-2]."
+    },
+    {
+      "evidence_id": "limit_e5",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix C. Revision history (non normative) 80",
+      "chunk_id": "MQTT_3.1.1-s3-p7",
+      "excerpt": "If a Server or Client receives a Control Packet containing ill-formed UTF-8 it MUST close the Network Connection [MQTT-1.5.3-1]."
+    },
+    {
+      "evidence_id": "limit_e6",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix B. Mandatory normative statements (non normative)",
+      "chunk_id": "MQTT_3.1.1-s16-p10",
+      "excerpt": "The payload of a SUBSCRIBE packet MUST contain at least one Topic Filter / QoS pair. A SUBSCRIBE packet with no payload is a protocol violation. [MQTT-3-8.3-4]"
+    },
+    {
+      "evidence_id": "limit_e7",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix B. Mandatory normative statements (non normative)",
+      "chunk_id": "MQTT_3.1.1-s16-p10",
+      "excerpt": "The Server MUST treat a SUBSCRIBE packet as malformed and close the Network Connection if any of Reserved bits in the payload are non-zero, or QoS is not 0,1 or 2. [MQTT-3.8.4-1]"
+    },
+    {
+      "evidence_id": "limit_e8",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p17",
+      "excerpt": "SUBACK return codes other than 0x00, 0x01, 0x02 and 0x80 are reserved and MUST NOT be used [MQTT-3.9.3-2]."
+    },
+    {
+      "evidence_id": "limit_e9",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "Discovery context derived",
+      "chunk_id": "disc_e17",
+      "excerpt": "At least 23 UTF-8 encoded bytes; servers may allow longer."
+    },
+    {
+      "evidence_id": "security_e1",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p34",
+      "excerpt": "If the Client or Server encounters a Transient Error while processing an inbound Control Packet it MUST close the Network Connection on which it received that Control Packet [MQTT-4.8.0-2]."
+    },
+    {
+      "evidence_id": "security_e2",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix C. Revision history (non normative) 80",
+      "chunk_id": "MQTT_3.1.1-s3-p7",
+      "excerpt": "If a Server or Client receives a Control Packet containing ill-formed UTF-8 it MUST close the Network Connection [MQTT-1.5.3-1]. ... If a receiver (Server or Client) receives a Control Packet containing U+0000 it MUST close the Network Connection [MQTT-1.5.3-2]."
+    },
+    {
+      "evidence_id": "security_e3",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "1. If the ClientId represents a Client already connected to the Server",
+      "chunk_id": "MQTT_3.1.1-s7-p1",
+      "excerpt": "then the Server MUST disconnect the existing Client [MQTT-3.1.4-2]."
+    },
+    {
+      "evidence_id": "security_e4",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p34",
+      "excerpt": "However, it is strongly recommended that Server implementations that offer TLS [RFC5246] SHOULD use TCP port 8883 (IANA service name: secure-mqtt)."
+    },
+    {
+      "evidence_id": "security_e5",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix C. Revision history (non normative) 80",
+      "chunk_id": "MQTT_3.1.1-s3-p8",
+      "excerpt": "The data SHOULD NOT include encodings of the Unicode [ Unicode ] code points listed below. If a receiver (Server or Client) receives a Control Packet containing any of them it MAY close the Network Connection: U+0001..U+001F control characters U+007F..U+009F control characters ..."
+    },
+    {
+      "evidence_id": "security_e6",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p40",
+      "excerpt": "MQTT Control Packets MUST be sent in WebSocket binary data frames. If any other type of data frame is received the recipient MUST close the Network Connection [MQTT-6.0.0-1]."
+    },
+    {
+      "evidence_id": "security_e7",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p40",
+      "excerpt": "When using the secured transport profile, the MQTT protocol runs over a physical or virtual network and using TLS [RFC5246] which provides authentication, integrity and privacy."
+    },
+    {
+      "evidence_id": "security_e8",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p40",
+      "excerpt": "Recommendations for specific security mechanisms will often be taken from existing works including: [NISTCSF] NIST Cyber Security Framework [NIST7628] NISTIR 7628 Guidelines for Smart Grid Cyber Security [FIPS1402] Security Requirements for Cryptographic Modules (FIPS PUB 140-2) [PCIDSS] PCI-DSS Payment Card Industry Data Security Standard [NSAB] NSA Suite B Cryptography"
+    },
+    {
+      "evidence_id": "security_e9",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p34",
+      "excerpt": "As a transport protocol, MQTT is concerned only with message transmission and it is the implementer’s responsibility to provide appropriate security features."
+    },
+    {
+      "evidence_id": "v1_e1",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p13",
+      "excerpt": "The payload of a SUBSCRIBE Packet contains a list of Topic Filters indicating the Topics to which the Client wants to subscribe. The Topic Filters in a SUBSCRIBE packet payload MUST be UTF-8 encoded strings... A Server SHOULD support Topic filters that contain the wildcard characters... If it chooses not to support topic filters that contain wildcard characters it MUST reject any Subscription request whose filter contains them."
+    },
+    {
+      "evidence_id": "v1_e2",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix B. Mandatory normative statements (non normative)",
+      "chunk_id": "MQTT_3.1.1-s16-p10",
+      "excerpt": "The Server MUST treat a SUBSCRIBE packet as malformed and close the Network Connection if any of Reserved bits in the payload are non-zero, or QoS is not 0,1 or 2. A SUBSCRIBE packet with no payload is a protocol violation."
+    },
+    {
+      "evidence_id": "v1_e3",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p15",
+      "excerpt": "The requested maximum QoS field is encoded in the byte following each UTF-8 encoded topic name... QoS is not 0,1 or 2 [MQTT-3-8.3-4]."
+    },
+    {
+      "evidence_id": "v1_e4",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p25",
+      "excerpt": "MUST assign an unused Packet Identifier each time it has a new Application Message to publish... MUST treat the PUBLISH Packet as “unacknowledged” until it has received the corresponding PUBACK packet... The Packet Identifier becomes available for reuse once the Sender has received the PUBACK Packet."
+    },
+    {
+      "evidence_id": "v1_e5",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix B. Mandatory normative statements (non normative)",
+      "chunk_id": "MQTT_3.1.1-s16-p10",
+      "excerpt": "If a Server receives a SUBSCRIBE Packet containing a Topic Filter that is identical to an existing Subscription’s Topic Filter then it MUST completely replace that existing Subscription with a new Subscription... The Server MUST respond with a SUBACK Packet... The SUBACK Packet MUST have the same Packet Identifier as the SUBSCRIBE Packet."
+    },
+    {
+      "evidence_id": "v1_e6",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p27",
+      "excerpt": "Until it has received the corresponding PUBREL packet, the Receiver MUST acknowledge any subsequent PUBLISH packet with the same Packet Identifier by sending a PUBREC... MUST respond to a PUBREL packet by sending a PUBCOMP packet... After it has sent a PUBCOMP, the receiver MUST treat any subsequent PUBLISH packet that contains that Packet Identifier as being a new publication."
+    },
+    {
+      "evidence_id": "v1_e7",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "1. If the ClientId represents a Client already connected to the Server",
+      "chunk_id": "MQTT_3.1.1-s7-p1",
+      "excerpt": "then the Server MUST disconnect the existing Client [MQTT-3.1.4-2]."
+    },
+    {
+      "evidence_id": "v1_e8",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix B. Mandatory normative statements (non normative)",
+      "chunk_id": "MQTT_3.1.1-s16-p9",
+      "excerpt": "When its original sender receives the PUBACK packet, ownership of the Application Message is transferred to the receiver."
+    },
+    {
+      "evidence_id": "v1_e9",
+      "doc_path": "~/SpecForge/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix B. Mandatory normative statements (non normative)",
+      "chunk_id": "MQTT_3.1.1-s16-p9",
+      "excerpt": "The Topic Name MUST be present as the first field in the PUBLISH Packet Variable header. It MUST be a UTF-8 encoded string. The Topic Name in the PUBLISH Packet MUST NOT contain wildcard characters."
+    }
+  ]
+}

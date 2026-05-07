@@ -1,0 +1,44 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "mqtt/protocol/mqtt_encoder/put_remaining_length",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "将 Remaining Length 按 MQTT 规则写入输出缓冲",
+  "SIGNATURE": {
+    "RAW": "static void put_remaining_length(uint8_t* out, size_t* pos, size_t len)",
+    "NAME": "put_remaining_length",
+    "RETURN": "void",
+    "PARAMS": [
+      {
+        "TYPE": "uint8_t*",
+        "NAME": "out",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "size_t*",
+        "NAME": "pos",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "size_t",
+        "NAME": "len",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入来自函数参数。",
+    "ACTION": "将长度按 7bit+续位格式写入输出缓冲。",
+    "OUTPUT": "通过返回值或副作用反映处理结果。",
+    "INVARIANTS_USED": [
+      "函数执行保持本模块内部状态一致性。"
+    ]
+  }
+}

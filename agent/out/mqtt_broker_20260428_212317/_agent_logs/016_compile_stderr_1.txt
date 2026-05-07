@@ -1,0 +1,29 @@
+network/tcp_server.c: In function ‘sockaddr_to_string’:
+network/tcp_server.c:48:5: warning: implicit declaration of function ‘snprintf’ [-Wimplicit-function-declaration]
+   48 |     snprintf(buf, len, "%s:%d", ip_str, ntohs(addr->sin_port));
+      |     ^~~~~~~~
+network/tcp_server.c:12:1: note: include ‘<stdio.h>’ or provide a declaration of ‘snprintf’
+   11 | #include <errno.h>
+  +++ |+#include <stdio.h>
+   12 | 
+network/tcp_server.c:48:5: warning: incompatible implicit declaration of built-in function ‘snprintf’ [-Wbuiltin-declaration-mismatch]
+   48 |     snprintf(buf, len, "%s:%d", ip_str, ntohs(addr->sin_port));
+      |     ^~~~~~~~
+network/tcp_server.c:48:5: note: include ‘<stdio.h>’ or provide a declaration of ‘snprintf’
+protocol/mqtt_encoder.c: In function ‘mqtt_encode_publish_qos0’:
+protocol/mqtt_encoder.c:134:18: warning: unused variable ‘payload_offset’ [-Wunused-variable]
+  134 |     const size_t payload_offset = variable_header_len;
+      |                  ^~~~~~~~~~~~~~
+topic/topic_tree.c: In function ‘mqtt_topic_match’:
+topic/topic_tree.c:241:12: warning: ‘t_seg_len’ may be used uninitialized [-Wmaybe-uninitialized]
+  241 |         if (f_seg_len != t_seg_len) return false;
+      |            ^
+topic/topic_tree.c:214:31: note: ‘t_seg_len’ was declared here
+  214 |     const char* t_seg; size_t t_seg_len;
+      |                               ^~~~~~~~~
+topic/topic_tree.c:242:13: warning: ‘t_seg’ may be used uninitialized [-Wmaybe-uninitialized]
+  242 |         if (memcmp(f_seg, t_seg, f_seg_len) != 0) return false;
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+topic/topic_tree.c:214:17: note: ‘t_seg’ was declared here
+  214 |     const char* t_seg; size_t t_seg_len;
+      |                 ^~~~~

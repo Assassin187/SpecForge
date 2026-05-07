@@ -1,0 +1,62 @@
+{
+  "category": "surface_discovery",
+  "ranked_chunk_ids": [
+    "MQTT_3.1.1-s10-p9",
+    "MQTT_3.1.1-s10-p7",
+    "MQTT_3.1.1-s10-p8",
+    "MQTT_3.1.1-s10-p11",
+    "MQTT_3.1.1-s10-p18",
+    "MQTT_3.1.1-s10-p19",
+    "MQTT_3.1.1-s10-p21",
+    "MQTT_3.1.1-s16-p10",
+    "MQTT_3.1.1-s16-p12",
+    "MQTT_3.1.1-s16-p11",
+    "MQTT_3.1.1-s16-p3",
+    "MQTT_3.1.1-s16-p4",
+    "MQTT_3.1.1-s16-p8",
+    "MQTT_3.1.1-s10-p16",
+    "MQTT_3.1.1-s16-p9",
+    "MQTT_3.1.1-s3-p22",
+    "MQTT_3.1.1-s3-p15",
+    "MQTT_3.1.1-s3-p24",
+    "MQTT_3.1.1-s3-p19",
+    "MQTT_3.1.1-s3-p23",
+    "MQTT_3.1.1-s2-p4",
+    "MQTT_3.1.1-s2-p5",
+    "MQTT_3.1.1-s3-p12",
+    "MQTT_3.1.1-s3-p9",
+    "MQTT_3.1.1-s16-p5",
+    "MQTT_3.1.1-s3-p1",
+    "MQTT_3.1.1-s6-p1",
+    "MQTT_3.1.1-s5-p1",
+    "MQTT_3.1.1-s4-p1",
+    "MQTT_3.1.1-s12-p1",
+    "MQTT_3.1.1-s14-p1",
+    "MQTT_3.1.1-s1-p2",
+    "MQTT_3.1.1-s9-p1",
+    "MQTT_3.1.1-s11-p1",
+    "MQTT_3.1.1-s13-p1",
+    "MQTT_3.1.1-s1-p3",
+    "MQTT_3.1.1-s1-p1",
+    "MQTT_3.1.1-s2-p1",
+    "MQTT_3.1.1-s17-p1"
+  ],
+  "high_priority_chunk_ids": [
+    "MQTT_3.1.1-s10-p9",
+    "MQTT_3.1.1-s10-p7",
+    "MQTT_3.1.1-s10-p8",
+    "MQTT_3.1.1-s10-p11",
+    "MQTT_3.1.1-s10-p18",
+    "MQTT_3.1.1-s10-p19",
+    "MQTT_3.1.1-s10-p21"
+  ],
+  "notes": [
+    "Top chunks define core protocol surface: PUBLISH QoS handling, RETAIN semantics, packet structure (fixed/variable headers), reserved bit rules, and response expectations.",
+    "Chunks from Appendix B (normative statements) are valuable but penalized for being in an appendix; still included mid-list.",
+    "Appendix C and introductory/metadata chunks deprioritized due to lack of protocol surface definitions."
+  ],
+  "open_questions": [
+    "Are there missing chunks that define topic filter matching rules or session state persistence?",
+    "Does the spec explicitly define limits on topic name length or packet size in non-appendix sections?"
+  ]
+}

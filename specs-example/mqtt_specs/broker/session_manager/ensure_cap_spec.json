@@ -1,0 +1,44 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "mqtt/broker/session_manager/ensure_cap",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "按目标元素数量扩展会话数组容量，保证后续插入可进行",
+  "SIGNATURE": {
+    "RAW": "static void ensure_cap(mqtt_session_manager_t* m, size_t need)",
+    "NAME": "ensure_cap",
+    "RETURN": "void",
+    "PARAMS": [
+      {
+        "TYPE": "mqtt_session_manager_t*",
+        "NAME": "m",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "size_t",
+        "NAME": "need",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct mqtt_session_manager",
+        "ROLE": "会话管理器私有结构"
+      }
+    ],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入为会话管理器 m 与所需最小容量 need",
+    "ACTION": "若 m 为空或 need<=cap 则直接返回；否则以 cap*2（初始 16）做倍增直到覆盖 need，调用 realloc 扩容 sessions；realloc 成功则更新 sessions 与 cap，失败保持原状态不变",
+    "OUTPUT": "无返回值；成功时 m->cap 增长到可容纳 need，失败时容量不变",
+    "INVARIANTS_USED": [
+      "扩容失败不会破坏原 sessions 指针与已有元素",
+      "扩容策略单调递增并保证新 cap >= need"
+    ]
+  }
+}

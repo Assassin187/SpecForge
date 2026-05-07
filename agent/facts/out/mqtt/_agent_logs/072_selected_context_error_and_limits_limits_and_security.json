@@ -1,0 +1,141 @@
+{
+  "stage": "error_and_limits_limits_and_security",
+  "char_budget": 10000,
+  "char_count": 9864,
+  "selected_chunk_ids": [
+    "MQTT_3.1.1-s10-p34",
+    "MQTT_3.1.1-s10-p40",
+    "MQTT_3.1.1-s3-p7",
+    "MQTT_3.1.1-s3-p8",
+    "MQTT_3.1.1-s10-p17",
+    "MQTT_3.1.1-s16-p10",
+    "MQTT_3.1.1-s7-p1",
+    "MQTT_3.1.1-s11-p1",
+    "MQTT_3.1.1-s13-p1"
+  ],
+  "selected_chunks": [
+    {
+      "chunk_id": "MQTT_3.1.1-s10-p34",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "section_id": "MQTT_3.1.1-s10",
+      "char_count": 1726
+    },
+    {
+      "chunk_id": "MQTT_3.1.1-s10-p40",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "section_id": "MQTT_3.1.1-s10",
+      "char_count": 1699
+    },
+    {
+      "chunk_id": "MQTT_3.1.1-s3-p7",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix C. Revision history (non normative) 80",
+      "section_id": "MQTT_3.1.1-s3",
+      "char_count": 1276
+    },
+    {
+      "chunk_id": "MQTT_3.1.1-s3-p8",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix C. Revision history (non normative) 80",
+      "section_id": "MQTT_3.1.1-s3",
+      "char_count": 1789
+    },
+    {
+      "chunk_id": "MQTT_3.1.1-s10-p17",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "section_id": "MQTT_3.1.1-s10",
+      "char_count": 1615
+    },
+    {
+      "chunk_id": "MQTT_3.1.1-s16-p10",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix B. Mandatory normative statements (non normative)",
+      "section_id": "MQTT_3.1.1-s16",
+      "char_count": 1603
+    },
+    {
+      "chunk_id": "MQTT_3.1.1-s7-p1",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "1. If the ClientId represents a Client already connected to the Server",
+      "section_id": "MQTT_3.1.1-s7",
+      "char_count": 68
+    },
+    {
+      "chunk_id": "MQTT_3.1.1-s11-p1",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "1. The format of all Control Packets that the Server sends matches the",
+      "section_id": "MQTT_3.1.1-s11",
+      "char_count": 44
+    },
+    {
+      "chunk_id": "MQTT_3.1.1-s13-p1",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "1. The format of all Control Packets that the Client sends matches the",
+      "section_id": "MQTT_3.1.1-s13",
+      "char_count": 44
+    }
+  ],
+  "selected_sections": {
+    "MQTT_3.1.1-s10": 3,
+    "MQTT_3.1.1-s3": 2,
+    "MQTT_3.1.1-s16": 1,
+    "MQTT_3.1.1-s2": 0,
+    "MQTT_3.1.1-s7": 1,
+    "MQTT_3.1.1-s6": 0,
+    "MQTT_3.1.1-s14": 0,
+    "MQTT_3.1.1-s12": 0,
+    "MQTT_3.1.1-s1": 0,
+    "MQTT_3.1.1-s11": 1,
+    "MQTT_3.1.1-s13": 1,
+    "MQTT_3.1.1-s17": 0
+  },
+  "candidate_count": 36,
+  "ordered_chunk_ids": [
+    "MQTT_3.1.1-s10-p34",
+    "MQTT_3.1.1-s10-p40",
+    "MQTT_3.1.1-s3-p7",
+    "MQTT_3.1.1-s3-p8",
+    "MQTT_3.1.1-s10-p17",
+    "MQTT_3.1.1-s16-p10",
+    "MQTT_3.1.1-s10-p15",
+    "MQTT_3.1.1-s10-p13",
+    "MQTT_3.1.1-s10-p12",
+    "MQTT_3.1.1-s10-p16",
+    "MQTT_3.1.1-s10-p14",
+    "MQTT_3.1.1-s16-p11",
+    "MQTT_3.1.1-s3-p2",
+    "MQTT_3.1.1-s3-p22",
+    "MQTT_3.1.1-s3-p15",
+    "MQTT_3.1.1-s3-p24",
+    "MQTT_3.1.1-s3-p11",
+    "MQTT_3.1.1-s3-p10",
+    "MQTT_3.1.1-s16-p5",
+    "MQTT_3.1.1-s16-p15",
+    "MQTT_3.1.1-s16-p9",
+    "MQTT_3.1.1-s2-p5",
+    "MQTT_3.1.1-s2-p4",
+    "MQTT_3.1.1-s7-p1",
+    "MQTT_3.1.1-s16-p13",
+    "MQTT_3.1.1-s16-p12",
+    "MQTT_3.1.1-s16-p14",
+    "MQTT_3.1.1-s6-p1",
+    "MQTT_3.1.1-s14-p1",
+    "MQTT_3.1.1-s12-p1",
+    "MQTT_3.1.1-s2-p1",
+    "MQTT_3.1.1-s1-p1",
+    "MQTT_3.1.1-s1-p3",
+    "MQTT_3.1.1-s11-p1",
+    "MQTT_3.1.1-s13-p1",
+    "MQTT_3.1.1-s17-p1"
+  ],
+  "rerank_used": true,
+  "rerank_high_priority_ids": [
+    "MQTT_3.1.1-s10-p34",
+    "MQTT_3.1.1-s10-p40",
+    "MQTT_3.1.1-s3-p7",
+    "MQTT_3.1.1-s3-p8"
+  ]
+}

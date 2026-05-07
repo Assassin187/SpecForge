@@ -1,0 +1,38 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "mqtt/network/connection/mqtt_connection_in_data",
+  "FUNCTION_TYPE": "EVENT",
+  "ROLE": "返回输入缓冲起始地址供协议解码",
+  "SIGNATURE": {
+    "RAW": "uint8_t* mqtt_connection_in_data(mqtt_connection_t* c)",
+    "NAME": "mqtt_connection_in_data",
+    "RETURN": "uint8_t*",
+    "PARAMS": [
+      {
+        "TYPE": "mqtt_connection_t*",
+        "NAME": "c",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct mqtt_connection",
+        "ROLE": "连接私有状态结构体"
+      }
+    ],
+    "FUNC": [],
+    "VAR": []
+  },
+  "EVENT": {
+    "TRIGGER": "上层解码器读取网络输入缓冲时触发",
+    "PRECONDITION": "允许 c 为空",
+    "INPUT": "输入为连接 c",
+    "ACTION": "c 非空返回 in_data 指针，否则返回 NULL",
+    "STATE_CHANGE": "只读，无状态修改",
+    "RESPONSE": "返回缓冲区指针或 NULL",
+    "EVENT_TYPE": "RUNTIME_EVENT"
+  }
+}

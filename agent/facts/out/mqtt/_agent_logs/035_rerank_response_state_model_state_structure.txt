@@ -1,0 +1,7 @@
+{
+  "category": "state_model_state_structure",
+  "ranked_chunk_ids": ["MQTT_3.1.1-s16-p3", "MQTT_3.1.1-s16-p7", "MQTT_3.1.1-s10-p3", "MQTT_3.1.1-s3-p17", "MQTT_3.1.1-s16-p14", "MQTT_3.1.1-s10-p28", "MQTT_3.1.1-s10-p22", "MQTT_3.1.1-s3-p18", "MQTT_3.1.1-s16-p5", "MQTT_3.1.1-s16-p12"],
+  "high_priority_chunk_ids": ["MQTT_3.1.1-s16-p3", "MQTT_3.1.1-s16-p7", "MQTT_3.1.1-s10-p3"],
+  "notes": ["Top chunks define CleanSession behavior, Session Present flag semantics, and session state persistence rules—core to MQTT's state model.", "Appendix B chunks are normative despite being in an appendix and directly specify state transitions and storage obligations.", "Chunks from operational sections (e.g., s10) provide complementary context on session resumption and message redelivery tied to state."],
+  "open_questions": ["How exactly is session state scoped across reconnects with CleanSession=0?", "What constitutes 'stored session state' beyond subscriptions and inflight QoS messages?"]
+}

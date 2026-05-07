@@ -1,0 +1,136 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "mqtt/router/message_router/mqtt_message_router_publish",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "将发布消息转发给匹配订阅者会话",
+  "SIGNATURE": {
+    "RAW": "void mqtt_message_router_publish(mqtt_message_router_t* r, int from_session_id, const mqtt_publish_payload_t* publish)",
+    "NAME": "mqtt_message_router_publish",
+    "RETURN": "void",
+    "PARAMS": [
+      {
+        "TYPE": "mqtt_message_router_t*",
+        "NAME": "r",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "int",
+        "NAME": "from_session_id",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "const mqtt_publish_payload_t*",
+        "NAME": "publish",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct mqtt_message_router",
+        "ROLE": "消息路由器私有状态结构体"
+      },
+      {
+        "NAME": "mqtt_publish_payload_t",
+        "ROLE": "发布报文载荷结构体"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "mqtt_topic_tree_match_subscribers",
+        "KIND": "CALL",
+        "ROLE": "匹配目标订阅会话"
+      },
+      {
+        "NAME": "mqtt_session_manager_get",
+        "KIND": "CALL",
+        "ROLE": "按 sid 获取会话"
+      },
+      {
+        "NAME": "mqtt_encode_publish_qos0",
+        "KIND": "CALL",
+        "ROLE": "编码下发 PUBLISH"
+      },
+      {
+        "NAME": "mqtt_session_send",
+        "KIND": "CALL",
+        "ROLE": "向命中会话发送消息"
+      },
+      {
+        "NAME": "mqtt_bytes_free",
+        "KIND": "CALL",
+        "ROLE": "释放编码缓冲"
+      }
+    ],
+    "VAR": []
+  },
+  "ACCESS_PATHS": [
+    {
+      "PATH": "publish->topic_name",
+      "TYPE": "char*",
+      "ROLE": "传给 topic tree 匹配的 PUBLISH topic"
+    },
+    {
+      "PATH": "publish->payload",
+      "TYPE": "uint8_t*",
+      "ROLE": "下发 QoS0 PUBLISH payload"
+    },
+    {
+      "PATH": "publish->payload_len",
+      "TYPE": "size_t",
+      "ROLE": "下发 payload 长度"
+    },
+    {
+      "PATH": "publish->qos",
+      "TYPE": "uint8_t",
+      "ROLE": "本 router 只应收到 broker 已筛选的 QoS0 publish"
+    }
+  ],
+  "CALL_CONTRACTS": [
+    {
+      "NAME": "mqtt_topic_tree_match_subscribers",
+      "SIGNATURE": "bool mqtt_topic_tree_match_subscribers(const mqtt_topic_tree_t* t, const char* topic, int** out_sids, size_t* out_count)",
+      "PARAMS": [
+        "r->topics borrowed",
+        "publish->topic_name borrowed",
+        "out_sids is an output pointer; on success receives malloc/realloc-owned int array or NULL for zero matches",
+        "out_count receives element count"
+      ],
+      "RETURN": "true means matching completed, false means invalid args or allocation failure",
+      "OWNERSHIP": "caller must free(*out_sids) after successful non-NULL output"
+    },
+    {
+      "NAME": "mqtt_session_manager_get",
+      "SIGNATURE": "mqtt_session_t* mqtt_session_manager_get(mqtt_session_manager_t* m, int session_id)",
+      "PARAMS": [
+        "r->sessions borrowed",
+        "matched sid value"
+      ],
+      "RETURN": "borrowed session pointer or NULL"
+    },
+    {
+      "NAME": "mqtt_encode_publish_qos0",
+      "SIGNATURE": "mqtt_bytes_t mqtt_encode_publish_qos0(const char* topic_name, const uint8_t* payload, size_t payload_len, bool retain)",
+      "PARAMS": [
+        "publish->topic_name borrowed",
+        "publish->payload borrowed",
+        "publish->payload_len value",
+        "publish->retain value"
+      ],
+      "RETURN": "mqtt_bytes_t owning encoded data; release with mqtt_bytes_free"
+    }
+  ],
+  "LOGIC": {
+    "INPUT": "输入为路由器 r、发布源 from_session_id、发布载荷 publish",
+    "ACTION": "忽略 from_session_id；校验 r/publish/topic_name；调用 topic_tree_match_subscribers 获取订阅者；逐个查 session、编码 QoS0 PUBLISH 并发送；最后释放 subs 数组",
+    "OUTPUT": "无返回值；匹配会话收到转发消息",
+    "INVARIANTS_USED": [
+      "每个订阅者独立编码并发送，单个失败不阻断其他会话",
+      "subs 动态数组在函数末尾必须释放"
+    ]
+  }
+}

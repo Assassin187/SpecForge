@@ -1,0 +1,62 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "mqtt/topic/topic_tree/next_level",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "按 / 分隔提取主题层级分段并推进读取位置",
+  "SIGNATURE": {
+    "RAW": "static bool next_level(const char* s, size_t s_len, size_t* io_pos, const char** out_start, size_t* out_len, bool* out_done)",
+    "NAME": "next_level",
+    "RETURN": "bool",
+    "PARAMS": [
+      {
+        "TYPE": "const char*",
+        "NAME": "s",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "size_t",
+        "NAME": "s_len",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "size_t*",
+        "NAME": "io_pos",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "const char**",
+        "NAME": "out_start",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "size_t*",
+        "NAME": "out_len",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "bool*",
+        "NAME": "out_done",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入来自函数参数。",
+    "ACTION": "按 / 提取下一层片段，输出片段范围并推进游标与结束标记。",
+    "OUTPUT": "通过返回值或副作用反映处理结果。",
+    "INVARIANTS_USED": [
+      "函数执行保持本模块内部状态一致性。"
+    ]
+  }
+}

@@ -1,0 +1,26 @@
+#ifndef SMTP_AUTH_H
+#define SMTP_AUTH_H
+
+#include <stddef.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+const char* smtp_auth_default_user(void);
+int smtp_auth_validate(const char* user, const char* pass);
+
+int smtp_auth_decode_base64(const char* input, unsigned char* out, size_t out_cap, size_t* out_len);
+int smtp_auth_parse_plain_blob(
+    const unsigned char* blob,
+    size_t blob_len,
+    char* out_user,
+    size_t out_user_len,
+    char* out_pass,
+    size_t out_pass_len);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif

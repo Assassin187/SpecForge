@@ -1,0 +1,31 @@
+{
+  "model": "qwen3-max-2026-01-23",
+  "llm_client": "agent.coder.llm_client.chat_with_llm",
+  "output_dir": "/home/ljf/new/agent/out/mqtt_broker_20260428_170516",
+  "binary_name": "mqtt_broker",
+  "max_repair_rounds": 3,
+  "generation_order": [
+    "network",
+    "protocol_codec",
+    "session",
+    "topic",
+    "router",
+    "broker_app"
+  ],
+  "modules": [
+    "network",
+    "protocol_codec",
+    "session",
+    "topic",
+    "router",
+    "broker_app"
+  ],
+  "repaired_files": [
+    "network/tcp_server.c",
+    "protocol/mqtt_decoder.c",
+    "router/message_router.c",
+    "broker/broker.c"
+  ],
+  "compile_success": false,
+  "diagnostics": []
+}

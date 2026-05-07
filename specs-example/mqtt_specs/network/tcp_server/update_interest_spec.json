@@ -1,0 +1,59 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "mqtt/network/tcp_server/update_interest",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "根据连接是否有待发数据更新 epoll 关注事件（EPOLLIN/EPOLLOUT）",
+  "SIGNATURE": {
+    "RAW": "static void update_interest(mqtt_tcp_server_t* s, mqtt_connection_t* c)",
+    "NAME": "update_interest",
+    "RETURN": "void",
+    "PARAMS": [
+      {
+        "TYPE": "mqtt_tcp_server_t*",
+        "NAME": "s",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "mqtt_connection_t*",
+        "NAME": "c",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct mqtt_tcp_server",
+        "ROLE": "TCP 服务器私有状态结构体"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "mqtt_connection_closed",
+        "KIND": "CALL",
+        "ROLE": "跳过已关闭连接"
+      },
+      {
+        "NAME": "mqtt_connection_fd",
+        "KIND": "CALL",
+        "ROLE": "设置 epoll data.fd"
+      },
+      {
+        "NAME": "mqtt_connection_want_write",
+        "KIND": "CALL",
+        "ROLE": "决定是否订阅 EPOLLOUT"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入来自函数参数。",
+    "ACTION": "按连接是否待写组装 EPOLLIN/EPOLLOUT 事件并执行 epoll_ctl MOD。",
+    "OUTPUT": "通过返回值或副作用反映处理结果。",
+    "INVARIANTS_USED": [
+      "函数执行保持本模块内部状态一致性。"
+    ]
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "mqtt/network/tcp_server/close_connection",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "统一连接关闭流程：epoll 删除、触发 on_close 回调、再移除连接",
+  "SIGNATURE": {
+    "RAW": "static void close_connection(mqtt_tcp_server_t* s, mqtt_connection_t* c)",
+    "NAME": "close_connection",
+    "RETURN": "void",
+    "PARAMS": [
+      {
+        "TYPE": "mqtt_tcp_server_t*",
+        "NAME": "s",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "mqtt_connection_t*",
+        "NAME": "c",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct mqtt_tcp_server",
+        "ROLE": "TCP 服务器私有状态结构体"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "mqtt_connection_fd",
+        "KIND": "CALL",
+        "ROLE": "读取连接 fd"
+      },
+      {
+        "NAME": "remove_conn",
+        "KIND": "CALL",
+        "ROLE": "从链表移除并销毁连接"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入来自函数参数。",
+    "ACTION": "先从 epoll 删除 fd，再触发 on_close 回调，最后调用 remove_conn 清理对象。",
+    "OUTPUT": "通过返回值或副作用反映处理结果。",
+    "INVARIANTS_USED": [
+      "函数执行保持本模块内部状态一致性。"
+    ]
+  }
+}

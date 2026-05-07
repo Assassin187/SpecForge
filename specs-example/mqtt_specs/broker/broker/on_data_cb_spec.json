@@ -1,0 +1,79 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "mqtt/broker/broker/on_data_cb",
+  "FUNCTION_TYPE": "EVENT",
+  "ROLE": "收包回调：定位会话、驱动解码并按已消费长度推进连接输入缓冲",
+  "SIGNATURE": {
+    "RAW": "static void on_data_cb(void* user, mqtt_connection_t* c)",
+    "NAME": "on_data_cb",
+    "RETURN": "void",
+    "PARAMS": [
+      {
+        "TYPE": "void*",
+        "NAME": "user",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "mqtt_connection_t*",
+        "NAME": "c",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct mqtt_broker",
+        "ROLE": "Broker 运行时内部状态结构"
+      },
+      {
+        "NAME": "struct packet_ctx",
+        "ROLE": "解码回调上下文结构"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "mqtt_connection_fd",
+        "KIND": "CALL",
+        "ROLE": "通过 fd 定位会话"
+      },
+      {
+        "NAME": "mqtt_session_manager_get",
+        "KIND": "CALL",
+        "ROLE": "查询连接对应会话"
+      },
+      {
+        "NAME": "mqtt_connection_in_data",
+        "KIND": "CALL",
+        "ROLE": "读取输入缓冲指针"
+      },
+      {
+        "NAME": "mqtt_connection_in_len",
+        "KIND": "CALL",
+        "ROLE": "读取输入缓冲长度"
+      },
+      {
+        "NAME": "mqtt_decoder_feed",
+        "KIND": "CALL",
+        "ROLE": "增量解码并触发 on_packet 回调"
+      },
+      {
+        "NAME": "mqtt_connection_in_consume",
+        "KIND": "CALL",
+        "ROLE": "消费已解析字节"
+      }
+    ],
+    "VAR": []
+  },
+  "EVENT": {
+    "TRIGGER": "tcp_server 在连接可读并完成 mqtt_connection_read 后触发",
+    "PRECONDITION": "user 对应 broker，c 有效且已在 session_manager 中登记",
+    "INPUT": "事件输入为 broker 上下文与有输入数据的连接 c",
+    "ACTION": "校验 b/c；通过 fd 获取会话 sess；读取连接 in_data/in_len，空数据直接返回；构造 packet_ctx 后调用 mqtt_decoder_feed 解析并回调 on_packet；若 consumed>0 则调用 mqtt_connection_in_consume 前移缓冲",
+    "STATE_CHANGE": "会话与路由状态可能因报文处理变化，连接输入缓冲会按已消费字节缩减",
+    "RESPONSE": "无返回值；业务处理通过回调链路与状态更新体现",
+    "EVENT_TYPE": "RUNTIME_EVENT"
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "mqtt/topic/topic_tree/entry_remove_sid",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "从条目中删除指定 session_id（末尾覆盖）",
+  "SIGNATURE": {
+    "RAW": "static void entry_remove_sid(filter_entry_t* e, int sid)",
+    "NAME": "entry_remove_sid",
+    "RETURN": "void",
+    "PARAMS": [
+      {
+        "TYPE": "filter_entry_t*",
+        "NAME": "e",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "int",
+        "NAME": "sid",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct filter_entry",
+        "ROLE": "过滤器条目结构体"
+      }
+    ],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入来自函数参数。",
+    "ACTION": "命中 sid 后用末元素覆盖并缩减 sid_count。",
+    "OUTPUT": "通过返回值或副作用反映处理结果。",
+    "INVARIANTS_USED": [
+      "函数执行保持本模块内部状态一致性。"
+    ]
+  }
+}

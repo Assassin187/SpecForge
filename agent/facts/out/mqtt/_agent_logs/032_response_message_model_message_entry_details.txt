@@ -1,0 +1,305 @@
+{
+  "category": "message_model",
+  "task": "message_entry_details",
+  "facts": {
+    "message_or_command_entries": [
+      {
+        "name": "PUBLISH",
+        "kind": "message",
+        "direction": "bidirectional",
+        "syntax_or_layout": "Fixed header (control packet type = 3, flags include DUP, QoS level, RETAIN), variable header (Topic Name [UTF-8 string], Packet Identifier if QoS > 0), payload (application message). Remaining Length = length of variable header + payload.",
+        "fields": [
+          {
+            "name": "Topic Name",
+            "role": "identifies information channel",
+            "constraints": [
+              "MUST be UTF-8 encoded string",
+              "MUST NOT contain wildcard characters",
+              "MUST be first field in variable header"
+            ],
+            "evidence_refs": ["message_e1", "message_e2"]
+          },
+          {
+            "name": "Packet Identifier",
+            "role": "correlates messages in QoS 1/2 flows",
+            "constraints": [
+              "present only if QoS level is 1 or 2",
+              "16-bit unsigned integer (MSB then LSB)"
+            ],
+            "evidence_refs": ["message_e3", "message_e4"]
+          },
+          {
+            "name": "RETAIN flag",
+            "role": "controls server-side retention of message",
+            "constraints": [
+              "if set to 1 and payload non-zero: server MUST store message as retained for topic",
+              "if set to 1 and payload zero: server MUST remove any existing retained message for topic and MUST NOT store the zero-byte message",
+              "if set to 0: server MUST NOT store or replace retained message"
+            ],
+            "evidence_refs": ["message_e5", "message_e6"]
+          },
+          {
+            "name": "QoS level",
+            "role": "determines delivery guarantee and response behavior",
+            "constraints": [
+              "valid values: 0, 1, or 2",
+              "determines presence of Packet Identifier and expected response"
+            ],
+            "evidence_refs": ["message_e7"]
+          }
+        ],
+        "preconditions": [
+          {
+            "summary": "If sent by client, Topic Name must not contain wildcards.",
+            "evidence_refs": ["message_e2"]
+          },
+          {
+            "summary": "If QoS > 0, Packet Identifier must not be reused while original packet is in flight.",
+            "evidence_refs": ["disc_e12"]
+          }
+        ],
+        "expected_responses": [
+          {
+            "surface_unit": "PUBACK",
+            "summary": "Required response from receiver when QoS = 1.",
+            "evidence_refs": ["message_e8"]
+          },
+          {
+            "surface_unit": "PUBREC",
+            "summary": "Required response from receiver when QoS = 2.",
+            "evidence_refs": ["message_e8"]
+          }
+        ],
+        "state_effects": [
+          {
+            "summary": "If RETAIN=1 and payload non-empty, updates Retained Message Store for topic.",
+            "evidence_refs": ["message_e5"]
+          },
+          {
+            "summary": "If RETAIN=1 and payload empty, removes entry from Retained Message Store for topic.",
+            "evidence_refs": ["message_e6"]
+          },
+          {
+            "summary": "Triggers delivery to all clients with matching subscriptions (respecting subscription QoS).",
+            "evidence_refs": ["message_e9"]
+          }
+        ],
+        "error_paths": [
+          {
+            "condition": "Server does not authorize PUBLISH from client.",
+            "required_action": "MUST either acknowledge per QoS rules or close network connection.",
+            "evidence_refs": ["message_e10"]
+          }
+        ],
+        "evidence_refs": ["message_e1", "message_e2", "message_e3", "message_e4", "message_e5", "message_e6", "message_e7", "message_e8", "message_e9", "message_e10"]
+      },
+      {
+        "name": "PUBACK",
+        "kind": "response",
+        "direction": "server_to_client",
+        "syntax_or_layout": "Fixed header (control packet type = 4, reserved bits = 0), variable header (Packet Identifier from corresponding PUBLISH). Remaining Length = 2.",
+        "fields": [
+          {
+            "name": "Packet Identifier",
+            "role": "matches identifier from QoS 1 PUBLISH",
+            "constraints": [
+              "2-byte unsigned integer",
+              "must correspond to an outstanding QoS 1 PUBLISH from client"
+            ],
+            "evidence_refs": ["message_e11", "message_e12"]
+          }
+        ],
+        "preconditions": [
+          {
+            "summary": "Must be sent in response to a QoS 1 PUBLISH received from client.",
+            "evidence_refs": ["message_e8"]
+          }
+        ],
+        "expected_responses": [],
+        "state_effects": [
+          {
+            "summary": "Completes QoS 1 delivery; allows sender to discard message from in-flight state.",
+            "evidence_refs": ["disc_e2"]
+          }
+        ],
+        "error_paths": [],
+        "evidence_refs": ["message_e11", "message_e12"]
+      },
+      {
+        "name": "SUBSCRIBE",
+        "kind": "command",
+        "direction": "client_to_server",
+        "syntax_or_layout": "Fixed header (control packet type = 8, reserved bits = 0), variable header (Packet Identifier), payload (list of Topic Filters and requested QoS levels). Remaining Length = 2 + payload length.",
+        "fields": [
+          {
+            "name": "Packet Identifier",
+            "role": "correlates request with SUBACK response",
+            "constraints": [
+              "2-byte unsigned integer",
+              "must be present"
+            ],
+            "evidence_refs": ["message_e13"]
+          },
+          {
+            "name": "Topic Filter",
+            "role": "specifies topics of interest, possibly with wildcards",
+            "constraints": [
+              "UTF-8 encoded string",
+              "may contain '+' or '#' wildcards per MQTT wildcard rules"
+            ],
+            "evidence_refs": ["disc_e11"]
+          },
+          {
+            "name": "Requested QoS",
+            "role": "maximum desired QoS for matching messages",
+            "constraints": [
+              "3-bit field with value 0, 1, or 2"
+            ],
+            "evidence_refs": ["MQTT_3.1.1-s10-p16"]
+          }
+        ],
+        "preconditions": [
+          {
+            "summary": "Client must have established network connection.",
+            "evidence_refs": ["disc_e8"]
+          }
+        ],
+        "expected_responses": [
+          {
+            "surface_unit": "SUBACK",
+            "summary": "Server responds with granted QoS levels per topic filter.",
+            "evidence_refs": ["message_e14"]
+          }
+        ],
+        "state_effects": [
+          {
+            "summary": "Creates or updates Subscription(s) in Session state.",
+            "evidence_refs": ["disc_e11"]
+          },
+          {
+            "summary": "If new subscription matches retained topics, retained messages are queued for delivery.",
+            "evidence_refs": ["MQTT_3.1.1-s16-p8"]
+          }
+        ],
+        "error_paths": [],
+        "evidence_refs": ["message_e13", "message_e14", "MQTT_3.1.1-s10-p16"]
+      }
+    ]
+  },
+  "evidence": [
+    {
+      "evidence_id": "message_e1",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p7",
+      "excerpt": "The Topic Name MUST be present as the first field in the PUBLISH Packet Variable header. It MUST be a UTF-8 encoded string [MQTT-3.3.2-1] as defined in section 1.5.3."
+    },
+    {
+      "evidence_id": "message_e2",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p7",
+      "excerpt": "The Topic Name in the PUBLISH Packet MUST NOT contain wildcard characters [MQTT-3.3.2-2]."
+    },
+    {
+      "evidence_id": "message_e3",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p8",
+      "excerpt": "The Packet Identifier field is only present in PUBLISH Packets where the QoS level is 1 or 2."
+    },
+    {
+      "evidence_id": "message_e4",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix B. Mandatory normative statements (non normative)",
+      "chunk_id": "MQTT_3.1.1-s3-p12",
+      "excerpt": "Figure 2.3 - Packet Identifier bytes... byte 1 Packet Identifier MSB, byte 2 Packet Identifier LSB"
+    },
+    {
+      "evidence_id": "message_e5",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix B. Mandatory normative statements (non normative)",
+      "chunk_id": "MQTT_3.1.1-s16-p8",
+      "excerpt": "If the RETAIN flag is set to 1, in a PUBLISH Packet sent by a Client to a Server, the Server MUST store the Application Message and its QoS..."
+    },
+    {
+      "evidence_id": "message_e6",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p7",
+      "excerpt": "A PUBLISH Packet with a RETAIN flag set to 1 and a payload containing zero bytes will be processed as normal by the Server... Additionally any existing retained message with the same topic name MUST be removed... A zero byte retained message MUST NOT be stored as a retained message on the Server [MQTT-3.3.1-11]."
+    },
+    {
+      "evidence_id": "message_e7",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p9",
+      "excerpt": "The receiver of a PUBLISH Packet MUST respond according to Table 3.4 - Expected Publish Packet response as determined by the QoS in the PUBLISH Packet [MQTT-3.3.4-1]."
+    },
+    {
+      "evidence_id": "message_e8",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p9",
+      "excerpt": "Table 3.4 - Expected Publish Packet response: QoS 1 → PUBACK Packet; QoS 2 → PUBREC Packet"
+    },
+    {
+      "evidence_id": "message_e9",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p9",
+      "excerpt": "The Server uses a PUBLISH Packet to send an Application Message to each Client which has a matching subscription... MUST deliver the message to the Client respecting the maximum QoS of all the matching subscriptions [MQTT-3.3.5-1]."
+    },
+    {
+      "evidence_id": "message_e10",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p9",
+      "excerpt": "If a Server implementation does not authorize a PUBLISH to be performed by a Client; it has no way of informing that Client. It MUST either make a positive acknowledgement, according to the normal QoS rules, or close the Network Connection [MQTT-3.3.5-2]."
+    },
+    {
+      "evidence_id": "message_e11",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p9",
+      "excerpt": "3.4 PUBACK – Publish acknowledgement... Figure 3.12 - PUBACK Packet fixed header... Remaining Length (2)"
+    },
+    {
+      "evidence_id": "message_e12",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix B. Mandatory normative statements (non normative)",
+      "chunk_id": "MQTT_3.1.1-s3-p12",
+      "excerpt": "The variable header component of many of the Control Packet types includes a 2 byte Packet Identifier field. These Control Packets are PUBLISH (where QoS > 0), PUBACK..."
+    },
+    {
+      "evidence_id": "message_e13",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix B. Mandatory normative statements (non normative)",
+      "chunk_id": "MQTT_3.1.1-s3-p12",
+      "excerpt": "These Control Packets are... SUBSCRIBE, SUBACK... include a 2 byte Packet Identifier field."
+    },
+    {
+      "evidence_id": "message_e14",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "chunk_id": "MQTT_3.1.1-s10-p16",
+      "excerpt": "3.9 SUBACK – Subscribe acknowledgement... sent by the Server to the Client to confirm receipt and processing of a SUBSCRIBE Packet... contains a list of return codes... maximum QoS level that was granted in each Subscription"
+    }
+  ],
+  "open_questions": [
+    {
+      "category": "message_model",
+      "question_type": "document_not_extracted",
+      "question": "What is the exact syntax and field layout for UNSUBSCRIBE, PUBREC, PUBREL, PUBCOMP, CONNECT, CONNACK, and UNSUBACK messages?",
+      "blocking_impact": "high",
+      "suggested_followup": "Extract full message format details for all remaining surface units using relevant sections of MQTT_3.1.1.txt (e.g., Sections 3.5–3.14)."
+    },
+    {
+      "category": "message_model",
+      "question_type": "document_not_extracted",
+      "question": "What are the precise error conditions and required actions for malformed packets (e.g., invalid Remaining Length, missing fields)?",
+      "blocking_impact": "medium",
+      "suggested_followup": "Review Section 2.2.3 (Malformed Packets) and Section 3.x error clauses for each packet type."
+    }
+  ]
+}

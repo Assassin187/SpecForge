@@ -1,0 +1,32 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "mqtt/protocol/mqtt_encoder/remaining_length_bytes",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "计算 Remaining Length 采用 MQTT 可变长编码所需字节数",
+  "SIGNATURE": {
+    "RAW": "static size_t remaining_length_bytes(size_t len)",
+    "NAME": "remaining_length_bytes",
+    "RETURN": "size_t",
+    "PARAMS": [
+      {
+        "TYPE": "size_t",
+        "NAME": "len",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入来自函数参数。",
+    "ACTION": "按 MQTT Remaining Length 编码规则计算所需字节数。",
+    "OUTPUT": "通过返回值或副作用反映处理结果。",
+    "INVARIANTS_USED": [
+      "函数执行保持本模块内部状态一致性。"
+    ]
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "mqtt/network/tcp_server/mqtt_tcp_server_start",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "初始化监听与 epoll 资源并将服务器置为运行态",
+  "SIGNATURE": {
+    "RAW": "bool mqtt_tcp_server_start(mqtt_tcp_server_t* s)",
+    "NAME": "mqtt_tcp_server_start",
+    "RETURN": "bool",
+    "PARAMS": [
+      {
+        "TYPE": "mqtt_tcp_server_t*",
+        "NAME": "s",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct mqtt_tcp_server",
+        "ROLE": "TCP 服务器私有状态结构体"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "setup_listen_socket",
+        "KIND": "CALL",
+        "ROLE": "创建监听 socket"
+      },
+      {
+        "NAME": "setup_epoll",
+        "KIND": "CALL",
+        "ROLE": "初始化 epoll 监听"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入为服务器指针 s",
+    "ACTION": "校验 s 非空；依次调用 setup_listen_socket 与 setup_epoll；任一步失败返回 false；成功后置 running=true 并返回 true",
+    "OUTPUT": "返回 true 表示启动成功，false 表示初始化失败",
+    "INVARIANTS_USED": [
+      "仅在监听 socket 与 epoll 都就绪后进入 running 状态",
+      "失败时不进入事件循环"
+    ]
+  }
+}

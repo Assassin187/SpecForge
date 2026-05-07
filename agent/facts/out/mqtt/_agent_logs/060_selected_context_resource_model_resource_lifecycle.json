@@ -1,0 +1,105 @@
+{
+  "stage": "resource_model_resource_lifecycle",
+  "char_budget": 10000,
+  "char_count": 9969,
+  "selected_chunk_ids": [
+    "MQTT_3.1.1-s16-p8",
+    "MQTT_3.1.1-s10-p7",
+    "MQTT_3.1.1-s16-p3",
+    "MQTT_3.1.1-s10-p15",
+    "MQTT_3.1.1-s16-p12",
+    "MQTT_3.1.1-s16-p4"
+  ],
+  "selected_chunks": [
+    {
+      "chunk_id": "MQTT_3.1.1-s16-p8",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix B. Mandatory normative statements (non normative)",
+      "section_id": "MQTT_3.1.1-s16",
+      "char_count": 1786
+    },
+    {
+      "chunk_id": "MQTT_3.1.1-s10-p7",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "section_id": "MQTT_3.1.1-s10",
+      "char_count": 1503
+    },
+    {
+      "chunk_id": "MQTT_3.1.1-s16-p3",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix B. Mandatory normative statements (non normative)",
+      "section_id": "MQTT_3.1.1-s16",
+      "char_count": 1748
+    },
+    {
+      "chunk_id": "MQTT_3.1.1-s10-p15",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "4. Start message delivery and keep alive monitoring.",
+      "section_id": "MQTT_3.1.1-s10",
+      "char_count": 1579
+    },
+    {
+      "chunk_id": "MQTT_3.1.1-s16-p12",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix B. Mandatory normative statements (non normative)",
+      "section_id": "MQTT_3.1.1-s16",
+      "char_count": 1757
+    },
+    {
+      "chunk_id": "MQTT_3.1.1-s16-p4",
+      "doc_path": "/home/ljf/new/document/MQTT_3.1.1.txt",
+      "section_hint": "Appendix B. Mandatory normative statements (non normative)",
+      "section_id": "MQTT_3.1.1-s16",
+      "char_count": 1596
+    }
+  ],
+  "selected_sections": {
+    "MQTT_3.1.1-s16": 4,
+    "MQTT_3.1.1-s10": 2,
+    "MQTT_3.1.1-s3": 0,
+    "MQTT_3.1.1-s1": 0,
+    "MQTT_3.1.1-s2": 0,
+    "MQTT_3.1.1-s11": 0,
+    "MQTT_3.1.1-s13": 0,
+    "MQTT_3.1.1-s17": 0
+  },
+  "candidate_count": 29,
+  "ordered_chunk_ids": [
+    "MQTT_3.1.1-s16-p8",
+    "MQTT_3.1.1-s10-p7",
+    "MQTT_3.1.1-s16-p3",
+    "MQTT_3.1.1-s10-p15",
+    "MQTT_3.1.1-s16-p12",
+    "MQTT_3.1.1-s16-p4",
+    "MQTT_3.1.1-s10-p6",
+    "MQTT_3.1.1-s16-p10",
+    "MQTT_3.1.1-s10-p33",
+    "MQTT_3.1.1-s10-p14",
+    "MQTT_3.1.1-s16-p11",
+    "MQTT_3.1.1-s10-p21",
+    "MQTT_3.1.1-s10-p12",
+    "MQTT_3.1.1-s3-p17",
+    "MQTT_3.1.1-s10-p19",
+    "MQTT_3.1.1-s16-p9",
+    "MQTT_3.1.1-s3-p3",
+    "MQTT_3.1.1-s16-p14",
+    "MQTT_3.1.1-s3-p18",
+    "MQTT_3.1.1-s3-p19",
+    "MQTT_3.1.1-s3-p16",
+    "MQTT_3.1.1-s3-p20",
+    "MQTT_3.1.1-s1-p3",
+    "MQTT_3.1.1-s2-p4",
+    "MQTT_3.1.1-s11-p1",
+    "MQTT_3.1.1-s13-p1",
+    "MQTT_3.1.1-s3-p5",
+    "MQTT_3.1.1-s17-p1",
+    "MQTT_3.1.1-s3-p8"
+  ],
+  "rerank_used": true,
+  "rerank_high_priority_ids": [
+    "MQTT_3.1.1-s16-p8",
+    "MQTT_3.1.1-s10-p7",
+    "MQTT_3.1.1-s16-p3"
+  ]
+}

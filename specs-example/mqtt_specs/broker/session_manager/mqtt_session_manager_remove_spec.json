@@ -1,0 +1,55 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "mqtt/broker/session_manager/mqtt_session_manager_remove",
+  "FUNCTION_TYPE": "EVENT",
+  "ROLE": "按 session_id 从管理器删除会话并保持数组紧凑",
+  "SIGNATURE": {
+    "RAW": "void mqtt_session_manager_remove(mqtt_session_manager_t* m, int session_id)",
+    "NAME": "mqtt_session_manager_remove",
+    "RETURN": "void",
+    "PARAMS": [
+      {
+        "TYPE": "mqtt_session_manager_t*",
+        "NAME": "m",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "int",
+        "NAME": "session_id",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct mqtt_session_manager",
+        "ROLE": "会话管理器私有结构"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "mqtt_session_id",
+        "KIND": "CALL",
+        "ROLE": "定位要删除的会话"
+      },
+      {
+        "NAME": "mqtt_session_destroy",
+        "KIND": "CALL",
+        "ROLE": "销毁被移除会话"
+      }
+    ],
+    "VAR": []
+  },
+  "EVENT": {
+    "TRIGGER": "连接关闭或主动踢会话时触发",
+    "PRECONDITION": "m 可为空；session_id 为目标会话 fd",
+    "INPUT": "输入为管理器 m 与待删除 session_id",
+    "ACTION": "线性扫描找到匹配会话后先销毁，再用末元素覆盖当前位置并 count--；未找到则无操作",
+    "STATE_CHANGE": "命中时会话数量减少且数组顺序可能变化",
+    "RESPONSE": "无返回值；删除结果体现在容器内部",
+    "EVENT_TYPE": "RUNTIME_EVENT"
+  }
+}

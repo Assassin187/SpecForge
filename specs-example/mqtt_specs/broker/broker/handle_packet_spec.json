@@ -1,0 +1,217 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "mqtt/broker/broker/handle_packet",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "按 MQTT 报文类型执行业务分发并驱动会话/路由/回包动作",
+  "SIGNATURE": {
+    "RAW": "static void handle_packet(mqtt_broker_t* b, mqtt_session_t* sess, const mqtt_packet_t* pkt)",
+    "NAME": "handle_packet",
+    "RETURN": "void",
+    "PARAMS": [
+      {
+        "TYPE": "mqtt_broker_t*",
+        "NAME": "b",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "mqtt_session_t*",
+        "NAME": "sess",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "const mqtt_packet_t*",
+        "NAME": "pkt",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct mqtt_broker",
+        "ROLE": "Broker 运行时内部状态结构"
+      },
+      {
+        "NAME": "mqtt_session_t",
+        "ROLE": "当前连接对应会话对象"
+      },
+      {
+        "NAME": "mqtt_packet_t",
+        "ROLE": "解码后的 MQTT 报文对象"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "mqtt_session_connection",
+        "KIND": "CALL",
+        "ROLE": "获取会话底层连接"
+      },
+      {
+        "NAME": "mqtt_session_mark_connected",
+        "KIND": "CALL",
+        "ROLE": "CONNECT 后标记会话已连接"
+      },
+      {
+        "NAME": "mqtt_encode_connack",
+        "KIND": "CALL",
+        "ROLE": "编码 CONNACK 回包"
+      },
+      {
+        "NAME": "mqtt_encode_suback",
+        "KIND": "CALL",
+        "ROLE": "编码 SUBACK 回包"
+      },
+      {
+        "NAME": "mqtt_encode_pingresp",
+        "KIND": "CALL",
+        "ROLE": "编码 PINGRESP 回包"
+      },
+      {
+        "NAME": "mqtt_session_send",
+        "KIND": "CALL",
+        "ROLE": "向客户端发送编码后的报文"
+      },
+      {
+        "NAME": "mqtt_bytes_free",
+        "KIND": "CALL",
+        "ROLE": "释放编码缓冲"
+      },
+      {
+        "NAME": "mqtt_session_id",
+        "KIND": "CALL",
+        "ROLE": "读取会话 ID 用于路由/日志"
+      },
+      {
+        "NAME": "mqtt_session_connected",
+        "KIND": "CALL",
+        "ROLE": "校验会话是否已 CONNECT"
+      },
+      {
+        "NAME": "mqtt_connection_close",
+        "KIND": "CALL",
+        "ROLE": "协议不合法或断开时关闭连接"
+      },
+      {
+        "NAME": "mqtt_message_router_subscribe",
+        "KIND": "CALL",
+        "ROLE": "写入订阅关系"
+      },
+      {
+        "NAME": "mqtt_message_router_publish",
+        "KIND": "CALL",
+        "ROLE": "转发 PUBLISH 消息"
+      }
+    ],
+    "VAR": []
+  },
+  "ACCESS_PATHS": [
+    {
+      "PATH": "pkt->type",
+      "TYPE": "mqtt_packet_type_t",
+      "ROLE": "选择业务分支"
+    },
+    {
+      "PATH": "pkt->v.connect.client_id",
+      "TYPE": "char*",
+      "ROLE": "CONNECT 后传给 mqtt_session_mark_connected"
+    },
+    {
+      "PATH": "pkt->v.connect.clean_session",
+      "TYPE": "bool",
+      "ROLE": "CONNECT clean session"
+    },
+    {
+      "PATH": "pkt->v.connect.keep_alive",
+      "TYPE": "uint16_t",
+      "ROLE": "CONNECT keep alive"
+    },
+    {
+      "PATH": "pkt->v.subscribe.packet_id",
+      "TYPE": "uint16_t",
+      "ROLE": "SUBACK packet id"
+    },
+    {
+      "PATH": "pkt->v.subscribe.topics[i].filter",
+      "TYPE": "char*",
+      "ROLE": "写入 router 订阅关系"
+    },
+    {
+      "PATH": "pkt->v.subscribe.topic_count",
+      "TYPE": "size_t",
+      "ROLE": "SUBACK return-code 数量"
+    },
+    {
+      "PATH": "pkt->v.publish",
+      "TYPE": "mqtt_publish_payload_t",
+      "ROLE": "传给 mqtt_message_router_publish"
+    },
+    {
+      "PATH": "pkt->v.publish.qos",
+      "TYPE": "uint8_t",
+      "ROLE": "minimal broker 只转发 QoS0"
+    }
+  ],
+  "CALL_CONTRACTS": [
+    {
+      "NAME": "mqtt_session_mark_connected",
+      "SIGNATURE": "void mqtt_session_mark_connected(mqtt_session_t* s, const char* client_id, bool clean_session, uint16_t keep_alive)",
+      "PARAMS": [
+        "sess borrowed",
+        "pkt->v.connect.client_id borrowed during callback",
+        "pkt->v.connect.clean_session value",
+        "pkt->v.connect.keep_alive value"
+      ],
+      "RETURN": "void",
+      "FAILURE": "No direct failure return; session implementation owns any copied client_id"
+    },
+    {
+      "NAME": "mqtt_message_router_subscribe",
+      "SIGNATURE": "void mqtt_message_router_subscribe(mqtt_message_router_t* r, int session_id, const char* filter)",
+      "PARAMS": [
+        "b->router borrowed",
+        "mqtt_session_id(sess)",
+        "pkt->v.subscribe.topics[i].filter borrowed"
+      ],
+      "RETURN": "void"
+    },
+    {
+      "NAME": "mqtt_message_router_publish",
+      "SIGNATURE": "void mqtt_message_router_publish(mqtt_message_router_t* r, int from_session_id, const mqtt_publish_payload_t* publish)",
+      "PARAMS": [
+        "b->router borrowed",
+        "mqtt_session_id(sess)",
+        "&pkt->v.publish borrowed"
+      ],
+      "RETURN": "void"
+    }
+  ],
+  "FORBIDDEN_SYMBOLS": [
+    {
+      "NAME": "pkt->data",
+      "KIND": "FIELD",
+      "REASON": "mqtt_packet_t 的 union 字段名是 v"
+    },
+    {
+      "NAME": "pkt->connect",
+      "KIND": "FIELD",
+      "REASON": "CONNECT 必须通过 pkt->v.connect 访问"
+    },
+    {
+      "NAME": "MQTT_PACKET_TYPE_CONNECT",
+      "KIND": "ENUM",
+      "REASON": "唯一 enum 名称是 MQTT_PKT_CONNECT"
+    }
+  ],
+  "LOGIC": {
+    "INPUT": "输入为 broker 上下文 b、当前会话 sess 与已解码报文 pkt",
+    "ACTION": "先校验参数与会话连接；随后按报文类型分支：CONNECT 更新会话状态并回 CONNACK，SUBSCRIBE 在已连接前提下写入订阅并回 SUBACK，PUBLISH 在已连接且 QoS0 时路由转发，PINGREQ 回 PINGRESP，DISCONNECT 主动关闭连接；非法状态或资源失败时关闭连接或直接返回",
+    "OUTPUT": "无返回值；处理结果通过会话状态变更、路由更新与网络回包体现",
+    "INVARIANTS_USED": [
+      "未通过 CONNECT 的会话不得处理 SUBSCRIBE/PUBLISH/PINGREQ",
+      "编码函数返回的 mqtt_bytes_t 在使用后必须调用 mqtt_bytes_free 释放"
+    ]
+  }
+}
