@@ -43,6 +43,9 @@ def verify_output_dir(output_dir: str | Path) -> VerificationResult:
         "candidate_architectures.json",
         "design_decisions.json",
         "implementation_plan.json",
+        "implementation_plan_v2.json",
+        "spec_blueprint.json",
+        "expansion_candidates.json",
         "run_manifest.json",
     ]
     for filename in required:
@@ -53,6 +56,7 @@ def verify_output_dir(output_dir: str | Path) -> VerificationResult:
         return VerificationResult(False, diagnostics)
 
     implementation_plan = _load_json(out_dir / "implementation_plan.json")
+    spec_blueprint = _load_json(out_dir / "spec_blueprint.json")
     module_graph = list(implementation_plan.get("module_graph", []))
     canonical_types = list(implementation_plan.get("canonical_types", []))
     handler_matrix = list(implementation_plan.get("handler_matrix", []))
@@ -79,6 +83,24 @@ def verify_output_dir(output_dir: str | Path) -> VerificationResult:
     for name in sorted(minimum_surface):
         if name not in handled:
             diagnostics.append(PlanningDiagnostic("error", "minimum_v1_coverage_gap", f"Surface '{name}' missing from handler_matrix", str(out_dir / "implementation_plan.json")))
+
+    blueprint_kind = str(spec_blueprint.get("kind", ""))
+    if blueprint_kind != "SPEC_BLUEPRINT":
+        diagnostics.append(PlanningDiagnostic("error", "invalid_blueprint_kind", "spec_blueprint.json must have kind='SPEC_BLUEPRINT'", str(out_dir / "spec_blueprint.json")))
+
+    for section in ("modules", "files", "functions"):
+        items = spec_blueprint.get(section, [])
+        if not isinstance(items, list):
+            diagnostics.append(PlanningDiagnostic("error", "invalid_blueprint_section", f"Blueprint section '{section}' must be a list", str(out_dir / "spec_blueprint.json")))
+            continue
+        for idx, item in enumerate(items):
+            if not isinstance(item, dict):
+                diagnostics.append(PlanningDiagnostic("error", "invalid_blueprint_item", f"Blueprint item '{section}[{idx}]' must be an object", str(out_dir / "spec_blueprint.json")))
+                continue
+            has_trace = any(item.get(key) for key in ("evidence_refs", "decision_refs", "template_refs"))
+            if not has_trace:
+                ident = item.get("trace_id") or item.get("name") or idx
+                diagnostics.append(PlanningDiagnostic("error", "missing_blueprint_traceability", f"Blueprint {section} item '{ident}' has no evidence_refs, decision_refs, or template_refs", str(out_dir / "spec_blueprint.json")))
 
     spec_bundle_dir = out_dir / "spec_bundle"
     module_specs = list(spec_bundle_dir.glob("*_module_spec.json"))

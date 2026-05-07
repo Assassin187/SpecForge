@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -8,7 +9,7 @@ from .models import TargetProfile
 
 
 def _slug(text: str) -> str:
-    return "".join(ch.lower() if ch.isalnum() else "_" for ch in text).strip("_") or "x"
+    return "".join(ch.lower() if ch.isalnum() else "_" for ch in str(text)).strip("_") or "x"
 
 
 def _write_json(path: Path, data: Any) -> None:
@@ -16,134 +17,177 @@ def _write_json(path: Path, data: Any) -> None:
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def _public_type_name(protocol_slug: str, module_name: str) -> str:
-    return f"{protocol_slug}_{module_name}_t"
-
-
-def _signature(return_type: str, name: str, params: list[dict[str, str]]) -> str:
+def _signature(return_type: str, name: str, params: list[dict[str, Any]]) -> str:
     raw_params = ", ".join(f"{item['TYPE']} {item['NAME']}".strip() for item in params) or "void"
     return f"{return_type} {name}({raw_params})"
 
 
-def compile_spec_bundle(implementation_plan: dict[str, Any], output_dir: str | Path, target_profile: TargetProfile) -> dict[str, Path]:
-    out_dir = Path(output_dir)
-    spec_root = out_dir / "spec_bundle"
-    spec_root.mkdir(parents=True, exist_ok=True)
-    protocol_name = str(implementation_plan.get("protocol_name", "protocol"))
-    protocol_slug = _slug(protocol_name)
-    modules = implementation_plan.get("module_graph", [])
+def _strip_blueprint_meta(raw: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: value
+        for key, value in raw.items()
+        if key
+        not in {
+            "evidence_refs",
+            "decision_refs",
+            "template_refs",
+            "raw_entry",
+            "raw_spec",
+            "module",
+            "file_trace_id",
+        }
+    }
 
-    module_spec = {
+
+def _module_entry_from_blueprint(module: dict[str, Any]) -> dict[str, Any]:
+    raw = module.get("raw_entry")
+    if isinstance(raw, dict):
+        return dict(raw)
+    return {
+        "NAME": str(module.get("name", "")),
+        "ROLE": str(module.get("role", "")),
+        "DEPENDENCIES": [str(item) for item in module.get("dependencies", [])],
+        "ARTIFACTS": list(module.get("artifacts", [])),
+        "FILES": [str(item) for item in module.get("files", [])],
+        "DOC_REF": [str(item) for item in module.get("evidence_refs", [])],
+    }
+
+
+def _file_spec_from_blueprint(file_item: dict[str, Any]) -> dict[str, Any]:
+    raw = file_item.get("raw_spec")
+    if isinstance(raw, dict):
+        return dict(raw)
+    header_path = str(file_item.get("header_path", ""))
+    source_path = str(file_item.get("source_path", ""))
+    spec: dict[str, Any] = {
+        "KIND": "FILE_SPEC",
+        "FILE": {
+            "TRACE_ID": str(file_item.get("trace_id", "")),
+            "LANG": str(file_item.get("lang", "C")),
+            "ROLE": str(file_item.get("role", "")),
+            "DOC_REF": [str(item) for item in file_item.get("evidence_refs", [])],
+        },
+        "SOURCE": {
+            "PATH": source_path,
+            "DEPENDENCY": [str(item) for item in file_item.get("source_dependencies", [])],
+            "DATA": list(file_item.get("source_data", [])),
+            "INTERFACE": list(file_item.get("source_interfaces", [])),
+        },
+    }
+    if header_path:
+        spec["HEADER"] = {
+            "PATH": header_path,
+            "DEPENDENCY": [str(item) for item in file_item.get("header_dependencies", [])],
+            "DATA": list(file_item.get("header_data", [])),
+            "INTERFACE": list(file_item.get("header_interfaces", [])),
+        }
+    for key in ("PUBLIC_SYMBOLS", "ACCESS_PATHS", "CALL_CONTRACTS", "FORBIDDEN_SYMBOLS", "TEST_VECTORS"):
+        value = file_item.get(key.lower()) or file_item.get(key)
+        if value:
+            spec[key] = value
+    return spec
+
+
+def _function_spec_from_blueprint(function: dict[str, Any]) -> dict[str, Any]:
+    raw = function.get("raw_spec")
+    if isinstance(raw, dict):
+        return dict(raw)
+    signature = dict(function.get("signature", {}))
+    if not signature:
+        name = str(function.get("name", ""))
+        return_type = str(function.get("return_type", "void"))
+        params = list(function.get("params", []))
+        signature = {"RAW": _signature(return_type, name, params), "NAME": name, "RETURN": return_type, "PARAMS": params}
+    function_type = str(function.get("function_type", "ALGORITHM"))
+    spec: dict[str, Any] = {
+        "KIND": "FUNCTION_SPEC",
+        "TRACE_ID": str(function.get("trace_id", "")),
+        "FUNCTION_TYPE": function_type,
+        "ROLE": str(function.get("role", "")),
+        "SIGNATURE": signature,
+        "RELY": dict(function.get("rely", {"STRUCT": [], "FUNC": [], "VAR": []})),
+    }
+    if function_type == "EVENT":
+        spec["EVENT"] = dict(function.get("event") or {})
+    elif function_type == "ENTRYPOINT" and function.get("event"):
+        spec["EVENT"] = dict(function.get("event") or {})
+    else:
+        spec["LOGIC"] = dict(function.get("logic") or {})
+    optional_key_map = {
+        "PUBLIC_SYMBOLS": "public_symbols",
+        "ACCESS_PATHS": "access_paths",
+        "WIRE_MAPPING": "wire_mapping",
+        "CALL_CONTRACTS": "call_contracts",
+        "FORBIDDEN_SYMBOLS": "forbidden_symbols",
+        "TEST_VECTORS": "test_vectors",
+    }
+    for spec_key, blueprint_key in optional_key_map.items():
+        value = function.get(blueprint_key) or function.get(spec_key)
+        if value:
+            spec[spec_key] = value
+    return spec
+
+
+def _module_spec_from_blueprint(blueprint: dict[str, Any], target_profile: TargetProfile) -> dict[str, Any]:
+    template = blueprint.get("module_spec_template")
+    if isinstance(template, dict):
+        module_spec = dict(template)
+        if "GENERATION_ORDER" not in module_spec:
+            module_spec["GENERATION_ORDER"] = list(blueprint.get("generation_order", []))
+        return module_spec
+    protocol_name = str(blueprint.get("protocol_name", "protocol"))
+    modules = [_module_entry_from_blueprint(item) for item in blueprint.get("modules", [])]
+    generation_order = list(blueprint.get("generation_order", [item.get("NAME") for item in modules]))
+    return {
         "KIND": "PROTOCOL_MODULE_SPEC",
         "PROTOCOL": {
             "NAME": protocol_name.upper(),
-            "SPEC_VERSION": "planning-generated/v1alpha1",
-            "ROLES": [str(implementation_plan.get("target_profile", {}).get("target_role", "")).upper()],
+            "SPEC_VERSION": "planning-generated/v2alpha1",
+            "ROLES": [str(target_profile.target_role).upper()],
+            "SCOPE": str(target_profile.scope),
         },
-        "MODULES": [],
-        "CONSISTENCY_RULES": [
-            {"NAME": "unique_public_type_owner", "DESC": "Every canonical public type must have one owner only."},
-            {"NAME": "acyclic_module_dependencies", "DESC": "Module dependencies must be forward-safe for current coder."},
-        ],
+        "MODULES": modules,
+        "GENERATION_ORDER": generation_order,
+        "CONSISTENCY_RULES": list(blueprint.get("consistency_rules", [])),
     }
 
-    file_paths: list[Path] = []
-    for module in modules:
-        module_name = str(module.get("name"))
-        module_path = str(module.get("path"))
-        header_path = f"{module_path}.h"
-        source_path = f"{module_path}.c"
-        module_spec["MODULES"].append(
-            {
-                "NAME": module_name,
-                "ROLE": str(module.get("role")),
-                "DEPENDENCIES": [str(v) for v in module.get("dependencies", [])],
-                "FILES": [header_path, source_path],
-                "ARTIFACTS": list(module.get("artifacts", [])),
-                "DOC_REF": [],
-            }
-        )
-        file_entry = next((item for item in implementation_plan.get("file_plan", []) if item.get("module") == module_name), None)
-        functions = [item for item in implementation_plan.get("function_plan", []) if item.get("module") == module_name]
-        public_type = file_entry.get("public_type") if isinstance(file_entry, dict) else _public_type_name(protocol_slug, module_name)
-        file_trace = f"{protocol_slug}/{module_name}/{module_name}"
-        header_dependencies = list(file_entry.get("header_dependencies", [])) if isinstance(file_entry, dict) else []
-        source_dependencies = list(file_entry.get("source_dependencies", [])) if isinstance(file_entry, dict) else [header_path]
-        header_interfaces = []
-        source_interfaces = []
-        for function in functions:
-            params = list(function.get("params", []))
-            signature = _signature(str(function.get("return_type", "void")), str(function.get("name")), params)
-            header_interfaces.append(
-                {
-                    "SIGNATURE": signature,
-                    "NAME": str(function.get("name")),
-                    "KIND": "FUNC",
-                    "FUNCTION_TYPE": str(function.get("function_type", "ALGORITHM")),
-                    "ROLE": str(function.get("role")),
-                    "VISIBILITY": str(function.get("visibility", "public")),
-                }
-            )
-            source_interfaces.append(
-                {
-                    "TRACE_ID": str(function.get("trace_id")),
-                    "SIGNATURE": signature,
-                    "NAME": str(function.get("name")),
-                    "KIND": "FUNC",
-                    "ROLE": str(function.get("role")),
-                    "VISIBILITY": str(function.get("visibility", "public")),
-                }
-            )
-        file_spec = {
-            "KIND": "FILE_SPEC",
-            "FILE": {
-                "TRACE_ID": file_trace,
-                "LANG": "C",
-                "ROLE": str(module.get("role")),
-                "DOC_REF": [],
-            },
-            "HEADER": {
-                "PATH": header_path,
-                "DEPENDENCY": header_dependencies,
-                "DATA": [{"NAME": public_type, "KIND": "TYPE", "VISIBILITY": "PUBLIC", "ROLE": str(module.get("role"))}],
-                "INTERFACE": header_interfaces,
-            },
-            "SOURCE": {
-                "PATH": source_path,
-                "DEPENDENCY": source_dependencies,
-                "DATA": [{"NAME": f"struct {public_type.rstrip('_t')}", "KIND": "TYPE", "VISIBILITY": "PRIVATE", "ROLE": str(module.get("role"))}],
-                "INTERFACE": source_interfaces,
-            },
-        }
-        file_spec_path = spec_root / module_name / f"{module_name}_spec.json"
-        _write_json(file_spec_path, file_spec)
-        file_paths.append(file_spec_path)
-        for function in functions:
-            function_spec = {
-                "KIND": "FUNCTION_SPEC",
-                "TRACE_ID": str(function.get("trace_id")),
-                "FUNCTION_TYPE": str(function.get("function_type", "ALGORITHM")),
-                "ROLE": str(function.get("role")),
-                "SIGNATURE": {
-                    "RAW": _signature(str(function.get("return_type", "void")), str(function.get("name")), list(function.get("params", []))),
-                    "NAME": str(function.get("name")),
-                    "RETURN": str(function.get("return_type", "void")),
-                    "PARAMS": list(function.get("params", [])),
-                },
-                "RELY": dict(function.get("rely", {"STRUCT": [], "FUNC": [], "VAR": []})),
-                "LOGIC": {
-                    "INPUT": str(function.get("logic", {}).get("input", "")),
-                    "ACTION": str(function.get("logic", {}).get("action", "")),
-                    "OUTPUT": str(function.get("logic", {}).get("output", "")),
-                    "INVARIANTS_USED": list(function.get("logic", {}).get("invariants", [])),
-                },
-            }
-            function_spec_path = spec_root / module_name / f"{function.get('name')}_spec.json"
-            _write_json(function_spec_path, function_spec)
-            file_paths.append(function_spec_path)
 
+def _spec_path_for_file(spec_root: Path, file_spec: dict[str, Any]) -> Path:
+    trace_id = str(file_spec.get("FILE", {}).get("TRACE_ID", "file"))
+    parts = trace_id.split("/")
+    dirname = parts[-2] if len(parts) >= 2 else _slug(trace_id)
+    basename = parts[-1] if parts else "file"
+    return spec_root / dirname / f"{basename}_spec.json"
+
+
+def _spec_path_for_function(spec_root: Path, function_spec: dict[str, Any]) -> Path:
+    trace_id = str(function_spec.get("TRACE_ID", "function"))
+    parts = trace_id.split("/")
+    dirname = parts[-2] if len(parts) >= 2 else "functions"
+    basename = parts[-1] if parts else "function"
+    return spec_root / dirname / f"{basename}_spec.json"
+
+
+def compile_spec_bundle(spec_blueprint: dict[str, Any], output_dir: str | Path, target_profile: TargetProfile) -> dict[str, Path]:
+    out_dir = Path(output_dir)
+    spec_root = out_dir / "spec_bundle"
+    if spec_root.exists():
+        shutil.rmtree(spec_root)
+    spec_root.mkdir(parents=True, exist_ok=True)
+
+    module_spec = _module_spec_from_blueprint(spec_blueprint, target_profile)
+    protocol_slug = _slug(spec_blueprint.get("protocol_name", module_spec.get("PROTOCOL", {}).get("NAME", "protocol")))
     module_spec_path = spec_root / f"{protocol_slug}_module_spec.json"
     _write_json(module_spec_path, module_spec)
+
+    for file_item in spec_blueprint.get("files", []):
+        file_spec = _file_spec_from_blueprint(file_item)
+        _write_json(_spec_path_for_file(spec_root, file_spec), file_spec)
+
+    for function in spec_blueprint.get("functions", []):
+        function_spec = _function_spec_from_blueprint(function)
+        _write_json(_spec_path_for_function(spec_root, function_spec), function_spec)
+
     return {
         "module_spec": module_spec_path,
         "spec_root": spec_root,

@@ -8,11 +8,6 @@ __pycache__/
 venv/
 env/
 
-# Packaging / build
-build/
-dist/
-*.egg-info/
-
 # Test / type / lint caches
 .pytest_cache/
 .mypy_cache/
@@ -22,7 +17,5 @@ dist/
 *.log
 .env
 
-# OS / editor
-.DS_Store
-.idea/
-.vscode/
+# Output
+agent/out/

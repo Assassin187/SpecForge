@@ -124,6 +124,79 @@ class ImplementationPlan:
     data: dict[str, Any]
 
 
+@dataclass(frozen=True)
+class BlueprintType:
+    name: str
+    kind: str
+    role: str
+    visibility: str
+    type_spec: dict[str, Any] | None = None
+    evidence_refs: list[str] = field(default_factory=list)
+    decision_refs: list[str] = field(default_factory=list)
+    template_refs: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class BlueprintFunction:
+    trace_id: str
+    module: str
+    file_trace_id: str
+    name: str
+    function_type: str
+    signature: dict[str, Any]
+    role: str
+    visibility: str
+    rely: dict[str, Any] = field(default_factory=dict)
+    logic: dict[str, Any] | None = None
+    event: dict[str, Any] | None = None
+    wire_mapping: list[dict[str, Any]] = field(default_factory=list)
+    access_paths: list[dict[str, Any]] = field(default_factory=list)
+    call_contracts: list[dict[str, Any]] = field(default_factory=list)
+    test_vectors: list[dict[str, Any]] = field(default_factory=list)
+    evidence_refs: list[str] = field(default_factory=list)
+    decision_refs: list[str] = field(default_factory=list)
+    template_refs: list[str] = field(default_factory=list)
+    raw_spec: dict[str, Any] | None = None
+
+
+@dataclass(frozen=True)
+class BlueprintFile:
+    trace_id: str
+    module: str
+    lang: str
+    role: str
+    header_path: str
+    source_path: str
+    header_dependencies: list[str] = field(default_factory=list)
+    source_dependencies: list[str] = field(default_factory=list)
+    header_data: list[dict[str, Any]] = field(default_factory=list)
+    source_data: list[dict[str, Any]] = field(default_factory=list)
+    header_interfaces: list[dict[str, Any]] = field(default_factory=list)
+    source_interfaces: list[dict[str, Any]] = field(default_factory=list)
+    evidence_refs: list[str] = field(default_factory=list)
+    decision_refs: list[str] = field(default_factory=list)
+    template_refs: list[str] = field(default_factory=list)
+    raw_spec: dict[str, Any] | None = None
+
+
+@dataclass(frozen=True)
+class BlueprintModule:
+    name: str
+    role: str
+    dependencies: list[str]
+    files: list[str]
+    artifacts: list[dict[str, Any]] = field(default_factory=list)
+    evidence_refs: list[str] = field(default_factory=list)
+    decision_refs: list[str] = field(default_factory=list)
+    template_refs: list[str] = field(default_factory=list)
+    raw_entry: dict[str, Any] | None = None
+
+
+@dataclass(frozen=True)
+class SpecBlueprint:
+    data: dict[str, Any]
+
+
 @dataclass
 class PlanningResult:
     success: bool
@@ -139,4 +212,3 @@ class PlanningResult:
 class VerificationResult:
     ok: bool
     diagnostics: list[PlanningDiagnostic]
-

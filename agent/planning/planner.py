@@ -16,6 +16,7 @@ from .models import ImplementationPlan, PlanningDiagnostic, PlanningIR, Planning
 from .prompts import build_implementation_plan_prompt
 from .rule_engine import activate_rules
 from .scorer import score_candidate_architectures
+from .spec_blueprint import blueprint_to_jsonable, build_spec_blueprint
 from .spec_compiler import compile_spec_bundle
 from .verifier import verify_output_dir
 
@@ -60,6 +61,69 @@ def _write_json(path: Path, data: Any) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(_to_jsonable(data), ensure_ascii=False, indent=2), encoding="utf-8")
     return path
+
+
+def _spec_counts(spec_root: Path) -> dict[str, int]:
+    counts = {"module_spec_count": 0, "file_spec_count": 0, "function_spec_count": 0}
+    if not spec_root.exists():
+        return counts
+    for path in spec_root.rglob("*_spec.json"):
+        try:
+            kind = json.loads(path.read_text(encoding="utf-8")).get("KIND")
+        except Exception:
+            continue
+        if kind == "PROTOCOL_MODULE_SPEC":
+            counts["module_spec_count"] += 1
+        elif kind == "FILE_SPEC":
+            counts["file_spec_count"] += 1
+        elif kind == "FUNCTION_SPEC":
+            counts["function_spec_count"] += 1
+    return counts
+
+
+def _template_spec_counts() -> dict[str, int]:
+    template_root = Path(__file__).resolve().parents[2] / "specs-example" / "mqtt_specs"
+    return _spec_counts(template_root)
+
+
+def _build_verification_report(
+    output_dir: Path,
+    implementation_plan: dict[str, Any],
+    spec_blueprint: dict[str, Any],
+    diagnostics: list[PlanningDiagnostic],
+) -> dict[str, Any]:
+    spec_root = output_dir / "spec_bundle"
+    generated_counts = _spec_counts(spec_root)
+    template_counts = _template_spec_counts()
+    generated_functions = generated_counts.get("function_spec_count", 0)
+    template_functions = template_counts.get("function_spec_count", 0)
+    return {
+        "schema_version": "planning_verification_report/v1alpha1",
+        "output_dir": str(output_dir),
+        "implementation_plan_schema": implementation_plan.get("schema_version"),
+        "expansion_profile": spec_blueprint.get("expansion_profile"),
+        "coverage": {
+            "minimum_surface_count": len(implementation_plan.get("scope_decisions", {}).get("minimum_v1_surface", [])),
+            "handler_matrix_count": len(implementation_plan.get("handler_matrix", [])),
+            "blueprint_module_count": len(spec_blueprint.get("modules", [])),
+            "blueprint_file_count": len(spec_blueprint.get("files", [])),
+            "blueprint_function_count": len(spec_blueprint.get("functions", [])),
+        },
+        "spec_counts": {
+            "generated": generated_counts,
+            "mqtt_template_reference": template_counts,
+            "function_coverage_ratio_vs_template": (generated_functions / template_functions) if template_functions else None,
+        },
+        "diagnostics": [
+            {"level": diag.level, "code": diag.code, "message": diag.message, "path": diag.path}
+            for diag in diagnostics
+        ],
+        "acceptance": {
+            "coder_compatibility": not any(diag.level == "error" and diag.code.startswith("coder_") for diag in diagnostics),
+            "planning_verifier_ok": not any(diag.level == "error" for diag in diagnostics),
+            "end_to_end_coder_compile_smoke": "not_run_by_planning_verifier",
+        },
+    }
 
 
 def _usage_to_dict(usage: LLMUsage) -> dict[str, int]:
@@ -292,8 +356,8 @@ def _build_implementation_plan(
     module_graph = _build_module_graph(planning_ir, chosen_architecture, activations)
     canonical_types = _build_canonical_types(planning_ir.protocol_name, module_graph)
     handler_matrix = _build_handler_matrix(planning_ir, module_graph)
-    file_plan, function_plan = _build_file_and_function_plan(planning_ir, module_graph, handler_matrix)
     plan = {
+        "schema_version": "implementation_plan/v2alpha1",
         "target_profile": planning_ir.target_profile.raw,
         "protocol_name": planning_ir.protocol_name,
         "protocol_description": {
@@ -327,15 +391,13 @@ def _build_implementation_plan(
             "error_matrix": planning_ir.error_matrix,
         },
         "test_plan": {
-            "unit_tests": ["type ownership uniqueness", "handler_matrix minimum_v1 coverage", "module dependency acyclic"],
-            "integration_tests": ["compiled spec bundle validates in coder"],
+            "unit_tests": ["type ownership uniqueness", "handler_matrix minimum_v1 coverage", "module dependency acyclic", "spec_blueprint traceability coverage"],
+            "integration_tests": ["compiled spec bundle validates in coder", "mqtt_min planning -> coder -> compile -> smoke tests"],
         },
         "traceability": {
             "decision_ids": [item["decision_id"] for item in decisions],
             "evidence_index_size": len(planning_ir.evidence_by_id),
         },
-        "file_plan": file_plan,
-        "function_plan": function_plan,
         "unresolved_questions": planning_ir.open_questions,
     }
     messages = build_implementation_plan_prompt(
@@ -358,15 +420,20 @@ def _build_implementation_plan(
             log_artifact("implementation_plan_prompt", json.dumps(messages, ensure_ascii=False, indent=2), ".json")
         if log is not None:
             log(f"implementation_plan llm_request_start messages={len(messages)}")
-        response = _generate_with_usage(
-            llm_client,
-            LLMRequest(
-                messages=messages,
-                top_p=0.4,
-                temperature=0.2,
-                is_stream=True,
-            ),
-        )
+        try:
+            response = _generate_with_usage(
+                llm_client,
+                LLMRequest(
+                    messages=messages,
+                    top_p=0.4,
+                    temperature=0.2,
+                    is_stream=True,
+                ),
+            )
+        except Exception:
+            response = None
+            if log is not None:
+                log("implementation_plan llm_failed fallback=deterministic")
         payload = None
         if response is not None:
             if register_usage is not None:
@@ -566,11 +633,29 @@ class PlanningAgent:
             register_usage=register_usage,
         )
         artifact_paths["implementation_plan"] = _write_json(self.output_dir / "implementation_plan.json", implementation_plan.data)
+        artifact_paths["implementation_plan_v2"] = _write_json(self.output_dir / "implementation_plan_v2.json", implementation_plan.data)
         self.logs.write("implementation_plan", json.dumps(implementation_plan.data, ensure_ascii=False, indent=2), ".json")
         self._log("stage=implementation_plan build done")
 
+        self._log("stage=spec_blueprint expand start")
+        spec_blueprint, expansion_candidates = build_spec_blueprint(
+            planning_ir,
+            implementation_plan.data,
+            [asdict(item) for item in decisions],
+            target_profile,
+            self.llm_client,
+        )
+        spec_blueprint_data = blueprint_to_jsonable(spec_blueprint)
+        artifact_paths["spec_blueprint"] = _write_json(self.output_dir / "spec_blueprint.json", spec_blueprint_data)
+        artifact_paths["expansion_candidates"] = _write_json(self.output_dir / "expansion_candidates.json", {"candidates": expansion_candidates})
+        self.logs.write("spec_blueprint", json.dumps(spec_blueprint_data, ensure_ascii=False, indent=2), ".json")
+        self._log(
+            f"stage=spec_blueprint expand done profile={spec_blueprint_data.get('expansion_profile')} "
+            f"files={len(spec_blueprint_data.get('files', []))} functions={len(spec_blueprint_data.get('functions', []))}"
+        )
+
         self._log("stage=spec_bundle compile start")
-        compiled = compile_spec_bundle(implementation_plan.data, self.output_dir, target_profile)
+        compiled = compile_spec_bundle(spec_blueprint_data, self.output_dir, target_profile)
         artifact_paths.update(compiled)
         self._log(f"stage=spec_bundle compile done artifacts={len(compiled)}")
 
@@ -611,6 +696,10 @@ class PlanningAgent:
         self._log("stage=verify start")
         verify_result = verify_output_dir(self.output_dir)
         diagnostics.extend(verify_result.diagnostics)
+        verification_report = _build_verification_report(self.output_dir, implementation_plan.data, spec_blueprint_data, diagnostics)
+        artifact_paths["planning_verification_report"] = _write_json(self.output_dir / "planning_verification_report.json", verification_report)
+        run_manifest["artifacts"] = {key: str(value) for key, value in artifact_paths.items()}
+        _write_json(self.output_dir / "run_manifest.json", run_manifest)
         success = not any(diag.level == "error" for diag in diagnostics)
         self._log(f"stage=verify done diagnostics={len(verify_result.diagnostics)}")
         self._log(f"plan done success={'yes' if success else 'no'} artifacts={len(artifact_paths)} diagnostics={len(diagnostics)}")

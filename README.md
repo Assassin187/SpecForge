@@ -1,7 +1,3 @@
-# new 目录说明
-
-本目录用于存放 MQTT 示例实现、对应的规格文档（spec）以及规格 schema。
-
 ## 目录总览
 
 - `document/`
