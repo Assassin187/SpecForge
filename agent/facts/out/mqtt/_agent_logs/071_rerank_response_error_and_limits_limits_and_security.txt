@@ -1,7 +1,0 @@
-{
-  "category": "error_and_limits_limits_and_security",
-  "ranked_chunk_ids": ["MQTT_3.1.1-s10-p34", "MQTT_3.1.1-s10-p40", "MQTT_3.1.1-s3-p7", "MQTT_3.1.1-s3-p8", "MQTT_3.1.1-s10-p17", "MQTT_3.1.1-s16-p10", "MQTT_3.1.1-s10-p15", "MQTT_3.1.1-s10-p13", "MQTT_3.1.1-s10-p12", "MQTT_3.1.1-s10-p16"],
-  "high_priority_chunk_ids": ["MQTT_3.1.1-s10-p34", "MQTT_3.1.1-s10-p40", "MQTT_3.1.1-s3-p7", "MQTT_3.1.1-s3-p8"],
-  "notes": ["Top chunks define transient error handling, TLS security profiles, UTF-8 string size limits (65535 bytes), and forbidden Unicode code points—all directly relevant to error behavior, limits, and security.", "SUBACK return codes and malformed packet rules provide secondary value for error semantics.", "Examples, appendix normative statements, and conformance boilerplate were deprioritized."],
-  "open_questions": ["Are there additional hard limits on topic name length or subscription count not captured here?", "Does the spec define rate-limiting or connection throttling behaviors under load or attack?"]
-}

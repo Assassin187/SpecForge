@@ -1,7 +1,0 @@
-{
-  "category": "resource_model_resource_lifecycle",
-  "ranked_chunk_ids": ["MQTT_3.1.1-s16-p8", "MQTT_3.1.1-s10-p7", "MQTT_3.1.1-s16-p3", "MQTT_3.1.1-s10-p15", "MQTT_3.1.1-s16-p12", "MQTT_3.1.1-s18-p19", "MQTT_3.1.1-s16-p4", "MQTT_3.1.1-s10-p6", "MQTT_3.1.1-s16-p10", "MQTT_3.1.1-s10-p33"],
-  "high_priority_chunk_ids": ["MQTT_3.1.1-s16-p8", "MQTT_3.1.1-s10-p7", "MQTT_3.1.1-s16-p3"],
-  "notes": ["Top chunks define retained message lifecycle, session state persistence, and subscription creation/deletion semantics—core to MQTT resource model.", "Appendix B chunks are normative despite location; they contain MUST/SHOULD rules governing resource behavior.", "Examples, revision history, and boilerplate were correctly deprioritized."],
-  "open_questions": ["How exactly does the server manage concurrent retain/delete operations on the same topic?", "What are the atomicity guarantees for session state updates across reconnects?"]
-}

@@ -1,7 +1,0 @@
-{
-  "category": "interaction_model_interaction_overview",
-  "ranked_chunk_ids": ["MQTT_3.1.1-s2-p4", "MQTT_3.1.1-s10-p13", "MQTT_3.1.1-s16-p10", "MQTT_3.1.1-s10-p15", "MQTT_3.1.1-s16-p9", "MQTT_3.1.1-s10-p19", "MQTT_3.1.1-s16-p12", "MQTT_3.1.1-s10-p20", "MQTT_3.1.1-s10-p16", "MQTT_3.1.1-s3-p9"],
-  "high_priority_chunk_ids": ["MQTT_3.1.1-s2-p4", "MQTT_3.1.1-s10-p13", "MQTT_3.1.1-s16-p10"],
-  "notes": ["Top chunks define core interaction units (SUBSCRIBE, PUBLISH, UNSUBSCRIBE), their formats, routing rules, and error behavior.", "Appendix B chunks contain normative statements critical for protocol semantics despite appendix penalty.", "Chunk s2-p4 provides the structural overview of all control packets—essential for interaction model."],
-  "open_questions": ["How are wildcard topic filters matched during subscription?", "What are the exact retry and redelivery guarantees across QoS levels?", "How does session state interact with subscription lifetimes?"]
-}

@@ -1,7 +1,0 @@
-{
-  "category": "routing_model_routing_rules",
-  "ranked_chunk_ids": ["MQTT_3.1.1-s10-p33", "MQTT_3.1.1-s10-p13", "MQTT_3.1.1-s10-p8", "MQTT_3.1.1-s16-p9", "MQTT_3.1.1-s10-p15", "MQTT_3.1.1-s16-p15", "MQTT_3.1.1-s16-p10", "MQTT_3.1.1-s16-p11", "MQTT_3.1.1-s10-p30", "MQTT_3.1.1-s10-p16"],
-  "high_priority_chunk_ids": ["MQTT_3.1.1-s10-p33", "MQTT_3.1.1-s10-p13", "MQTT_3.1.1-s10-p8"],
-  "notes": ["Top chunks define topic name/filter structure, subscription matching rules, and routing constraints; appendix normative statements are useful but secondary; examples and revision history deprioritized."],
-  "open_questions": ["How exactly does the server perform topic filter matching beyond character-level equality?", "Are there edge cases in wildcard handling that affect routing semantics?"]
-}
