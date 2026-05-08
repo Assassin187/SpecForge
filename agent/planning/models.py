@@ -133,7 +133,7 @@ class BlueprintType:
     type_spec: dict[str, Any] | None = None
     evidence_refs: list[str] = field(default_factory=list)
     decision_refs: list[str] = field(default_factory=list)
-    template_refs: list[str] = field(default_factory=list)
+    profile_refs: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -155,8 +155,7 @@ class BlueprintFunction:
     test_vectors: list[dict[str, Any]] = field(default_factory=list)
     evidence_refs: list[str] = field(default_factory=list)
     decision_refs: list[str] = field(default_factory=list)
-    template_refs: list[str] = field(default_factory=list)
-    raw_spec: dict[str, Any] | None = None
+    profile_refs: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -175,8 +174,7 @@ class BlueprintFile:
     source_interfaces: list[dict[str, Any]] = field(default_factory=list)
     evidence_refs: list[str] = field(default_factory=list)
     decision_refs: list[str] = field(default_factory=list)
-    template_refs: list[str] = field(default_factory=list)
-    raw_spec: dict[str, Any] | None = None
+    profile_refs: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -188,8 +186,7 @@ class BlueprintModule:
     artifacts: list[dict[str, Any]] = field(default_factory=list)
     evidence_refs: list[str] = field(default_factory=list)
     decision_refs: list[str] = field(default_factory=list)
-    template_refs: list[str] = field(default_factory=list)
-    raw_entry: dict[str, Any] | None = None
+    profile_refs: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

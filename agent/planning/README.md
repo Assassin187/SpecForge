@@ -24,9 +24,9 @@ Planning agent 现在显式分为两个阶段：
 2. **Spec 展开阶段**：`implementation_plan_v2.json + design_decisions.json -> spec_blueprint.json -> spec_bundle/`
    - `SpecBlueprint` 是工程决策到 coder specs 的稳定中间 IR。
    - Blueprint 表达 modules、files、types、functions、helpers、wire mappings、access paths、call contracts 和 test vectors。
-   - 每个 blueprint item 必须保留 `evidence_refs`、`decision_refs` 或 `template_refs`，保证 traceability。
+   - 每个 blueprint item 必须保留 `evidence_refs`、`decision_refs` 或 `profile_refs`，保证 traceability。
 
-当前 MQTT-min/C/Linux epoll 路径使用 `mqtt_min_broker_epoll_c` 规则模板；该模板以已验证的 `specs-example/mqtt_specs` 作为 baseline coverage 参考。LLM 可在后续扩展中生成候选 blueprint，但 verifier 拥有最终否决权，离线规则模板路径必须始终可用。
+当前 spec 展开不读取外部示例 specs，也不包含任何特定协议或特定版本的模板分支。`SpecBlueprint` 只由 `protocol_facts.json`、`target_profile.json`、`implementation_plan_v2.json` 和 `design_decisions.json` 推导出来。LLM 可在后续扩展中生成候选 blueprint，但 verifier 拥有最终否决权，离线规则路径必须始终可用。
 
 ## 当前实现状态
 
@@ -91,143 +91,376 @@ Planning agent 现在显式分为两个阶段：
 - 内部 planning 逻辑仍然是通用的
 - 但最终编译阶段当前只支持 `language = C`
 
-## 九阶段流程
+## 主流程总览
 
-### 1. `ir.py`
+`PlanningAgent.plan()` 是当前主链路入口。一次完整运行会创建一个独立输出目录，并把所有中间产物、最终 specs、验证报告和 agent 日志放在同一个 run 目录中：
 
-将 `protocol_facts.json` 归一化为 `planning_ir`：
+```text
+agent/planning/out/<protocol>/<target_profile>/<timestamp>/
+├── _agent_logs/
+│   ├── 000_stage_events.log
+│   └── ...
+├── planning_ir.json
+├── protocol_profile.json
+├── expert_activations.json
+├── candidate_architectures.json
+├── design_decisions.json
+├── implementation_plan.json
+├── implementation_plan_v2.json
+├── spec_blueprint.json
+├── expansion_candidates.json
+├── spec_bundle/
+├── planning_verification_report.json
+└── run_manifest.json
+```
 
-- 统一角色语义
-- 提取最小实现所需的 surface/state/resource/error 视图
-- 建立 `traceability_index`
-- 将 `open_questions` 划分为：
-  - `blocking`
-  - `assumable`
-  - `deferrable`
+从研究语义上看，当前流程分成两大阶段：
 
-### 2. `analyzer.py`
+- **工程规划阶段**：facts 被归一化、分析、匹配专家规则，形成候选架构、设计决策和 `implementation_plan_v2.json`。
+- **Spec 展开阶段**：工程计划被展开为 `SpecBlueprint`，再被无 LLM 的 compiler 编译为 coder-compatible `spec_bundle/`。
 
-构建 `protocol_profile`：
+从代码执行顺序看，当前共有 12 个步骤。每个步骤都会在 `_agent_logs/000_stage_events.log` 里记录 `stage=...` 事件，便于复现实验和定位失败点。
 
-- `transport_shape`
-- `interaction_model`
-- `statefulness`
-- `routing_intensity`
-- `resource_intensity`
-- `failure_semantics`
-- `timing_model`
-- `minimum_scope`
+## 详细流程
 
-### 3. `knowledge_base.py` + `rule_engine.py`
+### 0. 输出目录和日志初始化
 
-通过显式规则库激活专家知识：
+入口：`planner.py::PlanningAgent.__init__()` 和 `planner.py::PlanningAgent.plan()`。
 
-- stream transport -> `input_buffer` + `incremental_decoder`
-- strong routing + resources -> `router` + `resource_store`
-- persistent state -> `session_store` / recovery policy
-- timer driven -> `timer_manager`
-- close-on-error -> shared protocol error policy
-- canonical ownership -> 唯一 public type owner
+输入是 `facts_path`、`target_profile_path` 和可选 `output_dir`。如果没有显式传入 `output_dir`，planning 会读取 facts 中的 `protocol_meta.protocol_name`，再结合 target profile 的 slug，生成：
 
-输出 `expert_activations.json`。
+```text
+agent/planning/out/<protocol>/<target_profile>/<timestamp>/
+```
 
-### 4. `architecture.py` + `scorer.py`
+随后初始化 `_agent_logs/`。其中 `000_stage_events.log` 记录阶段事件，其他编号文件保存 LLM prompt、LLM response、归一化中间结果和 token usage summary。
 
-生成并评分候选架构：
+这一层不做协议推理，只负责保证一次运行的 artifact 边界清晰，避免不同实验输出相互覆盖。
 
-- 默认会先生成启发式候选
-- 如果配置了 `ALI_API`，会尝试使用 LLM 生成/补充候选
-- 当前评分是规则硬指标 + coder 兼容度偏好的组合
+### 1. 输入验证
 
-输出 `candidate_architectures.json`。
+入口：`planner.py::validate_inputs()`。
 
-### 5. `decision_graph.py`
+主要检查：
 
-这是当前实现里最重要的一层之一，已经按“规则 + LLM 混合合成”实现：
+- `protocol_facts.json` 路径是否存在。
+- `target_profile.json` 路径是否存在。
+- target profile 是否能被 `ir.py::load_target_profile()` 解析。
+- 当前 spec compiler 是否支持目标语言。目前只支持 `language = C`。
+- facts 是否能被 `ir.py::build_planning_ir()` 初步归一化。
+- 如果配置了 LLM client，并且没有跳过检查，则执行 LLM self-check。
 
-- 先根据前面阶段的确定性结果生成 `base decisions`
-  - target scope
-  - runtime model
-  - architecture selection
-  - state ownership
-  - error policy
-  - handler coverage
-  - routing strategy
-- 这些基础决策会显式记录：
-  - `decision_id`
-  - `decision_type`
-  - `selected_option`
-  - `origin`
-  - `source_steps`
-  - `expert_rule_ids`
-  - `downstream_spec_impact`
-- 如果配置了 `ALI_API`，再调用 LLM 对这些已有决策做补充：
-  - 丰富 `rationale`
-  - 补充更清晰的 `downstream_spec_impact`
-  - 必要时细化 `source_steps`
+输出是 `PlanningDiagnostic` 列表。只要出现 `level = error`，`plan()` 会直接中止，不继续生成下游 artifact。LLM self-check 失败目前是 warning，不阻断规则路径运行。
 
-因此第五步现在不是纯 LLM，也不是纯规则，而是：
+### 2. Target Profile 加载
 
-**前序/当前规则决策记录 + LLM 解释补强 + 固定结构合成**
+入口：`ir.py::load_target_profile()`。
 
-### 6. `planner.py`
+target profile 描述本轮 planning 的实现目标，而不是协议事实本身。典型字段包括：
 
-生成 `implementation_plan.json` / `implementation_plan_v2.json`，当前包括：
+- `target_role`: 例如 `broker`
+- `language`: 例如 `C`
+- `runtime`: 例如 `Linux epoll`
+- `scope`: 例如 `minimum_v1`
+- `deployment_constraints`: 例如是否启用持久化、TLS、低内存约束
 
-- `target_profile`
-- `protocol_description`
-- `scope_decisions`
-- `module_graph`
-- `canonical_types`
-- `state_design`
-- `handler_matrix`
-- `resource_lifecycle`
-- `error_strategy`
-- `test_plan`
-- `traceability`
-- `unresolved_questions`
+输出对象会保留原始 `raw` 数据，同时生成稳定 `slug`，用于默认输出路径。
 
-其中：
+### 3. Planning IR 构建
 
-- `canonical_types` 用来保证公共类型唯一归属
-- `handler_matrix` 用来保证 `minimum_v1` surface 全覆盖
-- 最终函数/文件级 specs 不在这一层直接拼装，而是交给 SpecBlueprint 展开层
+入口：`ir.py::build_planning_ir()`。
 
-### 7. `spec_blueprint.py`
+这是 facts 到 planning 语义的第一层转换。它不决定具体文件和函数，而是把上游 protocol facts 归一化为后续阶段更容易消费的结构。
 
-将工程计划和设计决策展开为 `spec_blueprint.json`：
+主要处理：
 
-- MQTT-min/C/epoll 使用 `mqtt_min_broker_epoll_c` 规则模板
-- 非 MQTT-min 输入使用 generic C blueprint，保证 full MQTT facts 至少能生成 coherent plan
-- 输出 `expansion_candidates.json`，记录候选来源、是否选中和 coverage
+- 读取 `protocol_meta`，确定协议名。
+- 归一化 target role 和 protocol role 的关系。
+- 从 `minimum_v1.must_support_surface` 提取最小闭环 surface。
+- 汇总 message/state/resource/error/routing/transport 相关 facts。
+- 建立 `evidence_by_id` 和 traceability index。
+- 整理 `open_questions`，区分 blocking、assumable、deferrable。
 
-### 8. `spec_compiler.py`
+输出 artifact：
 
-纯规则、无 LLM，将 `spec_blueprint` 编译成当前 `coder` 所需的：
+```text
+planning_ir.json
+```
+
+这个 artifact 是后续所有分析、规则激活、架构生成和 traceability 的共同基础。
+
+### 4. Protocol Profile 分析
+
+入口：`analyzer.py::analyze_protocol_profile()`。
+
+这一步把细粒度 facts/IR 压缩成工程规划需要的协议画像。它回答的是“这个协议实现大体像什么系统”，而不是“每个函数怎么写”。
+
+当前 profile 包括：
+
+- `transport_shape`: stream/datagram 等传输形态。
+- `interaction_model`: client-server、pub-sub、request-response 等交互模型。
+- `statefulness`: 是否强状态，以及状态复杂度。
+- `routing_intensity`: 是否需要 topic/router/dispatch 等路由结构。
+- `resource_intensity`: session、subscription、connection 等资源压力。
+- `failure_semantics`: 错误后关闭连接、返回错误包、忽略等策略倾向。
+- `timing_model`: 是否依赖 timer、keepalive、retransmission。
+- `minimum_scope`: 本轮最小闭环范围。
+
+输出 artifact：
+
+```text
+protocol_profile.json
+```
+
+### 5. 专家规则激活
+
+入口：`knowledge_base.py::load_rules()` 和 `rule_engine.py::activate_rules()`。
+
+这一步根据 protocol profile 激活显式专家知识。规则不是最终 specs，而是工程规划约束和建议。
+
+典型规则包括：
+
+- stream transport 需要 input buffer 和 incremental decoder。
+- pub-sub/routing 强度高时需要 router/resource store。
+- session/resource 明显时需要明确 owner 和生命周期。
+- close-on-error 语义需要统一错误策略。
+- public type 需要 canonical owner，避免 coder 生成重复类型。
+
+输出 artifact：
+
+```text
+expert_activations.json
+```
+
+这些 activation 会进入架构评分、设计决策和 implementation plan。
+
+### 6. 候选架构生成与评分
+
+入口：`architecture.py::generate_candidate_architectures()` 和 `scorer.py::score_candidate_architectures()`。
+
+候选生成采用“规则 baseline + 可选 LLM 补充”的方式：
+
+- 规则路径始终可用，用于生成可复现 baseline architecture。
+- 如果配置了 `ALI_API`，LLM 可以补充 candidate 或解释，但不能成为唯一可用路径。
+- scorer 根据规则硬约束、目标 profile、coder 兼容度偏好等对候选架构评分。
+
+输出 artifact：
+
+```text
+candidate_architectures.json
+```
+
+该文件同时保存 `candidates` 和 `scores`。`plan()` 会选择 `score.selected = true` 的候选；如果没有显式 selected，则回退到第一个候选。
+
+### 7. 设计决策合成
+
+入口：`decision_graph.py::build_design_decisions()`。
+
+这是 facts agent/planning layer 的关键步骤之一。它把前面阶段的 evidence、profile、rules、architecture selection 合成为可追踪的工程决策。
+
+当前基础决策覆盖：
+
+- target scope
+- runtime model
+- architecture selection
+- state ownership
+- error policy
+- handler coverage
+- routing strategy
+
+每条决策记录：
+
+- `decision_id`
+- `decision_type`
+- `selected_option`
+- `origin`
+- `source_steps`
+- `expert_rule_ids`
+- `downstream_spec_impact`
+- `rationale`
+
+如果 LLM 可用，它只做补强：完善 rationale、source steps 和 downstream impact。规则生成的基础决策仍然是结构主体，LLM 失败时会回退到 deterministic decisions。
+
+输出 artifact：
+
+```text
+design_decisions.json
+```
+
+### 8. 工程实现计划生成
+
+入口：`planner.py::_build_implementation_plan()`。
+
+这一步生成 `implementation_plan/v2alpha1`。它是第一阶段的正式输出，也是第二阶段 SpecBlueprint 展开的输入。
+
+当前 implementation plan 包括：
+
+- `target_profile`: 本轮实现目标。
+- `protocol_name`: 协议名。
+- `protocol_description`: interaction、transport、statefulness 摘要。
+- `scope_decisions`: minimum surface、deferred features、assumptions。
+- `module_graph`: 模块、职责、依赖和实现路径。
+- `canonical_types`: public type 的唯一 owner。
+- `state_design`: 状态节点、状态迁移和不变量。
+- `handler_matrix`: minimum surface 到 handler module/function 的映射。
+- `resource_lifecycle`: 资源对象和生命周期规则。
+- `error_strategy`: 错误策略和 error matrix。
+- `test_plan`: unit/integration obligations。
+- `traceability`: decision refs 和 evidence 规模。
+- `unresolved_questions`: 从 facts 继承的开放问题。
+
+这一层刻意不再直接拼 `FUNCTION_SPEC`。它只描述实现级语义和工程边界，例如“需要哪些模块、谁拥有状态、哪些 handler 必须覆盖、错误如何处理”。
+
+输出 artifact：
+
+```text
+implementation_plan.json
+implementation_plan_v2.json
+```
+
+当前两个文件内容相同；保留 `implementation_plan.json` 是为了兼容旧脚本，`implementation_plan_v2.json` 是新两阶段架构的正式名称。
+
+### 9. SpecBlueprint 展开
+
+入口：`spec_blueprint.py::build_spec_blueprint()`。
+
+这是第二阶段的第一步。它把 implementation plan 和 design decisions 展开成稳定中间 IR：`SpecBlueprint`。
+
+Blueprint 表达的是 coder specs 的结构蓝图，但还不是最终 spec 文件。它包含：
+
+- modules
+- files
+- types
+- functions
+- helper contracts
+- wire mappings
+- access paths
+- call contracts
+- test vectors
+- generation order
+- traceability metadata
+
+当前展开流程是统一的、事实驱动的：
+
+1. 从 `implementation_plan_v2.module_graph` 生成 blueprint modules 和 files。
+2. 从 `implementation_plan_v2.canonical_types` 生成每个模块的 public opaque type。
+3. 从模块边界生成 lifecycle helper functions，例如 create/destroy。
+4. 从 `implementation_plan_v2.handler_matrix` 生成 surface handler functions。
+5. 将 generated functions 回填到对应 file 的 public/private interfaces。
+6. 将 `design_decisions` 和 facts evidence refs 写入 blueprint traceability。
+
+当前内置 profile：
+
+- `generic_c_from_plan`：通用 C profile。它只依赖当前 run 的工程计划和设计决策，不读取任何协议专用模板。
+
+每个 blueprint item 必须至少包含一种来源：
+
+- `evidence_refs`
+- `decision_refs`
+- `profile_refs`
+
+输出 artifact：
+
+```text
+spec_blueprint.json
+expansion_candidates.json
+```
+
+`expansion_candidates.json` 记录本次 blueprint 的生成来源、是否被选中和 coverage。当前 LLM candidate blueprint 尚未成为主路径，verifier 仍是最终接受门。
+
+### 10. Spec Bundle 编译
+
+入口：`spec_compiler.py::compile_spec_bundle()`。
+
+这一步纯规则、无 LLM。它把 `spec_blueprint.json` 编译成当前 coder loader 可直接读取的 spec bundle。
+
+输出 spec 类型包括：
 
 - `PROTOCOL_MODULE_SPEC`
 - `FILE_SPEC`
 - `FUNCTION_SPEC`
 
-输出路径默认在：
+编译策略：
+
+- 从 blueprint modules 编译 `PROTOCOL_MODULE_SPEC`。
+- 从 blueprint files 编译 `FILE_SPEC`。
+- 从 blueprint functions 编译 `FUNCTION_SPEC`。
+- 根据 trace id 推导 spec 文件目录层级。
+- 每次编译前会清空当前 run 下的 `spec_bundle/`，避免旧 specs 残留污染本次结果。
+
+输出目录：
 
 ```text
-<planning_output_dir>/spec_bundle/
+spec_bundle/
 ```
 
-### 9. `verifier.py`
+典型层级由 `implementation_plan_v2.module_graph[*].path` 和 trace id 推导，例如：
 
-当前校验包括：
+```text
+spec_bundle/
+├── <protocol>_module_spec.json
+├── <module_a>/
+├── <module_b>/
+└── <module_c>/
+```
 
-- artifact 完整性
-- canonical type 唯一 owner
-- module graph 无环
-- `minimum_v1` surface 是否全部落到 `handler_matrix`
-- `spec_blueprint` item traceability
-- coder compatibility：
-  - 直接调用 `coder.specs.load_spec_bundle()`
+### 11. Run Manifest 和 Token Usage 写入
 
-Planning 会额外输出 `planning_verification_report.json`，记录生成 specs 与 MQTT-min baseline template 的 coverage 差距、diagnostics 和当前 acceptance 状态。
+入口：`planner.py::PlanningAgent.plan()` 中的 manifest 生成逻辑。
+
+`run_manifest.json` 是一次 planning run 的索引文件，记录：
+
+- 使用的模型名。
+- facts path。
+- target profile path。
+- output dir。
+- 所有 artifact 路径。
+- selected architecture。
+- design decision 数量。
+- rule activation 数量。
+- 每次 LLM 调用的 token usage。
+- 按 stage 聚合的 token usage。
+- workflow 总 token usage。
+
+输出 artifact：
+
+```text
+run_manifest.json
+_agent_logs/*token_usage_summary*.json
+```
+
+注意：`planning_verification_report.json` 在下一步才生成，所以 verifier 完成后 `plan()` 会再次更新 `run_manifest.json`，把 verification report 路径补进去。
+
+### 12. 验证与 Verification Report
+
+入口：`verifier.py::verify_output_dir()` 和 `planner.py::_build_verification_report()`。
+
+当前 verifier 校验：
+
+- 必要 artifact 是否存在。
+- `implementation_plan` 中 canonical type 是否只有一个 owner。
+- module graph 是否无环。
+- `minimum_v1` surface 是否全部落到 `handler_matrix`。
+- `spec_blueprint.kind` 是否为 `SPEC_BLUEPRINT`。
+- blueprint modules/files/functions 是否具有 traceability。
+- `spec_bundle/` 是否能被 `coder.specs.load_spec_bundle()` 成功加载。
+
+Planning 还会生成聚合报告：
+
+```text
+planning_verification_report.json
+```
+
+报告内容包括：
+
+- implementation plan schema。
+- expansion profile。
+- minimum surface、handler matrix、blueprint item 数量。
+- generated spec count。
+- diagnostics。
+- acceptance 状态。
+
+当前 `planning_verification_report.json` 中的 `end_to_end_coder_compile_smoke` 仍记录为 `not_run_by_planning_verifier`。也就是说，planning verifier 只保证 specs 能被 coder loader 接受；真正的 coder 生成、编译和 MQTT smoke test 仍应由外部端到端实验脚本触发。
 
 ## 命令行
 
@@ -236,21 +469,21 @@ Planning 会额外输出 `planning_verification_report.json`，记录生成 spec
 ```bash
 python3 -m agent planning validate \
   --facts ~/SpecForge/agent/facts/out/mqtt/protocol_facts.json \
-  --target-profile /tmp/planning_target_profile_mqtt.json \
+  --target-profile agent/planning/planning_target_profile_mqtt.json \
   --skip-llm-check
 
+# 使用facts生成的协议事实
 python3 -m agent planning plan \
   --facts ~/SpecForge/agent/facts/out/mqtt/protocol_facts.json \
-  --target-profile /tmp/planning_target_profile_mqtt.json \
-  --output-dir /tmp/planning_mqtt_out
+  --target-profile agent/planning/planning_target_profile_mqtt.json
 
+# 使用标准协议事实
 python3 -m agent planning plan \
   --facts ~/SpecForge/agent/facts/gold_facts/mqtt/protocol_facts.json \
-  --target-profile /tmp/planning_target_profile_mqtt.json \
-  --output-dir /tmp/planning_mqtt_out
+  --target-profile agent/planning/planning_target_profile_mqtt.json
 
 python3 -m agent planning verify \
-  --output-dir /tmp/planning_mqtt_out
+  --output-dir ~/SpecForge/agent/planning/out/<protocol>/<target_profile>/<timestamp>
 ```
 
 ## 离线/降级行为
@@ -292,7 +525,7 @@ planning/
 - `spec_compiler` 当前只输出 `coder` 兼容的 C 风格 spec
 - 架构生成、决策补充、implementation plan 精修目前都支持 LLM 补充，但在无模型时主要依赖启发式
 - 目前尚未引入正式 JSON Schema，只是采用代码内结构约束和 verifier 校验
-- MQTT-min/C/epoll 的 spec 展开已有规则模板；full MQTT 目前以 coherent engineering plan 和 deferred/open-question 标注为目标
+- 当前 generic spec 展开粒度来自 `implementation_plan_v2`，不会借助协议专用模板；要提高函数粒度，应优化工程计划和通用展开规则
 - 当前 verifier 记录 e2e coder compile/smoke 为 `not_run_by_planning_verifier`；端到端运行仍应由外部实验脚本触发
 
 ## 已验证状态

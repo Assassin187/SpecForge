@@ -22,27 +22,7 @@ def _signature(return_type: str, name: str, params: list[dict[str, Any]]) -> str
     return f"{return_type} {name}({raw_params})"
 
 
-def _strip_blueprint_meta(raw: dict[str, Any]) -> dict[str, Any]:
-    return {
-        key: value
-        for key, value in raw.items()
-        if key
-        not in {
-            "evidence_refs",
-            "decision_refs",
-            "template_refs",
-            "raw_entry",
-            "raw_spec",
-            "module",
-            "file_trace_id",
-        }
-    }
-
-
 def _module_entry_from_blueprint(module: dict[str, Any]) -> dict[str, Any]:
-    raw = module.get("raw_entry")
-    if isinstance(raw, dict):
-        return dict(raw)
     return {
         "NAME": str(module.get("name", "")),
         "ROLE": str(module.get("role", "")),
@@ -54,9 +34,6 @@ def _module_entry_from_blueprint(module: dict[str, Any]) -> dict[str, Any]:
 
 
 def _file_spec_from_blueprint(file_item: dict[str, Any]) -> dict[str, Any]:
-    raw = file_item.get("raw_spec")
-    if isinstance(raw, dict):
-        return dict(raw)
     header_path = str(file_item.get("header_path", ""))
     source_path = str(file_item.get("source_path", ""))
     spec: dict[str, Any] = {
@@ -89,9 +66,6 @@ def _file_spec_from_blueprint(file_item: dict[str, Any]) -> dict[str, Any]:
 
 
 def _function_spec_from_blueprint(function: dict[str, Any]) -> dict[str, Any]:
-    raw = function.get("raw_spec")
-    if isinstance(raw, dict):
-        return dict(raw)
     signature = dict(function.get("signature", {}))
     if not signature:
         name = str(function.get("name", ""))
@@ -129,12 +103,6 @@ def _function_spec_from_blueprint(function: dict[str, Any]) -> dict[str, Any]:
 
 
 def _module_spec_from_blueprint(blueprint: dict[str, Any], target_profile: TargetProfile) -> dict[str, Any]:
-    template = blueprint.get("module_spec_template")
-    if isinstance(template, dict):
-        module_spec = dict(template)
-        if "GENERATION_ORDER" not in module_spec:
-            module_spec["GENERATION_ORDER"] = list(blueprint.get("generation_order", []))
-        return module_spec
     protocol_name = str(blueprint.get("protocol_name", "protocol"))
     modules = [_module_entry_from_blueprint(item) for item in blueprint.get("modules", [])]
     generation_order = list(blueprint.get("generation_order", [item.get("NAME") for item in modules]))
@@ -152,20 +120,39 @@ def _module_spec_from_blueprint(blueprint: dict[str, Any], target_profile: Targe
     }
 
 
-def _spec_path_for_file(spec_root: Path, file_spec: dict[str, Any]) -> Path:
+def _trace_file_spec_path(spec_root: Path, trace_id: str, fallback_dir: str, suffix_name: str) -> Path:
+    parts = [part for part in trace_id.split("/") if part]
+    if len(parts) >= 2:
+        path_parts = parts[1:]
+        if not path_parts:
+            path_parts = [suffix_name]
+        return spec_root.joinpath(*path_parts, f"{suffix_name}_spec.json")
+    return spec_root / fallback_dir / f"{suffix_name}_spec.json"
+
+
+def _trace_function_spec_path(spec_root: Path, trace_id: str, fallback_dir: str, suffix_name: str) -> Path:
+    parts = [part for part in trace_id.split("/") if part]
+    if len(parts) >= 3:
+        path_parts = parts[1:-1]
+        return spec_root.joinpath(*path_parts, f"{suffix_name}_spec.json")
+    if len(parts) == 2:
+        return spec_root / parts[1] / f"{suffix_name}_spec.json"
+    return spec_root / fallback_dir / f"{suffix_name}_spec.json"
+
+
+def _spec_path_for_file(spec_root: Path, file_item: dict[str, Any], file_spec: dict[str, Any]) -> Path:
     trace_id = str(file_spec.get("FILE", {}).get("TRACE_ID", "file"))
-    parts = trace_id.split("/")
-    dirname = parts[-2] if len(parts) >= 2 else _slug(trace_id)
-    basename = parts[-1] if parts else "file"
-    return spec_root / dirname / f"{basename}_spec.json"
+    basename = trace_id.split("/")[-1] if trace_id else "file"
+    return _trace_file_spec_path(spec_root, trace_id, _slug(trace_id), basename)
 
 
-def _spec_path_for_function(spec_root: Path, function_spec: dict[str, Any]) -> Path:
+def _spec_path_for_function(spec_root: Path, function_item: dict[str, Any], function_spec: dict[str, Any]) -> Path:
     trace_id = str(function_spec.get("TRACE_ID", "function"))
-    parts = trace_id.split("/")
-    dirname = parts[-2] if len(parts) >= 2 else "functions"
+    parts = [part for part in trace_id.split("/") if part]
     basename = parts[-1] if parts else "function"
-    return spec_root / dirname / f"{basename}_spec.json"
+    parent = parts[-2] if len(parts) >= 2 else ""
+    suffix_name = f"{basename}_function" if basename == parent else basename
+    return _trace_function_spec_path(spec_root, trace_id, "functions", suffix_name)
 
 
 def compile_spec_bundle(spec_blueprint: dict[str, Any], output_dir: str | Path, target_profile: TargetProfile) -> dict[str, Path]:
@@ -182,11 +169,11 @@ def compile_spec_bundle(spec_blueprint: dict[str, Any], output_dir: str | Path, 
 
     for file_item in spec_blueprint.get("files", []):
         file_spec = _file_spec_from_blueprint(file_item)
-        _write_json(_spec_path_for_file(spec_root, file_spec), file_spec)
+        _write_json(_spec_path_for_file(spec_root, file_item, file_spec), file_spec)
 
     for function in spec_blueprint.get("functions", []):
         function_spec = _function_spec_from_blueprint(function)
-        _write_json(_spec_path_for_function(spec_root, function_spec), function_spec)
+        _write_json(_spec_path_for_function(spec_root, function, function_spec), function_spec)
 
     return {
         "module_spec": module_spec_path,

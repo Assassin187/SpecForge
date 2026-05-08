@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import asdict
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -45,6 +46,10 @@ def _safe_slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_") or "x"
 
 
+def _run_timestamp() -> str:
+    return datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+
+
 def default_output_dir(facts_path: str | Path, target_slug: str) -> Path:
     facts_file = Path(facts_path)
     protocol_name = "protocol"
@@ -54,7 +59,7 @@ def default_output_dir(facts_path: str | Path, target_slug: str) -> Path:
         except Exception:
             protocol_name = "protocol"
     repo_root = Path(__file__).resolve().parents[2]
-    return repo_root / "agent" / "planning" / "out" / _safe_slug(str(protocol_name)) / target_slug
+    return repo_root / "agent" / "planning" / "out" / _safe_slug(str(protocol_name)) / target_slug / _run_timestamp()
 
 
 def _write_json(path: Path, data: Any) -> Path:
@@ -81,11 +86,6 @@ def _spec_counts(spec_root: Path) -> dict[str, int]:
     return counts
 
 
-def _template_spec_counts() -> dict[str, int]:
-    template_root = Path(__file__).resolve().parents[2] / "specs-example" / "mqtt_specs"
-    return _spec_counts(template_root)
-
-
 def _build_verification_report(
     output_dir: Path,
     implementation_plan: dict[str, Any],
@@ -94,9 +94,6 @@ def _build_verification_report(
 ) -> dict[str, Any]:
     spec_root = output_dir / "spec_bundle"
     generated_counts = _spec_counts(spec_root)
-    template_counts = _template_spec_counts()
-    generated_functions = generated_counts.get("function_spec_count", 0)
-    template_functions = template_counts.get("function_spec_count", 0)
     return {
         "schema_version": "planning_verification_report/v1alpha1",
         "output_dir": str(output_dir),
@@ -111,8 +108,6 @@ def _build_verification_report(
         },
         "spec_counts": {
             "generated": generated_counts,
-            "mqtt_template_reference": template_counts,
-            "function_coverage_ratio_vs_template": (generated_functions / template_functions) if template_functions else None,
         },
         "diagnostics": [
             {"level": diag.level, "code": diag.code, "message": diag.message, "path": diag.path}
@@ -392,7 +387,7 @@ def _build_implementation_plan(
         },
         "test_plan": {
             "unit_tests": ["type ownership uniqueness", "handler_matrix minimum_v1 coverage", "module dependency acyclic", "spec_blueprint traceability coverage"],
-            "integration_tests": ["compiled spec bundle validates in coder", "mqtt_min planning -> coder -> compile -> smoke tests"],
+            "integration_tests": ["compiled spec bundle validates in coder", "facts -> planning -> coder -> compile -> protocol smoke tests"],
         },
         "traceability": {
             "decision_ids": [item["decision_id"] for item in decisions],

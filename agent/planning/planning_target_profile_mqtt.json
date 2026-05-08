@@ -1,0 +1,11 @@
+{
+  "target_role": "broker",
+  "language": "C",
+  "runtime": "Linux epoll",
+  "scope": "minimum_v1",
+  "deployment_constraints": {
+    "memory_limit": "low",
+    "persistence": false,
+    "tls_mode": "terminated_upstream"
+  }
+}

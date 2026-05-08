@@ -97,10 +97,10 @@ def verify_output_dir(output_dir: str | Path) -> VerificationResult:
             if not isinstance(item, dict):
                 diagnostics.append(PlanningDiagnostic("error", "invalid_blueprint_item", f"Blueprint item '{section}[{idx}]' must be an object", str(out_dir / "spec_blueprint.json")))
                 continue
-            has_trace = any(item.get(key) for key in ("evidence_refs", "decision_refs", "template_refs"))
+            has_trace = any(item.get(key) for key in ("evidence_refs", "decision_refs", "profile_refs"))
             if not has_trace:
                 ident = item.get("trace_id") or item.get("name") or idx
-                diagnostics.append(PlanningDiagnostic("error", "missing_blueprint_traceability", f"Blueprint {section} item '{ident}' has no evidence_refs, decision_refs, or template_refs", str(out_dir / "spec_blueprint.json")))
+                diagnostics.append(PlanningDiagnostic("error", "missing_blueprint_traceability", f"Blueprint {section} item '{ident}' has no evidence_refs, decision_refs, or profile_refs", str(out_dir / "spec_blueprint.json")))
 
     spec_bundle_dir = out_dir / "spec_bundle"
     module_specs = list(spec_bundle_dir.glob("*_module_spec.json"))

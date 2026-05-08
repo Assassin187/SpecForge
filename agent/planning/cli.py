@@ -79,8 +79,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
     result = agent.plan()
     _print_diagnostics(result.diagnostics)
     print(f"Output: {result.output_dir}")
-    for key, path in result.artifact_paths.items():
-        print(f"{key}: {path}")
+    print(f"Logs: {result.output_dir / '_agent_logs'}")
     return 0 if result.success else 1
 
 
