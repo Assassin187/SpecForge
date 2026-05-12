@@ -227,6 +227,12 @@ python3 -m agent coder \
   --module-spec ~/SpecForge/specs-example/mqtt_specs/mqtt_module_spec.json \
   --spec-root ~/SpecForge/specs-example/mqtt_specs \
   generate
+
+python3 -m agent coder \
+  --module-spec /home/ljf/SpecForge/agent/planning/out/mqtt/broker__c__linux_epoll__minimum_v1/20260512_165537_219942/spec_bundle/mqtt_module_spec.json \
+  --spec-root /home/ljf/SpecForge/agent/planning/out/mqtt/broker__c__linux_epoll__minimum_v1/20260512_165537_219942/spec_bundle \
+  generate
+
 ```
 
 `validate` 负责发现输入规格的结构/一致性问题；`generate` 在通过校验后生成一次运行目录。生成的协议工程位于运行目录下的协议名子目录（例如 `mqtt/`），日志位于同级 `_agent_logs/`，`run_manifest.json` 也写入 `_agent_logs/`。日志只保留 prompt、编译输出、manifest 等诊断材料，不再镜像保存生成出的 `.c/.h`/Makefile 内容；manifest 中包含逐次 LLM 调用、按阶段汇总和最终总计的 token 用量。

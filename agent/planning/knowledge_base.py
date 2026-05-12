@@ -12,8 +12,8 @@ def load_rules() -> list[ExpertRule]:
             conditions={"transport_shape": "stream"},
             engineering_obligations=["Introduce connection input buffer", "Introduce incremental decoder boundary handling"],
             recommended_patterns=["layered_io_then_codec", "parse_loop_with_partial_frame_state"],
-            required_components=["input_buffer", "incremental_decoder"],
-            spec_impacts=["Add network/runtime module", "Assign frame parsing ownership to codec module"],
+            required_capabilities=["connection_buffering", "incremental_message_framing"],
+            spec_impacts=["Assign stream buffering to a runtime or codec module", "Assign frame parsing ownership to a codec/framing boundary"],
         ),
         ExpertRule(
             rule_id="timer_manager_required",
@@ -22,8 +22,8 @@ def load_rules() -> list[ExpertRule]:
             conditions={"timing_model": "timer_driven"},
             engineering_obligations=["Model timer source and timeout handlers"],
             recommended_patterns=["event_loop_plus_timer_callbacks"],
-            required_components=["timer_manager"],
-            spec_impacts=["Add timeout-related handler paths", "Add timing tests"],
+            required_capabilities=["timer_source", "timeout_handling"],
+            spec_impacts=["Assign timer handling to an existing runtime/state module unless facts require an independent owner", "Add timing tests"],
         ),
         ExpertRule(
             rule_id="routing_resource_split",
@@ -32,8 +32,8 @@ def load_rules() -> list[ExpertRule]:
             conditions={"routing_intensity": ["medium", "high"], "resource_intensity": ["medium", "high"]},
             engineering_obligations=["Separate routing logic from resource ownership", "Define resource store abstraction"],
             recommended_patterns=["router_plus_store", "command_handler_to_store"],
-            required_components=["router", "resource_store"],
-            spec_impacts=["Add routing module", "Add store-facing interfaces"],
+            required_capabilities=["routing_dispatch", "resource_ownership"],
+            spec_impacts=["Assign routing behavior and resource ownership to explicit module capabilities", "Add store-facing interfaces when stateful resources exist"],
         ),
         ExpertRule(
             rule_id="persistent_session_store",
@@ -42,8 +42,8 @@ def load_rules() -> list[ExpertRule]:
             conditions={"statefulness": "persistent_state"},
             engineering_obligations=["Model session store", "Define recovery and cleanup path"],
             recommended_patterns=["session_store_with_rehydration"],
-            required_components=["session_store", "recovery_policy"],
-            spec_impacts=["Add persistent state ownership", "Expose lifecycle cleanup functions"],
+            required_capabilities=["session_state_ownership", "recovery_cleanup_policy"],
+            spec_impacts=["Assign persistent state ownership", "Expose lifecycle cleanup functions"],
         ),
         ExpertRule(
             rule_id="connection_close_error_policy",
@@ -52,8 +52,8 @@ def load_rules() -> list[ExpertRule]:
             conditions={"failure_semantics": "close_connection_on_protocol_error"},
             engineering_obligations=["Define terminal protocol error path", "Ensure handlers map malformed input to close action"],
             recommended_patterns=["shared_protocol_error_handler"],
-            required_components=["error_policy", "connection_terminator"],
-            spec_impacts=["Include close path in handler matrix", "Add malformed-input tests"],
+            required_capabilities=["protocol_error_policy", "connection_termination"],
+            spec_impacts=["Include terminal error behavior in handler matrix", "Add malformed-input tests"],
         ),
         ExpertRule(
             rule_id="canonical_ownership_required",
@@ -62,7 +62,7 @@ def load_rules() -> list[ExpertRule]:
             conditions={"always": True},
             engineering_obligations=["Assign unique canonical owner for each public type"],
             recommended_patterns=["one_public_type_one_owner"],
-            required_components=["canonical_types_registry"],
+            required_capabilities=["canonical_type_ownership"],
             spec_impacts=["Generate unique file ownership", "Verify no duplicate public type owners"],
         ),
     ]

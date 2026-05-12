@@ -21,6 +21,7 @@ class LLMRequest:
     temperature: float
     is_stream: bool = True
     enable_thinking: bool = True
+    max_completion_tokens: int | None = None
 
 
 @dataclass(frozen=True)
@@ -58,6 +59,7 @@ def chat_with_llm_with_usage(
     temperature: float = 0.5,
     is_stream: bool = True,
     enable_thinking: bool = True,
+    max_completion_tokens: int | None = None,
     delay: int = DEFAULT_RETRY_DELAY,
     attempts: int = DEFAULT_RETRY_ATTEMPTS,
 ) -> LLMResponse:
@@ -79,6 +81,8 @@ def chat_with_llm_with_usage(
                 "temperature": temperature,
                 "stream": is_stream,
             }
+            if max_completion_tokens is not None:
+                request_kwargs["max_tokens"] = max_completion_tokens
             if is_stream:
                 request_kwargs["stream_options"] = {"include_usage": True}
             response = client.chat.completions.create(**request_kwargs)
@@ -118,6 +122,7 @@ def chat_with_llm(
     temperature: float = 0.5,
     is_stream: bool = True,
     enable_thinking: bool = True,
+    max_completion_tokens: int | None = None,
     delay: int = DEFAULT_RETRY_DELAY,
     attempts: int = DEFAULT_RETRY_ATTEMPTS,
 ) -> str:
@@ -128,6 +133,7 @@ def chat_with_llm(
         temperature=temperature,
         is_stream=is_stream,
         enable_thinking=enable_thinking,
+        max_completion_tokens=max_completion_tokens,
         delay=delay,
         attempts=attempts,
     ).content
@@ -150,6 +156,7 @@ class FixedQwenClient:
             temperature=request.temperature,
             is_stream=request.is_stream,
             enable_thinking=request.enable_thinking,
+            max_completion_tokens=request.max_completion_tokens,
         )
         if not isinstance(response, LLMResponse):
             raise RuntimeError(f"Expected LLMResponse from chat_with_llm_with_usage, got {type(response)!r}")

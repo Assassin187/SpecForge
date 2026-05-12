@@ -22,6 +22,20 @@ def load_target_profile(path: str | Path) -> tuple[TargetProfile | None, list[Pl
     if not isinstance(constraints, dict):
         diagnostics.append(PlanningDiagnostic("error", "invalid_target_profile_field", "deployment_constraints must be an object", str(path)))
         constraints = {}
+    aliases_raw = raw.get("role_aliases", {})
+    role_aliases: dict[str, str] = {}
+    if aliases_raw is None:
+        aliases_raw = {}
+    if not isinstance(aliases_raw, dict):
+        diagnostics.append(PlanningDiagnostic("error", "invalid_role_alias", "role_aliases must be an object mapping source role to normalized role", str(path)))
+    else:
+        for key, value in aliases_raw.items():
+            source = str(key).strip().lower()
+            target = str(value).strip().lower()
+            if not source or not target:
+                diagnostics.append(PlanningDiagnostic("error", "invalid_role_alias", "role_aliases keys and values must be non-empty strings", str(path)))
+                continue
+            role_aliases[source] = target
     if diagnostics:
         return None, diagnostics
     return (
@@ -31,6 +45,7 @@ def load_target_profile(path: str | Path) -> tuple[TargetProfile | None, list[Pl
             runtime=str(raw.get("runtime", "")),
             scope=str(raw.get("scope", "")),
             deployment_constraints=constraints,
+            role_aliases=role_aliases,
             raw=raw,
         ),
         diagnostics,
@@ -45,13 +60,8 @@ def _normalize_roles(facts: dict[str, Any], target_profile: TargetProfile) -> li
     roles.append(target_profile.target_role.lower())
     deduped: list[str] = []
     seen = set()
-    aliases = {
-        "server": "broker" if "mqtt" in str(facts.get("protocol_meta", {}).get("protocol_name", "")).lower() else "server",
-        "consumer": "client",
-        "producer": "client",
-    }
     for role in roles:
-        normalized = aliases.get(role, role)
+        normalized = target_profile.role_aliases.get(role, role)
         if normalized not in seen:
             seen.add(normalized)
             deduped.append(normalized)

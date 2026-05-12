@@ -34,7 +34,7 @@ def activate_rules(rules: list[ExpertRule], profile: ProtocolProfile) -> list[Ex
                 reasons=reasons if matched else [],
                 engineering_obligations=rule.engineering_obligations if matched else [],
                 recommended_patterns=rule.recommended_patterns if matched else [],
-                required_components=rule.required_components if matched else [],
+                required_capabilities=rule.required_capabilities if matched else [],
                 spec_impacts=rule.spec_impacts if matched else [],
                 evidence_refs=[],
             )

@@ -279,6 +279,11 @@ def _validate_module_file_coverage(bundle: SpecBundle) -> None:
 
 
 def _validate_file_specs(bundle: SpecBundle) -> None:
+    all_source_by_name = {
+        interface.name: interface
+        for file_spec in bundle.file_specs_by_trace.values()
+        for interface in file_spec.source_interfaces
+    }
     for trace_id, file_spec in bundle.file_specs_by_trace.items():
         if not trace_id:
             bundle.diagnostics.append(Diagnostic("error", "missing_trace_id", "File spec TRACE_ID is empty", str(file_spec.spec_path)))
@@ -306,10 +311,11 @@ def _validate_file_specs(bundle: SpecBundle) -> None:
                 bundle.diagnostics.append(Diagnostic("warning", "signature_mismatch", f"Function spec '{linked.trace_id}' signature differs from file SOURCE interface", str(linked.source_path)))
         source_by_name = {item.name: item for item in file_spec.source_interfaces}
         for interface in file_spec.header_interfaces:
-            if interface.name not in source_by_name:
+            source_interface = source_by_name.get(interface.name) or all_source_by_name.get(interface.name)
+            if source_interface is None:
                 bundle.diagnostics.append(Diagnostic("warning", "header_without_source", f"Header interface '{interface.name}' has no matching source interface in '{trace_id}'", str(file_spec.spec_path)))
                 continue
-            linked = bundle.function_specs_by_trace.get(source_by_name[interface.name].trace_id)
+            linked = bundle.function_specs_by_trace.get(source_interface.trace_id)
             if linked and normalize_signature(linked.signature.raw) != normalize_signature(interface.signature):
                 bundle.diagnostics.append(Diagnostic("warning", "header_signature_mismatch", f"Header interface '{interface.name}' differs from function spec signature", str(file_spec.spec_path)))
 

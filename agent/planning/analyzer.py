@@ -12,6 +12,17 @@ def _value_of(value: Any, default: str = "unknown") -> str:
     return str(value) if value is not None else default
 
 
+def _uniq(values: list[str]) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        text = value.strip()
+        if text and text not in seen:
+            seen.add(text)
+            result.append(text)
+    return result
+
+
 def analyze_protocol_profile(planning_ir: PlanningIR) -> ProtocolProfile:
     facts = planning_ir.facts
     transport = facts.get("transport", {})
@@ -57,6 +68,54 @@ def analyze_protocol_profile(planning_ir: PlanningIR) -> ProtocolProfile:
     else:
         failure_semantics = "mixed"
 
+    transport_capabilities = ["transport_io"]
+    if transport_shape == "stream":
+        transport_capabilities.extend(["connection_lifecycle", "connection_buffering"])
+    elif transport_shape == "datagram":
+        transport_capabilities.extend(["datagram_io", "peer_address_handling"])
+    else:
+        transport_capabilities.append("transport_adapter")
+
+    message_entries = planning_ir.message_entries or planning_ir.surface_units
+    message_framing_capabilities = ["message_decode"]
+    if message_entries:
+        message_framing_capabilities.append("message_encode")
+    if transport_shape == "stream":
+        message_framing_capabilities.append("incremental_message_framing")
+    if transport_shape == "datagram":
+        message_framing_capabilities.append("datagram_message_framing")
+
+    state_capabilities = []
+    if planning_ir.state_nodes or planning_ir.transitions:
+        state_capabilities.extend(["state_machine", "state_transition_validation"])
+    if statefulness in {"session_state", "persistent_state", "connection_state"}:
+        state_capabilities.append("session_state_ownership")
+    if statefulness == "persistent_state":
+        state_capabilities.append("recovery_cleanup_policy")
+
+    routing_capabilities = []
+    if routing.get("dispatch_keys"):
+        routing_capabilities.append("routing_dispatch")
+    if planning_ir.resource_objects:
+        routing_capabilities.append("resource_ownership")
+
+    error_capabilities = ["protocol_error_policy"]
+    if failure_semantics == "close_connection_on_protocol_error":
+        error_capabilities.append("connection_termination")
+    elif failure_semantics == "reply_with_error":
+        error_capabilities.append("error_response_encoding")
+
+    timing_capabilities = ["timer_source", "timeout_handling"] if has_timers else []
+    required_capabilities = _uniq(
+        transport_capabilities
+        + message_framing_capabilities
+        + state_capabilities
+        + routing_capabilities
+        + error_capabilities
+        + timing_capabilities
+        + ["semantic_dispatch", "role_composition", "canonical_type_ownership"]
+    )
+
     profile = {
         "protocol_name": planning_ir.protocol_name,
         "target_role": planning_ir.target_profile.target_role,
@@ -73,10 +132,12 @@ def analyze_protocol_profile(planning_ir: PlanningIR) -> ProtocolProfile:
         "assumable_questions": len(planning_ir.open_questions.get("assumable", [])),
         "deferrable_questions": len(planning_ir.open_questions.get("deferrable", [])),
         "required_surface_units": [item.get("name") for item in minimum_v1.get("must_support_surface", []) if isinstance(item, dict) and item.get("name")],
-        "required_components": [
-            "network_runtime" if transport_shape == "stream" else "transport_adapter",
-            "protocol_codec",
-            "handler_dispatch",
-        ],
+        "transport_capabilities": _uniq(transport_capabilities),
+        "message_framing_capabilities": _uniq(message_framing_capabilities),
+        "state_capabilities": _uniq(state_capabilities),
+        "routing_capabilities": _uniq(routing_capabilities),
+        "error_capabilities": _uniq(error_capabilities),
+        "timing_capabilities": _uniq(timing_capabilities),
+        "required_capabilities": required_capabilities,
     }
     return ProtocolProfile(profile)

@@ -1,0 +1,192 @@
+{
+  "schema_version": "protocol_facts/v2alpha1",
+  "protocol_meta": {
+    "protocol_name": "ftp"
+  },
+  "transport": {
+    "network_stack": {
+      "value": "tcp",
+      "evidence_refs": ["ftp_transport"]
+    },
+    "connection_model": {
+      "value": "connection_oriented",
+      "evidence_refs": ["ftp_transport"]
+    }
+  },
+  "interaction_model": {
+    "style": {
+      "value": "command_response",
+      "evidence_refs": ["ftp_roles"]
+    },
+    "roles": [
+      {
+        "name": "client",
+        "evidence_refs": ["ftp_roles"]
+      },
+      {
+        "name": "server",
+        "evidence_refs": ["ftp_roles"]
+      }
+    ]
+  },
+  "message_model": {
+    "surface_catalog": [
+      {
+        "name": "USER",
+        "summary": "Begin login by providing a user name.",
+        "evidence_refs": ["ftp_user"]
+      },
+      {
+        "name": "PASS",
+        "summary": "Complete login by providing a password.",
+        "evidence_refs": ["ftp_pass"]
+      },
+      {
+        "name": "PWD",
+        "summary": "Request the current working directory.",
+        "evidence_refs": ["ftp_pwd"]
+      },
+      {
+        "name": "QUIT",
+        "summary": "Terminate the control session.",
+        "evidence_refs": ["ftp_quit"]
+      }
+    ],
+    "message_or_command_entries": [
+      {
+        "name": "line_command",
+        "summary": "Commands are ASCII lines with a verb and optional argument.",
+        "evidence_refs": ["ftp_command_syntax"]
+      },
+      {
+        "name": "status_response",
+        "summary": "Responses carry numeric status codes and text.",
+        "evidence_refs": ["ftp_response_syntax"]
+      }
+    ]
+  },
+  "state_model": {
+    "state_nodes": [
+      {
+        "name": "connected",
+        "summary": "Control connection accepted but not authenticated.",
+        "evidence_refs": ["ftp_state"]
+      },
+      {
+        "name": "authenticated",
+        "summary": "Login completed and simple commands are accepted.",
+        "evidence_refs": ["ftp_state"]
+      },
+      {
+        "name": "closed",
+        "summary": "Control connection has ended.",
+        "evidence_refs": ["ftp_quit"]
+      }
+    ],
+    "transitions": [
+      {
+        "from_state": "connected",
+        "to_state": "authenticated",
+        "trigger": "valid USER followed by PASS",
+        "summary": "Credentials complete the simple session login.",
+        "evidence_refs": ["ftp_user", "ftp_pass"]
+      },
+      {
+        "from_state": "authenticated",
+        "to_state": "closed",
+        "trigger": "QUIT",
+        "summary": "Server sends a closing response and closes the control connection.",
+        "evidence_refs": ["ftp_quit"]
+      }
+    ],
+    "timers_and_constants": []
+  },
+  "routing_model": {
+    "dispatch_keys": [
+      {
+        "name": "command_verb",
+        "summary": "The command verb selects handler behavior.",
+        "evidence_refs": ["ftp_command_syntax"]
+      }
+    ]
+  },
+  "resource_model": {
+    "persistence_scope": null,
+    "resource_objects": [
+      {
+        "name": "control_session",
+        "scope": "connection",
+        "summary": "Tracks authentication state and current working directory for a live control connection.",
+        "evidence_refs": ["ftp_state"]
+      }
+    ],
+    "lifecycle_rules": [
+      {
+        "summary": "Create a control session when the connection is accepted and destroy it on QUIT or network close.",
+        "evidence_refs": ["ftp_state", "ftp_quit"]
+      }
+    ]
+  },
+  "error_and_limits": {
+    "error_matrix": [
+      {
+        "condition": "Unknown command verb",
+        "surface_unit": "line_command",
+        "required_action": "reply with an error status and keep the session open",
+        "evidence_refs": ["ftp_error"]
+      }
+    ]
+  },
+  "minimum_v1": {
+    "must_support_surface": [
+      {
+        "name": "USER",
+        "summary": "Accept a user command and request password.",
+        "evidence_refs": ["ftp_user"]
+      },
+      {
+        "name": "PASS",
+        "summary": "Accept a password command and mark the session authenticated.",
+        "evidence_refs": ["ftp_pass"]
+      },
+      {
+        "name": "PWD",
+        "summary": "Return the current working directory for an authenticated session.",
+        "evidence_refs": ["ftp_pwd"]
+      },
+      {
+        "name": "QUIT",
+        "summary": "Close the control session.",
+        "evidence_refs": ["ftp_quit"]
+      }
+    ],
+    "may_defer_features": [
+      {
+        "name": "data_connection",
+        "summary": "File transfer data channels are outside the minimum control-plane scope.",
+        "evidence_refs": ["ftp_scope"]
+      }
+    ],
+    "implementation_assumptions": [
+      {
+        "name": "control_plane_only",
+        "summary": "The minimum implementation covers command parsing and session responses only.",
+        "evidence_refs": ["ftp_scope"]
+      }
+    ]
+  },
+  "open_questions": [],
+  "evidence_index": [
+    {"evidence_id": "ftp_transport", "summary": "FTP control runs over a TCP connection."},
+    {"evidence_id": "ftp_roles", "summary": "FTP uses client/server command response roles."},
+    {"evidence_id": "ftp_command_syntax", "summary": "Commands are line-oriented verbs with optional arguments."},
+    {"evidence_id": "ftp_response_syntax", "summary": "Responses include numeric status codes."},
+    {"evidence_id": "ftp_user", "summary": "USER begins authentication."},
+    {"evidence_id": "ftp_pass", "summary": "PASS completes authentication."},
+    {"evidence_id": "ftp_pwd", "summary": "PWD returns the current working directory."},
+    {"evidence_id": "ftp_quit", "summary": "QUIT terminates the control session."},
+    {"evidence_id": "ftp_state", "summary": "The server tracks per-connection login state."},
+    {"evidence_id": "ftp_error", "summary": "Unknown commands are rejected with a response."},
+    {"evidence_id": "ftp_scope", "summary": "Minimum scope excludes transfer data connections."}
+  ]
+}

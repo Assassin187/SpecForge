@@ -20,6 +20,7 @@ class TargetProfile:
     runtime: str
     scope: str
     deployment_constraints: dict[str, Any]
+    role_aliases: dict[str, str]
     raw: dict[str, Any]
 
     @property
@@ -65,7 +66,7 @@ class ExpertRule:
     conditions: dict[str, Any]
     engineering_obligations: list[str]
     recommended_patterns: list[str]
-    required_components: list[str]
+    required_capabilities: list[str]
     spec_impacts: list[str]
 
 
@@ -77,7 +78,7 @@ class ExpertActivation:
     reasons: list[str]
     engineering_obligations: list[str]
     recommended_patterns: list[str]
-    required_components: list[str]
+    required_capabilities: list[str]
     spec_impacts: list[str]
     evidence_refs: list[str]
 
@@ -93,6 +94,8 @@ class CandidateArchitecture:
     strengths: list[str]
     risks: list[str]
     origin: str
+    generation_round: int | None = None
+    generation_strategy: str | None = None
 
 
 @dataclass(frozen=True)
@@ -104,6 +107,37 @@ class ArchitectureScore:
     breakdown: dict[str, float]
     reasons: list[str]
     selected: bool
+
+
+@dataclass(frozen=True)
+class ArchitectureLintResult:
+    candidate_id: str
+    ok: bool
+    module_count: int
+    module_count_ok: bool
+    missing_capabilities: list[str]
+    unknown_capabilities: list[str]
+    ungrounded_module_name_tokens: dict[str, list[str]]
+    schema_errors: list[str]
+    warnings: list[str]
+
+
+@dataclass(frozen=True)
+class ArchitectureJudgeScore:
+    candidate_id: str
+    verdict: str
+    total_score: float
+    scores: dict[str, float]
+    major_issues: list[dict[str, str]]
+    rationale: str
+    recommended_selection: bool
+
+
+@dataclass(frozen=True)
+class ArchitectureReview:
+    selected_candidate_id: str
+    rejection_reason: str
+    scores: list[ArchitectureJudgeScore]
 
 
 @dataclass(frozen=True)
@@ -172,6 +206,9 @@ class BlueprintFile:
     source_data: list[dict[str, Any]] = field(default_factory=list)
     header_interfaces: list[dict[str, Any]] = field(default_factory=list)
     source_interfaces: list[dict[str, Any]] = field(default_factory=list)
+    file_dependencies: list[dict[str, Any]] = field(default_factory=list)
+    dependency_refs: list[str] = field(default_factory=list)
+    call_contracts: list[dict[str, Any]] = field(default_factory=list)
     evidence_refs: list[str] = field(default_factory=list)
     decision_refs: list[str] = field(default_factory=list)
     profile_refs: list[str] = field(default_factory=list)

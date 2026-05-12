@@ -1,41 +1,8 @@
 from __future__ import annotations
 
-import json
-from collections.abc import Callable
 from typing import Any
 
-from ..common.llm_client import FixedQwenClient, LLMRequest, LLMResponse, LLMUsage
 from .models import ArchitectureScore, CandidateArchitecture, DesignDecision, ExpertActivation, PlanningIR, ProtocolProfile
-from .prompts import build_decision_enrichment_prompt
-
-
-def _load_json_payload(text: str) -> dict[str, Any]:
-    cleaned = text.strip()
-    if cleaned.startswith("```"):
-        lines = cleaned.splitlines()
-        if lines and lines[0].startswith("```"):
-            lines = lines[1:]
-        if lines and lines[-1].startswith("```"):
-            lines = lines[:-1]
-        cleaned = "\n".join(lines).strip()
-    return json.loads(cleaned)
-
-
-def _generate_with_usage(llm_client: FixedQwenClient, messages: list[dict[str, str]]) -> LLMResponse:
-    generate_with_usage = getattr(llm_client, "generate_with_usage", None)
-    request = LLMRequest(
-        messages=messages,
-        top_p=0.4,
-        temperature=0.2,
-        is_stream=True,
-    )
-    if callable(generate_with_usage):
-        response = generate_with_usage(request)
-        if not isinstance(response, LLMResponse):
-            raise RuntimeError(f"Expected LLMResponse from generate_with_usage(), got {type(response)!r}")
-        return response
-    content = llm_client.generate(request)
-    return LLMResponse(content=content, usage=LLMUsage(0, 0, 0))
 
 
 def _base_decisions(
@@ -76,12 +43,12 @@ def _base_decisions(
             decision_id="dec_architecture_choice",
             decision_type="architecture_selection",
             selected_option=chosen_architecture.candidate_id,
-            rationale=f"Selected highest-scoring candidate '{chosen_architecture.title}' with score {selected_score.total_score if selected_score else 0:.1f}.",
+            rationale=f"Selected judge-accepted candidate '{chosen_architecture.title}' with score {selected_score.total_score if selected_score else 0:.1f}.",
             evidence_refs=[],
             expert_rule_ids=active_rule_ids,
             downstream_spec_impact=["Use selected module graph as implementation backbone"],
-            origin="rule",
-            source_steps=["stage4_candidate_architectures", "stage4_scoring"],
+            origin="llm_judge",
+            source_steps=["stage4_candidate_architectures", "stage4_architecture_judge"],
         ),
         DesignDecision(
             decision_id="dec_state_ownership",
@@ -133,66 +100,89 @@ def _base_decisions(
         )
     return decisions
 
-
-def build_design_decisions(
+def derive_design_decisions(
     planning_ir: PlanningIR,
     profile: ProtocolProfile,
     chosen_architecture: CandidateArchitecture,
     activations: list[ExpertActivation],
     scores: list[ArchitectureScore],
-    llm_client: FixedQwenClient | None,
-    log: Callable[[str], None] | None = None,
-    log_artifact: Callable[[str, str, str], None] | None = None,
-    register_usage: Callable[[str, str, LLMUsage], None] | None = None,
+    implementation_plan: dict[str, Any],
 ) -> list[DesignDecision]:
-    base = _base_decisions(planning_ir, profile, chosen_architecture, activations, scores)
-    if llm_client is None:
-        if log is not None:
-            log(f"decisions llm skipped fallback=base decisions={len(base)}")
-        return base
-    try:
-        messages = build_decision_enrichment_prompt(
-            [item.__dict__ for item in base],
-            profile.data,
-            chosen_architecture.__dict__,
-            [item.__dict__ for item in activations],
+    decisions = _base_decisions(planning_ir, profile, chosen_architecture, activations, scores)
+    error_policy = str(implementation_plan.get("error_strategy", {}).get("policy", "")).strip()
+    handler_count = len([item for item in implementation_plan.get("handler_matrix", []) if isinstance(item, dict)])
+    surface_count = len([item for item in implementation_plan.get("scope_decisions", {}).get("minimum_v1_surface", []) if isinstance(item, dict)])
+    derived: list[DesignDecision] = []
+    for item in decisions:
+        selected_option = item.selected_option
+        rationale = item.rationale
+        origin = "derived_from_implementation_plan"
+        source_steps = list(dict.fromkeys([*item.source_steps, "stage7_implementation_plan"]))
+        if item.decision_type == "error_policy" and error_policy:
+            selected_option = error_policy
+            rationale = f"Implementation plan fixed error_strategy.policy='{error_policy}' from protocol profile and facts."
+        elif item.decision_type == "handler_matrix":
+            selected_option = f"{handler_count}_handlers_for_{surface_count}_minimum_surfaces"
+            rationale = "Implementation plan fixed the minimum_v1 surface to handler_matrix mapping."
+        derived.append(
+            DesignDecision(
+                decision_id=item.decision_id,
+                decision_type=item.decision_type,
+                selected_option=selected_option,
+                rationale=rationale,
+                evidence_refs=list(item.evidence_refs),
+                expert_rule_ids=list(item.expert_rule_ids),
+                downstream_spec_impact=list(item.downstream_spec_impact),
+                origin=origin,
+                source_steps=source_steps,
+            )
         )
-        if log_artifact is not None:
-            log_artifact("decision_enrichment_prompt", json.dumps(messages, ensure_ascii=False, indent=2), ".json")
-        if log is not None:
-            log(f"decisions llm_request_start messages={len(messages)}")
-        response = _generate_with_usage(llm_client, messages)
-        if register_usage is not None:
-            register_usage("design_decisions", "generate", response.usage)
-        if log is not None:
-            log(
-                f"decisions llm_response_done chars={len(response.content)} "
-                f"(tokens={response.usage.total_tokens} in={response.usage.prompt_tokens} out={response.usage.completion_tokens})"
+
+    dependency_graph = implementation_plan.get("dependency_graph", {})
+    if isinstance(dependency_graph, dict):
+        validation = dependency_graph.get("validation", {})
+        edge_count = len([item for item in dependency_graph.get("module_edges", []) if isinstance(item, dict)])
+        downstream_impact = [
+            "Drive module_graph dependencies",
+            "Drive blueprint source dependencies, RELY context, and call contracts",
+        ]
+        if isinstance(validation, dict) and validation.get("dropped_cycle_or_duplicate_count"):
+            downstream_impact.append("Dropped cycle-prone or duplicate dependency candidates")
+        derived.append(
+            DesignDecision(
+                decision_id="dec_dependency_graph",
+                decision_type="dependency_graph",
+                selected_option=f"{edge_count}_module_edges",
+                rationale="Implementation plan fixed module/interface/function/data dependencies in dependency_graph.",
+                evidence_refs=[],
+                expert_rule_ids=[],
+                downstream_spec_impact=downstream_impact,
+                origin="derived_from_implementation_plan",
+                source_steps=["stage7_implementation_plan", "stage8_dependency_graph"],
             )
-        if log_artifact is not None:
-            log_artifact("decision_enrichment_response", response.content, ".txt")
-        payload = _load_json_payload(response.content)
-        enrichments = {str(item.get("decision_id")): item for item in payload.get("decisions", []) if isinstance(item, dict)}
-        merged: list[DesignDecision] = []
-        for item in base:
-            patch = enrichments.get(item.decision_id, {})
-            merged.append(
-                DesignDecision(
-                    decision_id=item.decision_id,
-                    decision_type=item.decision_type,
-                    selected_option=str(patch.get("selected_option", item.selected_option)),
-                    rationale=str(patch.get("rationale", item.rationale)),
-                    evidence_refs=list(item.evidence_refs),
-                    expert_rule_ids=list(item.expert_rule_ids),
-                    downstream_spec_impact=[str(v) for v in patch.get("downstream_spec_impact", item.downstream_spec_impact)],
-                    origin="rule_plus_llm",
-                    source_steps=[str(v) for v in patch.get("source_steps", item.source_steps)],
-                )
+        )
+    file_layout = implementation_plan.get("file_layout", {})
+    if isinstance(file_layout, dict):
+        validation = file_layout.get("validation", {})
+        file_count = len([item for item in file_layout.get("files", []) if isinstance(item, dict)])
+        edge_count = len([item for item in file_layout.get("file_edges", []) if isinstance(item, dict)])
+        downstream_impact = [
+            "Drive module_graph files and artifacts",
+            "Drive blueprint file specs, header/source dependencies, and dependency projections",
+        ]
+        if isinstance(validation, dict) and validation.get("fallback_used"):
+            downstream_impact.append("Used deterministic fallback or repair for invalid LLM file layout")
+        derived.append(
+            DesignDecision(
+                decision_id="dec_file_layout",
+                decision_type="file_layout",
+                selected_option=f"{file_count}_files_{edge_count}_file_edges",
+                rationale="Implementation plan fixed module-internal source/header layout in file_layout.",
+                evidence_refs=[],
+                expert_rule_ids=[],
+                downstream_spec_impact=downstream_impact,
+                origin="derived_from_implementation_plan",
+                source_steps=["stage7_implementation_plan", "stage9_file_layout"],
             )
-        if log is not None:
-            log(f"decisions llm_merge_done decisions={len(merged)}")
-        return merged
-    except Exception:
-        if log is not None:
-            log("decisions llm_failed fallback=base")
-        return base
+        )
+    return derived
