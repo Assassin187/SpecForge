@@ -356,7 +356,7 @@ def _deterministic_layout(
         units = _dedupe([*_split_units_for_module(module, handlers), *function_units])
         for unit in units:
             unit_id = f"{name}:{unit}"
-            unit_path = f"{module_dir}/{name}_{unit}.c"
+            unit_path = f"{module_dir}/main.c" if unit == "main" else f"{module_dir}/{name}_{unit}.c"
             defines = [item["name"] for item in module_functions if item.get("unit") == unit]
             files.append(
                 _new_file(
@@ -366,6 +366,7 @@ def _deterministic_layout(
                     role=f"{unit.replace('_', ' ')} implementation responsibilities for {name}",
                     file_kind=f"{unit}_source",
                     visibility="private",
+                    owns_header="" if unit == "main" else _default_header_for_source(unit_path),
                     defines_functions=defines,
                     declares_symbols=[],
                     evidence_refs=_strings(module.get("evidence_refs")),
@@ -426,9 +427,17 @@ def _normalize_source_path(raw_path: Any, module: dict[str, Any], protocol_slug:
     return path
 
 
+def _is_main_source(source_path: str) -> bool:
+    return source_path == "main.c" or source_path.endswith("/main.c")
+
+
+def _default_header_for_source(source_path: str) -> str:
+    return f"{source_path[:-2]}.h" if source_path.endswith(".c") else ""
+
+
 def _normalize_header_path(raw_header: Any, source_path: str) -> str:
     if isinstance(raw_header, bool):
-        return f"{source_path[:-2]}.h" if raw_header and source_path.endswith(".c") else ""
+        return _default_header_for_source(source_path) if raw_header else ""
     text = str(raw_header or "").strip()
     if not text:
         return ""
@@ -495,7 +504,7 @@ def _normalize_raw_layout(
     known_functions = {item["name"] for items in functions_by_module.values() for item in items}
     files: list[dict[str, Any]] = []
     file_ids: set[str] = set()
-    owned_header_by_module: dict[str, str] = {}
+    owned_headers_by_module: dict[str, list[str]] = defaultdict(list)
     source_paths: set[str] = set()
     header_paths: set[str] = set()
     errors: list[str] = []
@@ -529,6 +538,12 @@ def _normalize_raw_layout(
         if header_error:
             errors.append(f"file '{file_id}' {header_error}")
             continue
+        is_main = _is_main_source(source_path)
+        if is_main and header_path:
+            errors.append(f"file '{file_id}' main.c must be source-only and must not own a header")
+            continue
+        if not header_path and not is_main:
+            header_path = _default_header_for_source(source_path)
         if source_path in source_paths:
             errors.append(f"duplicate source path '{source_path}'")
             continue
@@ -538,7 +553,7 @@ def _normalize_raw_layout(
         source_paths.add(source_path)
         if header_path:
             header_paths.add(header_path)
-            owned_header_by_module.setdefault(module_name, header_path)
+            owned_headers_by_module[module_name].append(header_path)
         files.append(
             _new_file(
                 file_id=file_id,
@@ -557,16 +572,17 @@ def _normalize_raw_layout(
         )
     if errors:
         return None, errors[:20]
-    missing_header_modules = [name for name in modules if name not in owned_header_by_module]
+    missing_header_modules = [name for name in modules if not owned_headers_by_module.get(name)]
     if missing_header_modules:
-        return None, [f"modules missing public header owner source file: {', '.join(missing_header_modules)}"]
-    mismatched_headers = [
-        f"{name}: expected {canonical_owner_file_by_module[name]}, got {owned_header_by_module[name]}"
-        for name in sorted(canonical_owner_file_by_module)
-        if name in owned_header_by_module and owned_header_by_module[name] != canonical_owner_file_by_module[name]
-    ]
-    if mismatched_headers:
-        return None, [f"module public header owner must match canonical type owner_file; {item}" for item in mismatched_headers]
+        return None, [f"modules missing header owner source file: {', '.join(missing_header_modules)}"]
+    canonical_errors = []
+    for name in sorted(canonical_owner_file_by_module):
+        headers = owned_headers_by_module.get(name, [])
+        expected = canonical_owner_file_by_module[name]
+        if headers.count(expected) != 1:
+            canonical_errors.append(f"{name}: expected exactly one canonical header {expected}, got {headers}")
+    if canonical_errors:
+        return None, [f"module header ownership must include canonical type owner_file; {item}" for item in canonical_errors]
     placement: list[dict[str, Any]] = []
     placed: set[str] = set()
     raw_placements = _raw_function_placements(raw_layout)
@@ -659,13 +675,31 @@ def _add_file_edge(
     )
 
 
-def _derive_file_edges(layout: dict[str, Any], dependency_graph: dict[str, Any]) -> list[dict[str, Any]]:
+def _canonical_file_by_module(files: list[dict[str, Any]], canonical_types: list[dict[str, Any]]) -> dict[str, str]:
+    canonical_header_by_module = _canonical_owner_file_by_module(canonical_types)
+    result: dict[str, str] = {}
+    fallback: dict[str, str] = {}
+    for item in files:
+        module = str(item.get("module", ""))
+        file_id = str(item.get("file_id", ""))
+        header = str(item.get("owns_header") or item.get("header_path") or "").strip()
+        if not module or not file_id or not header:
+            continue
+        fallback.setdefault(module, file_id)
+        if canonical_header_by_module.get(module) == header:
+            result[module] = file_id
+    for module, file_id in fallback.items():
+        result.setdefault(module, file_id)
+    return result
+
+
+def _derive_file_edges(
+    layout: dict[str, Any],
+    dependency_graph: dict[str, Any],
+    canonical_types: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
     files = [item for item in layout.get("files", []) if isinstance(item, dict)]
-    public_file_by_module = {
-        str(item.get("module")): str(item.get("file_id"))
-        for item in files
-        if item.get("module") and item.get("owns_header")
-    }
+    public_file_by_module = _canonical_file_by_module(files, canonical_types or [])
     source_file_by_function = {
         str(item.get("function_name")): str(item.get("file_id"))
         for item in layout.get("function_placement", [])
@@ -750,11 +784,12 @@ def _validate_layout(
     file_ids = {str(item.get("file_id")) for item in files if item.get("file_id")}
     source_paths = [str(item.get("source_path") or item.get("path")) for item in files if item.get("source_path") or item.get("path")]
     header_paths = [str(item.get("owns_header") or item.get("header_path")) for item in files if item.get("owns_header") or item.get("header_path")]
-    public_header_by_module = {
-        str(item.get("module")): str(item.get("owns_header") or item.get("header_path"))
-        for item in files
-        if item.get("module") and (item.get("owns_header") or item.get("header_path"))
-    }
+    headers_by_module: dict[str, list[str]] = defaultdict(list)
+    for item in files:
+        module = str(item.get("module", ""))
+        header = str(item.get("owns_header") or item.get("header_path") or "").strip()
+        if module and header:
+            headers_by_module[module].append(header)
     canonical_owner_file_by_module = _canonical_owner_file_by_module(canonical_types)
     if len(file_ids) != len([item for item in files if item.get("file_id")]):
         errors.append("files contain duplicate file_id values")
@@ -766,21 +801,27 @@ def _validate_layout(
         module_files = [item for item in files if str(item.get("module")) == module_name]
         if not module_files:
             errors.append(f"module '{module_name}' has no file_layout.files entry")
-        if not any(item.get("owns_header") for item in module_files):
-            errors.append(f"module '{module_name}' has no public header owner")
+        if not headers_by_module.get(module_name):
+            errors.append(f"module '{module_name}' has no header owner")
         expected_header = canonical_owner_file_by_module.get(module_name)
-        actual_header = public_header_by_module.get(module_name)
-        if expected_header and actual_header and actual_header != expected_header:
-            errors.append(f"module '{module_name}' public header owner '{actual_header}' does not match canonical owner_file '{expected_header}'")
+        if expected_header and headers_by_module.get(module_name, []).count(expected_header) != 1:
+            errors.append(f"module '{module_name}' must own exactly one canonical header '{expected_header}'")
     for item in files:
         module_name = str(item.get("module", ""))
+        source_path = str(item.get("source_path") or item.get("path") or "")
+        header_path = str(item.get("owns_header") or item.get("header_path") or "").strip()
         if module_name not in module_names:
             errors.append(f"file '{item.get('file_id')}' references unknown module '{module_name}'")
+        if _is_main_source(source_path):
+            if header_path:
+                errors.append(f"main source file '{item.get('file_id')}' must not own a header")
+        elif not header_path:
+            errors.append(f"non-main source file '{item.get('file_id')}' must own a header")
         defines = {str(name) for name in item.get("defines_functions", []) if str(name).strip()}
         unknown_defines = sorted(defines - known_functions)
         if unknown_defines:
             errors.append(f"file '{item.get('file_id')}' defines unknown functions: {', '.join(unknown_defines)}")
-        if not item.get("owns_header") and not defines:
+        if not header_path and not defines:
             errors.append(f"source-only file '{item.get('file_id')}' does not define any functions")
     for edge in layout.get("file_edges", []):
         if not isinstance(edge, dict):
@@ -941,7 +982,7 @@ def build_file_layout(
     if llm_client is None:
         layout = _deterministic_layout(module_graph, canonical_types, handler_matrix, dependency_graph, protocol_slug, decision_refs)
         # Unit-test helper path only. Real PlanningAgent validation requires an LLM.
-        layout["file_edges"] = _derive_file_edges(layout, dependency_graph)
+        layout["file_edges"] = _derive_file_edges(layout, dependency_graph, canonical_types)
         validation_errors = _validate_layout(layout, module_graph, canonical_types, handler_matrix, dependency_graph, protocol_slug)
         layout["schema_version"] = FILE_LAYOUT_SCHEMA
         layout["validation"] = {
@@ -1060,7 +1101,7 @@ def build_file_layout(
             if layout is None:
                 validation_errors = normalization_errors
             else:
-                layout["file_edges"] = _derive_file_edges(layout, dependency_graph)
+                layout["file_edges"] = _derive_file_edges(layout, dependency_graph, canonical_types)
                 validation_errors = _validate_layout(layout, module_graph, canonical_types, handler_matrix, dependency_graph, protocol_slug)
         attempts.append(
             {

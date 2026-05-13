@@ -7,13 +7,12 @@ from pathlib import Path
 
 from .generation import ProjectGenerator
 from .llm_client import FixedQwenClient
-from .specs import load_spec_bundle
+from .specs import load_spec_bundle, load_spec_bundle_from_root
 from .verifier import ProjectVerifier
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_SPEC_ROOT = REPO_ROOT / "specs-example" / "mqtt_specs"
-DEFAULT_MODULE_SPEC = DEFAULT_SPEC_ROOT / "mqtt_module_spec.json"
 DEFAULT_OUTPUT_ROOT = REPO_ROOT / "agent" / "out"
 
 
@@ -28,8 +27,12 @@ def default_output_dir() -> Path:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="MQTT spec-to-code agent")
-    parser.add_argument("--module-spec", default=str(DEFAULT_MODULE_SPEC))
     parser.add_argument("--spec-root", default=str(DEFAULT_SPEC_ROOT))
+    parser.add_argument(
+        "--module-spec",
+        default=None,
+        help="Optional override; by default coder auto-discovers the module spec under --spec-root.",
+    )
     parser.add_argument("--output-dir", default=str(default_output_dir()))
     parser.add_argument("--max-repair-rounds", type=int, default=3)
 
@@ -38,6 +41,13 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("generate", help="Generate the MQTT broker project from specs")
     sub.add_parser("verify", help="Verify generated project structure, build, and smoke test")
     return parser
+
+
+def _load_bundle(args: argparse.Namespace):
+    spec_root = _path(args.spec_root)
+    if args.module_spec:
+        return load_spec_bundle(_path(args.module_spec), spec_root)
+    return load_spec_bundle_from_root(spec_root)
 
 
 def _print_diagnostics(bundle) -> None:
@@ -51,7 +61,11 @@ def _print_diagnostics(bundle) -> None:
 
 
 def cmd_validate(args: argparse.Namespace) -> int:
-    bundle = load_spec_bundle(_path(args.module_spec), _path(args.spec_root))
+    try:
+        bundle = _load_bundle(args)
+    except Exception as exc:  # noqa: BLE001
+        print(f"ERROR spec_discovery: {exc}")
+        return 1
     llm = FixedQwenClient()
     _print_diagnostics(bundle)
     try:
@@ -64,7 +78,11 @@ def cmd_validate(args: argparse.Namespace) -> int:
 
 
 def cmd_generate(args: argparse.Namespace) -> int:
-    bundle = load_spec_bundle(_path(args.module_spec), _path(args.spec_root))
+    try:
+        bundle = _load_bundle(args)
+    except Exception as exc:  # noqa: BLE001
+        print(f"ERROR spec_discovery: {exc}")
+        return 1
     _print_diagnostics(bundle)
     if bundle.has_errors():
         print("Generation aborted because spec validation reported errors.")
@@ -84,7 +102,11 @@ def cmd_generate(args: argparse.Namespace) -> int:
 
 
 def cmd_verify(args: argparse.Namespace) -> int:
-    bundle = load_spec_bundle(_path(args.module_spec), _path(args.spec_root))
+    try:
+        bundle = _load_bundle(args)
+    except Exception as exc:  # noqa: BLE001
+        print(f"ERROR spec_discovery: {exc}")
+        return 1
     _print_diagnostics(bundle)
     verifier = ProjectVerifier(bundle, _path(args.output_dir))
     result = verifier.verify()

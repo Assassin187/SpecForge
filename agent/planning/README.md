@@ -329,14 +329,14 @@ _step_logs/008_dependency_graph.json
 
 这一步嵌入 `implementation_plan_v2` 固化过程，发生在 `dependency_graph` 之后、`SpecBlueprint` 之前。它以 selected architecture、module graph、handler matrix、canonical types 和 `dependency_graph` 为输入，生成 `implementation_plan_v2.file_layout`：
 
-- `files`: 每个模块内部的 source/header owner 文件节点；简单模块可以保持单文件，复杂模块会按 handler、decode/encode、state/store、routing/runtime/error 等职责拆分。
+- `files`: 每个模块内部的 source/header pair 文件节点；简单模块可以保持单文件，复杂模块会按 handler、decode/encode、state/store、routing/runtime/error 等职责拆分。
 - `file_edges`: 从 dependency graph 投影出的 file-level include/use 关系，包含 `include_scope`、required symbols 和 source graph edge refs。
 - `function_placement`: 每个 generated lifecycle/handler function 唯一落到一个 source unit。
 - `unresolved_layout_questions`: 文件布局层无法可靠决策的问题。
 
-生成策略是 LLM 提议加 deterministic normalization。LLM 只能拆分模块内部文件，不能改变模块边界、能力归属、handler 名称或 dependency graph 语义。`file_edges` 不再由 LLM 枚举，而是在 normalization 成功后由系统根据 `files`、`function_placement` 和 `dependency_graph` 确定性派生。若 LLM 在重试预算内仍无法给出有效 `files` 和 `function_placement`，planning 会以 `file_layout_invalid_llm_output` 失败，不走 fallback。
+生成策略是 LLM 提议加 deterministic normalization。LLM 只能拆分模块内部文件，不能改变模块边界、能力归属、handler 名称或 dependency graph 语义。为优先保证快速生成可用协议代码，当前 planning 采用简化的一源一头 specs 架构：除入口 `main.c` 外，每个 source unit 必须拥有唯一同名或显式指定的 `.h`；每个模块仍只有一个 canonical public header 匹配 canonical type 的 `owner_file`，其他头文件只声明对应 source unit 的函数。`file_edges` 不再由 LLM 枚举，而是在 normalization 成功后由系统根据 `files`、`function_placement` 和 `dependency_graph` 确定性派生。若 LLM 在重试预算内仍无法给出有效 `files` 和 `function_placement`，planning 会以 `file_layout_invalid_llm_output` 失败，不走 fallback。
 
-`file_layout` 会回填 `module_graph[*].files` 和 `module_graph[*].artifacts`。从这一阶段开始，一个模块可以对应多个 `FILE_SPEC`，但仍允许简单模块只有一个 source/header pair。
+`file_layout` 会回填 `module_graph[*].files` 和 `module_graph[*].artifacts`。从这一阶段开始，一个模块可以对应多个 `FILE_SPEC`，每个非 main `FILE_SPEC` 都编译成一个 `.c/.h` pair。
 
 输出 artifact：
 
@@ -372,7 +372,7 @@ Blueprint 表达的是 coder specs 的结构蓝图，但还不是最终 spec 文
 4. 从 `implementation_plan_v2.dependency_graph` 和 `file_layout.file_edges` 生成 source/header dependencies、function `RELY`、call contracts 和 dependency projections。
 5. 从模块边界生成 lifecycle helper functions，例如 create/destroy。
 6. 从 `implementation_plan_v2.handler_matrix` 生成 surface handler functions。
-7. 将 generated functions 回填到对应 source file，并把 public declarations 回填到模块 public header owner。
+7. 将 generated functions 回填到对应 source file，并把 public declarations 回填到同一 file 的 header；只有 canonical header 承载模块 opaque public type。
 8. 将 `implementation_plan.traceability.decision_ids` 和 facts evidence refs 写入 blueprint traceability。
 
 当前内置 profile：

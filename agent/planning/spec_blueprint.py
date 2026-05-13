@@ -139,6 +139,10 @@ def _public_file_by_module(file_layout: dict[str, Any]) -> dict[str, dict[str, A
     result: dict[str, dict[str, Any]] = {}
     for item in _layout_files(file_layout):
         module = str(item.get("module", ""))
+        if module and item.get("owns_header") and str(item.get("visibility", "")).lower() == "public":
+            result[module] = item
+    for item in _layout_files(file_layout):
+        module = str(item.get("module", ""))
         if module and item.get("owns_header"):
             result.setdefault(module, item)
     return result
@@ -413,6 +417,7 @@ def _build_files(
         for item in implementation_plan.get("canonical_types", [])
         if isinstance(item, dict) and item.get("owner_module") and item.get("type_name")
     }
+    owner_file_by_module = _owner_file_by_module(implementation_plan)
     modules_by_name = {str(item.get("name")): item for item in implementation_plan.get("module_graph", []) if isinstance(item, dict)}
     for layout_file in _layout_files(file_layout):
         if not isinstance(layout_file, dict):
@@ -423,15 +428,19 @@ def _build_files(
         trace_id = _trace_id_for_file(protocol_slug, layout_file)
         public_type = canonical_by_module.get(name, f"{protocol_slug}_{name}_t")
         own_header = str(layout_file.get("owns_header") or layout_file.get("header_path") or "").strip()
-        module_header = _module_public_header(file_layout, name)
+        canonical_header = owner_file_by_module.get(name) or _module_public_header(file_layout, name)
+        is_canonical_header = bool(own_header and own_header == canonical_header)
         outgoing_edges = _file_edges_for(file_layout, file_id, direction="outgoing")
-        header_dependencies = [
+        header_dependencies = []
+        if own_header and canonical_header and own_header != canonical_header:
+            header_dependencies.append(canonical_header)
+        header_dependencies.extend(
             _header_for_provider_file(file_layout, str(edge.get("provider_file", "")))
             for edge in outgoing_edges
             if str(edge.get("include_scope", "")).lower() == "header"
-        ]
+        )
         source_dependencies = [
-            own_header or module_header,
+            own_header or canonical_header,
             *[
                 _header_for_provider_file(file_layout, str(edge.get("provider_file", "")))
                 for edge in outgoing_edges
@@ -455,7 +464,7 @@ def _build_files(
                         "VISIBILITY": "PUBLIC",
                         "ROLE": f"Opaque handle for {name} module state",
                     }
-                ] if own_header else [],
+                ] if is_canonical_header else [],
                 "source_data": [
                     {
                         "NAME": f"struct {public_type.rstrip('_t')}",
@@ -463,7 +472,7 @@ def _build_files(
                         "VISIBILITY": "PRIVATE",
                         "ROLE": f"Private state owned by the {name} module",
                     }
-                ] if own_header else [],
+                ] if is_canonical_header else [],
                 "header_interfaces": [],
                 "source_interfaces": [],
                 "file_dependencies": _file_dependency_projection(file_layout, file_id),
@@ -787,19 +796,13 @@ def _build_handler_functions(
 
 def _attach_interfaces(files: list[dict[str, Any]], functions: list[dict[str, Any]]) -> None:
     files_by_trace = {str(item.get("trace_id")): item for item in files}
-    header_file_by_module = {
-        str(item.get("module")): item
-        for item in files
-        if item.get("module") and item.get("header_path")
-    }
     for function in functions:
         file_item = files_by_trace.get(str(function.get("file_trace_id", "")))
         if file_item is None:
             continue
         file_item.setdefault("source_interfaces", []).append(_function_interface(function))
-        if str(function.get("visibility", "public")).lower() == "public":
-            header_file = header_file_by_module.get(str(function.get("module", ""))) or file_item
-            header_file.setdefault("header_interfaces", []).append(_header_interface(function))
+        if str(function.get("visibility", "public")).lower() == "public" and file_item.get("header_path"):
+            file_item.setdefault("header_interfaces", []).append(_header_interface(function))
 
 
 def _drop_empty_source_only_files(files: list[dict[str, Any]], modules: list[dict[str, Any]]) -> list[dict[str, Any]]:

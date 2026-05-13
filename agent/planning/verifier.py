@@ -69,6 +69,10 @@ def _has_cycle(modules: list[dict[str, Any]]) -> bool:
     return any(visit(node) for node in graph)
 
 
+def _is_main_source(source_path: str) -> bool:
+    return source_path == "main.c" or source_path.endswith("/main.c")
+
+
 def _dependency_graph_has_cycle(edges: list[dict[str, Any]]) -> bool:
     graph: dict[str, list[str]] = {}
     for edge in edges:
@@ -299,6 +303,11 @@ def verify_output_dir(output_dir: str | Path) -> VerificationResult:
     layout_files = [item for item in file_layout.get("files", []) if isinstance(item, dict)]
     layout_file_ids = [str(item.get("file_id")) for item in layout_files if item.get("file_id")]
     layout_file_id_set = set(layout_file_ids)
+    owner_file_by_module = {
+        str(item.get("owner_module")): str(item.get("owner_file"))
+        for item in canonical_types
+        if isinstance(item, dict) and item.get("owner_module") and item.get("owner_file")
+    }
     if not file_layout:
         diagnostics.append(PlanningDiagnostic("error", "missing_file_layout", "implementation_plan.file_layout is required", str(implementation_plan_path)))
     layout_validation = file_layout.get("validation", {})
@@ -340,15 +349,27 @@ def verify_output_dir(output_dir: str | Path) -> VerificationResult:
     files_by_layout_module: dict[str, list[dict[str, Any]]] = {}
     for item in layout_files:
         module_name = str(item.get("module", ""))
+        source_path = str(item.get("source_path") or item.get("path") or "")
+        header_path = str(item.get("owns_header") or item.get("header_path") or "").strip()
         if module_name and module_name not in module_names:
             diagnostics.append(PlanningDiagnostic("error", "unknown_file_layout_module", f"file_layout file '{item.get('file_id')}' references unknown module '{module_name}'", str(implementation_plan_path)))
+        if _is_main_source(source_path):
+            if header_path:
+                diagnostics.append(PlanningDiagnostic("error", "main_file_layout_header", f"main source file '{item.get('file_id')}' must not own a header", str(implementation_plan_path)))
+        elif not header_path:
+            diagnostics.append(PlanningDiagnostic("error", "missing_file_layout_header", f"non-main file_layout file '{item.get('file_id')}' must own a header", str(implementation_plan_path)))
         files_by_layout_module.setdefault(module_name, []).append(item)
     for module_name in module_names:
         module_files = files_by_layout_module.get(module_name, [])
         if not module_files:
             diagnostics.append(PlanningDiagnostic("error", "missing_module_file_layout", f"Module '{module_name}' has no file_layout.files entry", str(implementation_plan_path)))
         if not any(item.get("owns_header") or item.get("header_path") for item in module_files):
-            diagnostics.append(PlanningDiagnostic("error", "missing_module_header_owner", f"Module '{module_name}' has no file_layout public header owner", str(implementation_plan_path)))
+            diagnostics.append(PlanningDiagnostic("error", "missing_module_header_owner", f"Module '{module_name}' has no file_layout header owner", str(implementation_plan_path)))
+        expected_header = owner_file_by_module.get(module_name)
+        if expected_header:
+            owned_headers = [str(item.get("owns_header") or item.get("header_path")) for item in module_files if item.get("owns_header") or item.get("header_path")]
+            if owned_headers.count(expected_header) != 1:
+                diagnostics.append(PlanningDiagnostic("error", "missing_canonical_file_layout_header", f"Module '{module_name}' must own exactly one canonical header '{expected_header}'", str(implementation_plan_path)))
     for edge in file_layout.get("file_edges", []):
         if not isinstance(edge, dict):
             diagnostics.append(PlanningDiagnostic("error", "invalid_file_edge", "file_layout.file_edges must contain objects", str(implementation_plan_path)))

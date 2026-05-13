@@ -185,12 +185,13 @@ class FakePlanningLLM:
                 unit_functions = [str(item.get("name")) for item in functions if str(item.get("unit", "")) == unit]
                 file_id = f"{name}:{unit}"
                 source_path = f"{directory}/main.c" if unit == "main" else f"{directory}/{name}_{unit}.c"
+                header_path = "" if unit == "main" else f"{source_path[:-2]}.h"
                 files.append(
                     {
                         "file_id": file_id,
                         "module": name,
                         "path": source_path,
-                        "owns_header": "",
+                        "owns_header": header_path,
                         "file_kind": f"{unit}_source",
                         "visibility": "private",
                         "role": f"{unit} implementation source for {name}",
@@ -443,7 +444,7 @@ class ProtocolAgnosticPlanningTests(unittest.TestCase):
         graph = build_dependency_graph(
             planning_ir,
             profile.data,
-            {"component_relationships": ["transport_runtime -> protocol_codec", "protocol_codec -> semantic_core", "semantic_core -> resource_state"]},
+            {"component_relationships": ["protocol_codec -> transport_runtime", "protocol_codec -> semantic_core", "semantic_core -> resource_state"]},
             implementation_plan,
             llm_client=None,
         )
@@ -452,6 +453,21 @@ class ProtocolAgnosticPlanningTests(unittest.TestCase):
         self.assertIn(("server_composition", "semantic_core"), selected_edges)
         self.assertIn(("semantic_core", "resource_state"), selected_edges)
         self.assertNotIn(("resource_state", "semantic_core"), selected_edges)
+        runtime_run_function_edges = {
+            (edge["caller"], edge["callee"])
+            for edge in graph["function_edges"]
+            if edge.get("caller") == "mqtt_transport_runtime_run"
+        }
+        self.assertIn(("mqtt_transport_runtime_run", "mqtt_protocol_codec_decode_packet"), runtime_run_function_edges)
+        self.assertIn(("mqtt_transport_runtime_run", "mqtt_protocol_codec_decode_next"), runtime_run_function_edges)
+        self.assertTrue(
+            any(
+                edge.get("function") == "mqtt_transport_runtime_run"
+                and edge.get("provider_module") == "protocol_codec"
+                and edge.get("struct") == "x_protocol_codec_t"
+                for edge in graph["data_edges"]
+            )
+        )
 
         updated = apply_dependency_graph_to_modules(module_graph, graph, canonical_types, handler_matrix, planning_ir.protocol_name)
         dependencies_by_module = {module["name"]: module["dependencies"] for module in updated}
@@ -552,6 +568,18 @@ class ProtocolAgnosticPlanningTests(unittest.TestCase):
         semantic_api = files_by_id["semantic:api"]
 
         self.assertGreater(len(file_layout["files"]), len(module_graph))
+        for file_item in spec_blueprint["files"]:
+            source_path = str(file_item.get("source_path", ""))
+            if source_path.endswith("/main.c") or source_path == "main.c":
+                continue
+            self.assertTrue(file_item.get("header_path"), file_item)
+            source_public = {
+                str(item.get("NAME"))
+                for item in file_item.get("source_interfaces", [])
+                if str(item.get("VISIBILITY", "public")).lower() == "public"
+            }
+            header_public = {str(item.get("NAME")) for item in file_item.get("header_interfaces", [])}
+            self.assertTrue(source_public.issubset(header_public), file_item)
         self.assertIn("x/codec/codec.h", semantic_api["header_dependencies"])
         self.assertIn("module_edge:semantic:codec:compile_time_include", semantic_api["dependency_refs"])
         semantic_create = next(item for item in spec_blueprint["functions"] if item["name"] == "mqtt_semantic_create")
@@ -617,6 +645,45 @@ class ProtocolAgnosticPlanningTests(unittest.TestCase):
 
         self.assertIsNone(layout)
         self.assertTrue(any("canonical type owner_file" in error for error in errors), errors)
+
+    def test_file_layout_auto_adds_header_for_non_main_source_only_file(self) -> None:
+        module_graph = [
+            {"name": "mqtt_codec", "role": "codec", "path": "mqtt/mqtt_codec/mqtt_codec", "dependencies": [], "owned_capabilities": [], "evidence_refs": []}
+        ]
+        canonical_types = [
+            {"type_name": "mqtt_mqtt_codec_t", "owner_module": "mqtt_codec", "owner_file": "mqtt/mqtt_codec/mqtt_codec.h", "visibility": "public"}
+        ]
+        raw_layout = {
+            "files": [
+                {
+                    "file_id": "mqtt_codec_api",
+                    "module": "mqtt_codec",
+                    "path": "mqtt/mqtt_codec/mqtt_codec.c",
+                    "owns_header": "mqtt/mqtt_codec/mqtt_codec.h",
+                    "defines_functions": ["mqtt_mqtt_codec_create"],
+                },
+                {
+                    "file_id": "mqtt_codec_destroy",
+                    "module": "mqtt_codec",
+                    "path": "mqtt/mqtt_codec/mqtt_codec_destroy.c",
+                    "owns_header": "",
+                    "defines_functions": ["mqtt_mqtt_codec_destroy"],
+                },
+            ],
+            "function_placement": [
+                {"function_name": "mqtt_mqtt_codec_create", "module": "mqtt_codec", "file_id": "mqtt_codec_api"},
+                {"function_name": "mqtt_mqtt_codec_destroy", "module": "mqtt_codec", "file_id": "mqtt_codec_destroy"},
+            ],
+        }
+
+        layout, errors = _normalize_raw_layout(raw_layout, module_graph, canonical_types, [], "mqtt", ["dec_file_layout"])
+
+        self.assertEqual(errors, [])
+        self.assertIsNotNone(layout)
+        assert layout is not None
+        files_by_id = {item["file_id"]: item for item in layout["files"]}
+        self.assertEqual(files_by_id["mqtt_codec_destroy"]["owns_header"], "mqtt/mqtt_codec/mqtt_codec_destroy.h")
+        self.assertEqual(files_by_id["mqtt_codec_destroy"]["header_path"], "mqtt/mqtt_codec/mqtt_codec_destroy.h")
 
     def test_role_composition_role_is_normalized_to_owned_capability(self) -> None:
         modules = normalize_candidate_modules(
@@ -899,12 +966,16 @@ class ProtocolAgnosticPlanningTests(unittest.TestCase):
             self.assertTrue(result.success, [diag.__dict__ for diag in result.diagnostics])
             function_names = set()
             source_paths = set()
+            missing_headers = []
             for path in (result.output_dir / "spec_bundle").rglob("*_spec.json"):
                 raw = json.loads(path.read_text(encoding="utf-8"))
                 if raw.get("KIND") == "FUNCTION_SPEC":
                     function_names.add(raw["SIGNATURE"]["NAME"])
                 if raw.get("KIND") == "FILE_SPEC":
-                    source_paths.add(raw["SOURCE"]["PATH"])
+                    source_path = raw["SOURCE"]["PATH"]
+                    source_paths.add(source_path)
+                    if not (source_path.endswith("/main.c") or source_path == "main.c") and not raw.get("HEADER", {}).get("PATH"):
+                        missing_headers.append(source_path)
             expected = {
                 "main",
                 "mqtt_transport_runtime_run",
@@ -922,6 +993,7 @@ class ProtocolAgnosticPlanningTests(unittest.TestCase):
             self.assertTrue(expected.issubset(function_names), sorted(expected - function_names))
             self.assertFalse({"mqtt_semantic_core_handle_connack", "mqtt_semantic_core_handle_suback", "mqtt_semantic_core_handle_pingresp"} & function_names)
             self.assertTrue(any(path.endswith("/main.c") for path in source_paths))
+            self.assertEqual(missing_headers, [])
 
     def test_unconventional_but_valid_module_names_do_not_block_planning(self) -> None:
         import tempfile

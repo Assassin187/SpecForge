@@ -16,8 +16,7 @@
 
 ```mermaid
 flowchart TD
-    A[Module Spec<br/>mqtt_module_spec.json] --> C[load_spec_bundle]
-    B[Spec Root<br/>FILE_SPEC + FUNCTION_SPEC] --> C
+    B[Spec Root<br/>PROTOCOL_MODULE_SPEC + FILE_SPEC + FUNCTION_SPEC] --> C[load_spec_bundle]
 
     C --> D[路径规范化<br/>../x -> x]
     D --> E[构建 SpecBundle<br/>protocol/modules/files/functions]
@@ -114,10 +113,11 @@ sequenceDiagram
 
 ## 输入契约（coder agent 吃什么）
 
-`coder` 的输入是一组 JSON 规格文件（统称 SpecBundle），由两部分组成：
+`coder` 的输入是一组 JSON 规格文件（统称 SpecBundle），通过一个规格根目录传入：
 
 1) Module Spec（模块级规格，单文件）
-- 通过命令行参数 `--module-spec` 指定
+- 位于 `--spec-root` 指向的目录中
+- `coder` 会递归扫描并自动发现唯一一个 `KIND == "PROTOCOL_MODULE_SPEC"` 的文件
 - 例子：`~/SpecForge/specs-example/mqtt_specs/mqtt_module_spec.json`
 
 2) Spec Root（规格根目录，一整个目录）
@@ -125,7 +125,7 @@ sequenceDiagram
 - `coder` 会递归扫描该目录下所有匹配 `*_spec.json` 的文件
 - 例子：`~/SpecForge/specs-example/mqtt_specs/`
 
-> 注意：`coder` 会跳过与 `--module-spec` 路径相同的 JSON 文件，避免重复解析。
+> 注意：正常入口只需要传 `--spec-root`。`--module-spec` 仍保留为兼容性覆盖项；默认情况下 `coder` 会自动跳过已发现的模块级规格文件，避免重复解析。
 
 ### 路径与规范化规则
 
@@ -167,7 +167,7 @@ Spec Root 目录下，任意 `*_spec.json` 只要满足：
   - `TRACE_ID`：文件级 trace id（例如 `mqtt/router/message_router`）
   - `LANG`
   - `ROLE`
-- `HEADER`（object，可选；无头文件的 `main.c` 可省略）
+- `HEADER`（object，可选；无头文件的 `main.c` 可省略；planning 当前要求其他 `.c` 都有唯一对应 `.h`）
   - `PATH`：头文件相对路径（例如 `../router/message_router.h`，规范化后为 `router/message_router.h`）
   - `DEPENDENCY`：`#include "..."` 依赖列表（array[string]）
   - `DATA`：类型/常量等数据项声明（array[object]，目前主要用于头文件 public type 生成）
@@ -182,7 +182,7 @@ Spec Root 目录下，任意 `*_spec.json` 只要满足：
 
 ### Source-only File Spec
 
-一般 C 模块同时包含 `HEADER` 和 `SOURCE`。入口文件 `main.c` 没有对应头文件时，可以只声明 `SOURCE`，用于描述 broker 启动入口；这种规格仍然可以通过 `SOURCE.INTERFACE[*].TRACE_ID` 关联 Function Spec。
+一般 C 模块同时包含 `HEADER` 和 `SOURCE`。为服务 SpecForge 当前“快速从技术文档生成可用协议代码”的研究目标，planning 默认采用一源一头的简化 specs 架构：除入口 `main.c` 外，每个 `FILE_SPEC` 都应包含自己的 `HEADER.PATH`。入口文件 `main.c` 没有对应头文件时，可以只声明 `SOURCE`，用于描述 broker 启动入口；这种规格仍然可以通过 `SOURCE.INTERFACE[*].TRACE_ID` 关联 Function Spec。
 
 ### File Spec 与 Function Spec 的关联
 
@@ -219,18 +219,15 @@ Spec Root 目录下，任意 `*_spec.json` 只要满足：
 
 ```bash
 python3 -m agent coder \
-  --module-spec ~/SpecForge/specs-example/mqtt_specs/mqtt_module_spec.json \
   --spec-root ~/SpecForge/specs-example/mqtt_specs \
   validate
 
 python3 -m agent coder \
-  --module-spec ~/SpecForge/specs-example/mqtt_specs/mqtt_module_spec.json \
   --spec-root ~/SpecForge/specs-example/mqtt_specs \
   generate
 
 python3 -m agent coder \
-  --module-spec /home/ljf/SpecForge/agent/planning/out/mqtt/broker__c__linux_epoll__minimum_v1/20260512_165537_219942/spec_bundle/mqtt_module_spec.json \
-  --spec-root /home/ljf/SpecForge/agent/planning/out/mqtt/broker__c__linux_epoll__minimum_v1/20260512_165537_219942/spec_bundle \
+  --spec-root /home/ljf/SpecForge/agent/planning/out/mqtt/broker__c__linux_epoll__minimum_v1/20260513_111646_443818/spec_bundle \
   generate
 
 ```
@@ -242,4 +239,5 @@ python3 -m agent coder \
 - File Spec 里声明了 `SOURCE.INTERFACE`，但缺失对应的 Function Spec：会产生 `missing_function_spec` 警告
 - Header/SOURCE/Function 三者的函数签名不一致：会产生 `signature_mismatch` / `header_signature_mismatch` 警告
 - 不同 File Spec 认领了同一个 `HEADER.PATH` 或 `SOURCE.PATH`：会报错 `duplicate_file_path`
+- 非 `main.c` File Spec 缺失 `HEADER.PATH`：属于 planning 输出不完整，可能导致生成阶段无法建立 canonical header 上下文
 - 模块依赖顺序不满足（依赖出现在后面）：会报错 `generation_order_violation`

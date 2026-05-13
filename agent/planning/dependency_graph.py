@@ -452,6 +452,22 @@ def _interface_contracts(
 
 
 def _function_edges(module_edges: list[dict[str, Any]], protocol_slug: str) -> list[dict[str, Any]]:
+    return _function_edges_for_modules(module_edges, protocol_slug, [])
+
+
+def _runtime_provider_suffixes(provider: dict[str, Any], required_capabilities: list[Any]) -> list[str]:
+    owned = {str(item) for item in provider.get("owned_capabilities", []) if str(item).strip()}
+    del required_capabilities
+    suffixes: list[str] = []
+    if owned.intersection({"connection_buffering", "incremental_message_framing", "datagram_message_framing"}):
+        suffixes.append("feed")
+    if owned.intersection({"message_decode", "incremental_message_framing", "datagram_message_framing"}):
+        suffixes.extend(["decode_packet", "decode_next"])
+    return suffixes
+
+
+def _function_edges_for_modules(module_edges: list[dict[str, Any]], protocol_slug: str, module_graph: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    modules = _module_by_name(module_graph)
     edges: list[dict[str, Any]] = []
     for edge in module_edges:
         consumer = str(edge.get("consumer_module", ""))
@@ -474,6 +490,27 @@ def _function_edges(module_edges: list[dict[str, Any]], protocol_slug: str) -> l
                     "source_module_edge": str(edge.get("edge_id", "")),
                 }
             )
+        consumer_module = modules.get(consumer, {})
+        consumer_owned = set(_strings(consumer_module.get("owned_capabilities")))
+        if consumer_owned.intersection({"transport_io", "connection_lifecycle"}):
+            caller = _public_symbol(protocol_slug, consumer, "run")
+            for suffix in _runtime_provider_suffixes(modules.get(provider, {}), list(edge.get("required_capabilities", []))):
+                callee = _public_symbol(protocol_slug, provider, suffix)
+                edges.append(
+                    {
+                        "edge_id": _edge_id("function_edge", consumer, caller, provider, f"runtime_uses_{suffix}"),
+                        "caller": caller,
+                        "caller_module": consumer,
+                        "callee": callee,
+                        "callee_module": provider,
+                        "dependency_kind": f"runtime_uses_{suffix}",
+                        "required_capabilities": list(edge.get("required_capabilities", [])),
+                        "reason": str(edge.get("reason", "")),
+                        "evidence_refs": list(edge.get("evidence_refs", [])),
+                        "decision_refs": list(edge.get("decision_refs", [])),
+                        "source_module_edge": str(edge.get("edge_id", "")),
+                    }
+                )
     return edges
 
 
@@ -482,7 +519,9 @@ def _data_edges(
     handler_matrix: list[dict[str, Any]],
     protocol_slug: str,
     canonical_by_module: dict[str, str],
+    module_graph: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
+    modules = _module_by_name(module_graph or [])
     rows_by_module: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in handler_matrix:
         if isinstance(row, dict) and row.get("handler_module") and row.get("handler_function"):
@@ -496,6 +535,9 @@ def _data_edges(
         if not consumer or not provider:
             continue
         target_functions = [_public_symbol(protocol_slug, consumer, "create"), _public_symbol(protocol_slug, consumer, "destroy")]
+        consumer_owned = set(_strings(modules.get(consumer, {}).get("owned_capabilities")))
+        if consumer_owned.intersection({"transport_io", "connection_lifecycle"}):
+            target_functions.append(_public_symbol(protocol_slug, consumer, "run"))
         target_functions.extend(str(row["handler_function"]) for row in rows_by_module.get(consumer, []))
         for function_name in target_functions:
             edges.append(
@@ -647,8 +689,8 @@ def build_dependency_graph(
         for edge in module_edges
     ]
     interface_contracts = _interface_contracts(module_edges, protocol_slug, canonical_by_module, owner_file_by_module)
-    function_edges = _function_edges(module_edges, protocol_slug)
-    data_edges = _data_edges(module_edges, handler_matrix, protocol_slug, canonical_by_module)
+    function_edges = _function_edges_for_modules(module_edges, protocol_slug, module_graph)
+    data_edges = _data_edges(module_edges, handler_matrix, protocol_slug, canonical_by_module, module_graph)
     return {
         "schema_version": DEPENDENCY_SCHEMA,
         "origin": "llm_plus_deterministic" if raw_graph else "deterministic",

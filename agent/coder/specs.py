@@ -289,6 +289,9 @@ def _validate_file_specs(bundle: SpecBundle) -> None:
             bundle.diagnostics.append(Diagnostic("error", "missing_trace_id", "File spec TRACE_ID is empty", str(file_spec.spec_path)))
         if not file_spec.header_path and not file_spec.source_path:
             bundle.diagnostics.append(Diagnostic("error", "missing_path", f"File spec '{trace_id}' is missing both header and source path", str(file_spec.spec_path)))
+        is_main_source = file_spec.source_path.endswith("/main.c") or file_spec.source_path == "main.c"
+        if file_spec.source_path and not file_spec.header_path and not is_main_source:
+            bundle.diagnostics.append(Diagnostic("error", "missing_header_path", f"Non-main file spec '{trace_id}' is missing HEADER.PATH", str(file_spec.spec_path)))
         for data_item in file_spec.header_data:
             if data_item.get("KIND") != "TYPE" or str(data_item.get("VISIBILITY", "")).upper() != "PUBLIC":
                 continue
@@ -387,6 +390,29 @@ def _validate_uniqueness(bundle: SpecBundle) -> None:
                 bundle.diagnostics.append(Diagnostic("error", "duplicate_file_path", f"Path '{path}' is claimed by both '{owner}' and '{file_spec.trace_id}'", str(file_spec.spec_path)))
             else:
                 seen_paths[path] = file_spec.trace_id
+
+
+def discover_module_spec(spec_root: str | Path) -> Path:
+    root = Path(spec_root)
+    candidates: list[Path] = []
+    for path in sorted(root.rglob("*_spec.json")):
+        raw = read_json(path)
+        if raw.get("KIND") == "PROTOCOL_MODULE_SPEC":
+            candidates.append(path)
+    if not candidates:
+        raise FileNotFoundError(f"No PROTOCOL_MODULE_SPEC found under spec root '{root}'")
+    if len(candidates) > 1:
+        joined = ", ".join(str(path) for path in candidates)
+        raise ValueError(
+            f"Expected exactly one PROTOCOL_MODULE_SPEC under spec root '{root}', "
+            f"found {len(candidates)}: {joined}"
+        )
+    return candidates[0]
+
+
+def load_spec_bundle_from_root(spec_root: str | Path) -> SpecBundle:
+    root = Path(spec_root)
+    return load_spec_bundle(discover_module_spec(root), root)
 
 
 def load_spec_bundle(module_spec_path: str | Path, spec_root: str | Path) -> SpecBundle:
