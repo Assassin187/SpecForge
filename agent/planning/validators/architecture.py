@@ -3,7 +3,24 @@ from __future__ import annotations
 from typing import Any
 
 from ..diagnostics import PlanningDiagnostic
-from ..schemas.architecture import ARCHITECTURE_CANDIDATES_SCHEMA_VERSION, SELECTED_ARCHITECTURE_SCHEMA_VERSION
+from ..schemas.architecture import (
+    ARCHITECTURE_CANDIDATES_SCHEMA_VERSION,
+    ARCHITECTURE_RANKING_SCHEMA_VERSION,
+    SELECTED_ARCHITECTURE_SCHEMA_VERSION,
+)
+
+
+RANKING_DIMENSIONS = {
+    "capability_coverage",
+    "constraint_satisfaction",
+    "cohesion",
+    "coupling",
+    "acyclicity",
+    "state_ownership_clarity",
+    "testability",
+    "implementation_simplicity",
+    "target_scope_fit",
+}
 
 
 def _required_capabilities(profile: dict[str, Any]) -> set[str]:
@@ -20,6 +37,34 @@ def _constraint_ids(constraints: dict[str, Any]) -> set[str]:
         for item in constraints.get("constraints", [])
         if isinstance(item, dict) and str(item.get("constraint_id", "")).strip()
     }
+
+
+def _candidate_ids(candidates: dict[str, Any]) -> set[str]:
+    return {
+        str(item.get("candidate_id", "")).strip()
+        for item in candidates.get("candidates", [])
+        if isinstance(item, dict) and str(item.get("candidate_id", "")).strip()
+    }
+
+
+def _has_cycle(edges: dict[str, list[str]]) -> bool:
+    visiting: set[str] = set()
+    visited: set[str] = set()
+
+    def visit(node: str) -> bool:
+        if node in visiting:
+            return True
+        if node in visited:
+            return False
+        visiting.add(node)
+        for child in edges.get(node, []):
+            if visit(child):
+                return True
+        visiting.remove(node)
+        visited.add(node)
+        return False
+
+    return any(visit(node) for node in edges)
 
 
 def validate_architecture_candidates(
@@ -49,6 +94,9 @@ def validate_architecture_candidates(
             continue
         module_ids: set[str] = set()
         covered_caps: set[str] = set()
+        dependency_edges: dict[str, list[str]] = {}
+        if candidate.get("module_graph_hints"):
+            diagnostics.append(PlanningDiagnostic("error", "architecture_module_graph_hints_forbidden", f"Candidate '{candidate.get('candidate_id')}' must leave module_graph_hints empty", path))
         for module in modules:
             if not isinstance(module, dict):
                 diagnostics.append(PlanningDiagnostic("error", "invalid_architecture_module", "architecture module must be object", path))
@@ -70,16 +118,76 @@ def validate_architecture_candidates(
                 if str(dep) and str(dep) not in module_ids:
                     # Hints can refer forward; do a second pass below.
                     pass
+            if module.get("dependency_hints"):
+                diagnostics.append(PlanningDiagnostic("error", "architecture_dependency_hints_forbidden", f"Module '{module_id}' must leave dependency_hints empty", path))
+            dependency_edges[module_id] = [str(dep) for dep in module.get("dependency_hints", []) if str(dep).strip()]
         for module in modules:
             if isinstance(module, dict):
                 for dep in module.get("dependency_hints", []):
                     if str(dep) not in module_ids:
                         diagnostics.append(PlanningDiagnostic("error", "architecture_unknown_dependency_hint", f"Module '{module.get('module_id')}' hints unknown dependency '{dep}'", path))
+        if _has_cycle(dependency_edges):
+            diagnostics.append(PlanningDiagnostic("error", "architecture_dependency_cycle", f"Candidate '{candidate.get('candidate_id')}' has cyclic dependency hints", path))
         for cap in sorted(required_caps - covered_caps):
             diagnostics.append(PlanningDiagnostic("error", "architecture_uncovered_capability", f"Candidate '{candidate.get('candidate_id')}' does not cover capability '{cap}'", path))
         for constraint_id in candidate.get("constraint_ids", []):
             if str(constraint_id) not in known_constraints:
                 diagnostics.append(PlanningDiagnostic("error", "architecture_unknown_constraint", f"Candidate references unknown constraint '{constraint_id}'", path))
+    return diagnostics
+
+
+def validate_architecture_ranking(
+    ranking: dict[str, Any],
+    candidates: dict[str, Any],
+    profile: dict[str, Any],
+    constraints: dict[str, Any],
+    *,
+    path: str | None = None,
+) -> list[PlanningDiagnostic]:
+    diagnostics: list[PlanningDiagnostic] = []
+    if ranking.get("schema_version") != ARCHITECTURE_RANKING_SCHEMA_VERSION:
+        diagnostics.append(PlanningDiagnostic("error", "invalid_architecture_ranking_schema", f"architecture ranking must use {ARCHITECTURE_RANKING_SCHEMA_VERSION}", path))
+        return diagnostics
+    if "candidates" in ranking:
+        diagnostics.append(PlanningDiagnostic("error", "ranking_modified_candidates", "architecture ranking must not include candidate content", path))
+    valid_candidate_ids = _candidate_ids(candidates)
+    scores = ranking.get("scores", [])
+    if not isinstance(scores, list) or not scores:
+        diagnostics.append(PlanningDiagnostic("error", "missing_architecture_scores", "architecture ranking must include scores", path))
+        return diagnostics
+    seen: set[str] = set()
+    for item in scores:
+        if not isinstance(item, dict):
+            diagnostics.append(PlanningDiagnostic("error", "invalid_architecture_score", "architecture score must be an object", path))
+            continue
+        candidate_id = str(item.get("candidate_id", "")).strip()
+        if candidate_id not in valid_candidate_ids:
+            diagnostics.append(PlanningDiagnostic("error", "unknown_ranked_architecture", f"Ranking references unknown candidate '{candidate_id}'", path))
+        if candidate_id in seen:
+            diagnostics.append(PlanningDiagnostic("error", "duplicate_architecture_score", f"Duplicate score for candidate '{candidate_id}'", path))
+        seen.add(candidate_id)
+        dimensions = item.get("dimension_scores", {})
+        if not isinstance(dimensions, dict):
+            diagnostics.append(PlanningDiagnostic("error", "invalid_architecture_dimension_scores", f"Candidate '{candidate_id}' has invalid dimension_scores", path))
+            continue
+        missing_dimensions = sorted(RANKING_DIMENSIONS - set(str(key) for key in dimensions))
+        if missing_dimensions:
+            diagnostics.append(PlanningDiagnostic("error", "missing_architecture_score_dimensions", f"Candidate '{candidate_id}' is missing dimensions {missing_dimensions}", path))
+        for key, value in dimensions.items():
+            try:
+                score = float(value)
+            except (TypeError, ValueError):
+                diagnostics.append(PlanningDiagnostic("error", "invalid_architecture_score_value", f"Dimension '{key}' is not numeric", path))
+                continue
+            if score < 0 or score > 10:
+                diagnostics.append(PlanningDiagnostic("error", "invalid_architecture_score_range", f"Dimension '{key}' must be between 0 and 10", path))
+    missing_scores = sorted(valid_candidate_ids - seen)
+    if missing_scores:
+        diagnostics.append(PlanningDiagnostic("error", "missing_architecture_candidate_score", f"Ranking omitted candidates {missing_scores}", path))
+    selected_id = str(ranking.get("selected_candidate_id", "")).strip()
+    if selected_id not in valid_candidate_ids:
+        diagnostics.append(PlanningDiagnostic("error", "unknown_selected_architecture", f"Ranking selected unknown candidate '{selected_id}'", path))
+    diagnostics.extend(validate_architecture_candidates(candidates, profile, constraints, path=path))
     return diagnostics
 
 
@@ -101,4 +209,3 @@ def validate_selected_architecture(
         constraints,
         path=path,
     )
-

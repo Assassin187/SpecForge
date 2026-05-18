@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -11,22 +12,77 @@ from .config import PlanningConfig
 from .diagnostics import PlanningDiagnostic, diagnostics_to_dict, has_errors
 from .llm_boundary import request_json_candidate
 from .models import PlanningResult, TargetProfile
-from .prompts.templates import architecture_candidate_messages, implementation_plan_candidate_messages, protocol_profile_patch_messages
-from .stages.architecture import build_architecture_candidates, select_architecture
+from .prompts.templates import (
+    architecture_candidate_messages,
+    architecture_ranking_messages,
+    calls_allowed_candidate_messages,
+    core_design_candidate_messages,
+    dependency_repair_patch_messages,
+    file_layout_candidate_messages,
+    function_contract_detail_patch_messages,
+    function_inventory_candidate_messages,
+    module_contracts_candidate_messages,
+    protocol_profile_patch_messages,
+    wire_access_binding_patch_messages,
+)
+from .stages.architecture import build_architecture_candidates, build_architecture_context, deterministic_architecture_ranking, select_architecture
 from .stages.blueprint import build_spec_blueprint
 from .stages.constraints import activate_constraints
-from .stages.dependencies import build_dependency_validation_report, derive_dependency_graph
-from .stages.implementation_plan import build_implementation_plan
+from .stages.dependencies import build_dependency_validation_report
+from .stages.implementation_plan_context import (
+    build_calls_allowed_context,
+    build_core_design_context,
+    build_dependency_repair_context,
+    build_file_layout_context,
+    build_function_detail_context,
+    build_function_inventory_context,
+    build_module_contract_context,
+    build_wire_access_binding_context,
+)
+from .stages.implementation_plan_merger import (
+    apply_dependency_repair_patch,
+    apply_deterministic_dependency_fallback,
+    build_plan_skeleton,
+    fallback_calls_allowed,
+    fallback_core_design,
+    fallback_dependency_repair_patch,
+    fallback_file_layout,
+    fallback_function_details,
+    fallback_function_inventory,
+    fallback_module_contracts,
+    fallback_wire_access_binding,
+    finalize_dependency_graph,
+    merge_calls_allowed,
+    merge_core_design,
+    merge_file_layout,
+    merge_function_details,
+    merge_function_inventory,
+    merge_module_contracts,
+    merge_wire_access_binding,
+)
 from .stages.preflight import build_manifest, validate_input_paths
 from .stages.protocol_profile import apply_protocol_profile_patch_candidate, build_protocol_profile
 from .stages.specs_compiler import compile_spec_bundle
 from .token_usage import TokenUsageTracker
-from .validators.architecture import validate_architecture_candidates, validate_selected_architecture
+from .validators.architecture import validate_architecture_candidates, validate_architecture_ranking, validate_selected_architecture
 from .validators.blueprint import validate_spec_blueprint
 from .validators.coder_compat import validate_coder_compatibility
 from .validators.constraints import validate_constraints
 from .validators.dependencies import validate_dependency_graph
-from .validators.implementation_plan import validate_implementation_plan
+from .validators.implementation_plan_stages import (
+    stage_passed,
+    validate_calls_allowed_candidate,
+    validate_core_design_candidate,
+    validate_dependency_repair_patch,
+    validate_file_layout_candidate,
+    validate_full_implementation_plan,
+    validate_function_contract_detail_patch,
+    validate_function_inventory_candidate,
+    validate_module_contracts_candidate,
+    validate_plan_skeleton,
+    validate_wire_access_binding_patch,
+    validation_report,
+)
 from .validators.llm_outputs import validate_protocol_profile_patch_candidate
 from .validators.planning_ir import validate_planning_ir
 from .validators.profile import validate_protocol_profile
@@ -34,6 +90,13 @@ from .validators.profile import validate_protocol_profile
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUTPUT_ROOT = REPO_ROOT / "agent" / "planning" / "out"
+ARCHITECTURE_DESIGN_STRATEGIES = (
+    "capability_clustered",
+    "layered_runtime_codec_semantic",
+    "minimal_scope",
+)
+ARCHITECTURE_HIGH_TEMPERATURE = 0.7
+ARCHITECTURE_LOW_TEMPERATURE = 0.2
 
 
 STEP_FILENAMES = {
@@ -42,10 +105,28 @@ STEP_FILENAMES = {
     "protocol_profile_patch_candidate": "004_protocol_profile_patch_candidate.json",
     "protocol_profile": "004_protocol_profile.json",
     "engineering_constraints": "005_engineering_constraints.json",
+    "architecture_context": "006_architecture_context.json",
     "llm_architecture_candidates": "006_llm_architecture_candidates.json",
     "architecture_candidates": "006_architecture_candidates.json",
+    "architecture_ranking": "006_architecture_ranking.json",
     "selected_architecture": "006_selected_architecture.json",
-    "implementation_plan_candidate": "007_implementation_plan_candidate.json",
+    "implementation_plan_skeleton": "007_5_1_plan_skeleton.json",
+    "core_design_candidate": "007_5_2_core_design_candidate.json",
+    "core_design_validation_report": "007_5_2_core_design_validation_report.json",
+    "module_contracts_candidate": "007_5_3_module_contracts_candidate.json",
+    "module_contracts_validation_report": "007_5_3_module_contracts_validation_report.json",
+    "function_inventory_candidate": "007_5_4a_function_inventory_candidate.json",
+    "function_inventory_validation_report": "007_5_4a_function_inventory_validation_report.json",
+    "function_detail_patch": "007_5_4b_function_contract_detail_patch.json",
+    "function_detail_validation_report": "007_5_4b_function_detail_validation_report.json",
+    "wire_access_binding_patch": "007_5_4c_wire_access_binding_patch.json",
+    "wire_access_binding_validation_report": "007_5_4c_wire_access_binding_validation_report.json",
+    "calls_allowed_candidate": "007_5_4d_calls_allowed_candidate.json",
+    "calls_allowed_validation_report": "007_5_4d_calls_allowed_validation_report.json",
+    "file_layout_candidate": "007_5_5_file_layout_candidate.json",
+    "file_layout_validation_report": "007_5_5_file_layout_validation_report.json",
+    "dependency_repair_patch": "007_5_6_dependency_repair_patch.json",
+    "dependency_repair_validation_report": "007_5_6_dependency_repair_validation_report.json",
     "implementation_plan": "007_implementation_plan.json",
     "dependency_validation_report": "008_dependency_validation_report.json",
     "spec_blueprint": "010_spec_blueprint.json",
@@ -80,6 +161,63 @@ def _llm_failure_diagnostic(stage: str, reasons: list[str]) -> PlanningDiagnosti
         f"{stage}_mandatory_llm_failed",
         f"Mandatory LLM stage failed after retries: {detail}",
     )
+
+
+def _llm_token_event(meta: dict[str, Any]) -> str:
+    usage = meta.get("usage", {}) if isinstance(meta, dict) else {}
+    return (
+        f"tokens prompt={int(usage.get('prompt_tokens', 0) or 0)} "
+        f"completion={int(usage.get('completion_tokens', 0) or 0)} "
+        f"total={int(usage.get('total_tokens', 0) or 0)} "
+        f"temperature={meta.get('temperature', 'unknown') if isinstance(meta, dict) else 'unknown'} "
+        f"failed={bool(meta.get('failed')) if isinstance(meta, dict) else False} "
+        f"hit_completion_limit={bool(meta.get('hit_completion_limit')) if isinstance(meta, dict) else False}"
+    )
+
+
+def _diagnostics_as_dependency_errors(diagnostics: list[PlanningDiagnostic]) -> list[dict[str, Any]]:
+    return [
+        {
+            "code": item.code,
+            "path": item.path,
+            "message": item.message,
+            "severity": item.level,
+            "repairable": True,
+        }
+        for item in diagnostics
+    ]
+
+
+def _architecture_generation_id(round_name: str, strategy: str) -> str:
+    return f"{round_name}:{strategy}"
+
+
+def _tag_architecture_candidates(candidate_set: dict[str, Any], *, strategy: str, request_id: str) -> dict[str, Any]:
+    tagged = dict(candidate_set)
+    items = []
+    for idx, candidate in enumerate(candidate_set.get("candidates", [])):
+        if not isinstance(candidate, dict):
+            items.append(candidate)
+            continue
+        item = dict(candidate)
+        base_id = str(item.get("candidate_id", "")).strip() or f"candidate_{idx + 1}"
+        item["candidate_id"] = base_id if base_id.startswith(f"{strategy}_") else f"{strategy}_{base_id}"
+        item["generation_strategy"] = strategy
+        item["generation_request_id"] = request_id
+        item.setdefault("generation_mode", "llm_candidate")
+        item["module_graph_hints"] = []
+        modules = []
+        for module in item.get("modules", []):
+            if not isinstance(module, dict):
+                modules.append(module)
+                continue
+            normalized_module = dict(module)
+            normalized_module["dependency_hints"] = []
+            modules.append(normalized_module)
+        item["modules"] = modules
+        items.append(item)
+    tagged["candidates"] = items
+    return tagged
 
 
 def _protocol_name_from_facts(facts_path: Path) -> str:
@@ -299,6 +437,7 @@ class PlanningAgent:
             )
             store.write_agent_log(f"004_protocol_profile_patch_llm_attempt_{attempt}_meta", str(meta))
             token_tracker.add_attempt(stage="protocol_profile", prompt_name="protocol_profile_patch_prompt", attempt=attempt, meta=meta)
+            store.log_event(f"stage=protocol_profile llm_attempt={attempt} prompt=protocol_profile_patch_prompt {_llm_token_event(meta)}")
             if candidate is None:
                 previous_reasons = _diagnostic_reasons(candidate_diags) or ["LLM did not return a JSON object."]
                 store.write_agent_log(f"004_protocol_profile_patch_llm_attempt_{attempt}_rejection", "\n".join(previous_reasons))
@@ -377,36 +516,98 @@ class PlanningAgent:
         store.log_event("stage=engineering_constraints activate done")
 
         store.log_event("stage=architecture build start")
-        accepted_architecture = None
-        previous_reasons = []
-        base_messages = architecture_candidate_messages(planning_ir, profile, constraints)
-        for attempt in range(1, self.config.llm_max_retries + 1):
-            store.log_event(f"stage=architecture llm_attempt={attempt} prompt=architecture_candidate_prompt start")
-            llm_candidates, llm_diags, meta = request_json_candidate(
-                prompt_name="architecture_candidate_prompt",
-                messages=_retry_messages(base_messages, previous_reasons, attempt),
-                config=self.config,
-            )
-            store.write_agent_log(f"006_architecture_candidate_llm_attempt_{attempt}_meta", str(meta))
-            token_tracker.add_attempt(stage="architecture", prompt_name="architecture_candidate_prompt", attempt=attempt, meta=meta)
-            if llm_candidates is None:
-                previous_reasons = _diagnostic_reasons(llm_diags) or ["LLM did not return a JSON object."]
-                store.write_agent_log(f"006_architecture_candidate_llm_attempt_{attempt}_rejection", "\n".join(previous_reasons))
-                store.log_event(f"stage=architecture llm_attempt={attempt} rejected reason={previous_reasons[0] if previous_reasons else 'unknown'}")
-                continue
-            llm_candidates_path = store.write_step_json(STEP_FILENAMES["llm_architecture_candidates"], llm_candidates)
-            artifact_paths["llm_architecture_candidates"] = llm_candidates_path
-            architecture_diags = validate_architecture_candidates(llm_candidates, profile, constraints, path=str(llm_candidates_path))
-            if not has_errors(architecture_diags):
-                accepted_architecture = llm_candidates
-                token_tracker.mark_attempt_accepted(stage="architecture", prompt_name="architecture_candidate_prompt", attempt=attempt)
-                store.log_event(f"stage=architecture llm_attempt={attempt} accepted")
+        architecture_context = build_architecture_context(planning_ir, profile, constraints)
+        architecture_context_path = store.write_step_json(STEP_FILENAMES["architecture_context"], architecture_context)
+        artifact_paths["architecture_context"] = architecture_context_path
+        accepted_candidates: list[dict[str, Any]] = []
+        architecture_warnings: list[str] = []
+        request_counter = 0
+        rejection_reasons: list[str] = []
+        generation_rounds = (("high_variance", ARCHITECTURE_HIGH_TEMPERATURE), ("low_variance_retry", ARCHITECTURE_LOW_TEMPERATURE))
+        for round_name, temperature in generation_rounds:
+            if accepted_candidates:
                 break
-            previous_reasons = _diagnostic_reasons(architecture_diags)
-            store.write_agent_log(f"006_architecture_candidate_llm_attempt_{attempt}_rejection", "\n".join(previous_reasons))
-            store.log_event(f"stage=architecture llm_attempt={attempt} rejected reason={previous_reasons[0] if previous_reasons else 'unknown'}")
-        if accepted_architecture is None:
-            diagnostics.append(_llm_failure_diagnostic("architecture", previous_reasons))
+            round_requests: list[dict[str, Any]] = []
+            for strategy in ARCHITECTURE_DESIGN_STRATEGIES:
+                request_counter += 1
+                request_id = _architecture_generation_id(round_name, strategy)
+                messages = architecture_candidate_messages(architecture_context, strategy)
+                store.log_event(
+                    f"stage=architecture generation_request={request_counter} strategy={strategy} temperature={temperature} start"
+                )
+                round_requests.append(
+                    {
+                        "request_counter": request_counter,
+                        "request_id": request_id,
+                        "strategy": strategy,
+                        "messages": messages,
+                    }
+                )
+            round_results: list[tuple[dict[str, Any], dict[str, Any] | None, list[PlanningDiagnostic], dict[str, Any]]] = []
+            with ThreadPoolExecutor(max_workers=len(round_requests)) as executor:
+                future_map = {
+                    executor.submit(
+                        request_json_candidate,
+                        prompt_name="architecture_candidate_prompt",
+                        messages=request["messages"],
+                        config=self.config,
+                        temperature=temperature,
+                    ): request
+                    for request in round_requests
+                }
+                for future in as_completed(future_map):
+                    request = future_map[future]
+                    try:
+                        llm_candidates, llm_diags, meta = future.result()
+                    except Exception as exc:  # noqa: BLE001
+                        llm_candidates = None
+                        llm_diags = [
+                            PlanningDiagnostic(
+                                "warning",
+                                "llm_request_failed",
+                                f"architecture_candidate_prompt failed: {exc}",
+                            )
+                        ]
+                        meta = {
+                            "enabled": True,
+                            "prompt_name": "architecture_candidate_prompt",
+                            "temperature": temperature,
+                            "failed": True,
+                        }
+                    round_results.append((request, llm_candidates, llm_diags, meta))
+            for request, llm_candidates, llm_diags, meta in sorted(round_results, key=lambda item: item[0]["request_counter"]):
+                request_id = request["request_id"]
+                request_counter_for_log = request["request_counter"]
+                store.write_agent_log(f"006_architecture_candidate_{request_id}_meta", str(meta))
+                token_tracker.add_attempt(stage="architecture", prompt_name="architecture_candidate_prompt", attempt=request_counter_for_log, meta=meta)
+                store.log_event(
+                    f"stage=architecture generation_request={request_counter_for_log} prompt=architecture_candidate_prompt {_llm_token_event(meta)}"
+                )
+                if llm_candidates is None:
+                    reasons = _diagnostic_reasons(llm_diags) or ["LLM did not return a JSON object."]
+                    rejection_reasons.extend(reasons)
+                    architecture_warnings.append(f"{request_id} rejected: {reasons[0]}")
+                    store.write_agent_log(f"006_architecture_candidate_{request_id}_rejection", "\n".join(reasons))
+                    store.log_event(f"stage=architecture generation_request={request_counter_for_log} rejected reason={reasons[0]}")
+                    continue
+                tagged_candidates = _tag_architecture_candidates(llm_candidates, strategy=request["strategy"], request_id=request_id)
+                store.write_agent_log(f"006_architecture_candidate_{request_id}_raw", str(tagged_candidates))
+                architecture_diags = validate_architecture_candidates(tagged_candidates, profile, constraints)
+                if has_errors(architecture_diags):
+                    reasons = _diagnostic_reasons(architecture_diags)
+                    rejection_reasons.extend(reasons)
+                    architecture_warnings.append(f"{request_id} rejected: {reasons[0] if reasons else 'validation failed'}")
+                    store.write_agent_log(f"006_architecture_candidate_{request_id}_rejection", "\n".join(reasons))
+                    store.log_event(
+                        f"stage=architecture generation_request={request_counter_for_log} rejected reason={reasons[0] if reasons else 'validation failed'}"
+                    )
+                    continue
+                token_tracker.mark_attempt_accepted(stage="architecture", prompt_name="architecture_candidate_prompt", attempt=request_counter_for_log)
+                accepted_candidates.extend([item for item in tagged_candidates.get("candidates", []) if isinstance(item, dict)])
+                architecture_warnings.extend(str(item) for item in tagged_candidates.get("generation_warnings", []) if str(item).strip())
+                store.log_event(f"stage=architecture generation_request={request_counter_for_log} accepted")
+        if not accepted_candidates:
+            diagnostics.append(_llm_failure_diagnostic("architecture", rejection_reasons))
             _write_token_usage_summary(store=store, tracker=token_tracker, artifact_paths=artifact_paths)
             report = _validation_report(status="failed", diagnostics=diagnostics, artifact_paths=artifact_paths)
             report_path = store.write_step_json(STEP_FILENAMES["planning_validation_report"], report)
@@ -422,11 +623,39 @@ class PlanningAgent:
                 failure={"stage": "architecture", "code": "mandatory_llm_failed"},
             )
             return PlanningResult(False, self.output_dir, diagnostics, artifact_paths)
-        architecture_candidates = accepted_architecture
+        architecture_candidates = {
+            "schema_version": "architecture_candidates/v1",
+            "candidates": accepted_candidates,
+            "generation_warnings": architecture_warnings,
+        }
         candidates_path = store.write_step_json(STEP_FILENAMES["architecture_candidates"], architecture_candidates)
         artifact_paths["architecture_candidates"] = candidates_path
         diagnostics.extend(validate_architecture_candidates(architecture_candidates, profile, constraints, path=str(candidates_path)))
-        selected_architecture = select_architecture(architecture_candidates, profile)
+        ranking_messages = architecture_ranking_messages(architecture_context, architecture_candidates)
+        ranking_candidate, ranking_llm_diags, ranking_meta = request_json_candidate(
+            prompt_name="architecture_ranking_prompt",
+            messages=ranking_messages,
+            config=self.config,
+            temperature=ARCHITECTURE_LOW_TEMPERATURE,
+        )
+        token_tracker.add_attempt(stage="architecture", prompt_name="architecture_ranking_prompt", attempt=1, meta=ranking_meta)
+        store.write_agent_log("006_architecture_ranking_llm_attempt_1_meta", str(ranking_meta))
+        store.log_event(f"stage=architecture llm_attempt=ranking prompt=architecture_ranking_prompt {_llm_token_event(ranking_meta)}")
+        if ranking_candidate is not None:
+            ranking_diags = validate_architecture_ranking(ranking_candidate, architecture_candidates, profile, constraints)
+        else:
+            ranking_diags = ranking_llm_diags
+        if ranking_candidate is None or has_errors(ranking_diags):
+            reasons = _diagnostic_reasons(ranking_diags) or ["Architecture ranking LLM did not return a valid ranking."]
+            store.write_agent_log("006_architecture_ranking_llm_attempt_1_rejection", "\n".join(reasons))
+            ranking = deterministic_architecture_ranking(architecture_candidates, profile, warning="LLM architecture ranking invalid; deterministic ranking fallback used.")
+        else:
+            ranking = ranking_candidate
+            token_tracker.mark_attempt_accepted(stage="architecture", prompt_name="architecture_ranking_prompt", attempt=1)
+        ranking_path = store.write_step_json(STEP_FILENAMES["architecture_ranking"], ranking)
+        artifact_paths["architecture_ranking"] = ranking_path
+        diagnostics.extend(validate_architecture_ranking(ranking, architecture_candidates, profile, constraints, path=str(ranking_path)))
+        selected_architecture = select_architecture(architecture_candidates, profile, ranking)
         selected_path = store.write_step_json(STEP_FILENAMES["selected_architecture"], selected_architecture)
         artifact_paths["selected_architecture"] = selected_path
         diagnostics.extend(validate_selected_architecture(selected_architecture, profile, constraints, path=str(selected_path)))
@@ -450,40 +679,12 @@ class PlanningAgent:
         store.log_event("stage=architecture build done")
 
         store.log_event("stage=implementation_plan build start")
-        implementation_plan = build_implementation_plan(planning_ir, profile, constraints, selected_architecture)
-        accepted_plan = None
-        previous_reasons = []
-        base_messages = implementation_plan_candidate_messages(planning_ir, profile, constraints, selected_architecture, implementation_plan)
-        for attempt in range(1, self.config.llm_max_retries + 1):
-            store.log_event(f"stage=implementation_plan llm_attempt={attempt} prompt=function_contract_prompt start")
-            plan_candidate, plan_llm_diags, meta = request_json_candidate(
-                prompt_name="function_contract_prompt",
-                messages=_retry_messages(base_messages, previous_reasons, attempt),
-                config=self.config,
-            )
-            store.write_agent_log(f"007_implementation_plan_candidate_llm_attempt_{attempt}_meta", str(meta))
-            token_tracker.add_attempt(stage="implementation_plan", prompt_name="function_contract_prompt", attempt=attempt, meta=meta)
-            if plan_candidate is None:
-                previous_reasons = _diagnostic_reasons(plan_llm_diags) or ["LLM did not return a JSON object."]
-                store.write_agent_log(f"007_implementation_plan_candidate_llm_attempt_{attempt}_rejection", "\n".join(previous_reasons))
-                store.log_event(f"stage=implementation_plan llm_attempt={attempt} rejected reason={previous_reasons[0] if previous_reasons else 'unknown'}")
-                continue
-            candidate_path = store.write_step_json(STEP_FILENAMES["implementation_plan_candidate"], plan_candidate)
-            artifact_paths["implementation_plan_candidate"] = candidate_path
-            if isinstance(plan_candidate, dict):
-                plan_candidate["dependency_graph"] = derive_dependency_graph(plan_candidate)
-            plan_candidate_diags = validate_implementation_plan(plan_candidate, profile=profile, planning_ir=planning_ir, path=str(candidate_path))
-            plan_candidate_diags.extend(validate_dependency_graph(plan_candidate, path=str(candidate_path)))
-            if not has_errors(plan_candidate_diags):
-                accepted_plan = plan_candidate
-                token_tracker.mark_attempt_accepted(stage="implementation_plan", prompt_name="function_contract_prompt", attempt=attempt)
-                store.log_event(f"stage=implementation_plan llm_attempt={attempt} accepted")
-                break
-            previous_reasons = _diagnostic_reasons(plan_candidate_diags)
-            store.write_agent_log(f"007_implementation_plan_candidate_llm_attempt_{attempt}_rejection", "\n".join(previous_reasons))
-            store.log_event(f"stage=implementation_plan llm_attempt={attempt} rejected reason={previous_reasons[0] if previous_reasons else 'unknown'}")
-        if accepted_plan is None:
-            diagnostics.append(_llm_failure_diagnostic("implementation_plan", previous_reasons))
+        draft = build_plan_skeleton(planning_ir, profile, constraints, selected_architecture)
+        skeleton_path = store.write_step_json(STEP_FILENAMES["implementation_plan_skeleton"], draft)
+        artifact_paths["implementation_plan_skeleton"] = skeleton_path
+        skeleton_diags = validate_plan_skeleton(draft, selected_architecture, profile, constraints, path=str(skeleton_path))
+        if has_errors(skeleton_diags):
+            diagnostics.extend(skeleton_diags)
             _write_token_usage_summary(store=store, tracker=token_tracker, artifact_paths=artifact_paths)
             report = _validation_report(status="failed", diagnostics=diagnostics, artifact_paths=artifact_paths)
             report_path = store.write_step_json(STEP_FILENAMES["planning_validation_report"], report)
@@ -496,13 +697,175 @@ class PlanningAgent:
                 status="failed",
                 diagnostics=diagnostics,
                 artifact_paths=artifact_paths,
-                failure={"stage": "implementation_plan", "code": "mandatory_llm_failed"},
+                failure={"stage": "implementation_plan", "code": "invalid_plan_skeleton"},
             )
             return PlanningResult(False, self.output_dir, diagnostics, artifact_paths)
-        implementation_plan = accepted_plan
+
+        def stage_candidate(
+            *,
+            stage_label: str,
+            prompt_name: str,
+            messages: list[dict[str, str]],
+            candidate_key: str,
+            report_key: str,
+            fallback: dict[str, Any],
+            validator,
+            max_attempts: int | None = None,
+        ) -> dict[str, Any]:
+            previous_reasons: list[str] = []
+            accepted: dict[str, Any] | None = None
+            accepted_diags: list[PlanningDiagnostic] = []
+            attempts = max_attempts if max_attempts is not None else self.config.llm_max_retries
+            for attempt in range(1, attempts + 1):
+                store.log_event(f"stage=implementation_plan substage={stage_label} llm_attempt={attempt} prompt={prompt_name} start")
+                candidate, llm_diags, meta = request_json_candidate(
+                    prompt_name=prompt_name,
+                    messages=_retry_messages(messages, previous_reasons, attempt),
+                    config=self.config,
+                )
+                store.write_agent_log(f"{candidate_key}_llm_attempt_{attempt}_meta", str(meta))
+                token_tracker.add_attempt(stage="implementation_plan", prompt_name=prompt_name, attempt=attempt, meta=meta)
+                store.log_event(f"stage=implementation_plan substage={stage_label} llm_attempt={attempt} prompt={prompt_name} {_llm_token_event(meta)}")
+                if candidate is None:
+                    previous_reasons = _diagnostic_reasons(llm_diags) or ["LLM did not return a JSON object."]
+                    store.write_agent_log(f"{candidate_key}_llm_attempt_{attempt}_rejection", "\n".join(previous_reasons))
+                    continue
+                candidate_diags = validator(candidate)
+                if stage_passed(candidate_diags):
+                    accepted = candidate
+                    accepted_diags = candidate_diags
+                    token_tracker.mark_attempt_accepted(stage="implementation_plan", prompt_name=prompt_name, attempt=attempt)
+                    store.log_event(f"stage=implementation_plan substage={stage_label} llm_attempt={attempt} accepted")
+                    break
+                previous_reasons = _diagnostic_reasons(candidate_diags)
+                store.write_agent_log(f"{candidate_key}_llm_attempt_{attempt}_rejection", "\n".join(previous_reasons))
+                store.log_event(f"stage=implementation_plan substage={stage_label} llm_attempt={attempt} rejected reason={previous_reasons[0] if previous_reasons else 'unknown'}")
+            if accepted is None:
+                accepted = fallback
+                accepted_diags = validator(accepted)
+                store.log_event(f"stage=implementation_plan substage={stage_label} fallback=deterministic")
+            candidate_path = store.write_step_json(STEP_FILENAMES[candidate_key], accepted)
+            artifact_paths[candidate_key] = candidate_path
+            report_path = store.write_step_json(STEP_FILENAMES[report_key], validation_report(stage_label, accepted_diags))
+            artifact_paths[report_key] = report_path
+            if has_errors(accepted_diags):
+                diagnostics.extend(accepted_diags)
+            return accepted
+
+        core_context = build_core_design_context(planning_ir, profile, constraints, selected_architecture)
+        core_candidate = stage_candidate(
+            stage_label="5.2_core_design",
+            prompt_name="core_design_candidate_prompt",
+            messages=core_design_candidate_messages(core_context),
+            candidate_key="core_design_candidate",
+            report_key="core_design_validation_report",
+            fallback=fallback_core_design(draft, planning_ir, constraints, selected_architecture, profile),
+            validator=lambda candidate: validate_core_design_candidate(candidate, planning_ir, profile, selected_architecture, constraints),
+        )
+        draft = merge_core_design(draft, core_candidate)
+
+        module_context = build_module_contract_context(draft, profile, constraints, selected_architecture)
+        module_candidate = stage_candidate(
+            stage_label="5.3_module_contracts",
+            prompt_name="module_contracts_candidate_prompt",
+            messages=module_contracts_candidate_messages(module_context),
+            candidate_key="module_contracts_candidate",
+            report_key="module_contracts_validation_report",
+            fallback=fallback_module_contracts(draft, profile, constraints, selected_architecture),
+            validator=lambda candidate: validate_module_contracts_candidate(candidate, selected_architecture, profile, constraints, draft),
+        )
+        draft = merge_module_contracts(draft, module_candidate)
+
+        inventory_aggregate = {"schema_version": "function_inventory_candidate/v1", "functions": [], "unresolved_questions": []}
+        for module in list(draft.get("module_contracts", [])):
+            inventory_context = build_function_inventory_context(draft, module)
+            inventory_candidate = stage_candidate(
+                stage_label=f"5.4a_function_inventory:{module.get('module_id')}",
+                prompt_name="function_inventory_candidate_prompt",
+                messages=function_inventory_candidate_messages(inventory_context),
+                candidate_key="function_inventory_candidate",
+                report_key="function_inventory_validation_report",
+                fallback=fallback_function_inventory(draft, module),
+            validator=lambda candidate, module_contracts=draft.get("module_contracts", []): validate_function_inventory_candidate(candidate, module_contracts, draft, profile, planning_ir),
+            )
+            inventory_aggregate["functions"].extend(inventory_candidate.get("functions", []))
+            inventory_aggregate["unresolved_questions"].extend(inventory_candidate.get("unresolved_questions", []))
+            draft = merge_function_inventory(draft, inventory_candidate)
+
+        for module in list(draft.get("module_contracts", [])):
+            module_id = str(module.get("module_id", ""))
+            detail_context = build_function_detail_context(draft, module_id, constraints)
+            detail_patch = stage_candidate(
+                stage_label=f"5.4b_function_details:{module_id}",
+                prompt_name="function_contract_detail_patch_prompt",
+                messages=function_contract_detail_patch_messages(detail_context),
+                candidate_key="function_detail_patch",
+                report_key="function_detail_validation_report",
+                fallback=fallback_function_details(draft, module_id),
+                validator=lambda candidate: validate_function_contract_detail_patch(candidate, draft, constraints),
+            )
+            draft = merge_function_details(draft, detail_patch)
+
+        wire_context = build_wire_access_binding_context(draft, planning_ir)
+        wire_patch = stage_candidate(
+            stage_label="5.4c_wire_access_binding",
+            prompt_name="wire_access_binding_patch_prompt",
+            messages=wire_access_binding_patch_messages(wire_context),
+            candidate_key="wire_access_binding_patch",
+            report_key="wire_access_binding_validation_report",
+            fallback=fallback_wire_access_binding(draft, planning_ir),
+            validator=lambda candidate: validate_wire_access_binding_patch(candidate, draft, planning_ir),
+        )
+        draft = merge_wire_access_binding(draft, wire_patch)
+
+        calls_context = build_calls_allowed_context(draft, selected_architecture)
+        calls_candidate = stage_candidate(
+            stage_label="5.4d_calls_allowed",
+            prompt_name="calls_allowed_candidate_prompt",
+            messages=calls_allowed_candidate_messages(calls_context),
+            candidate_key="calls_allowed_candidate",
+            report_key="calls_allowed_validation_report",
+            fallback=fallback_calls_allowed(draft),
+            validator=lambda candidate: validate_calls_allowed_candidate(candidate, draft, selected_architecture),
+        )
+        draft = merge_calls_allowed(draft, calls_candidate)
+
+        file_context = build_file_layout_context(draft, planning_ir, constraints)
+        file_candidate = stage_candidate(
+            stage_label="5.5_file_layout",
+            prompt_name="file_layout_candidate_prompt",
+            messages=file_layout_candidate_messages(file_context),
+            candidate_key="file_layout_candidate",
+            report_key="file_layout_validation_report",
+            fallback=fallback_file_layout(draft),
+            validator=lambda candidate: validate_file_layout_candidate(candidate, draft),
+        )
+        draft = merge_file_layout(draft, file_candidate)
+
+        implementation_plan = finalize_dependency_graph(draft)
+        dependency_diags = validate_dependency_graph(implementation_plan)
+        if has_errors(dependency_diags):
+            repair_context = build_dependency_repair_context(draft, _diagnostics_as_dependency_errors(dependency_diags))
+            repair_patch = stage_candidate(
+                stage_label="5.6_dependency_repair",
+                prompt_name="dependency_repair_patch_prompt",
+                messages=dependency_repair_patch_messages(repair_context),
+                candidate_key="dependency_repair_patch",
+                report_key="dependency_repair_validation_report",
+                fallback=fallback_dependency_repair_patch(draft, _diagnostics_as_dependency_errors(dependency_diags)),
+                validator=lambda candidate: validate_dependency_repair_patch(candidate, draft),
+                max_attempts=1,
+            )
+            draft = apply_dependency_repair_patch(draft, repair_patch)
+            implementation_plan = finalize_dependency_graph(draft)
+            dependency_diags = validate_dependency_graph(implementation_plan)
+            if has_errors(dependency_diags):
+                draft = apply_deterministic_dependency_fallback(draft, _diagnostics_as_dependency_errors(dependency_diags))
+                implementation_plan = finalize_dependency_graph(draft)
+
         implementation_plan_path = store.write_step_json(STEP_FILENAMES["implementation_plan"], implementation_plan)
         artifact_paths["implementation_plan"] = implementation_plan_path
-        plan_diags = validate_implementation_plan(implementation_plan, profile=profile, planning_ir=planning_ir, path=str(implementation_plan_path))
+        plan_diags = validate_full_implementation_plan(implementation_plan, profile=profile, planning_ir=planning_ir, path=str(implementation_plan_path))
         dependency_diags = validate_dependency_graph(implementation_plan, path=str(implementation_plan_path))
         dependency_report = build_dependency_validation_report(implementation_plan, dependency_diags)
         dependency_report_path = store.write_step_json(STEP_FILENAMES["dependency_validation_report"], dependency_report)
@@ -595,7 +958,9 @@ def verify_output_dir(output_dir: str | Path) -> PlanningResult:
         "planning_ir": root / "_step_logs" / STEP_FILENAMES["planning_ir"],
         "protocol_profile": root / "_step_logs" / STEP_FILENAMES["protocol_profile"],
         "engineering_constraints": root / "_step_logs" / STEP_FILENAMES["engineering_constraints"],
+        "architecture_context": root / "_step_logs" / STEP_FILENAMES["architecture_context"],
         "architecture_candidates": root / "_step_logs" / STEP_FILENAMES["architecture_candidates"],
+        "architecture_ranking": root / "_step_logs" / STEP_FILENAMES["architecture_ranking"],
         "selected_architecture": root / "_step_logs" / STEP_FILENAMES["selected_architecture"],
         "implementation_plan": root / "_step_logs" / STEP_FILENAMES["implementation_plan"],
         "dependency_validation_report": root / "_step_logs" / STEP_FILENAMES["dependency_validation_report"],
@@ -619,14 +984,26 @@ def verify_output_dir(output_dir: str | Path) -> PlanningResult:
     if "architecture_candidates" in artifact_paths and "protocol_profile" in artifact_paths and "engineering_constraints" in artifact_paths:
         profile = read_json(artifact_paths["protocol_profile"])
         constraints = read_json(artifact_paths["engineering_constraints"])
-        diagnostics.extend(validate_architecture_candidates(read_json(artifact_paths["architecture_candidates"]), profile, constraints, path=str(artifact_paths["architecture_candidates"])))
+        architecture_candidates = read_json(artifact_paths["architecture_candidates"])
+        diagnostics.extend(validate_architecture_candidates(architecture_candidates, profile, constraints, path=str(artifact_paths["architecture_candidates"])))
+        if "architecture_ranking" in artifact_paths:
+            diagnostics.extend(
+                validate_architecture_ranking(
+                    read_json(artifact_paths["architecture_ranking"]),
+                    architecture_candidates,
+                    profile,
+                    constraints,
+                    path=str(artifact_paths["architecture_ranking"]),
+                )
+            )
         if "selected_architecture" in artifact_paths:
             diagnostics.extend(validate_selected_architecture(read_json(artifact_paths["selected_architecture"]), profile, constraints, path=str(artifact_paths["selected_architecture"])))
     if "implementation_plan" in artifact_paths:
         implementation_plan = read_json(artifact_paths["implementation_plan"])
         profile = read_json(artifact_paths["protocol_profile"]) if "protocol_profile" in artifact_paths else None
         planning_ir = read_json(artifact_paths["planning_ir"]) if "planning_ir" in artifact_paths else None
-        diagnostics.extend(validate_implementation_plan(implementation_plan, profile=profile, planning_ir=planning_ir, path=str(artifact_paths["implementation_plan"])))
+        if profile is not None and planning_ir is not None:
+            diagnostics.extend(validate_full_implementation_plan(implementation_plan, profile=profile, planning_ir=planning_ir, path=str(artifact_paths["implementation_plan"])))
         diagnostics.extend(validate_dependency_graph(implementation_plan, path=str(artifact_paths["implementation_plan"])))
         if "spec_blueprint" in artifact_paths:
             diagnostics.extend(

@@ -48,6 +48,17 @@ def _capability_refs(profile: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return refs
 
 
+def _compressed_refs(item: dict[str, Any]) -> dict[str, Any]:
+    source_fact_ids = item.get("source_fact_ids", [])
+    target_directive_ids = item.get("target_directive_ids", [])
+    evidence_refs = item.get("evidence_refs", [])
+    return {
+        "source_fact_count": len(source_fact_ids) if isinstance(source_fact_ids, list) else 0,
+        "target_directive_count": len(target_directive_ids) if isinstance(target_directive_ids, list) else 0,
+        "evidence_refs": [str(ref) for ref in evidence_refs[:5]] if isinstance(evidence_refs, list) else [],
+    }
+
+
 def _surface_units(ir: dict[str, Any], profile: dict[str, Any]) -> list[dict[str, Any]]:
     by_name: dict[str, dict[str, Any]] = {}
     for item in profile.get("required_surface_units", []):
@@ -320,181 +331,36 @@ def build_implementation_plan(
     constraints: dict[str, Any],
     selected_architecture: dict[str, Any],
 ) -> dict[str, Any]:
-    protocol = _safe_id(_field_value(profile.get("protocol_name"), str(planning_ir.get("protocol_name", "protocol"))))
-    target = _target_directives(planning_ir)
-    arch = selected_architecture.get("architecture", {})
-    modules = arch.get("modules", []) if isinstance(arch, dict) else []
-    capability_refs = _capability_refs(profile)
-    surfaces = _surface_units(planning_ir, profile)
-    handler_surfaces = _handler_surfaces(surfaces, str(target.get("target_role", "")))
-    constraint_ids = [
-        str(item.get("constraint_id", "")).strip()
-        for item in constraints.get("constraints", [])
-        if isinstance(item, dict) and str(item.get("constraint_id", "")).strip()
-    ]
+    # Compatibility helper for tests and deterministic baselines. The runtime
+    # orchestration performs these stages individually and never asks an LLM for
+    # a monolithic implementation_plan.
+    from .implementation_plan_merger import (
+        fallback_calls_allowed,
+        fallback_core_design,
+        fallback_file_layout,
+        fallback_function_details,
+        fallback_function_inventory,
+        fallback_module_contracts,
+        fallback_wire_access_binding,
+        finalize_dependency_graph,
+        merge_calls_allowed,
+        merge_core_design,
+        merge_file_layout,
+        merge_function_details,
+        merge_function_inventory,
+        merge_module_contracts,
+        merge_wire_access_binding,
+        build_plan_skeleton,
+    )
 
-    module_contracts: list[dict[str, Any]] = []
-    files: list[dict[str, Any]] = []
-    functions: list[dict[str, Any]] = []
-    for module in modules:
-        if not isinstance(module, dict):
-            continue
-        module_id = _safe_id(str(module.get("module_id", module.get("name", "module"))))
-        owned_capabilities = [str(cap) for cap in module.get("owned_capabilities", []) if str(cap).strip()]
-        source_fact_ids: list[str] = []
-        for cap in owned_capabilities:
-            refs = capability_refs.get(cap, {}) if isinstance(capability_refs.get(cap), dict) else {}
-            source_fact_ids.extend(str(item) for item in refs.get("source_fact_ids", []) if str(item).strip())
-        source_fact_ids = sorted(set(source_fact_ids))
-        module_contracts.append(
-            {
-                "module_id": module_id,
-                "name": module.get("name", module_id),
-                "purpose": "; ".join(str(item) for item in module.get("responsibilities", []) if str(item).strip()) or f"Own {module_id} responsibilities.",
-                "owned_capabilities": owned_capabilities,
-                "consumed_capabilities": [str(cap) for cap in module.get("consumed_capabilities", [])],
-                "support_module": bool(module.get("support_module", False)),
-                "public_api_policy": "Expose stable public functions in the generated header; keep state opaque.",
-                "state_owned": [str(item) for item in module.get("state_owned", [])],
-                "errors_raised": ["protocol_error"],
-                "constraints": constraint_ids,
-                "source_fact_ids": source_fact_ids,
-                "decision_ids": [f"decision:module:{module_id}"],
-            }
-        )
-        file_id = f"file:{module_id}"
-        header_file_id = f"header:{module_id}"
-        source_path = f"{protocol}/{module_id}/{module_id}.c"
-        header_path = f"{protocol}/{module_id}/{module_id}.h"
-        file_functions = _function_contracts_for_file(
-            protocol=protocol,
-            module_id=module_id,
-            file_id=file_id,
-            header_file_id=header_file_id,
-            owned_capabilities=owned_capabilities,
-            surfaces=handler_surfaces,
-        )
-        files.append(
-            {
-                "file_id": file_id,
-                "header_file_id": header_file_id,
-                "module_id": module_id,
-                "kind": "source_header_pair",
-                "path": source_path,
-                "source_path": source_path,
-                "header_path": header_path,
-                "responsibility": f"Implement the {module_id} module contract.",
-                "exports": [item["name"] for item in file_functions if item["visibility"] == "public"],
-                "implements": [item["function_id"] for item in file_functions],
-                "imports_allowed": [],
-                "traceability": {"source_fact_ids": source_fact_ids, "decision_ids": [f"decision:file:{module_id}"]},
-            }
-        )
-        functions.extend(file_functions)
-
-    wire_fields = _wire_fields(planning_ir)
-    parser_ids = [str(item.get("function_id")) for item in functions if item.get("function_kind") == "parser"]
-    serializer_ids = [str(item.get("function_id")) for item in functions if item.get("function_kind") == "serializer"]
-    parser_id = parser_ids[0] if parser_ids else ""
-    serializer_id = serializer_ids[0] if serializer_ids else ""
-    wire_mapping_table = [
-        {
-            "mapping_id": f"wire:{_safe_id(item['message'])}:{_safe_id(item['field'])}",
-            "field_id": item["field_id"],
-            "message": item["message"],
-            "field": item["field"],
-            "parser_function_id": parser_id,
-            "serializer_function_id": serializer_id,
-            "access_path_id": item["access_path_id"],
-            "source_fact_ids": item["source_fact_ids"],
-        }
-        for item in wire_fields
-    ]
-    access_path_table = [
-        {
-            "access_path_id": item["access_path_id"],
-            "path": item["access_path"],
-            "field_id": item["field_id"],
-            "owner_module_id": "protocol_codec",
-            "source_fact_ids": item["source_fact_ids"],
-        }
-        for item in wire_fields
-    ]
-    for function in functions:
-        if function.get("function_kind") == "parser":
-            function["wire_mapping"] = [
-                {
-                    "mapping_id": item["mapping_id"],
-                    "field_id": item["field_id"],
-                    "message": item["message"],
-                    "field": item["field"],
-                    "direction": "decode",
-                    "access_path_id": item["access_path_id"],
-                }
-                for item in wire_mapping_table
-            ]
-            function["access_paths"] = [item["access_path_id"] for item in access_path_table]
-        elif function.get("function_kind") == "serializer":
-            function["wire_mapping"] = [
-                {
-                    "mapping_id": item["mapping_id"],
-                    "field_id": item["field_id"],
-                    "message": item["message"],
-                    "field": item["field"],
-                    "direction": "encode",
-                    "access_path_id": item["access_path_id"],
-                }
-                for item in wire_mapping_table
-            ]
-            function["access_paths"] = [item["access_path_id"] for item in access_path_table]
-
-    draft_plan = {
-        "module_contracts": module_contracts,
-        "file_layout": {"files": files},
-        "function_contracts": functions,
-    }
-    dependency_graph = derive_dependency_graph(draft_plan)
-    return {
-        "schema_version": SCHEMA_VERSION,
-        "protocol_name": protocol,
-        "target_directives_ref": {
-            "schema_version": planning_ir.get("target_directives", {}).get("schema_version", "target_directives/v1"),
-            "directives": target,
-        },
-        "source_artifacts": {
-            "planning_ir": "003_planning_ir.json",
-            "protocol_profile": "004_protocol_profile.json",
-            "engineering_constraints": "005_engineering_constraints.json",
-            "selected_architecture": "006_selected_architecture.json",
-        },
-        "module_contracts": module_contracts,
-        "file_layout": {"files": files},
-        "function_contracts": functions,
-        "canonical_types": [
-            {
-                "type_id": "type:opaque_module_context",
-                "name_pattern": f"{protocol}_<module>_t",
-                "visibility": "public_opaque",
-                "rationale": "Expose opaque handles to keep generated state ownership module-local.",
-            }
-        ],
-        "state_design": {
-            "states": [
-                {"state_id": "state:connection_registry", "owner_module_id": "transport_runtime"},
-                {"state_id": "state:protocol_session_state", "owner_module_id": "semantic_core"},
-                {"state_id": "state:resource_index", "owner_module_id": "resource_store"},
-            ]
-        },
-        "handler_matrix": [
-            {"surface": surface.get("name"), "handler_module_id": "semantic_core", "source_fact_ids": surface.get("source_fact_ids", [])}
-            for surface in handler_surfaces
-        ],
-        "resource_lifecycle": {"policy": "module_create_destroy_pairs", "owner_modules": [item["module_id"] for item in module_contracts]},
-        "error_strategy": {"policy": "negative_status_or_void_destroy", "source": "deterministic_baseline"},
-        "wire_mapping_table": wire_mapping_table,
-        "access_path_table": access_path_table,
-        "dependency_graph": dependency_graph,
-        "test_plan": [{"test_id": "test:coder_loader_compatibility", "purpose": "Generated specs must load through agent.coder.specs."}],
-        "traceability": {"required_capabilities": list(capability_refs), "constraint_ids": constraint_ids},
-        "unresolved_questions": planning_ir.get("unresolved_facts", []),
-    }
+    draft = build_plan_skeleton(planning_ir, profile, constraints, selected_architecture)
+    draft = merge_core_design(draft, fallback_core_design(draft, planning_ir, constraints, selected_architecture, profile))
+    draft = merge_module_contracts(draft, fallback_module_contracts(draft, profile, constraints, selected_architecture))
+    for module in list(draft.get("module_contracts", [])):
+        draft = merge_function_inventory(draft, fallback_function_inventory(draft, module))
+    for module in list(draft.get("module_contracts", [])):
+        draft = merge_function_details(draft, fallback_function_details(draft, str(module.get("module_id", ""))))
+    draft = merge_wire_access_binding(draft, fallback_wire_access_binding(draft, planning_ir))
+    draft = merge_calls_allowed(draft, fallback_calls_allowed(draft))
+    draft = merge_file_layout(draft, fallback_file_layout(draft))
+    return finalize_dependency_graph(draft)

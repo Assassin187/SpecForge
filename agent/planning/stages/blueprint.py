@@ -60,5 +60,7 @@ def build_spec_blueprint(implementation_plan: dict[str, Any]) -> dict[str, Any]:
         "wire_mapping_table": implementation_plan.get("wire_mapping_table", []),
         "access_path_table": implementation_plan.get("access_path_table", []),
         "dependency_graph": implementation_plan.get("dependency_graph", {}),
+        "resource_lifecycle": implementation_plan.get("resource_lifecycle", []),
+        "error_strategy": implementation_plan.get("error_strategy", []),
         "generation_order": [item.get("module_id") for item in modules if isinstance(item, dict)],
     }

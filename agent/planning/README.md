@@ -23,9 +23,9 @@ Planning Agent 运行时强制使用 LLM。LLM 不是可选增强，而是对应
 - LLM 必须返回 JSON candidate 或 patch。
 - candidate/patch 必须通过 deterministic validation。
 - 如果 LLM 无输出、输出不是 JSON、schema 不合法或规则校验失败，会把失败原因追加到下一次 prompt 中重试。
-- 每个 LLM 阶段最多重试 3 次。
-- 3 次仍失败则该阶段报错退出。
-- 不允许回退到 deterministic baseline。
+- Protocol Profile 阶段最多重试 3 次；仍失败则报错退出。
+- Architecture Search 每轮并发请求 3 个候选策略；高温轮失败后进入低温轮，仍无合法候选则报错退出。
+- Implementation Plan Synthesis 使用 staged hybrid 模式：LLM 只生成当前子步骤 candidate/patch；不合法时使用该子步骤的 deterministic fallback，并继续由 validator/merger 审核。
 
 ## 当前流程
 
@@ -45,12 +45,11 @@ Planning Agent 运行时强制使用 LLM。LLM 不是可选增强，而是对应
 
 具体操作：
 
-- 校验输入文件是否存在。
-- 校验 target profile 基础字段。
-- 校验当前 target language 是否为 `C`。
-- 初始化 run 目录。
-- 记录输入文件 hash。
-- 记录 compatibility version、prompt version、LLM 配置和 artifact 路径。
+- 创建 `ArtifactStore` 并初始化 run 目录、`_step_logs/` 与 `_agent_logs/`。
+- 校验 `protocol_facts.json` 与 `target_profile.json` 路径存在。
+- 校验 target profile 基础字段，并限制当前 coder-compatible compiler 只接受 `language=C`。
+- 写入初始 manifest，记录输入路径、文件 hash、LLM 配置、prompt registry 版本、compatibility 版本、运行状态和 artifact path map。
+- 若 preflight 已有 error，更新 manifest 为 failed 并直接退出；否则进入 target profile load。
 
 LLM 参与：
 
@@ -69,17 +68,18 @@ LLM 参与：
 
 具体操作：
 
+- 加载 target profile，并转换为独立的 target directives namespace。
 - 兼容读取 Facts Agent 当前输出格式 `protocol_facts/v2alpha1`。
-- 校验 facts 顶层结构和关键 section。
-- 将 `evidence_index[]` 转为 evidence map。
-- 生成稳定的 path-based `fact_id`。
+- 校验 facts 顶层结构、关键 section 和协议 meta。
+- 将 `evidence_index[]` 转为 evidence map，用于后续 traceability 压缩引用。
+- 为协议事实生成稳定的 path-based `fact_id`。
 - 建立 `normalization_index`：
   - `fact_id_by_path`
   - `evidence_refs_by_fact_id`
   - `field_id_by_message_and_name`
-- 将 target profile 转换到独立的 `target_directives` namespace。
-- 不把 target profile 混入 `protocol_facts`。
-- 将缺失、不确定或无证据的信息写入 `unresolved_facts`。
+- 将 target directives 写入 `planning_ir.target_directives`，但不混入 `protocol_facts`。
+- 将 facts 中的 open questions 和缺失、不确定、无证据的信息归一化写入 `unresolved_facts`。
+- 写入 `_step_logs/003_planning_ir.json`，并运行 `validate_planning_ir`。
 
 LLM 参与：
 
@@ -98,7 +98,7 @@ LLM 参与：
 
 具体操作：
 
-- 从 planning IR 推导压缩协议画像。
+- 先由规则层从 planning IR 推导 baseline protocol profile。
 - 推导字段包括：
   - `transport_shape`
   - `interaction_model`
@@ -110,7 +110,11 @@ LLM 参与：
   - `required_capabilities`
   - `required_surface_units`
 - 在 `required_capabilities` 和 surface units 中保留 source fact refs、target directive refs 和 evidence refs。
-- 校验 enum、capability、traceability。
+- 构造 profile patch prompt，允许 LLM 只提交 `protocol_profile_patch_candidate`。
+- 对 LLM patch 做确定性校验，禁止新增协议事实、非法 capability、非法 surface 或越权字段。
+- 将合法 patch 应用到 baseline profile；若 patch 后 profile 仍不合法，则把失败原因带入下一次 prompt。
+- 写入 patch candidate 与最终 `_step_logs/004_protocol_profile.json`。
+- 校验 enum、capability 覆盖和 traceability。
 
 LLM 参与：
 
@@ -132,7 +136,7 @@ LLM 参与：
 
 具体操作：
 
-- 根据 profile 确定性激活工程约束。
+- 根据 protocol profile 确定性激活工程约束。
 - 当前规则包括：
   - stream transport 需要 incremental decode。
   - timer facts 需要 timer manager。
@@ -148,6 +152,7 @@ LLM 参与：
   - `severity`
   - `rationale`
   - `validation_rule`
+- 写入 `_step_logs/005_engineering_constraints.json`，并运行 `validate_constraints`。
 
 LLM 参与：
 
@@ -163,31 +168,38 @@ LLM 参与：
 
 输出：
 
+- `_step_logs/006_architecture_context.json`
 - `_step_logs/006_architecture_candidates.json`
+- `_step_logs/006_architecture_ranking.json`
 - `_step_logs/006_selected_architecture.json`
-- `_step_logs/006_llm_architecture_candidates.json`
 
 具体操作：
 
-- 生成模块级 architecture candidates。
-- 当前 deterministic baseline 会拆分为：
-  - `transport_runtime`
-  - `protocol_codec`
-  - `semantic_core`
-  - `resource_store`
-  - `<protocol>_<target_role>_app`
-  - 必要时补充 `support_capabilities`
-- 校验每个 required capability 被模块覆盖。
+- 构造 compact `architecture_context`，只保留协议摘要、required capability ids、surface units、capability group hints、压缩 trace refs 和 engineering constraints。
+- 以并发方式请求 3 个 strategy 的 LLM candidate：
+  - `capability_clustered`
+  - `layered_runtime_codec_semantic`
+  - `minimal_scope`
+- 第一轮使用高温候选；若没有任何合法 candidate，再发起低温 retry 轮。
+- 对每个 LLM candidate 统一补齐 generation metadata：
+  - strategy
+  - generation request id
+  - generation mode
+- 在进入校验前强制清空 `module_graph_hints` 与所有 module 的 `dependency_hints`。
+- 校验每个 required capability 被至少一个 module 覆盖。
 - 校验 module capability 必须来自 `protocol_profile.required_capabilities`。
 - 校验 constraint references 合法。
-- 选择合法 architecture。
+- 校验 architecture 阶段不携带 dependency hints；模块依赖关系留到 Implementation Plan Synthesis 的 Module Contract Planning 中通过 `imports_allowed` / `calls_allowed` 规划。
+- 汇总所有合法 candidates，写入 `_step_logs/006_architecture_candidates.json`。
+- 调用 LLM ranking prompt 对合法 candidates 打分和选择；ranking 不合法时使用 deterministic ranking fallback。
+- 写入 `_step_logs/006_architecture_ranking.json` 和 `_step_logs/006_selected_architecture.json`。
 
 LLM 参与：
 
 - 强制参与，模式为 `candidate_generator`。
-- LLM 只能生成模块级 architecture candidate。
-- LLM 不允许生成 file、function、call graph、include graph 或代码。
-- LLM candidate 不合法时带原因重试，最多 3 次；仍失败则退出。
+- LLM 只能生成模块级 architecture candidate 和 ranking。
+- LLM 不允许生成 dependency hints、file、function、call graph、include graph 或代码。
+- 每轮并发请求 3 个候选策略：`capability_clustered`、`layered_runtime_codec_semantic`、`minimal_scope`；高温轮全部失败后进入低温重试轮，仍失败则退出。
 
 ### Step 5: Implementation Plan Synthesis
 
@@ -201,37 +213,85 @@ LLM 参与：
 输出：
 
 - `_step_logs/007_implementation_plan.json`
-- `_step_logs/007_implementation_plan_candidate.json`
+- `_step_logs/007_5_1_plan_skeleton.json`
+- `_step_logs/007_5_2_core_design_candidate.json`
+- `_step_logs/007_5_2_core_design_validation_report.json`
+- `_step_logs/007_5_3_module_contracts_candidate.json`
+- `_step_logs/007_5_3_module_contracts_validation_report.json`
+- `_step_logs/007_5_4a_function_inventory_candidate.json`
+- `_step_logs/007_5_4a_function_inventory_validation_report.json`
+- `_step_logs/007_5_4b_function_contract_detail_patch.json`
+- `_step_logs/007_5_4b_function_detail_validation_report.json`
+- `_step_logs/007_5_4c_wire_access_binding_patch.json`
+- `_step_logs/007_5_4c_wire_access_binding_validation_report.json`
+- `_step_logs/007_5_4d_calls_allowed_candidate.json`
+- `_step_logs/007_5_4d_calls_allowed_validation_report.json`
+- `_step_logs/007_5_5_file_layout_candidate.json`
+- `_step_logs/007_5_5_file_layout_validation_report.json`
+- `_step_logs/007_5_6_dependency_repair_patch.json`（仅 dependency validation 失败时）
+- `_step_logs/007_5_6_dependency_repair_validation_report.json`（仅 dependency validation 失败时）
 
 具体操作：
 
-- 生成 `module_contracts`。
-- 生成 C source/header file layout。
-- 生成 function contracts。
-- 根据 target-scope surface units 生成 handler matrix。
-- 从 `message_model.message_or_command_entries[*].fields[*]` 派生 wire field coverage。
-- 生成：
+- 5.1 由规则层生成 `implementation_plan/v1` skeleton：
+  - 固定 `source_artifacts` / `source_artifact_refs`。
+  - 建立 `id_namespace`，包括 module、capability、constraint、field、function/file id pattern。
+  - 建立 `validation_targets`，明确 capability coverage、handler coverage、wire field coverage、dependency derivation only 和 blueprint no-new-semantics。
+  - 初始化空 `module_contracts`、core design、function contracts、file layout、wire/access mapping 和 `dependency_graph=null`。
+  - 建立 `deterministic_indexes`，供后续子步骤 validator 和 fallback 使用。
+- 5.2 生成 core design candidate：
   - `canonical_types`
   - `state_design`
   - `handler_matrix`
   - `resource_lifecycle`
   - `error_strategy`
-  - `wire_mapping_table`
-  - `access_path_table`
-  - `test_plan`
-  - `unresolved_questions`
-- 将 parser/serializer function contracts 与 wire fields 建立覆盖关系。
-- 校验 capability coverage、handler coverage、wire field coverage、state/access/dependency references。
+  - `test_plan_seed`
+  - 若 LLM candidate 不合法，使用 `fallback_core_design`。
+- 5.3 生成 module contracts candidate：
+  - 从 selected architecture 的 module/capability ownership 派生 module contract。
+  - 绑定 capability ownership、state ownership 和 constraint bindings。
+  - 将合法 candidate merge 为最终 `module_contracts`。
+  - 若 LLM candidate 不合法，使用 `fallback_module_contracts`。
+- 5.4a 按 module 逐个生成 function inventory：
+  - 只允许在已存在 module 内创建 function id。
+  - 覆盖 parser、serializer、handler、resource lifecycle、public API 等 function kind。
+  - 每个 module candidate 独立校验、独立 fallback、逐步 merge 到 draft。
+- 5.4b 按 module 逐个补全 function contract details：
+  - `signature`
+  - `input_contract`
+  - `output_contract`
+  - `state_access`
+  - `error_behavior`
+  - `side_effects`
+  - `preconditions` / `postconditions`
+  - 不合法时使用 deterministic function detail fallback。
+- 5.4c 生成 wire/access binding patch：
+  - 将 wire fields 绑定到 parser/serializer/handler function。
+  - 填充 `wire_mapping_table` 与 `access_path_table`。
+  - 不合法时使用 deterministic wire/access fallback。
+- 5.4d 生成 `calls_allowed` candidate：
+  - 只允许引用已存在 function ids。
+  - 校验跨 module 调用不能违反 selected architecture policy。
+  - 不合法时使用 deterministic calls fallback。
+- 5.5 在函数全集稳定后生成 C `source_header_pair` file layout：
+  - 每个 file 只能归属已存在 module。
+  - 只能分配 existing functions。
+  - 填充 `source_path`、`header_path`、`exports`、`implements`、`imports_allowed` 和 traceability。
+  - 不合法时使用 deterministic file layout fallback。
+- 5.6 由规则层从 `imports_allowed` 和 `calls_allowed` 派生最终 `dependency_graph`。
+- 若 dependency validation 失败，执行一次 LLM dependency repair patch；repair 后仍失败则使用 deterministic dependency fallback。
+- 写入最终 `_step_logs/007_implementation_plan.json`，再运行 full implementation plan validator 与 dependency graph validator。
+- 每个子步骤的 candidate/patch 都会写入对应 validation report；只有通过 stage validator 的输出才会被 merger 写入 draft。
 
 LLM 参与：
 
-- 强制参与，当前模式为 `primary_planner`。
-- LLM 输出必须是完整 `implementation_plan/v1` candidate。
-- LLM 可以提出 module/file/function contract 级工程设计。
+- Hybrid staged candidate/patch generator。
+- LLM 不允许返回完整 `implementation_plan/v1`。
+- LLM 只能提出当前子步骤允许的 candidate/patch。
 - LLM 不允许输出代码。
 - LLM 不允许引入不存在的协议事实。
-- LLM 不允许绕过 dependency graph derivation。
-- LLM candidate 不合法时带原因重试，最多 3 次；仍失败则退出。
+- LLM 不允许直接生成最终 `dependency_graph`。
+- LLM candidate/patch 不合法时带原因重试，最多 3 次；仍失败则使用该子步骤 deterministic fallback。
 
 ### Step 6: Dependency Derivation & Validation
 
@@ -347,8 +407,25 @@ agent/planning/out/<protocol>/<target_slug>/<timestamp>/
 │   ├── 003_planning_ir.json
 │   ├── 004_protocol_profile.json
 │   ├── 005_engineering_constraints.json
+│   ├── 006_architecture_context.json
 │   ├── 006_architecture_candidates.json
+│   ├── 006_architecture_ranking.json
 │   ├── 006_selected_architecture.json
+│   ├── 007_5_1_plan_skeleton.json
+│   ├── 007_5_2_core_design_candidate.json
+│   ├── 007_5_2_core_design_validation_report.json
+│   ├── 007_5_3_module_contracts_candidate.json
+│   ├── 007_5_3_module_contracts_validation_report.json
+│   ├── 007_5_4a_function_inventory_candidate.json
+│   ├── 007_5_4a_function_inventory_validation_report.json
+│   ├── 007_5_4b_function_contract_detail_patch.json
+│   ├── 007_5_4b_function_detail_validation_report.json
+│   ├── 007_5_4c_wire_access_binding_patch.json
+│   ├── 007_5_4c_wire_access_binding_validation_report.json
+│   ├── 007_5_4d_calls_allowed_candidate.json
+│   ├── 007_5_4d_calls_allowed_validation_report.json
+│   ├── 007_5_5_file_layout_candidate.json
+│   ├── 007_5_5_file_layout_validation_report.json
 │   ├── 007_implementation_plan.json
 │   ├── 008_dependency_validation_report.json
 │   ├── 010_spec_blueprint.json
@@ -362,21 +439,22 @@ agent/planning/out/<protocol>/<target_slug>/<timestamp>/
 
 ```text
 <run>/_step_logs/004_protocol_profile_patch_candidate.json
-<run>/_step_logs/006_llm_architecture_candidates.json
-<run>/_step_logs/007_implementation_plan_candidate.json
+<run>/_step_logs/007_5_6_dependency_repair_patch.json
+<run>/_step_logs/007_5_6_dependency_repair_validation_report.json
 ```
 
 运行时会在控制台输出类似 Coder Agent 的阶段日志，例如：
 
 ```text
 [agent.planning] stage=protocol_profile build start
-[agent.planning] stage=architecture llm_attempt=1 prompt=architecture_candidate_prompt start
-[agent.planning] stage=architecture llm_attempt=1 accepted
+[agent.planning] stage=architecture generation_request=1 strategy=capability_clustered temperature=0.7 start
+[agent.planning] stage=implementation_plan substage=5.4a_function_inventory:semantic_core llm_attempt=1 prompt=function_inventory_candidate_prompt start
+[agent.planning] stage=implementation_plan substage=5.4a_function_inventory:semantic_core llm_attempt=1 accepted
 ```
 
 每次 LLM attempt 的 metadata 和 raw response 会写入 `_agent_logs/`，用于排查 JSON 解析失败、输出截断和 validation rejection。
 
-`013_token_usage_summary.json` 会统计所有 LLM attempt 的 token 用量。默认 no-LLM 模式下 total 为 0；启用 LLM 时会按阶段汇总：
+`013_token_usage_summary.json` 会统计所有 LLM attempt 的 token 用量，并按阶段汇总：
 
 - `protocol_profile`
 - `architecture`
@@ -434,7 +512,7 @@ python3 -m agent planning plan \
   --target-profile agent/planning/planning_target_profile_mqtt.json
 ```
 
-运行需要环境变量 `ALI_API`。已接入 LLM 的阶段必须成功获得合法 LLM candidate/patch；无法使用 LLM 或三次重试仍不合法时，pipeline 直接失败。
+运行需要环境变量 `ALI_API`。Protocol Profile 和 Architecture 属于 mandatory LLM 阶段，无法获得合法输出会失败退出；Implementation Plan Synthesis 属于 staged hybrid 阶段，子步骤 LLM 输出不合法时使用 deterministic fallback 继续推进。
 
 ### 验证已有输出目录
 

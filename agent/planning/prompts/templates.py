@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from ..schemas.implementation_plan_candidates import output_shape
 from .versions import PROMPT_REGISTRY
 
 
@@ -179,58 +180,24 @@ def _capability_ids(profile: dict[str, Any]) -> list[str]:
     ]
 
 
-def _architecture_owner_hints(capability_ids: list[str]) -> dict[str, list[str]]:
-    required = set(capability_ids)
-    hints = {
-        "transport_runtime": [
-            "transport_io",
-            "connection_lifecycle",
-            "connection_buffering",
-            "datagram_io",
-            "peer_address_handling",
-            "transport_adapter",
-        ],
-        "protocol_codec": [
-            "message_decode",
-            "message_encode",
-            "incremental_message_framing",
-            "datagram_message_framing",
-            "canonical_type_ownership",
-        ],
-        "semantic_core": [
-            "semantic_dispatch",
-            "state_machine",
-            "state_transition_validation",
-            "protocol_error_policy",
-            "connection_termination",
-            "error_response_encoding",
-            "timer_source",
-            "timeout_handling",
-        ],
-        "resource_store": [
-            "session_state_ownership",
-            "resource_ownership",
-            "routing_dispatch",
-            "recovery_cleanup_policy",
-        ],
-        "target_role_app": ["role_composition"],
-    }
-    return {module: [cap for cap in caps if cap in required] for module, caps in hints.items() if any(cap in required for cap in caps)}
-
-
 def architecture_candidate_messages(
-    planning_ir: dict[str, Any],
-    profile: dict[str, Any],
-    constraints: dict[str, Any],
+    architecture_context: dict[str, Any],
+    design_strategy: str,
 ) -> list[dict[str, str]]:
-    required_capability_ids = _capability_ids(profile)
+    required_capability_ids = [
+        str(item)
+        for item in architecture_context.get("required_capability_ids", [])
+        if str(item).strip()
+    ]
     return [
         {
             "role": "system",
             "content": (
                 "You are SpecForge Planning Agent architecture candidate generator. "
                 f"{JSON_ONLY_RULES} Return JSON matching architecture_candidates/v1. "
-                "You may generate module-level design only. Do not generate file paths, functions, call graphs, include graphs, or code."
+                "You may generate module-level design only. Do not generate file paths, functions, call graphs, include graphs, or code. "
+                "The capability group hints are non-binding engineering priors. They are not required module names. "
+                "You may split, merge, rename, or ignore them if the protocol profile suggests a better architecture."
             ),
         },
         {
@@ -239,6 +206,7 @@ def architecture_candidate_messages(
                 {
                     "prompt_name": "architecture_candidate_prompt",
                     "prompt_version": PROMPT_REGISTRY["architecture_candidate_prompt"],
+                    "design_strategy": design_strategy,
                     "required_top_level_keys": ["schema_version", "candidates", "generation_warnings"],
                     "forbidden_top_level_keys": ["output_schema", "expected_response"],
                     "expected_response": {
@@ -247,6 +215,8 @@ def architecture_candidate_messages(
                             {
                                 "candidate_id": "string",
                                 "generation_mode": "llm_candidate",
+                                "generation_strategy": design_strategy,
+                                "generation_request_id": "string",
                                 "modules": [
                                     {
                                         "module_id": "string",
@@ -255,7 +225,7 @@ def architecture_candidate_messages(
                                         "owned_capabilities": ["capability_id from required_capabilities"],
                                         "consumed_capabilities": ["capability_id from required_capabilities"],
                                         "state_owned": ["string"],
-                                        "dependency_hints": ["module_id"],
+                                        "dependency_hints": [],
                                         "support_module": False,
                                     }
                                 ],
@@ -267,12 +237,14 @@ def architecture_candidate_messages(
                         ],
                         "generation_warnings": [],
                     },
-                    "planning_ir_summary": {
-                        "protocol_name": planning_ir.get("protocol_name"),
-                        "target_directives": planning_ir.get("target_directives"),
-                    },
+                    "architecture_context": architecture_context,
                     "required_capability_ids": required_capability_ids,
-                    "capability_owner_hints": _architecture_owner_hints(required_capability_ids),
+                    "non_binding_capability_group_hints": architecture_context.get("non_binding_capability_group_hints", []),
+                    "strategy_guidance": {
+                        "capability_clustered": "Cluster modules around cohesive capability ownership and make ownership boundaries explicit.",
+                        "layered_runtime_codec_semantic": "Prefer runtime, codec, semantic, resource/state, and app-facing layers with low coupling.",
+                        "minimal_scope": "Prefer the smallest target-scope architecture that still satisfies every capability and constraint.",
+                    }.get(design_strategy, "Generate a coherent module-level architecture for the target scope."),
                     "hard_validation_rules": [
                         "Return the expected_response object itself, not an object containing expected_response or output_schema.",
                         "The top-level schema_version must be exactly architecture_candidates/v1.",
@@ -281,52 +253,227 @@ def architecture_candidate_messages(
                         "A non-support module must own at least one capability.",
                         "Capabilities mentioned in responsibilities, rationale, or consumed_capabilities do not count as covered.",
                         "semantic_dispatch, role_composition, and canonical_type_ownership are real capabilities when present and must be explicitly owned.",
+                        "Architecture candidates must not plan dependency relationships; every module.dependency_hints must be [].",
+                        "module_graph_hints must be []. Module dependency planning belongs to implementation plan Module Contract Planning via imports_allowed and calls_allowed.",
+                        "Capability group hints are non-binding priors, not required module names.",
+                        "You may split, merge, rename, or ignore hints.",
+                        "The selected architecture will be judged by capability coverage, cohesion, coupling, constraint satisfaction, and acyclicity.",
                         "Before returning, compute required_capability_ids minus the union of module.owned_capabilities; it must be empty.",
                     ],
                     "known_rejection_patterns_to_avoid": [
                         "Describing semantic dispatch in text but omitting semantic_dispatch from owned_capabilities.",
                         "Creating orchestration modules with empty owned_capabilities.",
                         "Moving a capability to consumed_capabilities without any module owning it.",
+                        "Filling dependency_hints or module_graph_hints during architecture search.",
+                        "Copying hint IDs directly as fixed module names without considering the design strategy.",
                     ],
-                    "protocol_profile": profile,
-                    "engineering_constraints": constraints,
                 }
             ),
         },
     ]
 
 
-def implementation_plan_candidate_messages(
-    planning_ir: dict[str, Any],
-    profile: dict[str, Any],
-    constraints: dict[str, Any],
-    selected_architecture: dict[str, Any],
-    deterministic_plan: dict[str, Any],
-) -> list[dict[str, str]]:
+def architecture_ranking_messages(architecture_context: dict[str, Any], architecture_candidates: dict[str, Any]) -> list[dict[str, str]]:
     return [
         {
             "role": "system",
             "content": (
-                "You are SpecForge Planning Agent implementation plan candidate assistant. "
-                f"{JSON_ONLY_RULES} Return JSON matching implementation_plan/v1. "
-                "Implementation Plan is the final stage where engineering semantics may be introduced. "
-                "Do not output code. Do not introduce protocol facts not present in the input. "
-                "Every module must come from selected_architecture; every file/function must be internally consistent."
+                "You are SpecForge Planning Agent architecture ranking assistant. "
+                f"{JSON_ONLY_RULES} Return JSON matching architecture_ranking/v1. "
+                "You may score and select only. Do not modify candidates, modules, capabilities, files, functions, dependencies, or code."
             ),
         },
         {
             "role": "user",
             "content": _compact(
                 {
-                    "prompt_name": "function_contract_prompt",
-                    "prompt_version": PROMPT_REGISTRY["function_contract_prompt"],
-                    "planning_ir": planning_ir,
-                    "protocol_profile": profile,
-                    "engineering_constraints": constraints,
-                    "selected_architecture": selected_architecture,
-                    "deterministic_baseline_plan": deterministic_plan,
-                    "allowed_response": "Return a complete implementation_plan/v1 JSON object. Use compact JSON. If no changes are needed, return the deterministic baseline plan as compact JSON.",
+                    "prompt_name": "architecture_ranking_prompt",
+                    "prompt_version": PROMPT_REGISTRY["architecture_ranking_prompt"],
+                    "required_top_level_keys": ["schema_version", "scores", "selected_candidate_id", "selection_rationale", "ranking_warnings"],
+                    "forbidden_top_level_keys": ["output_schema", "expected_response", "candidates"],
+                    "expected_response": {
+                        "schema_version": "architecture_ranking/v1",
+                        "scores": [
+                            {
+                                "candidate_id": "string",
+                                "total_score": 0,
+                                "dimension_scores": {
+                                    "capability_coverage": 0,
+                                    "constraint_satisfaction": 0,
+                                    "cohesion": 0,
+                                    "coupling": 0,
+                                    "acyclicity": 0,
+                                    "state_ownership_clarity": 0,
+                                    "testability": 0,
+                                    "implementation_simplicity": 0,
+                                    "target_scope_fit": 0,
+                                },
+                                "strengths": [],
+                                "weaknesses": [],
+                                "risks": [],
+                            }
+                        ],
+                        "selected_candidate_id": "string",
+                        "selection_rationale": "string",
+                        "ranking_warnings": [],
+                    },
+                    "hard_validation_rules": [
+                        "The top-level schema_version must be exactly architecture_ranking/v1.",
+                        "Score every candidate_id exactly once.",
+                        "selected_candidate_id must be one of the candidate IDs.",
+                        "Scores must evaluate capability coverage, constraint satisfaction, cohesion, coupling, acyclicity, state ownership clarity, testability, implementation simplicity, and target scope fit.",
+                        "Do not output modified architecture candidates.",
+                    ],
+                    "architecture_context": architecture_context,
+                    "architecture_candidates": architecture_candidates,
                 }
             ),
         },
     ]
+
+
+def _stage_messages(
+    *,
+    prompt_name: str,
+    task: str,
+    context_key: str,
+    context: dict[str, Any],
+    expected_schema: str,
+    forbidden_fields: list[str],
+    validator: str,
+) -> list[dict[str, str]]:
+    return [
+        {
+            "role": "system",
+            "content": (
+                "You are SpecForge Planning Agent staged implementation-plan assistant. "
+                f"{JSON_ONLY_RULES} "
+                f"Return JSON matching {expected_schema}. "
+                "Return only the current stage candidate or patch. "
+                "Never return a complete implementation_plan/v1. "
+                "Never output code. "
+                "Do not invent protocol facts or identifiers outside the provided legal ID universe."
+            ),
+        },
+        {
+            "role": "user",
+            "content": _compact(
+                {
+                    "prompt_name": prompt_name,
+                    "prompt_version": PROMPT_REGISTRY[prompt_name],
+                    "task": task,
+                    "output_schema": expected_schema,
+                    "output_shape": output_shape(expected_schema),
+                    "forbidden_fields": forbidden_fields,
+                    "validator_after_output": validator,
+                    context_key: context,
+                    "hard_validation_rules": [
+                        f"schema_version must be exactly {expected_schema}.",
+                        "The JSON object must match output_shape exactly.",
+                        "Return the candidate or patch object itself.",
+                        "Do not include a complete implementation_plan/v1.",
+                        "Do not include forbidden fields.",
+                        "Do not include any fields not shown in output_shape.",
+                        "Use only IDs present in the context legal ID universe.",
+                        "If information is insufficient, add unresolved_questions instead of inventing facts.",
+                    ],
+                }
+            ),
+        },
+    ]
+
+
+def core_design_candidate_messages(context: dict[str, Any]) -> list[dict[str, str]]:
+    return _stage_messages(
+        prompt_name="core_design_candidate_prompt",
+        task="Plan only the core implementation design matrix before files, functions, or dependencies exist.",
+        context_key="core_design_context",
+        context=context,
+        expected_schema="core_design_candidate/v1",
+        forbidden_fields=["file_id", "file path", "function_id", "function name", "calls_allowed", "imports_allowed", "dependency_graph", "code"],
+        validator="validate_core_design_candidate",
+    )
+
+
+def module_contracts_candidate_messages(context: dict[str, Any]) -> list[dict[str, str]]:
+    return _stage_messages(
+        prompt_name="module_contracts_candidate_prompt",
+        task="Plan module contracts from the selected architecture and accepted core design.",
+        context_key="module_contract_context",
+        context=context,
+        expected_schema="module_contracts_candidate/v1",
+        forbidden_fields=["file layout", "file_id", "file path", "function_id", "function list", "calls_allowed", "imports_allowed", "dependency_graph", "access paths", "code"],
+        validator="validate_module_contracts_candidate",
+    )
+
+
+def function_inventory_candidate_messages(context: dict[str, Any]) -> list[dict[str, str]]:
+    return _stage_messages(
+        prompt_name="function_inventory_candidate_prompt",
+        task="Plan the function inventory for one module. Do not fill detailed contracts.",
+        context_key="function_inventory_context",
+        context=context,
+        expected_schema="function_inventory_candidate/v1",
+        forbidden_fields=["input_contract", "output_contract", "state_access", "wire_mapping", "access_paths", "calls_allowed", "dependency_graph", "code"],
+        validator="validate_function_inventory_candidate",
+    )
+
+
+def function_contract_detail_patch_messages(context: dict[str, Any]) -> list[dict[str, str]]:
+    return _stage_messages(
+        prompt_name="function_contract_detail_patch_prompt",
+        task="Patch details for existing functions only.",
+        context_key="function_detail_context",
+        context=context,
+        expected_schema="function_contract_detail_patch/v1",
+        forbidden_fields=["new function_id", "new file_id", "new module_id", "new message_id", "new field_id", "calls_allowed", "dependency_graph", "code"],
+        validator="validate_function_contract_detail_patch",
+    )
+
+
+def wire_access_binding_patch_messages(context: dict[str, Any]) -> list[dict[str, str]]:
+    return _stage_messages(
+        prompt_name="wire_access_binding_patch_prompt",
+        task="Bind existing functions to protocol wire fields and access paths.",
+        context_key="wire_access_binding_context",
+        context=context,
+        expected_schema="wire_access_binding_patch/v1",
+        forbidden_fields=["new function", "new message", "new field", "new state", "calls_allowed", "dependency_graph", "code"],
+        validator="validate_wire_access_binding_patch",
+    )
+
+
+def calls_allowed_candidate_messages(context: dict[str, Any]) -> list[dict[str, str]]:
+    return _stage_messages(
+        prompt_name="calls_allowed_candidate_prompt",
+        task="Plan calls_allowed edges after functions, wire binding, and state access are stable.",
+        context_key="calls_allowed_context",
+        context=context,
+        expected_schema="calls_allowed_candidate/v1",
+        forbidden_fields=["new function", "new file", "new module", "imports_allowed", "dependency_graph", "include graph", "code"],
+        validator="validate_calls_allowed_candidate",
+    )
+
+
+def file_layout_candidate_messages(context: dict[str, Any]) -> list[dict[str, str]]:
+    return _stage_messages(
+        prompt_name="file_layout_candidate_prompt",
+        task="Plan C source_header_pair file layout and assign existing functions to files.",
+        context_key="file_layout_context",
+        context=context,
+        expected_schema="file_layout_candidate/v1",
+        forbidden_fields=["new function_id", "new function name", "function implementation details", "function call graph", "final dependency_graph", "code"],
+        validator="validate_file_layout_candidate",
+    )
+
+
+def dependency_repair_patch_messages(context: dict[str, Any]) -> list[dict[str, str]]:
+    return _stage_messages(
+        prompt_name="dependency_repair_patch_prompt",
+        task="Repair invalid dependency inputs only. Do not generate the dependency graph.",
+        context_key="dependency_repair_context",
+        context=context,
+        expected_schema="dependency_repair_patch/v1",
+        forbidden_fields=["final dependency_graph", "new module", "new file", "new function", "new capability", "new protocol fact", "code"],
+        validator="validate_dependency_repair_patch",
+    )

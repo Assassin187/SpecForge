@@ -68,6 +68,38 @@ def _noop_profile_patch_candidate() -> dict:
     }
 
 
+def _ranking_candidate(messages: list[dict[str, str]]) -> dict:
+    payload = json.loads(messages[-1]["content"])
+    candidate_ids = [item["candidate_id"] for item in payload["architecture_candidates"]["candidates"]]
+    return {
+        "schema_version": "architecture_ranking/v1",
+        "scores": [
+            {
+                "candidate_id": candidate_id,
+                "total_score": 80 - idx,
+                "dimension_scores": {
+                    "capability_coverage": 10,
+                    "constraint_satisfaction": 8,
+                    "cohesion": 8,
+                    "coupling": 7,
+                    "acyclicity": 8,
+                    "state_ownership_clarity": 8,
+                    "testability": 7,
+                    "implementation_simplicity": 7,
+                    "target_scope_fit": 9,
+                },
+                "strengths": [],
+                "weaknesses": [],
+                "risks": [],
+            }
+            for idx, candidate_id in enumerate(candidate_ids)
+        ],
+        "selected_candidate_id": candidate_ids[0],
+        "selection_rationale": "Mock ranking selects the first valid candidate.",
+        "ranking_warnings": [],
+    }
+
+
 class PlanningCompatibilityDiscoveryTests(unittest.TestCase):
     def test_current_facts_fixtures_build_planning_ir(self) -> None:
         fixtures = [
@@ -108,13 +140,13 @@ class PlanningCompatibilityDiscoveryTests(unittest.TestCase):
             selected_architecture = select_architecture(architecture_candidates, profile)
             implementation_plan = build_implementation_plan(planning_ir, profile, constraints, selected_architecture)
 
-            def fake_request(*, prompt_name, messages, config):
+            def fake_request(*, prompt_name, messages, config, temperature=None):
                 if prompt_name == "protocol_profile_patch_prompt":
                     return _noop_profile_patch_candidate(), [], {"mocked": True}
                 if prompt_name == "architecture_candidate_prompt":
                     return architecture_candidates, [], {"mocked": True}
-                if prompt_name == "function_contract_prompt":
-                    return implementation_plan, [], {"mocked": True}
+                if prompt_name == "architecture_ranking_prompt":
+                    return _ranking_candidate(messages), [], {"mocked": True}
                 return None, [], {"mocked": True}
 
             with patch("agent.planning.orchestrator.request_json_candidate", side_effect=fake_request):
@@ -125,7 +157,9 @@ class PlanningCompatibilityDiscoveryTests(unittest.TestCase):
                 "003_planning_ir.json",
                 "004_protocol_profile.json",
                 "005_engineering_constraints.json",
+                "006_architecture_context.json",
                 "006_architecture_candidates.json",
+                "006_architecture_ranking.json",
                 "006_selected_architecture.json",
                 "007_implementation_plan.json",
                 "008_dependency_validation_report.json",
