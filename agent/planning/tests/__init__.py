@@ -1,1 +1,1 @@
-"""Planning agent regression tests."""
+"""Tests for Planning Agent."""

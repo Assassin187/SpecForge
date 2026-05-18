@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 import argparse
-import json
-import os
 from pathlib import Path
 
-from ..common.llm_client import FixedQwenClient
-from .planner import PlanningAgent
-from .verifier import verify_output_dir
+from .diagnostics import PlanningDiagnostic
+from .config import PlanningConfig
+from .orchestrator import PlanningAgent, compare_output_to_reference, verify_output_dir
 
 
 def _path(value: str) -> Path:
@@ -15,78 +13,73 @@ def _path(value: str) -> Path:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Evidence-grounded protocol implementation planning agent")
+    parser = argparse.ArgumentParser(description="Planning Agent")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    validate = sub.add_parser("validate", help="Validate facts input, target profile, and planning preconditions")
+    validate = sub.add_parser("validate", help="Validate planning inputs and write a preflight manifest")
     validate.add_argument("--facts", required=True)
     validate.add_argument("--target-profile", required=True)
-    validate.add_argument("--skip-llm-check", action="store_true")
+    validate.add_argument("--output-dir")
 
-    plan = sub.add_parser("plan", help="Run planning pipeline and compile coder-compatible specs")
+    plan = sub.add_parser("plan", help="Run LLM-mandatory planning and compile a coder-compatible spec bundle")
     plan.add_argument("--facts", required=True)
     plan.add_argument("--target-profile", required=True)
     plan.add_argument("--output-dir")
 
-    verify = sub.add_parser("verify", help="Verify an existing planning output directory")
+    verify = sub.add_parser("verify", help="Verify an existing Planning Agent output directory")
     verify.add_argument("--output-dir", required=True)
+
+    compare = sub.add_parser("compare", help="Compare output against a reference coder spec bundle")
+    compare.add_argument("--output-dir", required=True)
+    compare.add_argument("--reference-spec-root", required=True)
     return parser
 
 
-def _print_diagnostics(diags) -> None:
-    if not diags:
+def _print_diagnostics(diagnostics: list[PlanningDiagnostic]) -> None:
+    if not diagnostics:
         print("No diagnostics.")
         return
-    for diag in diags:
-        path = f" [{diag.path}]" if getattr(diag, "path", None) else ""
+    for diag in diagnostics:
+        path = f" [{diag.path}]" if diag.path else ""
         print(f"{diag.level.upper()} {diag.code}{path}: {diag.message}")
-
-
-def _optional_llm_client() -> FixedQwenClient | None:
-    return FixedQwenClient() if os.getenv("ALI_API") else None
 
 
 def cmd_validate(args: argparse.Namespace) -> int:
     agent = PlanningAgent(
-        facts_path=_path(args.facts),
-        target_profile_path=_path(args.target_profile),
-        llm_client=None if args.skip_llm_check else _optional_llm_client(),
+        _path(args.facts),
+        _path(args.target_profile),
+        output_dir=_path(args.output_dir) if args.output_dir else None,
+        config=PlanningConfig(),
     )
-    diagnostics = agent.validate_inputs(skip_llm_check=args.skip_llm_check)
-    _print_diagnostics(diagnostics)
-    print(
-        json.dumps(
-            {
-                "facts": str(_path(args.facts)),
-                "target_profile": str(_path(args.target_profile)),
-                "skip_llm_check": args.skip_llm_check,
-                "output_dir": str(agent.output_dir),
-            },
-            ensure_ascii=False,
-            indent=2,
-        )
-    )
-    return 1 if any(diag.level == "error" for diag in diagnostics) else 0
+    result = agent.validate()
+    _print_diagnostics(result.diagnostics)
+    print(f"Output: {result.output_dir}")
+    return 0 if result.success else 1
 
 
 def cmd_plan(args: argparse.Namespace) -> int:
     agent = PlanningAgent(
-        facts_path=_path(args.facts),
-        target_profile_path=_path(args.target_profile),
+        _path(args.facts),
+        _path(args.target_profile),
         output_dir=_path(args.output_dir) if args.output_dir else None,
-        llm_client=_optional_llm_client(),
+        config=PlanningConfig(),
     )
     result = agent.plan()
     _print_diagnostics(result.diagnostics)
     print(f"Output: {result.output_dir}")
-    print(f"Logs: {result.output_dir / '_agent_logs'}")
     return 0 if result.success else 1
 
 
 def cmd_verify(args: argparse.Namespace) -> int:
     result = verify_output_dir(_path(args.output_dir))
     _print_diagnostics(result.diagnostics)
-    return 0 if result.ok else 1
+    return 0 if result.success else 1
+
+
+def cmd_compare(args: argparse.Namespace) -> int:
+    result = compare_output_to_reference(_path(args.output_dir), _path(args.reference_spec_root))
+    _print_diagnostics(result.diagnostics)
+    return 0 if result.success else 1
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -98,5 +91,7 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_plan(args)
     if args.command == "verify":
         return cmd_verify(args)
+    if args.command == "compare":
+        return cmd_compare(args)
     parser.error(f"Unsupported command: {args.command}")
     return 2

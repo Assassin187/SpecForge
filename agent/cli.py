@@ -13,7 +13,7 @@ LEGACY_CODER_COMMANDS = {"validate", "generate", "verify"}
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Multi-agent protocol tooling")
-    parser.add_argument("agent", nargs="?", help="Agent name: coder | facts")
+    parser.add_argument("agent", nargs="?", help="Agent name: coder | facts | planning")
     parser.add_argument("rest", nargs=argparse.REMAINDER)
     return parser
 
