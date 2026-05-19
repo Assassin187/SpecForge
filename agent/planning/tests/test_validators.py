@@ -10,7 +10,7 @@ from unittest.mock import patch
 from agent.planning.adapters.facts_input import build_planning_ir
 from agent.planning.adapters.target_profile import load_target_profile
 from agent.planning.config import PlanningConfig
-from agent.planning.orchestrator import PlanningAgent
+from agent.planning.orchestrator import PlanningAgent, STEP_FILENAMES
 from agent.planning.prompts.templates import architecture_candidate_messages, core_design_candidate_messages
 from agent.planning.stages.architecture import build_architecture_candidates, build_architecture_context, select_architecture
 from agent.planning.stages.blueprint import build_spec_blueprint
@@ -224,6 +224,38 @@ class PlanningValidatorTests(unittest.TestCase):
             ranking = json.loads((result.output_dir / "_step_logs" / "006_architecture_ranking.json").read_text(encoding="utf-8"))
             self.assertTrue(ranking["fallback_used"])
             self.assertTrue(ranking["selected_candidate_id"])
+
+    def test_per_module_function_stage_outputs_are_preserved(self) -> None:
+        facts = ROOT / "agent" / "facts" / "gold_facts" / "mqtt_min" / "protocol_facts.json"
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            target = _target_profile(Path(raw_tmp))
+            _, _, _, architecture_candidates, _, _ = _build_artifacts(Path(raw_tmp))
+
+            def fake_request(*, prompt_name, messages, config, temperature=None):
+                if prompt_name == "protocol_profile_patch_prompt":
+                    return _noop_profile_patch_candidate(), [], {"mocked": True}
+                if prompt_name == "architecture_candidate_prompt":
+                    return architecture_candidates, [], {"mocked": True}
+                if prompt_name == "architecture_ranking_prompt":
+                    return {"schema_version": "architecture_ranking/v1", "scores": [], "selected_candidate_id": "missing"}, [], {"mocked": True}
+                return None, [], {"mocked": True}
+
+            with patch("agent.planning.orchestrator.request_json_candidate", side_effect=fake_request):
+                agent = PlanningAgent(facts, target, output_dir=Path(raw_tmp) / "run", config=PlanningConfig(llm_max_retries=1))
+                result = agent.plan()
+
+            self.assertTrue(result.success, [diag.__dict__ for diag in result.diagnostics])
+            step_logs = result.output_dir / "_step_logs"
+            plan = json.loads((step_logs / STEP_FILENAMES["implementation_plan"]).read_text(encoding="utf-8"))
+            module_count = len(plan["module_contracts"])
+            inventory_files = sorted(step_logs.glob("007_5_4a_function_inventory_candidate__*.json"))
+            detail_files = sorted(step_logs.glob("007_5_4b_function_contract_detail_patch__*.json"))
+            self.assertEqual(module_count, len(inventory_files))
+            self.assertEqual(module_count, len(detail_files))
+            inventory = json.loads((step_logs / STEP_FILENAMES["function_inventory_candidate"]).read_text(encoding="utf-8"))
+            detail = json.loads((step_logs / STEP_FILENAMES["function_detail_patch"]).read_text(encoding="utf-8"))
+            self.assertEqual(len(plan["function_contracts"]), len(inventory["functions"]))
+            self.assertEqual(len(plan["function_contracts"]), len(detail["function_contract_updates"]))
 
 
 if __name__ == "__main__":

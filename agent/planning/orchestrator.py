@@ -175,6 +175,13 @@ def _llm_token_event(meta: dict[str, Any]) -> str:
     )
 
 
+def _suffixed_step_filename(filename: str, suffix: str | None) -> str:
+    if not suffix:
+        return filename
+    path = Path(filename)
+    return f"{path.stem}__{safe_slug(suffix)}{path.suffix}"
+
+
 def _diagnostics_as_dependency_errors(diagnostics: list[PlanningDiagnostic]) -> list[dict[str, Any]]:
     return [
         {
@@ -711,11 +718,13 @@ class PlanningAgent:
             fallback: dict[str, Any],
             validator,
             max_attempts: int | None = None,
+            step_log_suffix: str | None = None,
         ) -> dict[str, Any]:
             previous_reasons: list[str] = []
             accepted: dict[str, Any] | None = None
             accepted_diags: list[PlanningDiagnostic] = []
             attempts = max_attempts if max_attempts is not None else self.config.llm_max_retries
+            artifact_suffix = safe_slug(step_log_suffix) if step_log_suffix else ""
             for attempt in range(1, attempts + 1):
                 store.log_event(f"stage=implementation_plan substage={stage_label} llm_attempt={attempt} prompt={prompt_name} start")
                 candidate, llm_diags, meta = request_json_candidate(
@@ -723,12 +732,13 @@ class PlanningAgent:
                     messages=_retry_messages(messages, previous_reasons, attempt),
                     config=self.config,
                 )
-                store.write_agent_log(f"{candidate_key}_llm_attempt_{attempt}_meta", str(meta))
+                log_key = f"{candidate_key}_{artifact_suffix}" if artifact_suffix else candidate_key
+                store.write_agent_log(f"{log_key}_llm_attempt_{attempt}_meta", str(meta))
                 token_tracker.add_attempt(stage="implementation_plan", prompt_name=prompt_name, attempt=attempt, meta=meta)
                 store.log_event(f"stage=implementation_plan substage={stage_label} llm_attempt={attempt} prompt={prompt_name} {_llm_token_event(meta)}")
                 if candidate is None:
                     previous_reasons = _diagnostic_reasons(llm_diags) or ["LLM did not return a JSON object."]
-                    store.write_agent_log(f"{candidate_key}_llm_attempt_{attempt}_rejection", "\n".join(previous_reasons))
+                    store.write_agent_log(f"{log_key}_llm_attempt_{attempt}_rejection", "\n".join(previous_reasons))
                     continue
                 candidate_diags = validator(candidate)
                 if stage_passed(candidate_diags):
@@ -738,16 +748,18 @@ class PlanningAgent:
                     store.log_event(f"stage=implementation_plan substage={stage_label} llm_attempt={attempt} accepted")
                     break
                 previous_reasons = _diagnostic_reasons(candidate_diags)
-                store.write_agent_log(f"{candidate_key}_llm_attempt_{attempt}_rejection", "\n".join(previous_reasons))
+                store.write_agent_log(f"{log_key}_llm_attempt_{attempt}_rejection", "\n".join(previous_reasons))
                 store.log_event(f"stage=implementation_plan substage={stage_label} llm_attempt={attempt} rejected reason={previous_reasons[0] if previous_reasons else 'unknown'}")
             if accepted is None:
                 accepted = fallback
                 accepted_diags = validator(accepted)
                 store.log_event(f"stage=implementation_plan substage={stage_label} fallback=deterministic")
-            candidate_path = store.write_step_json(STEP_FILENAMES[candidate_key], accepted)
-            artifact_paths[candidate_key] = candidate_path
-            report_path = store.write_step_json(STEP_FILENAMES[report_key], validation_report(stage_label, accepted_diags))
-            artifact_paths[report_key] = report_path
+            candidate_path = store.write_step_json(_suffixed_step_filename(STEP_FILENAMES[candidate_key], step_log_suffix), accepted)
+            report_path = store.write_step_json(_suffixed_step_filename(STEP_FILENAMES[report_key], step_log_suffix), validation_report(stage_label, accepted_diags))
+            artifact_key = f"{candidate_key}_{artifact_suffix}" if artifact_suffix else candidate_key
+            artifact_report_key = f"{report_key}_{artifact_suffix}" if artifact_suffix else report_key
+            artifact_paths[artifact_key] = candidate_path
+            artifact_paths[artifact_report_key] = report_path
             if has_errors(accepted_diags):
                 diagnostics.extend(accepted_diags)
             return accepted
@@ -776,22 +788,55 @@ class PlanningAgent:
         )
         draft = merge_module_contracts(draft, module_candidate)
 
-        inventory_aggregate = {"schema_version": "function_inventory_candidate/v1", "functions": [], "unresolved_questions": []}
+        inventory_aggregate = {
+            "schema_version": "function_inventory_candidate/v1",
+            "candidate_id": "candidate:function_inventory:all_modules",
+            "producer": {
+                "stage": "5.4a_function_inventory",
+                "prompt_name": "function_inventory_candidate_prompt",
+                "prompt_version": "aggregate",
+            },
+            "functions": [],
+            "assumptions": [],
+            "unresolved_questions": [],
+        }
         for module in list(draft.get("module_contracts", [])):
+            module_id = str(module.get("module_id", ""))
             inventory_context = build_function_inventory_context(draft, module)
             inventory_candidate = stage_candidate(
-                stage_label=f"5.4a_function_inventory:{module.get('module_id')}",
+                stage_label=f"5.4a_function_inventory:{module_id}",
                 prompt_name="function_inventory_candidate_prompt",
                 messages=function_inventory_candidate_messages(inventory_context),
                 candidate_key="function_inventory_candidate",
                 report_key="function_inventory_validation_report",
                 fallback=fallback_function_inventory(draft, module),
-            validator=lambda candidate, module_contracts=draft.get("module_contracts", []): validate_function_inventory_candidate(candidate, module_contracts, draft, profile, planning_ir),
+                step_log_suffix=module_id,
+                validator=lambda candidate, module_contracts=draft.get("module_contracts", []): validate_function_inventory_candidate(candidate, module_contracts, draft, profile, planning_ir),
             )
             inventory_aggregate["functions"].extend(inventory_candidate.get("functions", []))
+            inventory_aggregate["assumptions"].extend(inventory_candidate.get("assumptions", []))
             inventory_aggregate["unresolved_questions"].extend(inventory_candidate.get("unresolved_questions", []))
             draft = merge_function_inventory(draft, inventory_candidate)
+        inventory_diags = validate_function_inventory_candidate(inventory_aggregate, draft.get("module_contracts", []), draft, profile, planning_ir)
+        inventory_path = store.write_step_json(STEP_FILENAMES["function_inventory_candidate"], inventory_aggregate)
+        artifact_paths["function_inventory_candidate"] = inventory_path
+        inventory_report_path = store.write_step_json(STEP_FILENAMES["function_inventory_validation_report"], validation_report("5.4a_function_inventory:all_modules", inventory_diags))
+        artifact_paths["function_inventory_validation_report"] = inventory_report_path
+        if has_errors(inventory_diags):
+            diagnostics.extend(inventory_diags)
 
+        detail_aggregate = {
+            "schema_version": "function_contract_detail_patch/v1",
+            "patch_id": "patch:function_details:all_modules",
+            "producer": {
+                "stage": "5.4b_function_details",
+                "prompt_name": "function_contract_detail_patch_prompt",
+                "prompt_version": "aggregate",
+            },
+            "function_contract_updates": [],
+            "assumptions": [],
+            "unresolved_questions": [],
+        }
         for module in list(draft.get("module_contracts", [])):
             module_id = str(module.get("module_id", ""))
             detail_context = build_function_detail_context(draft, module_id, constraints)
@@ -803,8 +848,19 @@ class PlanningAgent:
                 report_key="function_detail_validation_report",
                 fallback=fallback_function_details(draft, module_id),
                 validator=lambda candidate: validate_function_contract_detail_patch(candidate, draft, constraints),
+                step_log_suffix=module_id,
             )
+            detail_aggregate["function_contract_updates"].extend(detail_patch.get("function_contract_updates", []))
+            detail_aggregate["assumptions"].extend(detail_patch.get("assumptions", []))
+            detail_aggregate["unresolved_questions"].extend(detail_patch.get("unresolved_questions", []))
             draft = merge_function_details(draft, detail_patch)
+        detail_diags = validate_function_contract_detail_patch(detail_aggregate, draft, constraints)
+        detail_path = store.write_step_json(STEP_FILENAMES["function_detail_patch"], detail_aggregate)
+        artifact_paths["function_detail_patch"] = detail_path
+        detail_report_path = store.write_step_json(STEP_FILENAMES["function_detail_validation_report"], validation_report("5.4b_function_details:all_modules", detail_diags))
+        artifact_paths["function_detail_validation_report"] = detail_report_path
+        if has_errors(detail_diags):
+            diagnostics.extend(detail_diags)
 
         wire_context = build_wire_access_binding_context(draft, planning_ir)
         wire_patch = stage_candidate(

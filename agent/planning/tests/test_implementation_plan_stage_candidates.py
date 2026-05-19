@@ -8,11 +8,29 @@ from pathlib import Path
 
 from agent.planning.adapters.facts_input import build_planning_ir
 from agent.planning.adapters.target_profile import load_target_profile
-from agent.planning.prompts.templates import core_design_candidate_messages
+from agent.planning.prompts.templates import (
+    calls_allowed_candidate_messages,
+    core_design_candidate_messages,
+    dependency_repair_patch_messages,
+    file_layout_candidate_messages,
+    function_contract_detail_patch_messages,
+    function_inventory_candidate_messages,
+    module_contracts_candidate_messages,
+    wire_access_binding_patch_messages,
+)
 from agent.planning.stages.architecture import build_architecture_candidates, select_architecture
 from agent.planning.stages.constraints import activate_constraints
 from agent.planning.stages.implementation_plan import build_implementation_plan
-from agent.planning.stages.implementation_plan_context import build_core_design_context
+from agent.planning.stages.implementation_plan_context import (
+    build_calls_allowed_context,
+    build_core_design_context,
+    build_dependency_repair_context,
+    build_file_layout_context,
+    build_function_detail_context,
+    build_function_inventory_context,
+    build_module_contract_context,
+    build_wire_access_binding_context,
+)
 from agent.planning.stages.implementation_plan_merger import (
     build_plan_skeleton,
     fallback_calls_allowed,
@@ -220,6 +238,41 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             self.assertIn("output_shape", payload)
             self.assertNotIn("allowed_fields", payload)
             self.assertTrue(any("output_shape" in rule for rule in payload["hard_validation_rules"]))
+            self.assertIn("semantic_validation_rules", payload)
+            self.assertIn("id_reference_rules", payload)
+            self.assertIn("enum_usage_rules", payload)
+
+    def test_stage_prompts_expose_semantic_validator_rules(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            planning_ir, profile, constraints, selected, draft, _, _ = self._fixtures(Path(raw_tmp))
+            first_module = draft["module_contracts"][0]
+            first_module_id = str(first_module["module_id"])
+            prompt_payloads = [
+                json.loads(core_design_candidate_messages(build_core_design_context(planning_ir, profile, constraints, selected))[1]["content"]),
+                json.loads(module_contracts_candidate_messages(build_module_contract_context(draft, profile, constraints, selected))[1]["content"]),
+                json.loads(function_inventory_candidate_messages(build_function_inventory_context(draft, first_module))[1]["content"]),
+                json.loads(function_contract_detail_patch_messages(build_function_detail_context(draft, first_module_id, constraints))[1]["content"]),
+                json.loads(wire_access_binding_patch_messages(build_wire_access_binding_context(draft, planning_ir))[1]["content"]),
+                json.loads(calls_allowed_candidate_messages(build_calls_allowed_context(draft, selected))[1]["content"]),
+                json.loads(file_layout_candidate_messages(build_file_layout_context(draft, planning_ir, constraints))[1]["content"]),
+                json.loads(dependency_repair_patch_messages(build_dependency_repair_context(draft, [{"code": "dependency_cycle", "message": "cycle"}]))[1]["content"]),
+            ]
+            for payload in prompt_payloads:
+                self.assertIn("semantic_validation_rules", payload)
+                self.assertIn("id_reference_rules", payload)
+                self.assertIn("enum_usage_rules", payload)
+                self.assertTrue(payload["semantic_validation_rules"])
+            joined_rules = "\n".join(
+                rule
+                for payload in prompt_payloads
+                for rule in payload["semantic_validation_rules"] + payload["enum_usage_rules"] + payload["id_reference_rules"]
+            )
+            self.assertIn("handler_matrix[].trigger must exactly equal that surface", joined_rules)
+            self.assertIn("contract_kind is a structural category only", joined_rules)
+            self.assertIn("status_code, boolean, void, pointer_null, or out_param in error_behavior.return_policy", joined_rules)
+            self.assertIn("Parser and serializer functions must not write state", joined_rules)
+            self.assertIn("exports_type_ids may contain only canonical type IDs", joined_rules)
+            self.assertIn("must be copied exactly from legal_id_universe.file_ids or files[].file_id", joined_rules)
 
     def test_valid_candidate_merges_and_invalid_candidate_is_not_merged(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:

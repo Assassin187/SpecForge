@@ -239,6 +239,7 @@ LLM 参与：
   - 建立 `validation_targets`，明确 capability coverage、handler coverage、wire field coverage、dependency derivation only 和 blueprint no-new-semantics。
   - 初始化空 `module_contracts`、core design、function contracts、file layout、wire/access mapping 和 `dependency_graph=null`。
   - 建立 `deterministic_indexes`，供后续子步骤 validator 和 fallback 使用。
+
 - 5.2 生成 core design candidate：
   - `canonical_types`
   - `state_design`
@@ -247,16 +248,21 @@ LLM 参与：
   - `error_strategy`
   - `test_plan_seed`
   - 若 LLM candidate 不合法，使用 `fallback_core_design`。
+
 - 5.3 生成 module contracts candidate：
   - 从 selected architecture 的 module/capability ownership 派生 module contract。
   - 绑定 capability ownership、state ownership 和 constraint bindings。
   - 将合法 candidate merge 为最终 `module_contracts`。
   - 若 LLM candidate 不合法，使用 `fallback_module_contracts`。
+
+**有多少模块就调用多少次llm，每次的重试上限是 3**
 - 5.4a 按 module 逐个生成 function inventory：
   - 只允许在已存在 module 内创建 function id。
   - 覆盖 parser、serializer、handler、resource lifecycle、public API 等 function kind。
   - 每个 module candidate 独立校验、独立 fallback、逐步 merge 到 draft。
-- 5.4b 按 module 逐个补全 function contract details：
+
+**跟上一步一样，按模块调用生成**
+- 5.4b 按 module 逐个补全 function contract details： 
   - `signature`
   - `input_contract`
   - `output_contract`
@@ -265,19 +271,25 @@ LLM 参与：
   - `side_effects`
   - `preconditions` / `postconditions`
   - 不合法时使用 deterministic function detail fallback。
+
 - 5.4c 生成 wire/access binding patch：
   - 将 wire fields 绑定到 parser/serializer/handler function。
   - 填充 `wire_mapping_table` 与 `access_path_table`。
   - 不合法时使用 deterministic wire/access fallback。
+
 - 5.4d 生成 `calls_allowed` candidate：
   - 只允许引用已存在 function ids。
   - 校验跨 module 调用不能违反 selected architecture policy。
   - 不合法时使用 deterministic calls fallback。
+
+**根据已有函数集合进行文件分配**
 - 5.5 在函数全集稳定后生成 C `source_header_pair` file layout：
   - 每个 file 只能归属已存在 module。
   - 只能分配 existing functions。
   - 填充 `source_path`、`header_path`、`exports`、`implements`、`imports_allowed` 和 traceability。
   - 不合法时使用 deterministic file layout fallback。
+
+**这一步报错**
 - 5.6 由规则层从 `imports_allowed` 和 `calls_allowed` 派生最终 `dependency_graph`。
 - 若 dependency validation 失败，执行一次 LLM dependency repair patch；repair 后仍失败则使用 deterministic dependency fallback。
 - 写入最终 `_step_logs/007_implementation_plan.json`，再运行 full implementation plan validator 与 dependency graph validator。

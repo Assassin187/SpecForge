@@ -17,6 +17,79 @@ JSON_ONLY_RULES = (
     "The first character must be '{' and the last character must be '}'."
 )
 
+ID_REFERENCE_RULES = [
+    "Every *_id, *_ids, *_ref, and *_refs value must be copied exactly from the context or the legal_id_universe unless the schema defines it as a new candidate-local ID.",
+    "Do not convert paths, filenames, display names, descriptions, or natural-language labels into IDs.",
+    "Do not cross ID namespaces: type_ids, state_ids, message_ids, field_ids, file_ids, function_ids, module_ids, capability_ids, constraint_ids, and error_ids are not interchangeable.",
+    "If a needed referenced ID is absent, record an unresolved_questions item instead of inventing a plausible ID.",
+]
+
+ENUM_USAGE_RULES = [
+    "Use only enum values shown in output_shape.",
+    "For function contracts, contract_kind is the structural carrier category: none, typed, buffer, opaque, callback, or unknown.",
+    "Do not use return-result words such as status_code, boolean, void, int, or pointer_null as contract_kind; put those in error_behavior.return_policy when applicable.",
+    "Use unknown or unresolved_questions when the enum choice cannot be determined from the context.",
+]
+
+STAGE_SEMANTIC_RULES = {
+    "core_design_candidate/v1": [
+        "handler_matrix[].trigger is a coverage key, not prose. For every handler_requirements[].surface, either one handler_matrix[].trigger must exactly equal that surface or one unresolved_questions[].target_id must exactly equal that surface.",
+        "owner_module_id values must come from selected modules.",
+        "capability_id and source_capability_ids values must come from required capabilities.",
+        "message_ids and source_message_ids must come from legal message IDs; source_field_ids must come from legal field IDs; related_constraint_ids must come from legal constraint IDs.",
+        "Do not mention files, functions, calls, imports, dependency graphs, or code in this stage output.",
+    ],
+    "module_contracts_candidate/v1": [
+        "module_id values must come from selected modules.",
+        "Every non-support module must own at least one capability; if ownership is unclear, add unresolved_questions instead of leaving ownership empty.",
+        "Each capability may have only one primary owner; shared ownership must use the schema's shared_owner_module_ids field.",
+        "state_id, error_id, and constraint_id references must come from the accepted core design and engineering constraints.",
+        "Do not generate files, functions, calls, access paths, imports, dependency graphs, or code.",
+    ],
+    "function_inventory_candidate/v1": [
+        "Generate only a function inventory; do not include input/output contracts, state access, wire mappings, calls, file IDs, declarations, dependency graphs, or code.",
+        "function_id values must be new and unique within this candidate; function names must be unique.",
+        "module_id must be the current module or another module explicitly present in module_contracts.",
+        "If the module owns decode, encode, dispatch, state-machine, lifecycle, or error-policy responsibilities, represent them with the matching function_kind values or add unresolved_questions.",
+        "covers_handler_ids, covers_message_ids, and covers_field_ids may reference only existing handler, message, and field IDs.",
+    ],
+    "function_contract_detail_patch/v1": [
+        "Patch existing function_id values only; never add a new function.",
+        "contract_kind is a structural category only. Use typed for scalar/status/boolean return values; put status_code, boolean, void, pointer_null, or out_param in error_behavior.return_policy.",
+        "type_refs may reference only existing canonical type IDs.",
+        "state_access.access_kind write or read_write is allowed only when the function's module owns that state. Otherwise use read, omit that state access, or add unresolved_questions.",
+        "Do not generate calls_allowed, files, dependency graphs, or code.",
+    ],
+    "wire_access_binding_patch/v1": [
+        "direction=parse may bind only parser functions; direction=serialize may bind only serializer functions.",
+        "Every target wire field must be covered by a parse or serialize wire_mapping_entry, or by unresolved_questions with that exact field_id as target_id.",
+        "Parser and serializer functions must not write state through access paths; their access_path_entries should use read unless the function kind permits mutation.",
+        "access_path is an access description, not a new state. state_id must come from existing state_design.",
+        "Do not add new functions, messages, fields, states, calls, dependency graphs, or code.",
+    ],
+    "calls_allowed_candidate/v1": [
+        "caller_function_id and callee_function_id must come from existing functions.",
+        "Do not create self-calls.",
+        "Do not call private or static functions across module boundaries.",
+        "The planned calls_allowed graph must avoid prohibited cycles.",
+        "Do not generate imports, file graphs, dependency graphs, new functions, or code.",
+    ],
+    "file_layout_candidate/v1": [
+        "Do not add functions; every existing function must have exactly one function_file_assignment.",
+        "exports_type_ids may contain only canonical type IDs; never use state IDs, message IDs, field IDs, filenames, paths, or natural-language type names.",
+        "imports_allowed may reference only files[].file_id values from this same candidate; do not use paths or guessed header/source filenames as IDs.",
+        "Public functions must have a declaration_file_id whose file kind is header.",
+        "Private or static functions must not be exposed through a header declaration_file_id.",
+    ],
+    "dependency_repair_patch/v1": [
+        "Repair only dependency inputs; never output dependency_graph.",
+        "Repair actions may affect only existing function IDs and file IDs.",
+        "For adjust_imports_allowed, file_id, add_import_file_ids, and remove_import_file_ids must be copied exactly from legal_id_universe.file_ids or files[].file_id.",
+        "A path, header filename, or source filename is not a file_id unless that exact string appears in the allowed file IDs.",
+        "Do not add modules, files, functions, capabilities, protocol facts, dependency graphs, or code.",
+    ],
+}
+
 
 def protocol_profile_patch_messages(planning_ir: dict[str, Any], deterministic_profile: dict[str, Any]) -> list[dict[str, str]]:
     return [
@@ -367,6 +440,9 @@ def _stage_messages(
                     "forbidden_fields": forbidden_fields,
                     "validator_after_output": validator,
                     context_key: context,
+                    "id_reference_rules": ID_REFERENCE_RULES,
+                    "enum_usage_rules": ENUM_USAGE_RULES,
+                    "semantic_validation_rules": STAGE_SEMANTIC_RULES.get(expected_schema, []),
                     "hard_validation_rules": [
                         f"schema_version must be exactly {expected_schema}.",
                         "The JSON object must match output_shape exactly.",
