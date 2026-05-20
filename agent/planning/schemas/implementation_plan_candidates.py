@@ -345,6 +345,7 @@ INTERNAL_TYPE_REF_SCHEMA = _object(
 SERVICE_REQUIREMENT_SCHEMA = _object(
     {
         "service_requirement_id": STRING,
+        "requirement_kind": _scalar("string", enum={"external_runtime_service", "cross_module_service", "owned_responsibility"}),
         "operation": STRING,
         "required_capability_ids": STRING_LIST,
         "expected_inputs": STRING_LIST,
@@ -450,9 +451,10 @@ CALLS_ALLOWED_UPDATE_SCHEMA = _object(
 FILE_ITEM_SCHEMA = _object(
     {
         "file_id": STRING,
-        "path": STRING,
+        "source_path": STRING,
+        "header_path": STRING,
         "module_id": STRING,
-        "kind": _scalar("string", enum={"header", "source", "test", "main"}),
+        "kind": _scalar("string", enum={"source_header_pair"}),
         "responsibility": STRING,
         "exports_function_ids": STRING_LIST,
         "implements_function_ids": STRING_LIST,
@@ -589,9 +591,9 @@ SCHEMA_SPECS: dict[str, SchemaSpec] = {
             "unresolved_questions": _array(UNRESOLVED_QUESTION_SCHEMA),
         }
     ),
-    "file_layout_candidate/v1": _object(
+    "file_layout_candidate/v2": _object(
         {
-            "schema_version": _scalar("string", enum={"file_layout_candidate/v1"}),
+            "schema_version": _scalar("string", enum={"file_layout_candidate/v2"}),
             "candidate_id": STRING,
             "producer": PRODUCER_SCHEMA,
             "files": _array(FILE_ITEM_SCHEMA),

@@ -266,11 +266,12 @@ LLM 参与：
 - 5.4b 按 module 逐个补全 C signature；module 内 function 数量超过 8 时按 batch=8 分批：
   - 写入 `signature` 与 `signature_dependencies`。
   - 不允许修改 5.4a 的函数集合、函数名或 API surface。
-  - 签名只能引用合法 public/opaque/type universe，禁止跨 module private type 进入 signature。
+  - `type_ref` 只能引用 canonical `type_ids` 或 C/POSIX/network `system_type_ids`，禁止把 state/message/field id 当作 type。
   - 不合法时使用 deterministic signature fallback。
 
 - 5.4c 按 module 逐个补全 behavior/internal dependency contract；module 内 function 数量超过 4 时按 batch=4 分批：
   - 写入 `behavior_contract`、`error_behavior`、`state_access`、`resource_access`、`internal_type_refs`、`service_requirements`。
+  - `service_requirements` 按 `external_runtime_service` / `cross_module_service` / `owned_responsibility` 分类；只有跨 module 服务进入 5.4e call planning。
   - 不允许修改 signature，也不直接生成 call edge。
   - 旧 `input_contract` / `output_contract` 由 5.4b signature 与 5.4c behavior 兼容生成。
   - 不合法时使用 deterministic behavior fallback。
@@ -281,9 +282,10 @@ LLM 参与：
   - 不允许新增 function 或修改 signature。
   - 不合法时使用 deterministic wire/access fallback。
 
-- 5.4e 生成 `calls_allowed` candidate：
-  - 将 5.4c 的 `service_requirements` 解析为 concrete call edges。
+- 5.4e 按 module 逐个生成 `calls_allowed` candidate；module 内 function 数量超过 4 时按 batch=4 分批：
+  - 将 5.4c 的 `cross_module_service` requirements 解析为 concrete call edges。
   - 只允许引用已存在 function ids。
+  - batch candidate 只覆盖当前 caller function 集合，聚合后再做全局 coverage 与 cycle 校验。
   - 校验跨 module 调用不能违反 selected architecture policy。
   - 禁止 self-call 和 prohibited cycle；无法解析的 service requirement 写入 unresolved。
   - 不合法时使用 deterministic calls fallback。
@@ -291,8 +293,9 @@ LLM 参与：
 **根据已有函数集合进行文件分配**
 - 5.5 在函数全集稳定后生成 C `source_header_pair` file layout：
   - 每个 file 只能归属已存在 module。
+  - 每个 file item 是“一源一头 FILE_SPEC 单元”，`file_id` 使用源文件无后缀路径，例如 `file:mqtt/transport_runtime/transport_runtime`。
   - 只能分配 existing functions。
-  - 填充 `source_path`、`header_path`、`exports`、`implements`、`imports_allowed` 和 traceability。
+  - 填充 `source_path`、`header_path`、`exports`、`implements`、`imports_allowed` 和 traceability；`imports_allowed` 只引用其他 FILE_SPEC ids，不引用 `.h` / `.c` 或 `header:*`。
   - 不合法时使用 deterministic file layout fallback。
 
 - 5.6 由规则层从 `signature_dependencies`、`state/resource access`、`calls_allowed` 和 `imports_allowed` 派生最终 `dependency_graph`。

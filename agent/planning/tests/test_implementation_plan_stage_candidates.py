@@ -107,6 +107,21 @@ def _break_first_call(candidate: dict) -> None:
     candidate["call_updates"][0]["calls_allowed"].append({"callee_function_id": candidate["call_updates"][0]["caller_function_id"], "call_kind": "bad", "required": True, "service_requirement_ids": [], "call_reason": "bad", "param_bindings": [], "return_binding": {"policy": "ignore", "target_ref": "", "cleanup_function_id": ""}, "failure_behavior": "ignore", "trace_ref_keys": [], "status": "assumed"})
 
 
+def _call_edge(callee: str, service_ids: list[str]) -> dict:
+    return {
+        "callee_function_id": callee,
+        "call_kind": "service_requirement",
+        "required": True,
+        "service_requirement_ids": service_ids,
+        "call_reason": "test edge",
+        "param_bindings": [],
+        "return_binding": {"policy": "ignore", "target_ref": "", "cleanup_function_id": ""},
+        "failure_behavior": "return_error",
+        "trace_ref_keys": [],
+        "status": "inferred",
+    }
+
+
 class ImplementationPlanStageCandidateTests(unittest.TestCase):
     def _fixtures(self, tmp: Path):
         facts = ROOT / "agent" / "facts" / "gold_facts" / "mqtt_min" / "protocol_facts.json"
@@ -304,6 +319,124 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             invalid["dependency_graph"] = {}
             self.assertTrue(validate_core_design_candidate(invalid, planning_ir, profile, selected, constraints))
             self.assertEqual(draft["state_design"], [])
+
+    def test_file_layout_uses_source_header_pair_file_units(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            _, _, _, _, draft, _, items = self._fixtures(Path(raw_tmp))
+            layout = items["layout"]
+            self.assertEqual(layout["schema_version"], "file_layout_candidate/v2")
+            for file_item in layout["files"]:
+                self.assertEqual(file_item["kind"], "source_header_pair")
+                self.assertEqual(file_item["file_id"], f"file:{file_item['source_path'].removesuffix('.c')}")
+                self.assertFalse(file_item["file_id"].startswith("header:"))
+                for imported in file_item["imports_allowed"]:
+                    self.assertTrue(imported.startswith("file:"))
+                    self.assertFalse(imported.startswith("header:"))
+                    self.assertFalse(imported.endswith((".h", ".c")))
+            final_file_ids = {item["file_id"] for item in draft["file_layout"]["files"]}
+            self.assertTrue(final_file_ids)
+            for file_item in draft["file_layout"]["files"]:
+                self.assertFalse(file_item["file_id"].startswith("header:"))
+                self.assertTrue(set(file_item["imports_allowed"]).issubset(final_file_ids))
+
+    def test_signature_validator_allows_system_types_and_rejects_wrong_namespace_refs(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            _, _, _, _, draft, _, items = self._fixtures(Path(raw_tmp))
+            signature = copy.deepcopy(items["signature"])
+            update = next(item for item in signature["function_signature_updates"] if item["signature"]["params"])
+            update["signature"]["params"][0]["type_ref"] = "size_t"
+            self.assertFalse(validate_function_signature_patch(signature, draft))
+            update["signature"]["params"][0]["type_ref"] = "state:session_state"
+            self.assertTrue(_has(validate_function_signature_patch(signature, draft), "invalid_signature_param_type_ref_namespace"))
+            update["signature"]["params"][0]["type_ref"] = "made_up_type"
+            self.assertTrue(_has(validate_function_signature_patch(signature, draft), "unknown_signature_param_type_ref"))
+
+    def test_behavior_service_requirements_are_classified(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            _, _, constraints, _, draft, _, items = self._fixtures(Path(raw_tmp))
+            behavior = copy.deepcopy(items["behavior"])
+            behavior["function_behavior_updates"][0]["service_requirements"] = [
+                {
+                    "service_requirement_id": "srv:test_runtime",
+                    "requirement_kind": "external_runtime_service",
+                    "operation": "read socket",
+                    "required_capability_ids": [],
+                    "expected_inputs": [],
+                    "expected_output": "bytes",
+                    "failure_policy": "return_error",
+                },
+                {
+                    "service_requirement_id": "srv:test_cross",
+                    "requirement_kind": "cross_module_service",
+                    "operation": "ask another module",
+                    "required_capability_ids": [],
+                    "expected_inputs": [],
+                    "expected_output": "status",
+                    "failure_policy": "return_error",
+                },
+            ]
+            self.assertFalse(validate_function_behavior_contract_patch(behavior, draft, constraints))
+            behavior["function_behavior_updates"][0]["service_requirements"][0].pop("requirement_kind")
+            self.assertTrue(_has(validate_function_behavior_contract_patch(behavior, draft, constraints), "missing_required_field"))
+
+    def test_calls_allowed_scoped_validation_and_callable_filtering(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            _, _, _, selected, draft, _, _ = self._fixtures(Path(raw_tmp))
+            functions = draft["function_contracts"]
+            caller = functions[0]
+            same_module_callee = next(item for item in functions if item["module_id"] == caller["module_id"] and item["function_id"] != caller["function_id"])
+            other_module_callee = next(item for item in functions if item["module_id"] != caller["module_id"])
+            caller["service_requirements"] = [
+                {
+                    "service_requirement_id": "srv:test_cross",
+                    "requirement_kind": "cross_module_service",
+                    "operation": "test cross-module need",
+                    "required_capability_ids": [],
+                    "expected_inputs": [],
+                    "expected_output": "status",
+                    "failure_policy": "return_error",
+                }
+            ]
+            candidate = {
+                "schema_version": "calls_allowed_candidate/v2",
+                "candidate_id": "candidate:test:scoped",
+                "producer": {"stage": "5.4e_call_planning", "prompt_name": "calls_allowed_candidate_prompt", "prompt_version": "test"},
+                "call_updates": [{"caller_function_id": caller["function_id"], "calls_allowed": [_call_edge(same_module_callee["function_id"], ["srv:test_cross"])]}],
+                "unresolved_service_requirements": [],
+                "assumptions": [],
+                "unresolved_questions": [],
+            }
+            self.assertFalse(
+                validate_calls_allowed_candidate(
+                    candidate,
+                    draft,
+                    selected,
+                    expected_caller_ids={caller["function_id"]},
+                    expected_service_requirement_ids={"srv:test_cross"},
+                    callable_function_ids=set(),
+                )
+            )
+            candidate["call_updates"].append({"caller_function_id": same_module_callee["function_id"], "calls_allowed": []})
+            self.assertTrue(
+                _has(
+                    validate_calls_allowed_candidate(candidate, draft, selected, expected_caller_ids={caller["function_id"]}, expected_service_requirement_ids={"srv:test_cross"}),
+                    "calls_allowed_batch_coverage_mismatch",
+                )
+            )
+            candidate["call_updates"] = [{"caller_function_id": caller["function_id"], "calls_allowed": [_call_edge(other_module_callee["function_id"], ["srv:test_cross"])]}]
+            self.assertTrue(
+                _has(
+                    validate_calls_allowed_candidate(
+                        candidate,
+                        draft,
+                        selected,
+                        expected_caller_ids={caller["function_id"]},
+                        expected_service_requirement_ids={"srv:test_cross"},
+                        callable_function_ids=set(),
+                    ),
+                    "call_not_in_callable_universe",
+                )
+            )
 
 
 if __name__ == "__main__":

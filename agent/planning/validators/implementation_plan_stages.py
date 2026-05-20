@@ -18,6 +18,7 @@ from ..schemas.implementation_plan import (
 )
 from ..schemas.implementation_plan_candidates import validate_shape
 from ..stages.implementation_plan import _handler_surfaces, _safe_id, _surface_units, _wire_fields
+from ..stages.implementation_plan_context import SYSTEM_TYPE_IDS
 from .implementation_plan import validate_implementation_plan
 
 
@@ -307,6 +308,23 @@ def _batch_function_ids(patch: dict[str, Any], key: str) -> set[str]:
     return {str(item.get("function_id", "")) for item in patch.get(key, []) if isinstance(item, dict)}
 
 
+def _service_requirement_ids(functions: dict[str, dict[str, Any]], caller_ids: set[str] | None = None, *, kinds: set[str] | None = None) -> set[str]:
+    result: set[str] = set()
+    for function_id, function in functions.items():
+        if caller_ids is not None and function_id not in caller_ids:
+            continue
+        for requirement in function.get("service_requirements", []):
+            if not isinstance(requirement, dict):
+                continue
+            requirement_id = str(requirement.get("service_requirement_id", "")).strip()
+            if not requirement_id:
+                continue
+            requirement_kind = str(requirement.get("requirement_kind", "cross_module_service"))
+            if kinds is None or requirement_kind in kinds:
+                result.add(requirement_id)
+    return result
+
+
 def validate_function_signature_patch(patch: dict[str, Any], draft: dict[str, Any], expected_function_ids: set[str] | None = None, *, path: str | None = None) -> list[PlanningDiagnostic]:
     diagnostics = _shape(patch, FUNCTION_SIGNATURE_PATCH_SCHEMA_VERSION, path=path)
     if has_errors(diagnostics):
@@ -314,6 +332,8 @@ def validate_function_signature_patch(patch: dict[str, Any], draft: dict[str, An
     functions = _function_by_id(draft)
     function_ids = set(functions)
     type_ids = _type_ids(draft)
+    system_type_ids = set(SYSTEM_TYPE_IDS)
+    legal_type_refs = type_ids | system_type_ids
     module_ids = _module_contract_ids(draft.get("module_contracts", []))
     target_ids = _batch_function_ids(patch, "function_signature_updates")
     if expected_function_ids is not None and target_ids != expected_function_ids:
@@ -335,13 +355,19 @@ def validate_function_signature_patch(patch: dict[str, Any], draft: dict[str, An
             diagnostics.append(PlanningDiagnostic("error", "empty_function_signature", f"function '{function_id}' signature is incomplete", path))
         for param in signature["params"]:
             type_ref = str(param.get("type_ref", ""))
-            if type_ref and type_ref not in type_ids:
+            if type_ref.startswith(("state:", "message:", "field:")):
+                diagnostics.append(PlanningDiagnostic("error", "invalid_signature_param_type_ref_namespace", f"function '{function_id}' uses non-type namespace as type_ref '{type_ref}'", path))
+            elif type_ref and type_ref not in legal_type_refs:
                 diagnostics.append(PlanningDiagnostic("error", "unknown_signature_param_type_ref", f"function '{function_id}' references unknown type_ref '{type_ref}'", path))
         for dep in update["signature_dependencies"]:
             type_ref = str(dep.get("type_ref", ""))
             owner = str(dep.get("owner_module_id", ""))
-            if type_ref and dep.get("symbol_kind") != "system_type" and type_ref not in type_ids:
+            if type_ref.startswith(("state:", "message:", "field:")):
+                diagnostics.append(PlanningDiagnostic("error", "invalid_signature_dependency_type_namespace", f"function '{function_id}' uses non-type dependency '{type_ref}'", path))
+            elif type_ref and dep.get("symbol_kind") != "system_type" and type_ref not in type_ids:
                 diagnostics.append(PlanningDiagnostic("error", "unknown_signature_dependency_type", f"function '{function_id}' references unknown signature dependency '{type_ref}'", path))
+            elif type_ref and dep.get("symbol_kind") == "system_type" and type_ref not in system_type_ids:
+                diagnostics.append(PlanningDiagnostic("error", "unknown_signature_system_type", f"function '{function_id}' references unknown system type '{type_ref}'", path))
             if owner and owner not in module_ids:
                 diagnostics.append(PlanningDiagnostic("error", "unknown_signature_dependency_owner", f"function '{function_id}' signature dependency owner '{owner}' is not a module", path))
     return diagnostics
@@ -441,18 +467,25 @@ def validate_wire_access_binding_patch(patch: dict[str, Any], draft: dict[str, A
     return diagnostics
 
 
-def validate_calls_allowed_candidate(candidate: dict[str, Any], draft: dict[str, Any], selected_architecture: dict[str, Any] | None = None, *, path: str | None = None) -> list[PlanningDiagnostic]:
+def validate_calls_allowed_candidate(
+    candidate: dict[str, Any],
+    draft: dict[str, Any],
+    selected_architecture: dict[str, Any] | None = None,
+    *,
+    expected_caller_ids: set[str] | None = None,
+    expected_service_requirement_ids: set[str] | None = None,
+    callable_function_ids: set[str] | None = None,
+    path: str | None = None,
+) -> list[PlanningDiagnostic]:
     diagnostics = _shape(candidate, CALLS_ALLOWED_CANDIDATE_SCHEMA_VERSION, path=path)
     if has_errors(diagnostics):
         return diagnostics
     functions = _function_by_id(draft)
     module_ids = _module_ids_from_arch(selected_architecture or {"architecture": {"modules": draft.get("module_contracts", [])}})
-    service_requirement_ids = {
-        str(requirement.get("service_requirement_id", ""))
-        for function in functions.values()
-        for requirement in function.get("service_requirements", [])
-        if isinstance(requirement, dict) and str(requirement.get("service_requirement_id", ""))
-    }
+    target_ids = {str(update.get("caller_function_id", "")) for update in candidate["call_updates"]}
+    if expected_caller_ids is not None and target_ids != expected_caller_ids:
+        diagnostics.append(PlanningDiagnostic("error", "calls_allowed_batch_coverage_mismatch", "calls_allowed candidate must update exactly the current batch callers", path))
+    service_requirement_ids = expected_service_requirement_ids if expected_service_requirement_ids is not None else _service_requirement_ids(functions, kinds={"cross_module_service", "external_runtime_service"})
     unresolved_service_ids = set(candidate.get("unresolved_service_requirements", []))
     resolved_service_ids: set[str] = set()
     edges: list[tuple[str, str]] = []
@@ -468,6 +501,8 @@ def validate_calls_allowed_candidate(candidate: dict[str, Any], draft: dict[str,
             if callee not in functions:
                 diagnostics.append(PlanningDiagnostic("error", "unknown_call_callee", f"caller '{caller}' references unknown callee '{callee}'", path))
                 continue
+            if callable_function_ids is not None and callee not in callable_function_ids and callee_fn.get("module_id") != caller_fn.get("module_id"):
+                diagnostics.append(PlanningDiagnostic("error", "call_not_in_callable_universe", f"caller '{caller}' may not call '{callee}' in this scoped batch", path))
             if callee == caller:
                 diagnostics.append(PlanningDiagnostic("error", "self_call_not_allowed", f"caller '{caller}' may not call itself", path))
             if callee_fn.get("visibility") in {"private", "static"} and callee_fn.get("module_id") != caller_fn.get("module_id"):
@@ -500,16 +535,20 @@ def validate_file_layout_candidate(candidate: dict[str, Any], draft: dict[str, A
     type_ids = _type_ids(draft)
     file_ids: set[str] = set()
     paths: set[str] = set()
-    kind_by_file: dict[str, str] = {}
     for file_item in candidate["files"]:
         file_id = file_item["file_id"]
+        expected_file_id = f"file:{str(file_item['source_path']).removesuffix('.c')}"
+        if file_id != expected_file_id:
+            diagnostics.append(PlanningDiagnostic("error", "invalid_file_unit_id", f"file_id '{file_id}' must be '{expected_file_id}'", path))
+        if file_item["kind"] != "source_header_pair":
+            diagnostics.append(PlanningDiagnostic("error", "invalid_file_layout_kind", f"file '{file_id}' must be a source_header_pair", path))
         if file_id in file_ids:
             diagnostics.append(PlanningDiagnostic("error", "duplicate_file_id", f"duplicate file_id '{file_id}'", path))
         file_ids.add(file_id)
-        if file_item["path"] in paths:
-            diagnostics.append(PlanningDiagnostic("error", "duplicate_layout_path", f"duplicate path '{file_item['path']}'", path))
-        paths.add(file_item["path"])
-        kind_by_file[file_id] = file_item["kind"]
+        for path_key in ("source_path", "header_path"):
+            if file_item[path_key] in paths:
+                diagnostics.append(PlanningDiagnostic("error", "duplicate_layout_path", f"duplicate path '{file_item[path_key]}'", path))
+            paths.add(file_item[path_key])
         if file_item["module_id"] not in module_ids:
             diagnostics.append(PlanningDiagnostic("error", "unknown_layout_module", f"file '{file_id}' belongs to unknown module", path))
         for function_id in file_item["exports_function_ids"] + file_item["implements_function_ids"]:
@@ -522,6 +561,10 @@ def validate_file_layout_candidate(candidate: dict[str, Any], draft: dict[str, A
         for imported in file_item["imports_allowed"]:
             if imported not in file_ids:
                 diagnostics.append(PlanningDiagnostic("error", "layout_imports_unknown_file", f"file '{file_item['file_id']}' imports unknown file '{imported}'", path))
+            if imported == file_item["file_id"]:
+                diagnostics.append(PlanningDiagnostic("error", "layout_imports_self", f"file '{file_item['file_id']}' must not import itself", path))
+            if str(imported).startswith("header:") or str(imported).endswith((".h", ".c")):
+                diagnostics.append(PlanningDiagnostic("error", "layout_imports_path_or_header", f"file '{file_item['file_id']}' imports non-FILE_SPEC target '{imported}'", path))
     assigned = {item["function_id"] for item in candidate["function_file_assignments"]}
     for missing in sorted(function_ids - assigned):
         diagnostics.append(PlanningDiagnostic("error", "unassigned_function_file", f"function '{missing}' is not assigned to a file", path))
@@ -537,10 +580,10 @@ def validate_file_layout_candidate(candidate: dict[str, Any], draft: dict[str, A
         if assignment["visibility"] == "public":
             if not declaration_file_id:
                 diagnostics.append(PlanningDiagnostic("error", "public_function_not_declared", f"public function '{function_id}' has no declaration file", path))
-            elif kind_by_file.get(declaration_file_id) != "header":
-                diagnostics.append(PlanningDiagnostic("error", "public_function_declared_outside_header", f"public function '{function_id}' must be declared in a header", path))
-        if assignment["visibility"] in {"private", "static"} and declaration_file_id and kind_by_file.get(declaration_file_id) == "header":
-            diagnostics.append(PlanningDiagnostic("error", "private_function_exposed_in_header", f"private/static function '{function_id}' must not be exposed in a header", path))
+            elif declaration_file_id != assignment["implementation_file_id"]:
+                diagnostics.append(PlanningDiagnostic("error", "public_function_declared_outside_file_unit", f"public function '{function_id}' must be declared in its FILE_SPEC unit", path))
+        if assignment["visibility"] in {"private", "static"} and declaration_file_id:
+            diagnostics.append(PlanningDiagnostic("error", "private_function_exposed_in_header", f"private/static function '{function_id}' must not be exposed in a FILE_SPEC header", path))
     return diagnostics
 
 

@@ -6,6 +6,7 @@ from typing import Any
 from ..schemas.implementation_plan import SCHEMA_VERSION
 from .dependencies import derive_dependency_graph
 from .implementation_plan import _capability_refs, _field_value, _function_signature, _handler_surfaces, _safe_id, _surface_units, _target_directives, _wire_fields
+from .implementation_plan_context import SYSTEM_TYPE_IDS
 
 
 def _constraint_ids(constraints: dict[str, Any]) -> list[str]:
@@ -110,8 +111,7 @@ def build_plan_skeleton(
             "constraint_ids": _constraint_ids(constraints),
             "field_ids": [str(item.get("field_id", "")) for item in wire_fields],
             "function_id_pattern": "fn:<module_id>:<action>",
-            "file_id_pattern": "file:<module_id>",
-            "header_file_id_pattern": "header:<module_id>",
+            "file_id_pattern": "file:<source_path_without_.c>",
         },
         "validation_targets": {
             "capability_coverage": True,
@@ -469,6 +469,37 @@ def _module_functions(draft: dict[str, Any], module_id: str, functions: list[dic
     return [item for item in source if isinstance(item, dict) and str(item.get("module_id")) == module_id]
 
 
+def _known_type_refs(draft: dict[str, Any]) -> set[str]:
+    return {str(item.get("type_id", "")) for item in draft.get("canonical_types", []) if isinstance(item, dict)} | set(SYSTEM_TYPE_IDS)
+
+
+def _normalize_type_ref(value: Any, c_type: Any, known: set[str]) -> str:
+    ref = str(value or "").strip()
+    spelling = str(c_type or "").strip().removeprefix("const ").rstrip("*").strip()
+    if ref.startswith(("state:", "message:", "field:", "file:", "func:", "module:")):
+        return ""
+    if ref in known:
+        return ref
+    if spelling in known:
+        return spelling
+    return ""
+
+
+def _service_requirement_ids(functions: list[dict[str, Any]]) -> list[str]:
+    result: list[str] = []
+    for function in functions:
+        if not isinstance(function, dict):
+            continue
+        for requirement in function.get("service_requirements", []):
+            if (
+                isinstance(requirement, dict)
+                and str(requirement.get("requirement_kind", "cross_module_service")) in {"cross_module_service", "external_runtime_service"}
+                and str(requirement.get("service_requirement_id", "")).strip()
+            ):
+                result.append(str(requirement["service_requirement_id"]))
+    return sorted(set(result))
+
+
 def fallback_function_signatures(draft: dict[str, Any], module_id: str, functions: list[dict[str, Any]] | None = None, *, batch_index: int = 0, batch_size: int = 0) -> dict[str, Any]:
     updates = []
     for function in _module_functions(draft, module_id, functions):
@@ -513,6 +544,7 @@ def fallback_function_signatures(draft: dict[str, Any], module_id: str, function
 
 def merge_function_signatures(draft: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
     result = deepcopy(draft)
+    known_type_refs = _known_type_refs(result)
     updates = {str(item.get("function_id")): item for item in patch.get("function_signature_updates", []) if isinstance(item, dict)}
     for function in result.get("function_contracts", []):
         update = updates.get(str(function.get("function_id")))
@@ -520,8 +552,13 @@ def merge_function_signatures(draft: dict[str, Any], patch: dict[str, Any]) -> d
             continue
         signature = deepcopy(update["signature"])
         signature["return_type"] = signature.get("return_type", "int")
+        for param in signature.get("params", []):
+            param["type_ref"] = _normalize_type_ref(param.get("type_ref", ""), param.get("type", ""), known_type_refs)
         function["signature"] = signature
-        function["signature_dependencies"] = update.get("signature_dependencies", [])
+        dependencies = deepcopy(update.get("signature_dependencies", []))
+        for dep in dependencies:
+            dep["type_ref"] = _normalize_type_ref(dep.get("type_ref", ""), dep.get("symbol_name", ""), known_type_refs)
+        function["signature_dependencies"] = dependencies
         function["interface_type_declarations"] = update.get("interface_type_declarations", [])
         params = [
             {
@@ -733,10 +770,11 @@ def merge_wire_access_binding(draft: dict[str, Any], patch: dict[str, Any]) -> d
     return result
 
 
-def fallback_calls_allowed(draft: dict[str, Any]) -> dict[str, Any]:
-    functions = [item for item in draft.get("function_contracts", []) if isinstance(item, dict)]
+def fallback_calls_allowed(draft: dict[str, Any], functions: list[dict[str, Any]] | None = None, *, batch_index: int = 0, batch_size: int = 0) -> dict[str, Any]:
+    functions = functions if functions is not None else [item for item in draft.get("function_contracts", []) if isinstance(item, dict)]
     by_module_kind: dict[tuple[str, str], list[str]] = {}
-    for function in functions:
+    all_functions = [item for item in draft.get("function_contracts", []) if isinstance(item, dict)]
+    for function in all_functions:
         by_module_kind.setdefault((str(function.get("module_id", "")), str(function.get("function_kind", ""))), []).append(str(function.get("function_id", "")))
     updates = []
     for function in functions:
@@ -776,7 +814,7 @@ def fallback_calls_allowed(draft: dict[str, Any]) -> dict[str, Any]:
         "candidate_id": "candidate:calls_allowed:deterministic",
         "producer": _producer("5.4e_call_planning", "calls_allowed_candidate_prompt"),
         "call_updates": updates,
-        "unresolved_service_requirements": [],
+        "unresolved_service_requirements": _service_requirement_ids(functions),
         "assumptions": [],
         "unresolved_questions": [],
     }
@@ -803,57 +841,48 @@ def fallback_file_layout(draft: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(module, dict):
             continue
         module_id = str(module.get("module_id", "module"))
-        file_id = f"file:{module_id}"
-        header_file_id = f"header:{module_id}"
         source_path = f"{protocol}/{module_id}/{module_id}.c"
+        file_id = f"file:{source_path[:-2]}"
         header_path = f"{protocol}/{module_id}/{module_id}.h"
         module_functions = [item for item in draft.get("function_contracts", []) if isinstance(item, dict) and str(item.get("module_id")) == module_id]
         public_functions = [str(item.get("function_id")) for item in module_functions if str(item.get("visibility", "public")).lower() == "public"]
-        imports_allowed = [f"file:{dep.get('owner_module_id')}" for function in module_functions for dep in function.get("signature_dependencies", []) if isinstance(dep, dict) and dep.get("owner_module_id") and dep.get("owner_module_id") != module_id]
+        imports_allowed = [
+            f"file:{protocol}/{dep.get('owner_module_id')}/{dep.get('owner_module_id')}"
+            for function in module_functions
+            for dep in function.get("signature_dependencies", [])
+            if isinstance(dep, dict) and dep.get("owner_module_id") and dep.get("owner_module_id") != module_id
+        ]
         imports_allowed = sorted({item for item in imports_allowed if item})
-        files.extend(
-            [
-                {
-                    "file_id": header_file_id,
-                    "path": header_path,
-                    "module_id": module_id,
-                    "kind": "header",
-                    "responsibility": f"Declare the {module_id} public interface.",
-                    "exports_function_ids": public_functions,
-                    "implements_function_ids": [],
-                    "exports_type_ids": [],
-                    "imports_allowed": [],
-                    "trace_ref_keys": module.get("source_fact_ids", []),
-                    "status": "inferred",
-                },
-                {
-                    "file_id": file_id,
-                    "path": source_path,
-                    "module_id": module_id,
-                    "kind": "source",
-                    "responsibility": f"Implement the {module_id} module contract.",
-                    "exports_function_ids": [],
-                    "implements_function_ids": [str(item.get("function_id")) for item in module_functions],
-                    "exports_type_ids": [],
-                    "imports_allowed": [header_file_id, *imports_allowed],
-                    "trace_ref_keys": module.get("source_fact_ids", []),
-                    "status": "inferred",
-                },
-            ]
+        files.append(
+            {
+                "file_id": file_id,
+                "source_path": source_path,
+                "header_path": header_path,
+                "module_id": module_id,
+                "kind": "source_header_pair",
+                "responsibility": f"Implement and declare the {module_id} module contract.",
+                "exports_function_ids": public_functions,
+                "implements_function_ids": [str(item.get("function_id")) for item in module_functions],
+                "exports_type_ids": [],
+                "imports_allowed": imports_allowed,
+                "trace_ref_keys": module.get("source_fact_ids", []),
+                "status": "inferred",
+            }
         )
         for function in module_functions:
+            visibility = str(function.get("visibility", "public")).lower()
             assignments.append(
                 {
                     "function_id": function.get("function_id"),
                     "implementation_file_id": file_id,
-                    "declaration_file_id": header_file_id if str(function.get("visibility", "public")).lower() == "public" else "",
+                    "declaration_file_id": file_id if visibility == "public" else "",
                     "visibility": str(function.get("visibility", "public")),
                     "reason": "Deterministic module source/header placement.",
                     "status": "inferred",
                 }
             )
     return {
-        "schema_version": "file_layout_candidate/v1",
+        "schema_version": "file_layout_candidate/v2",
         "candidate_id": "candidate:file_layout:deterministic",
         "producer": _producer("5.5_file_layout", "file_layout_candidate_prompt"),
         "files": files,
@@ -865,25 +894,23 @@ def fallback_file_layout(draft: dict[str, Any]) -> dict[str, Any]:
 
 def merge_file_layout(draft: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any]:
     result = deepcopy(draft)
-    source_by_module = {str(item.get("module_id")): item for item in candidate.get("files", []) if isinstance(item, dict) and item.get("kind") == "source"}
-    header_by_module = {str(item.get("module_id")): item for item in candidate.get("files", []) if isinstance(item, dict) and item.get("kind") == "header"}
     result["file_layout"] = {
         "files": [
             {
-                "file_id": source["file_id"],
-                "header_file_id": header_by_module.get(module_id, {}).get("file_id", ""),
-                "module_id": module_id,
+                "file_id": item["file_id"],
+                "module_id": item["module_id"],
                 "kind": "source_header_pair",
-                "path": source["path"],
-                "source_path": source["path"],
-                "header_path": header_by_module.get(module_id, {}).get("path", ""),
-                "responsibility": source["responsibility"],
-                "exports": header_by_module.get(module_id, {}).get("exports_function_ids", []),
-                "implements": source["implements_function_ids"],
-                "imports_allowed": [item for item in source.get("imports_allowed", []) if str(item).startswith("file:")],
-                "traceability": {"source_fact_ids": source.get("trace_ref_keys", []), "decision_ids": [f"decision:file:{module_id}"]},
+                "path": item["source_path"],
+                "source_path": item["source_path"],
+                "header_path": item["header_path"],
+                "responsibility": item["responsibility"],
+                "exports": item["exports_function_ids"],
+                "implements": item["implements_function_ids"],
+                "imports_allowed": [target for target in item.get("imports_allowed", []) if str(target).startswith("file:") and target != item["file_id"]],
+                "traceability": {"source_fact_ids": item.get("trace_ref_keys", []), "decision_ids": [f"decision:file:{item['module_id']}"]},
             }
-            for module_id, source in source_by_module.items()
+            for item in candidate.get("files", [])
+            if isinstance(item, dict)
         ]
     }
     assignments = {str(item.get("function_id")): item for item in candidate.get("function_file_assignments", []) if isinstance(item, dict)}

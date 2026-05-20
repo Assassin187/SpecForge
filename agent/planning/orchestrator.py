@@ -933,17 +933,65 @@ class PlanningAgent:
         )
         draft = merge_wire_access_binding(draft, wire_patch)
 
-        calls_context = build_calls_allowed_context(draft, selected_architecture)
-        calls_candidate = stage_candidate(
-            stage_label="5.4e_call_planning",
-            prompt_name="calls_allowed_candidate_prompt",
-            messages=calls_allowed_candidate_messages(calls_context),
-            candidate_key="calls_allowed_candidate",
-            report_key="calls_allowed_validation_report",
-            fallback=fallback_calls_allowed(draft),
-            validator=lambda candidate: validate_calls_allowed_candidate(candidate, draft, selected_architecture),
-        )
-        draft = merge_calls_allowed(draft, calls_candidate)
+        calls_aggregate = {
+            "schema_version": "calls_allowed_candidate/v2",
+            "candidate_id": "candidate:calls_allowed:all_modules",
+            "producer": {
+                "stage": "5.4e_call_planning",
+                "prompt_name": "calls_allowed_candidate_prompt",
+                "prompt_version": "aggregate",
+            },
+            "call_updates": [],
+            "unresolved_service_requirements": [],
+            "assumptions": [],
+            "unresolved_questions": [],
+        }
+        for module in list(draft.get("module_contracts", [])):
+            module_id = str(module.get("module_id", ""))
+            module_functions = [item for item in draft.get("function_contracts", []) if isinstance(item, dict) and str(item.get("module_id")) == module_id]
+            batches = [module_functions[index:index + 4] for index in range(0, len(module_functions), 4)] or [[]]
+            for batch_index, batch in enumerate(batches):
+                expected_ids = {str(item.get("function_id", "")) for item in batch if isinstance(item, dict)}
+                expected_service_ids = {
+                    str(requirement.get("service_requirement_id", ""))
+                    for function in batch
+                    for requirement in function.get("service_requirements", [])
+                    if isinstance(requirement, dict)
+                    and str(requirement.get("requirement_kind", "cross_module_service")) in {"cross_module_service", "external_runtime_service"}
+                    and str(requirement.get("service_requirement_id", ""))
+                }
+                calls_context = build_calls_allowed_context(draft, selected_architecture, module_id, batch, batch_index=batch_index, batch_size=4)
+                callable_ids = {str(item.get("function_id", "")) for item in calls_context.get("callable_functions", []) if isinstance(item, dict)}
+                calls_candidate = stage_candidate(
+                    stage_label=f"5.4e_call_planning:{module_id}:{batch_index}",
+                    prompt_name="calls_allowed_candidate_prompt",
+                    messages=calls_allowed_candidate_messages(calls_context),
+                    candidate_key="calls_allowed_candidate",
+                    report_key="calls_allowed_validation_report",
+                    fallback=fallback_calls_allowed(draft, batch, batch_index=batch_index, batch_size=4),
+                    validator=lambda candidate, ids=expected_ids, service_ids=expected_service_ids, call_ids=callable_ids: validate_calls_allowed_candidate(
+                        candidate,
+                        draft,
+                        selected_architecture,
+                        expected_caller_ids=ids,
+                        expected_service_requirement_ids=service_ids,
+                        callable_function_ids=call_ids,
+                    ),
+                    step_log_suffix=f"{module_id}__batch_{batch_index}",
+                )
+                calls_aggregate["call_updates"].extend(calls_candidate.get("call_updates", []))
+                calls_aggregate["unresolved_service_requirements"].extend(calls_candidate.get("unresolved_service_requirements", []))
+                calls_aggregate["assumptions"].extend(calls_candidate.get("assumptions", []))
+                calls_aggregate["unresolved_questions"].extend(calls_candidate.get("unresolved_questions", []))
+        calls_aggregate["unresolved_service_requirements"] = sorted({str(item) for item in calls_aggregate["unresolved_service_requirements"] if str(item)})
+        calls_diags = validate_calls_allowed_candidate(calls_aggregate, draft, selected_architecture)
+        calls_path = store.write_step_json(STEP_FILENAMES["calls_allowed_candidate"], calls_aggregate)
+        artifact_paths["calls_allowed_candidate"] = calls_path
+        calls_report_path = store.write_step_json(STEP_FILENAMES["calls_allowed_validation_report"], validation_report("5.4e_call_planning:all_modules", calls_diags))
+        artifact_paths["calls_allowed_validation_report"] = calls_report_path
+        if has_errors(calls_diags):
+            diagnostics.extend(calls_diags)
+        draft = merge_calls_allowed(draft, calls_aggregate)
 
         file_context = build_file_layout_context(draft, planning_ir, constraints)
         file_candidate = stage_candidate(
