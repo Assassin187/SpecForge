@@ -3,10 +3,15 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..diagnostics import PlanningDiagnostic
+from .coder_schema import validate_coder_spec_bundle_against_schema
 
 
-def validate_coder_compatibility(spec_root: str | Path) -> list[PlanningDiagnostic]:
+def validate_coder_compatibility(spec_root: str | Path, schema_root: str | Path | None = None, *, strict_schema: bool = True) -> list[PlanningDiagnostic]:
     diagnostics: list[PlanningDiagnostic] = []
+    schema_diags = validate_coder_spec_bundle_against_schema(spec_root, schema_root)
+    diagnostics.extend(schema_diags)
+    if strict_schema and any(item.level == "error" for item in schema_diags):
+        return diagnostics
     try:
         from agent.coder.specs import load_spec_bundle_from_root
 
@@ -23,4 +28,3 @@ def validate_coder_compatibility(spec_root: str | Path) -> list[PlanningDiagnost
             )
         )
     return diagnostics
-

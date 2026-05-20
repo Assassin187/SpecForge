@@ -293,6 +293,8 @@ def validate_function_inventory_candidate(candidate: dict[str, Any], module_cont
         for field_id in function["covers_field_ids"]:
             if field_ids and field_id not in field_ids:
                 diagnostics.append(PlanningDiagnostic("error", "unknown_function_field_ref", f"function '{function_id}' references unknown field '{field_id}'", path))
+        if function["coder_function_type"] not in {"ALGORITHM", "EVENT", "ENTRYPOINT"}:
+            diagnostics.append(PlanningDiagnostic("error", "invalid_coder_function_type", f"function '{function_id}' has non-coder function type '{function['coder_function_type']}'", path))
     candidate_caps = {cap for function in candidate["functions"] for cap in function["capability_ids"]}
     unresolved = _unresolved_targets(candidate)
     if "message_decode" in candidate_caps and "parser" not in kinds and "message_decode" not in unresolved:
@@ -354,6 +356,8 @@ def validate_function_signature_patch(patch: dict[str, Any], draft: dict[str, An
         if not signature["raw"].strip() or not signature["return_type"].strip():
             diagnostics.append(PlanningDiagnostic("error", "empty_function_signature", f"function '{function_id}' signature is incomplete", path))
         for param in signature["params"]:
+            if param["ownership"] not in {"BORROWED", "OWNED", "OWNED_BY_CALLER", "TRANSFER", "SHARED", "UNKNOWN"}:
+                diagnostics.append(PlanningDiagnostic("error", "invalid_param_ownership", f"function '{function_id}' has non-coder ownership '{param['ownership']}'", path))
             type_ref = str(param.get("type_ref", ""))
             if type_ref.startswith(("state:", "message:", "field:")):
                 diagnostics.append(PlanningDiagnostic("error", "invalid_signature_param_type_ref_namespace", f"function '{function_id}' uses non-type namespace as type_ref '{type_ref}'", path))
@@ -398,6 +402,15 @@ def validate_function_behavior_contract_patch(patch: dict[str, Any], draft: dict
             continue
         if "callee_function_id" in str(update.get("service_requirements", [])):
             diagnostics.append(PlanningDiagnostic("error", "behavior_must_not_resolve_calls", f"function '{function_id}' behavior may not include callee_function_id", path))
+        if update["logic_kind"] == "EVENT":
+            event_contract = update.get("event_contract", {})
+            missing = [
+                key
+                for key in ("trigger", "precondition", "input", "action", "state_change", "response", "event_type")
+                if not str(event_contract.get(key, "")).strip()
+            ]
+            if missing:
+                diagnostics.append(PlanningDiagnostic("error", "incomplete_event_contract", f"function '{function_id}' EVENT contract is missing: {', '.join(missing)}", path))
         for state in update["state_access"]:
             state_id = state["state_id"]
             if state_id not in state_ids:
@@ -443,6 +456,8 @@ def validate_wire_access_binding_patch(patch: dict[str, Any], draft: dict[str, A
             diagnostics.append(PlanningDiagnostic("error", "wire_parse_function_kind_mismatch", f"parse mapping uses non-parser function '{entry['function_id']}'", path))
         if entry["direction"] == "serialize" and function.get("function_kind") != "serializer":
             diagnostics.append(PlanningDiagnostic("error", "wire_serialize_function_kind_mismatch", f"serialize mapping uses non-serializer function '{entry['function_id']}'", path))
+        if not entry["packet_name"].strip() or not entry["wire_field"].strip() or not entry["strategy"].strip():
+            diagnostics.append(PlanningDiagnostic("error", "incomplete_coder_wire_mapping", f"wire mapping '{entry['wire_mapping_id']}' lacks coder-lowerable packet/field/strategy", path))
     for entry in patch["access_path_entries"]:
         function = functions.get(entry["function_id"])
         if entry["function_id"] not in function_ids:
@@ -450,6 +465,8 @@ def validate_wire_access_binding_patch(patch: dict[str, Any], draft: dict[str, A
             continue
         if entry["field_id"] not in field_ids:
             diagnostics.append(PlanningDiagnostic("error", "unknown_access_path_field", f"access path references unknown field '{entry['field_id']}'", path))
+        if not entry["path"].strip() or not entry["c_type"].strip():
+            diagnostics.append(PlanningDiagnostic("error", "incomplete_coder_access_path", f"access path '{entry['access_path_id']}' lacks path or c_type", path))
         if entry["access_kind"] in {"write", "read_write"} and function.get("function_kind") not in {"handler", "state_machine", "resource_lifecycle", "public_api"}:
             diagnostics.append(PlanningDiagnostic("error", "wire_access_kind_conflict", f"function '{entry['function_id']}' may not write state through access path", path))
     for update in patch["function_binding_updates"]:

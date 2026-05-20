@@ -463,6 +463,8 @@ def _validation_report(
     diagnostics: list[PlanningDiagnostic],
     artifact_paths: dict[str, Path],
     coder_compatibility_status: str = "not_run",
+    coder_schema_status: str = "not_run",
+    coder_loader_status: str = "not_run",
 ) -> dict[str, Any]:
     return {
         "schema_version": "planning_validation_report/v1",
@@ -470,6 +472,8 @@ def _validation_report(
         "status": status,
         "facts_compatibility_status": "failed" if any(item.code.startswith("missing_") or item.code.startswith("invalid_facts") for item in diagnostics if item.level == "error") else "passed",
         "coder_compatibility_status": coder_compatibility_status,
+        "coder_schema_status": coder_schema_status,
+        "coder_loader_status": coder_loader_status,
         "artifact_status": {key: str(value) for key, value in artifact_paths.items()},
         "diagnostics": diagnostics_to_dict(diagnostics),
         "summary": {
@@ -1358,6 +1362,8 @@ class PlanningAgent:
             coder_diags = validate_coder_compatibility(spec_root)
             diagnostics.extend(coder_diags)
             coder_status = "failed" if has_errors(coder_diags) else "passed"
+            coder_schema_status = "failed" if any(item.level == "error" and item.code.startswith("coder_schema_") for item in coder_diags) else "passed"
+            coder_loader_status = "failed" if any(item.level == "error" and not item.code.startswith("coder_schema_") for item in coder_diags) else "passed"
             status = "failed" if has_errors(diagnostics) else "success"
             store.log_event(f"stage=specs_compile done coder_status={coder_status}")
 
@@ -1367,6 +1373,8 @@ class PlanningAgent:
                 diagnostics=diagnostics,
                 artifact_paths=artifact_paths,
                 coder_compatibility_status=coder_status,
+                coder_schema_status=coder_schema_status,
+                coder_loader_status=coder_loader_status,
             )
             report_path = store.write_step_json(STEP_FILENAMES["planning_validation_report"], report)
             artifact_paths["planning_validation_report"] = report_path

@@ -52,3 +52,15 @@ The current Coder Agent consumes a `spec_bundle/` directory and discovers one
 Planning has not changed the Coder loader. Future compiler stages must emit
 the existing `spec_bundle/` format and may write `coder_manifest.json` outside
 that directory as a non-consumed index.
+
+Planning now validates generated specs against the existing strict Coder
+schemas before relying on loader compatibility:
+
+- `specs-example/specs_schema/module_spec_schema.json`
+- `specs-example/specs_schema/file_spec_schema.json`
+- `specs-example/specs_schema/function_spec_schema.json`
+
+Planning-only fields such as capability IDs, state access, call graph details,
+and traceability decisions must not be written as unknown top-level fields in
+strict specs. They are either lowered into schema-approved fields such as
+`DOC_REF` or written to non-`*_spec.json` sidecars under `spec_bundle/`.

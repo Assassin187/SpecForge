@@ -12,7 +12,7 @@ STATUS_VALUES = {"supported", "inferred", "assumed", "unresolved"}
 CONFIDENCE_VALUES = {"high", "medium", "low"}
 VISIBILITY_VALUES = {"public", "internal", "private", "static"}
 FUNCTION_KIND_VALUES = {"public_api", "handler", "parser", "serializer", "validator", "state_machine", "resource_lifecycle", "error_helper", "internal_helper"}
-CODER_FUNCTION_TYPE_VALUES = {"ALGORITHM", "EVENT", "EVENT_HANDLER"}
+CODER_FUNCTION_TYPE_VALUES = {"ALGORITHM", "EVENT", "ENTRYPOINT"}
 API_SURFACE_VALUES = {"public_header", "internal_header", "source_private", "callback_entry"}
 
 
@@ -261,7 +261,8 @@ SIGNATURE_PARAM_SCHEMA = _object(
         "type_ref": STRING,
         "direction": _scalar("string", enum={"in", "out", "inout", "return", "unknown"}),
         "nullable": BOOL,
-        "ownership": _scalar("string", enum={"borrowed", "owned", "transferred", "value", "none", "unknown"}),
+        "ownership": _scalar("string", enum={"BORROWED", "OWNED", "OWNED_BY_CALLER", "TRANSFER", "SHARED", "UNKNOWN"}),
+        "passing_mode": _scalar("string", enum={"by_value", "by_pointer", "out_param", "inout_param", "return_value", "unknown"}),
     }
 )
 
@@ -367,10 +368,23 @@ BEHAVIOR_CONTRACT_SCHEMA = _object(
     }
 )
 
+EVENT_CONTRACT_SCHEMA = _object(
+    {
+        "trigger": STRING,
+        "precondition": STRING,
+        "input": STRING,
+        "action": STRING,
+        "state_change": STRING,
+        "response": STRING,
+        "event_type": STRING,
+    }
+)
+
 FUNCTION_BEHAVIOR_UPDATE_SCHEMA = _object(
     {
         "function_id": STRING,
         "contract": BEHAVIOR_CONTRACT_SCHEMA,
+        "event_contract": EVENT_CONTRACT_SCHEMA,
         "error_behavior": ERROR_BEHAVIOR_SCHEMA,
         "state_access": _array(STATE_ACCESS_SCHEMA),
         "resource_access": _array(RESOURCE_ACCESS_SCHEMA),
@@ -390,6 +404,12 @@ WIRE_MAPPING_ENTRY_SCHEMA = _object(
         "message_id": STRING,
         "field_id": STRING,
         "direction": _scalar("string", enum={"parse", "serialize", "validate", "handle"}),
+        "packet_name": STRING,
+        "wire_field": STRING,
+        "strategy": _scalar("string", enum={"store_in_field", "parse_and_skip", "reject_if_present"}),
+        "target_path": STRING,
+        "source_expr": STRING,
+        "rule": STRING,
         "mapping_role": STRING,
         "required": BOOL,
         "trace_ref_keys": STRING_LIST,

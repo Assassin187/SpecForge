@@ -12,6 +12,7 @@ def build_spec_blueprint(implementation_plan: dict[str, Any]) -> dict[str, Any]:
     return {
         "schema_version": SCHEMA_VERSION,
         "protocol_name": implementation_plan.get("protocol_name", "protocol"),
+        "roles": [str(implementation_plan.get("target_directives_ref", {}).get("directives", {}).get("target_role", "target")).upper()],
         "source_artifact": "007_implementation_plan.json",
         "modules": [
             {
@@ -39,6 +40,7 @@ def build_spec_blueprint(implementation_plan: dict[str, Any]) -> dict[str, Any]:
                 "header_path": item.get("header_path"),
                 "responsibility": item.get("responsibility"),
                 "exports": item.get("exports", []),
+                "exports_type_ids": item.get("exports_type_ids", []),
                 "implements": item.get("implements", []),
                 "imports_allowed": item.get("imports_allowed", []),
                 "traceability": item.get("traceability", {}),

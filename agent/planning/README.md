@@ -284,16 +284,22 @@ LLM 参与：
 - 5.4a 按 module 逐个生成 function inventory：
   - 只允许在已存在 module 内创建 function id。
   - 覆盖 parser、serializer、handler、resource lifecycle、public API 等 function kind。
+  - `coder_function_type` 只使用 `ALGORITHM` / `EVENT` / `ENTRYPOINT`；handler 不自动等于 `EVENT`。
+  - 只有后续 behavior patch 能补齐 coder EVENT 所需 trigger/precondition/state_change/response/event_type 等字段时，才保留 `EVENT`，否则 lowering 为 `ALGORITHM`。
   - 每个 module candidate 独立校验、独立 fallback、逐步 merge 到 draft。
 
 - 5.4b 按 module 逐个补全 C signature；module 内 function 数量超过 8 时按 batch=8 分批：
   - 写入 `signature` 与 `signature_dependencies`。
   - 不允许修改 5.4a 的函数集合、函数名或 API surface。
   - `type_ref` 只能引用 canonical `type_ids` 或 C/POSIX/network `system_type_ids`，禁止把 state/message/field id 当作 type。
+  - 参数 `ownership` 使用 coder 可识别枚举：`BORROWED`、`OWNED`、`OWNED_BY_CALLER`、`TRANSFER`、`SHARED`、`UNKNOWN`。
+  - 参数同时保留 planning 用的 `direction` 与 `passing_mode`，用于区分 by-value、pointer、out-param 等 C 调用形态。
   - 不合法时使用 deterministic signature fallback。
 
 - 5.4c 按 module 逐个补全 behavior/internal dependency contract；module 内 function 数量超过 4 时按 batch=4 分批：
   - 写入 `behavior_contract`、`error_behavior`、`state_access`、`resource_access`、`internal_type_refs`、`service_requirements`。
+  - `behavior_contract` 显式保存 preconditions、postconditions、idempotent、thread_safety；这些字段由 Step 8 lowering 为 coder `CONTRACT`。
+  - `logic_kind=EVENT` 时必须同时提供完整 `event_contract`；否则 merger/fallback 保守降级为 `LOGIC`。
   - `service_requirements` 按 `external_runtime_service` / `cross_module_service` / `owned_responsibility` 分类；只有跨 module 服务进入 5.4e call planning。
   - 不允许修改 signature，也不直接生成 call edge。
   - 旧 `input_contract` / `output_contract` 由 5.4b signature 与 5.4c behavior 兼容生成。
@@ -302,6 +308,8 @@ LLM 参与：
 - 5.4d 生成 wire/access binding patch：
   - 将 wire fields 绑定到 parser/serializer/handler function。
   - 填充 `wire_mapping_table` 与 `access_path_table`。
+  - `access_path_entries` 必须包含可 lowering 为 coder `PATH/TYPE/ROLE` 的 `path`、`c_type`、`role`。
+  - `wire_mapping_entries` 必须包含可 lowering 为 coder `PACKET/WIRE_FIELD/STRATEGY` 的字段；不能只保存 planning id。
   - 不允许新增 function 或修改 signature。
   - 不合法时使用 deterministic wire/access fallback。
 
@@ -395,11 +403,15 @@ LLM 参与：
 具体操作：
 
 - 从 spec blueprint 确定性编译当前 Coder Agent 可读取的 specs。
+- 通过 deterministic lowering 层把 planning IR 字段转换为 coder spec dialect；compiler 不允许把 planning-only 字段直接塞进 strict specs。
 - 生成一个 `PROTOCOL_MODULE_SPEC`。
 - 生成多个 `FILE_SPEC`。
 - 生成多个 `FUNCTION_SPEC`。
 - 生成 `coder_manifest.json` 作为索引和审计文件。
-- 调用当前 Coder loader 做兼容性验证：
+- 可生成非 `*_spec.json` sidecar，例如 `planning_traceability.json`、`planning_decisions.json`、`planning_ir_refs.json`，用于保存 traceability、capability/state/call planning 信息。
+- strict specs 中不得出现 coder schema 不允许的顶层字段，例如 `TRACEABILITY`、`CAPABILITY_IDS`、`STATE_ACCESS`、`CALLS_ALLOWED`。
+- 先用 `specs-example/specs_schema/*.json` 做 strict JSON Schema validation，再调用当前 Coder loader 做兼容性验证：
+  - `agent.planning.validators.coder_schema.validate_coder_spec_bundle_against_schema()`
   - `agent.coder.specs.load_spec_bundle_from_root()`
 
 LLM 参与：

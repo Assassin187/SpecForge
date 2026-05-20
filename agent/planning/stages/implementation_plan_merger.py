@@ -4,6 +4,7 @@ from copy import deepcopy
 from typing import Any
 
 from ..schemas.implementation_plan import SCHEMA_VERSION
+from .coder_spec_lowering import normalize_param_ownership_for_coder
 from .dependencies import derive_dependency_graph
 from .implementation_plan import _capability_refs, _field_value, _function_signature, _handler_surfaces, _safe_id, _surface_units, _target_directives, _wire_fields
 from .implementation_plan_context import SYSTEM_TYPE_IDS
@@ -63,15 +64,15 @@ def _default_signature(function: dict[str, Any], module_id: str) -> tuple[dict[s
         params = []
     elif name.endswith("_destroy"):
         return_type = "void"
-        params = [{"type": f"{handle_type}*", "name": "self", "nullable": False, "ownership": "borrowed"}]
+        params = [{"type": f"{handle_type}*", "name": "self", "nullable": False, "ownership": "BORROWED"}]
     elif kind == "parser":
-        params = [{"type": "const uint8_t*", "name": "buffer", "nullable": False, "ownership": "borrowed"}, {"type": "size_t", "name": "length", "nullable": False, "ownership": "value"}]
+        params = [{"type": "const uint8_t*", "name": "buffer", "nullable": False, "ownership": "BORROWED"}, {"type": "size_t", "name": "length", "nullable": False, "ownership": "UNKNOWN"}]
     elif kind == "serializer":
-        params = [{"type": "uint8_t*", "name": "buffer", "nullable": False, "ownership": "borrowed"}, {"type": "size_t", "name": "capacity", "nullable": False, "ownership": "value"}]
+        params = [{"type": "uint8_t*", "name": "buffer", "nullable": False, "ownership": "BORROWED"}, {"type": "size_t", "name": "capacity", "nullable": False, "ownership": "UNKNOWN"}]
     elif kind == "handler":
-        params = [{"type": f"{handle_type}*", "name": "self", "nullable": False, "ownership": "borrowed"}, {"type": "const void*", "name": "message", "nullable": False, "ownership": "borrowed"}]
+        params = [{"type": f"{handle_type}*", "name": "self", "nullable": False, "ownership": "BORROWED"}, {"type": "const void*", "name": "message", "nullable": False, "ownership": "BORROWED"}]
     else:
-        params = [{"type": f"{handle_type}*", "name": "self", "nullable": False, "ownership": "borrowed"}]
+        params = [{"type": f"{handle_type}*", "name": "self", "nullable": False, "ownership": "BORROWED"}]
     return _function_signature(return_type, name, params), params, return_type
 
 
@@ -371,7 +372,7 @@ def _contract_base(*, draft: dict[str, Any], module_id: str, action: str, name: 
         "name": name,
         "module_id": module_id,
         "function_kind": function_kind,
-        "coder_function_type": "EVENT_HANDLER" if function_kind == "handler" else "ALGORITHM",
+        "coder_function_type": "ALGORITHM",
         "visibility": visibility,
         "api_surface": "public_header" if visibility == "public" else "internal_header",
         "grouping_hint": module_id,
@@ -519,7 +520,8 @@ def fallback_function_signatures(draft: dict[str, Any], module_id: str, function
                             "type_ref": "",
                             "direction": "in",
                             "nullable": bool(param.get("nullable", False)),
-                            "ownership": str(param.get("ownership", "borrowed")),
+                            "ownership": normalize_param_ownership_for_coder(param.get("ownership")),
+                            "passing_mode": "by_pointer" if "*" in str(param.get("type", "")) else "by_value",
                         }
                         for param in params
                     ],
@@ -554,6 +556,8 @@ def merge_function_signatures(draft: dict[str, Any], patch: dict[str, Any]) -> d
         signature["return_type"] = signature.get("return_type", "int")
         for param in signature.get("params", []):
             param["type_ref"] = _normalize_type_ref(param.get("type_ref", ""), param.get("type", ""), known_type_refs)
+            param["ownership"] = normalize_param_ownership_for_coder(param.get("ownership"))
+            param["passing_mode"] = param.get("passing_mode") or ("by_pointer" if "*" in str(param.get("type", "")) else "by_value")
         function["signature"] = signature
         dependencies = deepcopy(update.get("signature_dependencies", []))
         for dep in dependencies:
@@ -565,7 +569,8 @@ def merge_function_signatures(draft: dict[str, Any], patch: dict[str, Any]) -> d
                 "type": param.get("type", ""),
                 "name": param.get("name", ""),
                 "nullable": param.get("nullable", False),
-                "ownership": param.get("ownership", "borrowed"),
+                "ownership": normalize_param_ownership_for_coder(param.get("ownership")),
+                "passing_mode": param.get("passing_mode", "unknown"),
                 "direction": param.get("direction", "in"),
                 "type_ref": param.get("type_ref", ""),
             }
@@ -599,6 +604,15 @@ def fallback_function_behavior(draft: dict[str, Any], module_id: str, functions:
                     "idempotent": False,
                     "thread_safety": "single_thread_only",
                 },
+                "event_contract": {
+                    "trigger": "",
+                    "precondition": "",
+                    "input": "",
+                    "action": "",
+                    "state_change": "",
+                    "response": "",
+                    "event_type": "",
+                },
                 "error_behavior": _error_behavior(module_error_ids),
                 "state_access": [
                     {"state_id": state.get("state_id"), "access_kind": "read_write", "required": True, "reason": "Function belongs to the state owner module."}
@@ -608,7 +622,7 @@ def fallback_function_behavior(draft: dict[str, Any], module_id: str, functions:
                 "resource_access": [],
                 "internal_type_refs": [],
                 "service_requirements": [],
-                "logic_kind": "EVENT" if function.get("coder_function_type") in {"EVENT", "EVENT_HANDLER"} else "LOGIC",
+                "logic_kind": "LOGIC",
                 "forbidden_symbols": [],
                 "trace_ref_keys": function.get("traceability", {}).get("decision_ids", []),
                 "status": "inferred",
@@ -635,6 +649,7 @@ def merge_function_behavior(draft: dict[str, Any], patch: dict[str, Any]) -> dic
             continue
         contract = update["contract"]
         function["behavior_contract"] = contract
+        function["event_contract"] = update.get("event_contract", {})
         function["state_access"] = update["state_access"]
         function["resource_access"] = update["resource_access"]
         function["internal_type_refs"] = update["internal_type_refs"]
@@ -642,7 +657,9 @@ def merge_function_behavior(draft: dict[str, Any], patch: dict[str, Any]) -> dic
         function["error_behavior"] = _error_behavior_text(update["error_behavior"])
         function["preconditions"] = contract["preconditions"]
         function["postconditions"] = contract["postconditions"]
-        function["logic_kind"] = update["logic_kind"]
+        event_contract = function.get("event_contract", {})
+        event_complete = isinstance(event_contract, dict) and all(str(event_contract.get(key, "")).strip() for key in ("trigger", "precondition", "input", "action", "state_change", "response", "event_type"))
+        function["logic_kind"] = "EVENT" if update["logic_kind"] == "EVENT" and event_complete else "LOGIC"
         function["forbidden_symbols"] = update["forbidden_symbols"]
     result.setdefault("unresolved_questions", []).extend(patch.get("unresolved_questions", []))
     result.setdefault("accepted_stage_artifacts", []).append("5.4c_behavior_contract")
@@ -671,6 +688,12 @@ def fallback_wire_access_binding(draft: dict[str, Any], planning_ir: dict[str, A
                     "message_id": message_id,
                     "field_id": item["field_id"],
                     "direction": direction,
+                    "packet_name": str(item["message"]),
+                    "wire_field": str(item["field"]),
+                    "strategy": "store_in_field",
+                    "target_path": str(item["access_path"]),
+                    "source_expr": "",
+                    "rule": "deterministic wire/access fallback",
                     "mapping_role": "codec_field_binding",
                     "required": True,
                     "trace_ref_keys": item["source_fact_ids"],
@@ -905,6 +928,7 @@ def merge_file_layout(draft: dict[str, Any], candidate: dict[str, Any]) -> dict[
                 "header_path": item["header_path"],
                 "responsibility": item["responsibility"],
                 "exports": item["exports_function_ids"],
+                "exports_type_ids": item["exports_type_ids"],
                 "implements": item["implements_function_ids"],
                 "imports_allowed": [target for target in item.get("imports_allowed", []) if str(target).startswith("file:") and target != item["file_id"]],
                 "traceability": {"source_fact_ids": item.get("trace_ref_keys", []), "decision_ids": [f"decision:file:{item['module_id']}"]},
