@@ -11,6 +11,7 @@ from typing import Any
 
 STEP_LOGS_DIRNAME = "_step_logs"
 AGENT_LOGS_DIRNAME = "_agent_logs"
+VALIDATION_REPORTS_DIRNAME = "_validation_reports"
 
 
 def safe_slug(text: str) -> str:
@@ -69,8 +70,11 @@ class ArtifactStore:
         self.output_dir = Path(output_dir)
         self.agent_logs_dir = self.output_dir / AGENT_LOGS_DIRNAME
         self.step_logs_dir = self.output_dir / STEP_LOGS_DIRNAME
+        self.validation_reports_dir = self.output_dir / VALIDATION_REPORTS_DIRNAME
+        self.resume_metadata: dict[str, Any] | None = None
         self.agent_logs_dir.mkdir(parents=True, exist_ok=True)
         self.step_logs_dir.mkdir(parents=True, exist_ok=True)
+        self.validation_reports_dir.mkdir(parents=True, exist_ok=True)
         self._log_counter = 0
         self.event_log_path = self.agent_logs_dir / "000_stage_events.log"
 
@@ -88,6 +92,8 @@ class ArtifactStore:
         return path
 
     def step_path(self, filename: str) -> Path:
+        if "validation_report" in filename:
+            return self.validation_reports_dir / filename
         return self.step_logs_dir / filename
 
     def write_step_json(self, filename: str, data: Any) -> Path:

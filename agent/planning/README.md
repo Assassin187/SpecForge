@@ -27,6 +27,29 @@ Planning Agent 运行时强制使用 LLM。LLM 不是可选增强，而是对应
 - Architecture Search 每轮并发请求 3 个候选策略；高温轮失败后进入低温轮，仍无合法候选则报错退出。
 - Implementation Plan Synthesis 使用 staged hybrid 模式：LLM 只生成当前子步骤 candidate/patch；不合法时使用该子步骤的 deterministic fallback，并继续由 validator/merger 审核。
 
+## 中间阶段续跑
+
+`plan` 支持从顶层阶段续跑：
+
+```bash
+python3 -m agent.planning plan \
+  --facts <protocol_facts.json> \
+  --target-profile <target_profile.json> \
+  --resume-from-stage architecture
+```
+
+`--resume-from-stage` 可选值：
+
+- `planning_ir`
+- `protocol_profile`
+- `engineering_constraints`
+- `architecture`
+- `implementation_plan`
+- `spec_blueprint`
+- `specs_compile`
+
+启用续跑时，Planning Agent 会在当前 facts/target 对应的默认输出根中寻找最近一次 run，校验指定阶段之前所需的中间产物、输入文件 hash 和 compatibility versions，然后把继承产物写入新的 run 目录。指定阶段本身会重新执行；`implementation_plan` 内部 5.x 子步骤不单独作为续跑入口。
+
 ## 当前流程
 
 ### Step 0: Preflight
@@ -215,23 +238,23 @@ LLM 参与：
 - `_step_logs/007_implementation_plan.json`
 - `_step_logs/007_5_1_plan_skeleton.json`
 - `_step_logs/007_5_2_core_design_candidate.json`
-- `_step_logs/007_5_2_core_design_validation_report.json`
+- `_validation_reports/007_5_2_core_design_validation_report.json`
 - `_step_logs/007_5_3_module_contracts_candidate.json`
-- `_step_logs/007_5_3_module_contracts_validation_report.json`
+- `_validation_reports/007_5_3_module_contracts_validation_report.json`
 - `_step_logs/007_5_4a_function_inventory_candidate.json`
-- `_step_logs/007_5_4a_function_inventory_validation_report.json`
+- `_validation_reports/007_5_4a_function_inventory_validation_report.json`
 - `_step_logs/007_5_4b_function_signature_patch.json`
-- `_step_logs/007_5_4b_function_signature_validation_report.json`
+- `_validation_reports/007_5_4b_function_signature_validation_report.json`
 - `_step_logs/007_5_4c_function_behavior_contract_patch.json`
-- `_step_logs/007_5_4c_function_behavior_validation_report.json`
+- `_validation_reports/007_5_4c_function_behavior_validation_report.json`
 - `_step_logs/007_5_4d_wire_access_binding_patch.json`
-- `_step_logs/007_5_4d_wire_access_binding_validation_report.json`
+- `_validation_reports/007_5_4d_wire_access_binding_validation_report.json`
 - `_step_logs/007_5_4e_calls_allowed_candidate.json`
-- `_step_logs/007_5_4e_calls_allowed_validation_report.json`
+- `_validation_reports/007_5_4e_calls_allowed_validation_report.json`
 - `_step_logs/007_5_5_file_layout_candidate.json`
-- `_step_logs/007_5_5_file_layout_validation_report.json`
+- `_validation_reports/007_5_5_file_layout_validation_report.json`
 - `_step_logs/007_5_6_dependency_repair_patch.json`（仅 dependency validation 失败时）
-- `_step_logs/007_5_6_dependency_repair_validation_report.json`（仅 dependency validation 失败时）
+- `_validation_reports/007_5_6_dependency_repair_validation_report.json`（仅 dependency validation 失败时）
 
 具体操作：
 
@@ -321,7 +344,7 @@ LLM 参与：
 
 输出：
 
-- `_step_logs/008_dependency_validation_report.json`
+- `_validation_reports/008_dependency_validation_report.json`
 - `implementation_plan.dependency_graph`
 
 具体操作：
@@ -394,7 +417,7 @@ LLM 参与：
 
 输出：
 
-- `_step_logs/014_planning_validation_report.json`
+- `_validation_reports/014_planning_validation_report.json`
 
 具体操作：
 
@@ -433,25 +456,26 @@ agent/planning/out/<protocol>/<target_slug>/<timestamp>/
 │   ├── 006_selected_architecture.json
 │   ├── 007_5_1_plan_skeleton.json
 │   ├── 007_5_2_core_design_candidate.json
-│   ├── 007_5_2_core_design_validation_report.json
 │   ├── 007_5_3_module_contracts_candidate.json
-│   ├── 007_5_3_module_contracts_validation_report.json
 │   ├── 007_5_4a_function_inventory_candidate.json
-│   ├── 007_5_4a_function_inventory_validation_report.json
 │   ├── 007_5_4b_function_signature_patch.json
-│   ├── 007_5_4b_function_signature_validation_report.json
 │   ├── 007_5_4c_function_behavior_contract_patch.json
-│   ├── 007_5_4c_function_behavior_validation_report.json
 │   ├── 007_5_4d_wire_access_binding_patch.json
-│   ├── 007_5_4d_wire_access_binding_validation_report.json
 │   ├── 007_5_4e_calls_allowed_candidate.json
-│   ├── 007_5_4e_calls_allowed_validation_report.json
 │   ├── 007_5_5_file_layout_candidate.json
-│   ├── 007_5_5_file_layout_validation_report.json
 │   ├── 007_implementation_plan.json
-│   ├── 008_dependency_validation_report.json
 │   ├── 010_spec_blueprint.json
-│   ├── 013_token_usage_summary.json
+│   └── 013_token_usage_summary.json
+├── _validation_reports/
+│   ├── 007_5_2_core_design_validation_report.json
+│   ├── 007_5_3_module_contracts_validation_report.json
+│   ├── 007_5_4a_function_inventory_validation_report.json
+│   ├── 007_5_4b_function_signature_validation_report.json
+│   ├── 007_5_4c_function_behavior_validation_report.json
+│   ├── 007_5_4d_wire_access_binding_validation_report.json
+│   ├── 007_5_4e_calls_allowed_validation_report.json
+│   ├── 007_5_5_file_layout_validation_report.json
+│   ├── 008_dependency_validation_report.json
 │   └── 014_planning_validation_report.json
 ├── coder_manifest.json
 └── spec_bundle/
@@ -462,7 +486,7 @@ agent/planning/out/<protocol>/<target_slug>/<timestamp>/
 ```text
 <run>/_step_logs/004_protocol_profile_patch_candidate.json
 <run>/_step_logs/007_5_6_dependency_repair_patch.json
-<run>/_step_logs/007_5_6_dependency_repair_validation_report.json
+<run>/_validation_reports/007_5_6_dependency_repair_validation_report.json
 ```
 
 运行时会在控制台输出类似 Coder Agent 的阶段日志，例如：

@@ -39,9 +39,10 @@ def build_manifest(
     diagnostics: list[PlanningDiagnostic],
     artifact_paths: dict[str, Path] | None = None,
     failure: dict[str, Any] | None = None,
+    resume: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     artifact_paths = artifact_paths or {}
-    return {
+    manifest = {
         "schema_version": SCHEMA_VERSION,
         "created_at": datetime.now().isoformat(timespec="seconds"),
         "status": status,
@@ -69,6 +70,9 @@ def build_manifest(
         "diagnostics": diagnostics_to_dict(diagnostics),
         "failure": failure,
     }
+    if resume is not None:
+        manifest["resume"] = resume
+    return manifest
 
 
 def validate_input_paths(facts_path: Path, target_profile_path: Path) -> list[PlanningDiagnostic]:

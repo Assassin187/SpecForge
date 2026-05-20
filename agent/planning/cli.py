@@ -5,7 +5,7 @@ from pathlib import Path
 
 from .diagnostics import PlanningDiagnostic
 from .config import PlanningConfig
-from .orchestrator import PlanningAgent, compare_output_to_reference, verify_output_dir
+from .orchestrator import PlanningAgent, RESUME_STAGES, compare_output_to_reference, verify_output_dir
 
 
 def _path(value: str) -> Path:
@@ -25,6 +25,7 @@ def build_parser() -> argparse.ArgumentParser:
     plan.add_argument("--facts", required=True)
     plan.add_argument("--target-profile", required=True)
     plan.add_argument("--output-dir")
+    plan.add_argument("--resume-from-stage", choices=RESUME_STAGES)
 
     verify = sub.add_parser("verify", help="Verify an existing Planning Agent output directory")
     verify.add_argument("--output-dir", required=True)
@@ -64,7 +65,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
         output_dir=_path(args.output_dir) if args.output_dir else None,
         config=PlanningConfig(),
     )
-    result = agent.plan()
+    result = agent.plan(resume_from_stage=args.resume_from_stage)
     _print_diagnostics(result.diagnostics)
     print(f"Output: {result.output_dir}")
     return 0 if result.success else 1

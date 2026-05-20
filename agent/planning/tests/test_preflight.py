@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from agent.planning.cli import build_parser
 from agent.planning.orchestrator import PlanningAgent
 
 
@@ -48,6 +49,23 @@ class PlanningPreflightTests(unittest.TestCase):
             self.assertEqual(manifest["schema_version"], "planning_run_manifest/v1")
             self.assertTrue(manifest["inputs"]["facts"]["sha256"])
             self.assertEqual(manifest["compatibility"]["facts_input_format_version"], "protocol_facts/v2alpha1")
+
+    def test_plan_cli_accepts_resume_from_stage(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "plan",
+                "--facts",
+                "facts.json",
+                "--target-profile",
+                "target.json",
+                "--resume-from-stage",
+                "architecture",
+            ]
+        )
+        self.assertEqual(args.resume_from_stage, "architecture")
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["plan", "--facts", "facts.json", "--target-profile", "target.json", "--resume-from-stage", "bad"])
 
 
 if __name__ == "__main__":

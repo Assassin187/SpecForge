@@ -14,7 +14,8 @@ def _compact(data: Any) -> str:
 JSON_ONLY_RULES = (
     "Return one valid minified JSON object only. "
     "Do not use markdown fences. Do not include prose, comments, headings, or analysis. "
-    "The first character must be '{' and the last character must be '}'."
+    "The first character must be '{' and the last character must be '}'. "
+    "If you cannot satisfy the task, return a schema-valid JSON object with warnings or unresolved_questions instead of prose."
 )
 
 ID_REFERENCE_RULES = [
@@ -287,6 +288,7 @@ def architecture_candidate_messages(
             "content": (
                 "You are SpecForge Planning Agent architecture candidate generator. "
                 f"{JSON_ONLY_RULES} Return JSON matching architecture_candidates/v1. "
+                "This is a machine API boundary: any natural-language text outside the JSON object is a failed response. "
                 "You may generate module-level design only. Do not generate file paths, functions, call graphs, include graphs, or code. "
                 "The capability group hints are non-binding engineering priors. They are not required module names. "
                 "You may split, merge, rename, or ignore them if the protocol profile suggests a better architecture."
@@ -338,6 +340,9 @@ def architecture_candidate_messages(
                         "minimal_scope": "Prefer the smallest target-scope architecture that still satisfies every capability and constraint.",
                     }.get(design_strategy, "Generate a coherent module-level architecture for the target scope."),
                     "hard_validation_rules": [
+                        "Output exactly one parseable JSON object and no text before or after it.",
+                        "Do not wrap the JSON in markdown fences.",
+                        "Do not explain your reasoning outside JSON fields.",
                         "Return the expected_response object itself, not an object containing expected_response or output_schema.",
                         "The top-level schema_version must be exactly architecture_candidates/v1.",
                         "Every required_capability_ids entry must appear in at least one module.owned_capabilities.",
@@ -372,6 +377,7 @@ def architecture_ranking_messages(architecture_context: dict[str, Any], architec
             "content": (
                 "You are SpecForge Planning Agent architecture ranking assistant. "
                 f"{JSON_ONLY_RULES} Return JSON matching architecture_ranking/v1. "
+                "This is a machine API boundary: any natural-language text outside the JSON object is a failed response. "
                 "You may score and select only. Do not modify candidates, modules, capabilities, files, functions, dependencies, or code."
             ),
         },
@@ -410,6 +416,9 @@ def architecture_ranking_messages(architecture_context: dict[str, Any], architec
                         "ranking_warnings": [],
                     },
                     "hard_validation_rules": [
+                        "Output exactly one parseable JSON object and no text before or after it.",
+                        "Do not wrap the JSON in markdown fences.",
+                        "Do not explain your reasoning outside JSON fields.",
                         "The top-level schema_version must be exactly architecture_ranking/v1.",
                         "Score every candidate_id exactly once.",
                         "selected_candidate_id must be one of the candidate IDs.",

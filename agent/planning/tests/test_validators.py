@@ -130,7 +130,9 @@ class PlanningValidatorTests(unittest.TestCase):
             self.assertNotIn("protocol_profile", prompt_payload)
             module_shape = prompt_payload["expected_response"]["candidates"][0]["modules"][0]
             self.assertEqual(module_shape["dependency_hints"], [])
+            self.assertIn("machine API boundary", messages[0]["content"])
             self.assertTrue(any("dependency_hints must be []" in rule for rule in prompt_payload["hard_validation_rules"]))
+            self.assertTrue(any("parseable JSON object" in rule for rule in prompt_payload["hard_validation_rules"]))
 
     def test_core_design_prompt_uses_compact_context(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:

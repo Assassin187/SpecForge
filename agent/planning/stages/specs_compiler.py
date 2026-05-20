@@ -92,6 +92,18 @@ def _function_spec(function: dict[str, Any], trace_id: str) -> dict[str, Any]:
     }
 
 
+def _normalized_spec_stem(file_item: dict[str, Any]) -> Path:
+    raw_path = str(file_item.get("source_path") or file_item.get("header_path") or "").replace("\\", "/").strip()
+    if not raw_path:
+        raw_path = str(file_item.get("file_id", "file")).removeprefix("file:")
+    while raw_path.startswith("../"):
+        raw_path = raw_path[3:]
+    while raw_path.startswith("./"):
+        raw_path = raw_path[2:]
+    stem = Path(raw_path).with_suffix("")
+    return Path(*[safe_slug(part) for part in stem.parts if part not in {"", "."}])
+
+
 def compile_spec_bundle(spec_blueprint: dict[str, Any], output_dir: str | Path) -> tuple[dict[str, Any], Path]:
     root = Path(output_dir)
     spec_root = root / "spec_bundle"
@@ -179,8 +191,8 @@ def compile_spec_bundle(spec_blueprint: dict[str, Any], output_dir: str | Path) 
                 header_item.pop("TRACE_ID", None)
                 header_interfaces.append(header_item)
             function_spec = _function_spec(function, function_trace_id)
-            fn_dir = spec_root / safe_slug(module_id) / "functions"
-            fn_path = write_json(fn_dir / f"{safe_slug(str(function.get('name', 'function')))}_function_spec.json", function_spec)
+            spec_dir = spec_root / _normalized_spec_stem(file_item)
+            fn_path = write_json(spec_dir / f"{safe_slug(str(function.get('name', 'function')))}_spec.json", function_spec)
             function_spec_paths.append(str(fn_path))
         file_spec = {
             "KIND": "FILE_SPEC",
@@ -225,7 +237,8 @@ def compile_spec_bundle(spec_blueprint: dict[str, Any], output_dir: str | Path) 
             ],
             "TRACEABILITY": file_item.get("traceability", {}),
         }
-        file_spec_path = write_json(spec_root / safe_slug(module_id) / f"{safe_slug(file_id)}_file_spec.json", file_spec)
+        spec_stem = _normalized_spec_stem(file_item)
+        file_spec_path = write_json(spec_root / spec_stem / f"{spec_stem.name}_spec.json", file_spec)
         file_spec_paths.append(str(file_spec_path))
 
     manifest = {

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import tempfile
 import unittest
@@ -9,7 +10,8 @@ from unittest.mock import patch
 from agent.coder.specs import load_spec_bundle_from_root
 from agent.planning.adapters.facts_input import build_planning_ir
 from agent.planning.adapters.target_profile import load_target_profile
-from agent.planning.orchestrator import PlanningAgent, compare_output_to_reference
+from agent.planning.config import PlanningConfig
+from agent.planning.orchestrator import PlanningAgent, compare_output_to_reference, find_latest_resume_source, validate_resume_prefix
 from agent.planning.stages.architecture import build_architecture_candidates, select_architecture
 from agent.planning.stages.constraints import activate_constraints
 from agent.planning.stages.implementation_plan import build_implementation_plan
@@ -162,31 +164,137 @@ class PlanningCompatibilityDiscoveryTests(unittest.TestCase):
                 "006_architecture_ranking.json",
                 "006_selected_architecture.json",
                 "007_implementation_plan.json",
-                "008_dependency_validation_report.json",
                 "010_spec_blueprint.json",
                 "013_token_usage_summary.json",
-                "014_planning_validation_report.json",
             ):
                 self.assertTrue((result.output_dir / "_step_logs" / filename).exists(), filename)
+            for filename in (
+                "008_dependency_validation_report.json",
+                "014_planning_validation_report.json",
+            ):
+                self.assertTrue((result.output_dir / "_validation_reports" / filename).exists(), filename)
+                self.assertFalse((result.output_dir / "_step_logs" / filename).exists(), filename)
             self.assertTrue((result.output_dir / "coder_manifest.json").exists())
             self.assertTrue((result.output_dir / "spec_bundle").exists())
+            self.assertFalse(list((result.output_dir / "spec_bundle").rglob("functions")))
+            self.assertTrue([path for path in (result.output_dir / "spec_bundle").rglob("*_spec.json") if path.name != "mqtt_module_spec.json"])
             profile = json.loads((result.output_dir / "_step_logs" / "004_protocol_profile.json").read_text(encoding="utf-8"))
             self.assertEqual(profile["schema_version"], "protocol_profile/v1")
             self.assertTrue(profile["required_capabilities"])
             plan = json.loads((result.output_dir / "_step_logs" / "007_implementation_plan.json").read_text(encoding="utf-8"))
             self.assertTrue(plan["wire_mapping_table"])
             self.assertTrue(plan["access_path_table"])
-            dependency_report = json.loads((result.output_dir / "_step_logs" / "008_dependency_validation_report.json").read_text(encoding="utf-8"))
+            dependency_report = json.loads((result.output_dir / "_validation_reports" / "008_dependency_validation_report.json").read_text(encoding="utf-8"))
             self.assertEqual(dependency_report["status"], "passed")
             token_usage = json.loads((result.output_dir / "_step_logs" / "013_token_usage_summary.json").read_text(encoding="utf-8"))
             self.assertEqual(token_usage["schema_version"], "planning_token_usage_summary/v1")
             self.assertEqual(token_usage["total"]["total_tokens"], 0)
             bundle = load_spec_bundle_from_root(result.output_dir / "spec_bundle")
             self.assertFalse([diag.__dict__ for diag in bundle.diagnostics if diag.level == "error"])
-            report = json.loads((result.output_dir / "_step_logs" / "014_planning_validation_report.json").read_text(encoding="utf-8"))
+            report = json.loads((result.output_dir / "_validation_reports" / "014_planning_validation_report.json").read_text(encoding="utf-8"))
             self.assertEqual(report["coder_compatibility_status"], "passed")
             comparison = compare_output_to_reference(result.output_dir, ROOT / "specs-example" / "mqtt_specs")
             self.assertTrue(comparison.success, [diag.__dict__ for diag in comparison.diagnostics])
+
+    def test_resume_from_specs_compile_inherits_prefix_and_rebuilds_bundle(self) -> None:
+        facts = ROOT / "agent" / "facts" / "gold_facts" / "mqtt_min" / "protocol_facts.json"
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            tmp = Path(raw_tmp)
+            target = _write_target_profile(tmp, role="broker")
+            target_profile, target_diags = load_target_profile(target)
+            self.assertIsNotNone(target_profile, [diag.__dict__ for diag in target_diags])
+            planning_ir, ir_diags = build_planning_ir(facts, target_profile)
+            self.assertIsNotNone(planning_ir, [diag.__dict__ for diag in ir_diags])
+            profile = build_protocol_profile(planning_ir)
+            constraints = activate_constraints(profile)
+            architecture_candidates = build_architecture_candidates(planning_ir, profile, constraints)
+
+            def fake_request(*, prompt_name, messages, config, temperature=None):
+                if prompt_name == "protocol_profile_patch_prompt":
+                    return _noop_profile_patch_candidate(), [], {"mocked": True}
+                if prompt_name == "architecture_candidate_prompt":
+                    return architecture_candidates, [], {"mocked": True}
+                if prompt_name == "architecture_ranking_prompt":
+                    return _ranking_candidate(messages), [], {"mocked": True}
+                return None, [], {"mocked": True}
+
+            output_root = tmp / "planning_out"
+            source_dir = output_root / "mqtt" / target_profile.slug / "20260101_000000_000000"
+            resumed_dir = output_root / "mqtt" / target_profile.slug / "20260102_000000_000000"
+            with patch("agent.planning.orchestrator.DEFAULT_OUTPUT_ROOT", output_root):
+                with patch("agent.planning.orchestrator.request_json_candidate", side_effect=fake_request):
+                    source = PlanningAgent(facts, target, output_dir=source_dir).plan()
+                self.assertTrue(source.success, [diag.__dict__ for diag in source.diagnostics])
+                latest = find_latest_resume_source(facts, target, resumed_dir)
+                self.assertEqual(source_dir, latest)
+                with patch("agent.planning.orchestrator.request_json_candidate", side_effect=AssertionError("resume should not call LLM")):
+                    resumed = PlanningAgent(facts, target, output_dir=resumed_dir).plan(resume_from_stage="specs_compile")
+
+            self.assertTrue(resumed.success, [diag.__dict__ for diag in resumed.diagnostics])
+            self.assertTrue((resumed.output_dir / "_step_logs" / "010_spec_blueprint.json").exists())
+            self.assertTrue((resumed.output_dir / "spec_bundle").exists())
+            manifest = json.loads((resumed.output_dir / "_step_logs" / "000_planning_run_manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(manifest["resume"]["from_stage"], "specs_compile")
+            self.assertEqual(Path(manifest["resume"]["source_output_dir"]), source_dir)
+            self.assertIn("spec_blueprint", manifest["resume"]["inherited_artifacts"])
+
+    def test_resume_prefix_rejects_input_hash_mismatch(self) -> None:
+        facts = ROOT / "agent" / "facts" / "gold_facts" / "mqtt_min" / "protocol_facts.json"
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            tmp = Path(raw_tmp)
+            target = _write_target_profile(tmp, role="broker")
+            target_profile, target_diags = load_target_profile(target)
+            self.assertIsNotNone(target_profile, [diag.__dict__ for diag in target_diags])
+            planning_ir, ir_diags = build_planning_ir(facts, target_profile)
+            self.assertIsNotNone(planning_ir, [diag.__dict__ for diag in ir_diags])
+            source_dir = tmp / "run"
+            step_logs = source_dir / "_step_logs"
+            step_logs.mkdir(parents=True)
+            (step_logs / "000_planning_run_manifest.json").write_text(
+                json.dumps(
+                    {
+                        "inputs": {"facts": {"sha256": "bad"}, "target_profile": {"sha256": "bad"}},
+                        "compatibility": {
+                            "facts_input_format_version": "protocol_facts/v2alpha1",
+                            "target_profile_format_version": "target_profile/v1",
+                            "coder_output_format_version": "spec_bundle/current",
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (step_logs / "003_planning_ir.json").write_text(json.dumps(planning_ir), encoding="utf-8")
+            _, _, diagnostics = validate_resume_prefix(source_dir, "protocol_profile", facts, target, PlanningConfig())
+            codes = {diag.code for diag in diagnostics}
+            self.assertIn("resume_facts_mismatch", codes)
+            self.assertIn("resume_target_profile_mismatch", codes)
+
+    def test_resume_prefix_reports_missing_required_artifact(self) -> None:
+        facts = ROOT / "agent" / "facts" / "gold_facts" / "mqtt_min" / "protocol_facts.json"
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            tmp = Path(raw_tmp)
+            target = _write_target_profile(tmp, role="broker")
+            source_dir = tmp / "run"
+            step_logs = source_dir / "_step_logs"
+            step_logs.mkdir(parents=True)
+            (step_logs / "000_planning_run_manifest.json").write_text(
+                json.dumps(
+                    {
+                        "inputs": {
+                            "facts": {"sha256": hashlib.sha256(facts.read_bytes()).hexdigest()},
+                            "target_profile": {"sha256": hashlib.sha256(target.read_bytes()).hexdigest()},
+                        },
+                        "compatibility": {
+                            "facts_input_format_version": "protocol_facts/v2alpha1",
+                            "target_profile_format_version": "target_profile/v1",
+                            "coder_output_format_version": "spec_bundle/current",
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            _, _, diagnostics = validate_resume_prefix(source_dir, "architecture", facts, target, PlanningConfig())
+            self.assertTrue(any(diag.code == "missing_resume_artifact" for diag in diagnostics), [diag.__dict__ for diag in diagnostics])
 
 
 if __name__ == "__main__":
