@@ -9,6 +9,8 @@ def derive_dependency_graph(plan: dict[str, Any]) -> dict[str, Any]:
     files = [item for item in plan.get("file_layout", {}).get("files", []) if isinstance(item, dict)]
     functions = [item for item in plan.get("function_contracts", []) if isinstance(item, dict)]
     module_by_file = {str(item.get("file_id", "")): str(item.get("module_id", "")) for item in files}
+    file_by_module = {str(item.get("module_id", "")): str(item.get("file_id", "")) for item in files}
+    state_owner = {str(item.get("state_id", "")): str(item.get("owner_module_id", "")) for item in plan.get("state_design", []) if isinstance(item, dict)}
     known_files = set(module_by_file)
     known_functions = {str(item.get("function_id", "")) for item in functions}
     file_edges: list[dict[str, str]] = []
@@ -31,6 +33,29 @@ def derive_dependency_graph(plan: dict[str, Any]) -> dict[str, Any]:
     for function in functions:
         source_id = str(function.get("function_id", ""))
         source_file = str(function.get("file_id", ""))
+        source_module = module_by_file.get(source_file, str(function.get("module_id", "")))
+        for dep in function.get("signature_dependencies", []):
+            target_module = str(dep.get("owner_module_id", "")) if isinstance(dep, dict) else ""
+            target_file = file_by_module.get(target_module, "")
+            if source_module and target_module and source_module != target_module:
+                module_edge = {"from": source_module, "to": target_module, "kind": "signature_dependency"}
+                if module_edge not in module_edges:
+                    module_edges.append(module_edge)
+            if source_file and target_file and source_file != target_file:
+                file_edge = {"from": source_file, "to": target_file, "kind": "signature_dependency"}
+                if file_edge not in file_edges:
+                    file_edges.append(file_edge)
+        for state in function.get("state_access", []):
+            target_module = state_owner.get(str(state.get("state_id", ""))) if isinstance(state, dict) else ""
+            target_file = file_by_module.get(target_module or "", "")
+            if source_module and target_module and source_module != target_module:
+                module_edge = {"from": source_module, "to": target_module, "kind": "state_access"}
+                if module_edge not in module_edges:
+                    module_edges.append(module_edge)
+            if source_file and target_file and source_file != target_file:
+                file_edge = {"from": source_file, "to": target_file, "kind": "state_access"}
+                if file_edge not in file_edges:
+                    file_edges.append(file_edge)
         for target_id in function.get("calls_allowed", []):
             target = str(target_id)
             if target not in known_functions:
@@ -55,6 +80,8 @@ def derive_dependency_graph(plan: dict[str, Any]) -> dict[str, Any]:
         "derived_from": {
             "imports_allowed": "implementation_plan.file_layout.files[*].imports_allowed",
             "calls_allowed": "implementation_plan.function_contracts[*].calls_allowed",
+            "signature_dependencies": "implementation_plan.function_contracts[*].signature_dependencies",
+            "state_access": "implementation_plan.function_contracts[*].state_access",
         },
     }
 
@@ -80,4 +107,3 @@ def build_dependency_validation_report(plan: dict[str, Any], diagnostics: list[A
             for item in diagnostics
         ],
     }
-

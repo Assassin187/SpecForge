@@ -46,15 +46,28 @@ def _interface(function: dict[str, Any], trace_id: str) -> dict[str, Any]:
 
 def _function_spec(function: dict[str, Any], trace_id: str) -> dict[str, Any]:
     signature = function.get("signature", {})
-    body_key = "EVENT" if function.get("function_kind") in {"handler", "public_api"} else "LOGIC"
+    body_key = str(function.get("logic_kind") or ("EVENT" if function.get("function_kind") in {"handler", "public_api"} else "LOGIC"))
+    contract = function.get("behavior_contract", {}) if isinstance(function.get("behavior_contract"), dict) else {}
     body = {
-        "SUMMARY": str(function.get("purpose", "")),
-        "STEPS": [
-            "Validate input pointers and scalar ranges according to the function contract.",
-            "Apply the module responsibility described by the planning contract.",
-            "Return the documented status value.",
-        ],
+        "INPUT": str(contract.get("input", "")),
+        "ACTION": str(contract.get("action", function.get("purpose", ""))),
+        "OUTPUT": str(contract.get("output", "")),
+        "INVARIANTS_USED": contract.get("invariants_used", []),
     }
+    rely_struct = [
+        {"NAME": dep.get("symbol_name", ""), "ROLE": dep.get("reason", "")}
+        for dep in function.get("signature_dependencies", [])
+        if isinstance(dep, dict)
+    ] + [
+        {"NAME": item.get("symbol_name", ""), "ROLE": item.get("role", "")}
+        for item in function.get("internal_type_refs", [])
+        if isinstance(item, dict)
+    ]
+    rely_func = [
+        {"NAME": edge.get("callee_function_id", ""), "KIND": "CALL", "ROLE": edge.get("call_reason", "")}
+        for edge in function.get("call_contracts", [])
+        if isinstance(edge, dict)
+    ]
     return {
         "KIND": "FUNCTION_SPEC",
         "TRACE_ID": trace_id,
@@ -66,8 +79,10 @@ def _function_spec(function: dict[str, Any], trace_id: str) -> dict[str, Any]:
             "RETURN": str(signature.get("return_type", "int")),
             "PARAMS": [_param_for_coder(item) for item in signature.get("params", [])],
         },
-        "RELY": {"STRUCT": [], "FUNC": [], "VAR": []},
+        "RELY": {"STRUCT": rely_struct, "FUNC": rely_func, "VAR": []},
         body_key: body,
+        "CALL_CONTRACTS": function.get("call_contracts", []),
+        "FORBIDDEN_SYMBOLS": function.get("forbidden_symbols", []),
         "TRACEABILITY": function.get("traceability", {}),
         "CAPABILITY_IDS": function.get("capability_ids", []),
         "STATE_ACCESS": function.get("state_access", []),
@@ -131,6 +146,28 @@ def compile_spec_bundle(spec_blueprint: dict[str, Any], output_dir: str | Path) 
         module_id = str(file_item.get("module_id", "module"))
         file_functions = functions_by_file.get(file_id, [])
         handle_type = f"{protocol}_{module_id}_t"
+        declarations = [
+            {
+                "NAME": item.get("name", ""),
+                "KIND": "TYPE",
+                "VISIBILITY": str(item.get("visibility", "internal")).upper(),
+                "ROLE": item.get("reason", ""),
+            }
+            for function in file_functions
+            for item in function.get("interface_type_declarations", [])
+            if isinstance(item, dict)
+        ]
+        private_types = [
+            {
+                "NAME": item.get("symbol_name", ""),
+                "KIND": "TYPE",
+                "VISIBILITY": str(item.get("visibility", "private")).upper(),
+                "ROLE": item.get("role", ""),
+            }
+            for function in file_functions
+            for item in function.get("internal_type_refs", [])
+            if isinstance(item, dict)
+        ]
         source_interfaces: list[dict[str, Any]] = []
         header_interfaces: list[dict[str, Any]] = []
         for function in file_functions:
@@ -163,7 +200,7 @@ def compile_spec_bundle(spec_blueprint: dict[str, Any], output_dir: str | Path) 
                         "VISIBILITY": "PUBLIC",
                         "ROLE": "Opaque module context handle.",
                     }
-                ],
+                ] + declarations,
                 "INTERFACE": header_interfaces,
             },
             "SOURCE": {
@@ -177,7 +214,7 @@ def compile_spec_bundle(spec_blueprint: dict[str, Any], output_dir: str | Path) 
                         "ROLE": "Private module context storage.",
                         "TYPE_SPEC": {"TYPE_KIND": "STRUCT", "FIELDS": []},
                     }
-                ],
+                ] + private_types,
                 "INTERFACE": source_interfaces,
             },
             "PUBLIC_SYMBOLS": [handle_type] + [item.get("NAME", "") for item in header_interfaces],

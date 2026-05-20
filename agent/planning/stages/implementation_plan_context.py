@@ -144,6 +144,12 @@ def _accepted_summary(draft: dict[str, Any]) -> dict[str, Any]:
                 "file_id": item.get("file_id"),
                 "visibility": item.get("visibility"),
                 "function_kind": item.get("function_kind"),
+                "coder_function_type": item.get("coder_function_type"),
+                "api_surface": item.get("api_surface"),
+                "grouping_hint": item.get("grouping_hint"),
+                "signature": item.get("signature", {}),
+                "signature_dependencies": item.get("signature_dependencies", []),
+                "service_requirements": item.get("service_requirements", []),
                 "capability_ids": item.get("capability_ids", []),
             }
             for item in draft.get("function_contracts", [])
@@ -207,11 +213,24 @@ def build_function_inventory_context(draft: dict[str, Any], module_contract: dic
     }
 
 
-def build_function_detail_context(draft: dict[str, Any], module_id: str, constraints: dict[str, Any]) -> dict[str, Any]:
+def build_function_signature_context(draft: dict[str, Any], module_id: str, functions: list[dict[str, Any]], *, batch_index: int, batch_size: int) -> dict[str, Any]:
     return {
-        "schema_version": "function_detail_context/v1",
+        "schema_version": "function_signature_context/v1",
         "module_id": module_id,
-        "functions": [item for item in draft.get("function_contracts", []) if isinstance(item, dict) and str(item.get("module_id")) == module_id],
+        "batch": {"index": batch_index, "size": batch_size},
+        "functions": functions,
+        "module_contracts": draft.get("module_contracts", []),
+        "core_design_summary": _accepted_summary(draft),
+        "legal_id_universe": _legal_ids_from_draft(draft),
+    }
+
+
+def build_function_behavior_context(draft: dict[str, Any], module_id: str, functions: list[dict[str, Any]], constraints: dict[str, Any], *, batch_index: int, batch_size: int) -> dict[str, Any]:
+    return {
+        "schema_version": "function_behavior_context/v1",
+        "module_id": module_id,
+        "batch": {"index": batch_index, "size": batch_size},
+        "functions": functions,
         "module_contracts": draft.get("module_contracts", []),
         "core_design_summary": _accepted_summary(draft),
         "engineering_constraints": _constraints(constraints),
@@ -229,6 +248,7 @@ def build_wire_access_binding_context(draft: dict[str, Any], planning_ir: dict[s
         ],
         "field_summaries": _field_summaries(planning_ir),
         "state_design": draft.get("state_design", []),
+        "function_summary": _accepted_summary(draft)["function_contracts"],
         "legal_id_universe": _legal_ids_from_draft(draft)
         | {
             "message_ids": [item["message_id"] for item in _message_summaries(planning_ir)],
@@ -241,6 +261,11 @@ def build_calls_allowed_context(draft: dict[str, Any], selected_architecture: di
     return {
         "schema_version": "calls_allowed_context/v1",
         "function_summary": _accepted_summary(draft)["function_contracts"],
+        "service_requirements": [
+            {"function_id": item.get("function_id"), "service_requirements": item.get("service_requirements", [])}
+            for item in draft.get("function_contracts", [])
+            if isinstance(item, dict)
+        ],
         "module_contracts": draft.get("module_contracts", []),
         "architecture_policy": {"selected_modules": _selected_modules(selected_architecture), "forbidden_cycles": True},
         "legal_id_universe": _legal_ids_from_draft(draft),

@@ -19,8 +19,9 @@ from .prompts.templates import (
     core_design_candidate_messages,
     dependency_repair_patch_messages,
     file_layout_candidate_messages,
-    function_contract_detail_patch_messages,
+    function_behavior_contract_patch_messages,
     function_inventory_candidate_messages,
+    function_signature_patch_messages,
     module_contracts_candidate_messages,
     protocol_profile_patch_messages,
     wire_access_binding_patch_messages,
@@ -34,8 +35,9 @@ from .stages.implementation_plan_context import (
     build_core_design_context,
     build_dependency_repair_context,
     build_file_layout_context,
-    build_function_detail_context,
+    build_function_behavior_context,
     build_function_inventory_context,
+    build_function_signature_context,
     build_module_contract_context,
     build_wire_access_binding_context,
 )
@@ -47,16 +49,18 @@ from .stages.implementation_plan_merger import (
     fallback_core_design,
     fallback_dependency_repair_patch,
     fallback_file_layout,
-    fallback_function_details,
+    fallback_function_behavior,
     fallback_function_inventory,
+    fallback_function_signatures,
     fallback_module_contracts,
     fallback_wire_access_binding,
     finalize_dependency_graph,
     merge_calls_allowed,
     merge_core_design,
     merge_file_layout,
-    merge_function_details,
+    merge_function_behavior,
     merge_function_inventory,
+    merge_function_signatures,
     merge_module_contracts,
     merge_wire_access_binding,
 )
@@ -76,8 +80,9 @@ from .validators.implementation_plan_stages import (
     validate_dependency_repair_patch,
     validate_file_layout_candidate,
     validate_full_implementation_plan,
-    validate_function_contract_detail_patch,
+    validate_function_behavior_contract_patch,
     validate_function_inventory_candidate,
+    validate_function_signature_patch,
     validate_module_contracts_candidate,
     validate_plan_skeleton,
     validate_wire_access_binding_patch,
@@ -117,12 +122,14 @@ STEP_FILENAMES = {
     "module_contracts_validation_report": "007_5_3_module_contracts_validation_report.json",
     "function_inventory_candidate": "007_5_4a_function_inventory_candidate.json",
     "function_inventory_validation_report": "007_5_4a_function_inventory_validation_report.json",
-    "function_detail_patch": "007_5_4b_function_contract_detail_patch.json",
-    "function_detail_validation_report": "007_5_4b_function_detail_validation_report.json",
-    "wire_access_binding_patch": "007_5_4c_wire_access_binding_patch.json",
-    "wire_access_binding_validation_report": "007_5_4c_wire_access_binding_validation_report.json",
-    "calls_allowed_candidate": "007_5_4d_calls_allowed_candidate.json",
-    "calls_allowed_validation_report": "007_5_4d_calls_allowed_validation_report.json",
+    "function_signature_patch": "007_5_4b_function_signature_patch.json",
+    "function_signature_validation_report": "007_5_4b_function_signature_validation_report.json",
+    "function_behavior_patch": "007_5_4c_function_behavior_contract_patch.json",
+    "function_behavior_validation_report": "007_5_4c_function_behavior_validation_report.json",
+    "wire_access_binding_patch": "007_5_4d_wire_access_binding_patch.json",
+    "wire_access_binding_validation_report": "007_5_4d_wire_access_binding_validation_report.json",
+    "calls_allowed_candidate": "007_5_4e_calls_allowed_candidate.json",
+    "calls_allowed_validation_report": "007_5_4e_calls_allowed_validation_report.json",
     "file_layout_candidate": "007_5_5_file_layout_candidate.json",
     "file_layout_validation_report": "007_5_5_file_layout_validation_report.json",
     "dependency_repair_patch": "007_5_6_dependency_repair_patch.json",
@@ -789,13 +796,14 @@ class PlanningAgent:
         draft = merge_module_contracts(draft, module_candidate)
 
         inventory_aggregate = {
-            "schema_version": "function_inventory_candidate/v1",
+            "schema_version": "function_inventory_candidate/v2",
             "candidate_id": "candidate:function_inventory:all_modules",
             "producer": {
                 "stage": "5.4a_function_inventory",
                 "prompt_name": "function_inventory_candidate_prompt",
                 "prompt_version": "aggregate",
             },
+            "module_id": "all_modules",
             "functions": [],
             "assumptions": [],
             "unresolved_questions": [],
@@ -825,46 +833,97 @@ class PlanningAgent:
         if has_errors(inventory_diags):
             diagnostics.extend(inventory_diags)
 
-        detail_aggregate = {
-            "schema_version": "function_contract_detail_patch/v1",
-            "patch_id": "patch:function_details:all_modules",
+        signature_aggregate = {
+            "schema_version": "function_signature_patch/v1",
+            "patch_id": "patch:function_signatures:all_modules",
             "producer": {
-                "stage": "5.4b_function_details",
-                "prompt_name": "function_contract_detail_patch_prompt",
+                "stage": "5.4b_signature_planning",
+                "prompt_name": "function_signature_patch_prompt",
                 "prompt_version": "aggregate",
             },
-            "function_contract_updates": [],
+            "module_id": "all_modules",
+            "batch": {"index": 0, "size": 0},
+            "function_signature_updates": [],
             "assumptions": [],
             "unresolved_questions": [],
         }
         for module in list(draft.get("module_contracts", [])):
             module_id = str(module.get("module_id", ""))
-            detail_context = build_function_detail_context(draft, module_id, constraints)
-            detail_patch = stage_candidate(
-                stage_label=f"5.4b_function_details:{module_id}",
-                prompt_name="function_contract_detail_patch_prompt",
-                messages=function_contract_detail_patch_messages(detail_context),
-                candidate_key="function_detail_patch",
-                report_key="function_detail_validation_report",
-                fallback=fallback_function_details(draft, module_id),
-                validator=lambda candidate: validate_function_contract_detail_patch(candidate, draft, constraints),
-                step_log_suffix=module_id,
-            )
-            detail_aggregate["function_contract_updates"].extend(detail_patch.get("function_contract_updates", []))
-            detail_aggregate["assumptions"].extend(detail_patch.get("assumptions", []))
-            detail_aggregate["unresolved_questions"].extend(detail_patch.get("unresolved_questions", []))
-            draft = merge_function_details(draft, detail_patch)
-        detail_diags = validate_function_contract_detail_patch(detail_aggregate, draft, constraints)
-        detail_path = store.write_step_json(STEP_FILENAMES["function_detail_patch"], detail_aggregate)
-        artifact_paths["function_detail_patch"] = detail_path
-        detail_report_path = store.write_step_json(STEP_FILENAMES["function_detail_validation_report"], validation_report("5.4b_function_details:all_modules", detail_diags))
-        artifact_paths["function_detail_validation_report"] = detail_report_path
-        if has_errors(detail_diags):
-            diagnostics.extend(detail_diags)
+            module_functions = [item for item in draft.get("function_contracts", []) if isinstance(item, dict) and str(item.get("module_id")) == module_id]
+            batches = [module_functions[index:index + 8] for index in range(0, len(module_functions), 8)] or [[]]
+            for batch_index, batch in enumerate(batches):
+                expected_ids = {str(item.get("function_id", "")) for item in batch if isinstance(item, dict)}
+                signature_context = build_function_signature_context(draft, module_id, batch, batch_index=batch_index, batch_size=8)
+                signature_patch = stage_candidate(
+                    stage_label=f"5.4b_signature_planning:{module_id}:{batch_index}",
+                    prompt_name="function_signature_patch_prompt",
+                    messages=function_signature_patch_messages(signature_context),
+                    candidate_key="function_signature_patch",
+                    report_key="function_signature_validation_report",
+                    fallback=fallback_function_signatures(draft, module_id, batch, batch_index=batch_index, batch_size=8),
+                    validator=lambda candidate, ids=expected_ids: validate_function_signature_patch(candidate, draft, ids),
+                    step_log_suffix=f"{module_id}__batch_{batch_index}",
+                )
+                signature_aggregate["function_signature_updates"].extend(signature_patch.get("function_signature_updates", []))
+                signature_aggregate["assumptions"].extend(signature_patch.get("assumptions", []))
+                signature_aggregate["unresolved_questions"].extend(signature_patch.get("unresolved_questions", []))
+                draft = merge_function_signatures(draft, signature_patch)
+        signature_aggregate["batch"]["size"] = len(signature_aggregate["function_signature_updates"])
+        signature_diags = validate_function_signature_patch(signature_aggregate, draft, {str(item.get("function_id", "")) for item in draft.get("function_contracts", []) if isinstance(item, dict)})
+        signature_path = store.write_step_json(STEP_FILENAMES["function_signature_patch"], signature_aggregate)
+        artifact_paths["function_signature_patch"] = signature_path
+        signature_report_path = store.write_step_json(STEP_FILENAMES["function_signature_validation_report"], validation_report("5.4b_signature_planning:all_modules", signature_diags))
+        artifact_paths["function_signature_validation_report"] = signature_report_path
+        if has_errors(signature_diags):
+            diagnostics.extend(signature_diags)
+
+        behavior_aggregate = {
+            "schema_version": "function_behavior_contract_patch/v1",
+            "patch_id": "patch:function_behavior:all_modules",
+            "producer": {
+                "stage": "5.4c_behavior_contract",
+                "prompt_name": "function_behavior_contract_patch_prompt",
+                "prompt_version": "aggregate",
+            },
+            "module_id": "all_modules",
+            "batch": {"index": 0, "size": 0},
+            "function_behavior_updates": [],
+            "assumptions": [],
+            "unresolved_questions": [],
+        }
+        for module in list(draft.get("module_contracts", [])):
+            module_id = str(module.get("module_id", ""))
+            module_functions = [item for item in draft.get("function_contracts", []) if isinstance(item, dict) and str(item.get("module_id")) == module_id]
+            batches = [module_functions[index:index + 4] for index in range(0, len(module_functions), 4)] or [[]]
+            for batch_index, batch in enumerate(batches):
+                expected_ids = {str(item.get("function_id", "")) for item in batch if isinstance(item, dict)}
+                behavior_context = build_function_behavior_context(draft, module_id, batch, constraints, batch_index=batch_index, batch_size=4)
+                behavior_patch = stage_candidate(
+                    stage_label=f"5.4c_behavior_contract:{module_id}:{batch_index}",
+                    prompt_name="function_behavior_contract_patch_prompt",
+                    messages=function_behavior_contract_patch_messages(behavior_context),
+                    candidate_key="function_behavior_patch",
+                    report_key="function_behavior_validation_report",
+                    fallback=fallback_function_behavior(draft, module_id, batch, batch_index=batch_index, batch_size=4),
+                    validator=lambda candidate, ids=expected_ids: validate_function_behavior_contract_patch(candidate, draft, constraints, ids),
+                    step_log_suffix=f"{module_id}__batch_{batch_index}",
+                )
+                behavior_aggregate["function_behavior_updates"].extend(behavior_patch.get("function_behavior_updates", []))
+                behavior_aggregate["assumptions"].extend(behavior_patch.get("assumptions", []))
+                behavior_aggregate["unresolved_questions"].extend(behavior_patch.get("unresolved_questions", []))
+                draft = merge_function_behavior(draft, behavior_patch)
+        behavior_aggregate["batch"]["size"] = len(behavior_aggregate["function_behavior_updates"])
+        behavior_diags = validate_function_behavior_contract_patch(behavior_aggregate, draft, constraints, {str(item.get("function_id", "")) for item in draft.get("function_contracts", []) if isinstance(item, dict)})
+        behavior_path = store.write_step_json(STEP_FILENAMES["function_behavior_patch"], behavior_aggregate)
+        artifact_paths["function_behavior_patch"] = behavior_path
+        behavior_report_path = store.write_step_json(STEP_FILENAMES["function_behavior_validation_report"], validation_report("5.4c_behavior_contract:all_modules", behavior_diags))
+        artifact_paths["function_behavior_validation_report"] = behavior_report_path
+        if has_errors(behavior_diags):
+            diagnostics.extend(behavior_diags)
 
         wire_context = build_wire_access_binding_context(draft, planning_ir)
         wire_patch = stage_candidate(
-            stage_label="5.4c_wire_access_binding",
+            stage_label="5.4d_wire_access_binding",
             prompt_name="wire_access_binding_patch_prompt",
             messages=wire_access_binding_patch_messages(wire_context),
             candidate_key="wire_access_binding_patch",
@@ -876,7 +935,7 @@ class PlanningAgent:
 
         calls_context = build_calls_allowed_context(draft, selected_architecture)
         calls_candidate = stage_candidate(
-            stage_label="5.4d_calls_allowed",
+            stage_label="5.4e_call_planning",
             prompt_name="calls_allowed_candidate_prompt",
             messages=calls_allowed_candidate_messages(calls_context),
             candidate_key="calls_allowed_candidate",

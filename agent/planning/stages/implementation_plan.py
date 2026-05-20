@@ -338,16 +338,18 @@ def build_implementation_plan(
         fallback_calls_allowed,
         fallback_core_design,
         fallback_file_layout,
-        fallback_function_details,
+        fallback_function_behavior,
         fallback_function_inventory,
+        fallback_function_signatures,
         fallback_module_contracts,
         fallback_wire_access_binding,
         finalize_dependency_graph,
         merge_calls_allowed,
         merge_core_design,
         merge_file_layout,
-        merge_function_details,
+        merge_function_behavior,
         merge_function_inventory,
+        merge_function_signatures,
         merge_module_contracts,
         merge_wire_access_binding,
         build_plan_skeleton,
@@ -359,7 +361,10 @@ def build_implementation_plan(
     for module in list(draft.get("module_contracts", [])):
         draft = merge_function_inventory(draft, fallback_function_inventory(draft, module))
     for module in list(draft.get("module_contracts", [])):
-        draft = merge_function_details(draft, fallback_function_details(draft, str(module.get("module_id", ""))))
+        module_id = str(module.get("module_id", ""))
+        draft = merge_function_signatures(draft, fallback_function_signatures(draft, module_id))
+    for module in list(draft.get("module_contracts", [])):
+        draft = merge_function_behavior(draft, fallback_function_behavior(draft, str(module.get("module_id", ""))))
     draft = merge_wire_access_binding(draft, fallback_wire_access_binding(draft, planning_ir))
     draft = merge_calls_allowed(draft, fallback_calls_allowed(draft))
     draft = merge_file_layout(draft, fallback_file_layout(draft))

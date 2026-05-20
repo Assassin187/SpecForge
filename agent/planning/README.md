@@ -220,12 +220,14 @@ LLM 参与：
 - `_step_logs/007_5_3_module_contracts_validation_report.json`
 - `_step_logs/007_5_4a_function_inventory_candidate.json`
 - `_step_logs/007_5_4a_function_inventory_validation_report.json`
-- `_step_logs/007_5_4b_function_contract_detail_patch.json`
-- `_step_logs/007_5_4b_function_detail_validation_report.json`
-- `_step_logs/007_5_4c_wire_access_binding_patch.json`
-- `_step_logs/007_5_4c_wire_access_binding_validation_report.json`
-- `_step_logs/007_5_4d_calls_allowed_candidate.json`
-- `_step_logs/007_5_4d_calls_allowed_validation_report.json`
+- `_step_logs/007_5_4b_function_signature_patch.json`
+- `_step_logs/007_5_4b_function_signature_validation_report.json`
+- `_step_logs/007_5_4c_function_behavior_contract_patch.json`
+- `_step_logs/007_5_4c_function_behavior_validation_report.json`
+- `_step_logs/007_5_4d_wire_access_binding_patch.json`
+- `_step_logs/007_5_4d_wire_access_binding_validation_report.json`
+- `_step_logs/007_5_4e_calls_allowed_candidate.json`
+- `_step_logs/007_5_4e_calls_allowed_validation_report.json`
 - `_step_logs/007_5_5_file_layout_candidate.json`
 - `_step_logs/007_5_5_file_layout_validation_report.json`
 - `_step_logs/007_5_6_dependency_repair_patch.json`（仅 dependency validation 失败时）
@@ -261,25 +263,29 @@ LLM 参与：
   - 覆盖 parser、serializer、handler、resource lifecycle、public API 等 function kind。
   - 每个 module candidate 独立校验、独立 fallback、逐步 merge 到 draft。
 
-**跟上一步一样，按模块调用生成**
-- 5.4b 按 module 逐个补全 function contract details： 
-  - `signature`
-  - `input_contract`
-  - `output_contract`
-  - `state_access`
-  - `error_behavior`
-  - `side_effects`
-  - `preconditions` / `postconditions`
-  - 不合法时使用 deterministic function detail fallback。
+- 5.4b 按 module 逐个补全 C signature；module 内 function 数量超过 8 时按 batch=8 分批：
+  - 写入 `signature` 与 `signature_dependencies`。
+  - 不允许修改 5.4a 的函数集合、函数名或 API surface。
+  - 签名只能引用合法 public/opaque/type universe，禁止跨 module private type 进入 signature。
+  - 不合法时使用 deterministic signature fallback。
 
-- 5.4c 生成 wire/access binding patch：
+- 5.4c 按 module 逐个补全 behavior/internal dependency contract；module 内 function 数量超过 4 时按 batch=4 分批：
+  - 写入 `behavior_contract`、`error_behavior`、`state_access`、`resource_access`、`internal_type_refs`、`service_requirements`。
+  - 不允许修改 signature，也不直接生成 call edge。
+  - 旧 `input_contract` / `output_contract` 由 5.4b signature 与 5.4c behavior 兼容生成。
+  - 不合法时使用 deterministic behavior fallback。
+
+- 5.4d 生成 wire/access binding patch：
   - 将 wire fields 绑定到 parser/serializer/handler function。
   - 填充 `wire_mapping_table` 与 `access_path_table`。
+  - 不允许新增 function 或修改 signature。
   - 不合法时使用 deterministic wire/access fallback。
 
-- 5.4d 生成 `calls_allowed` candidate：
+- 5.4e 生成 `calls_allowed` candidate：
+  - 将 5.4c 的 `service_requirements` 解析为 concrete call edges。
   - 只允许引用已存在 function ids。
   - 校验跨 module 调用不能违反 selected architecture policy。
+  - 禁止 self-call 和 prohibited cycle；无法解析的 service requirement 写入 unresolved。
   - 不合法时使用 deterministic calls fallback。
 
 **根据已有函数集合进行文件分配**
@@ -289,8 +295,7 @@ LLM 参与：
   - 填充 `source_path`、`header_path`、`exports`、`implements`、`imports_allowed` 和 traceability。
   - 不合法时使用 deterministic file layout fallback。
 
-**这一步报错**
-- 5.6 由规则层从 `imports_allowed` 和 `calls_allowed` 派生最终 `dependency_graph`。
+- 5.6 由规则层从 `signature_dependencies`、`state/resource access`、`calls_allowed` 和 `imports_allowed` 派生最终 `dependency_graph`。
 - 若 dependency validation 失败，执行一次 LLM dependency repair patch；repair 后仍失败则使用 deterministic dependency fallback。
 - 写入最终 `_step_logs/007_implementation_plan.json`，再运行 full implementation plan validator 与 dependency graph validator。
 - 每个子步骤的 candidate/patch 都会写入对应 validation report；只有通过 stage validator 的输出才会被 merger 写入 draft。
@@ -430,12 +435,14 @@ agent/planning/out/<protocol>/<target_slug>/<timestamp>/
 │   ├── 007_5_3_module_contracts_validation_report.json
 │   ├── 007_5_4a_function_inventory_candidate.json
 │   ├── 007_5_4a_function_inventory_validation_report.json
-│   ├── 007_5_4b_function_contract_detail_patch.json
-│   ├── 007_5_4b_function_detail_validation_report.json
-│   ├── 007_5_4c_wire_access_binding_patch.json
-│   ├── 007_5_4c_wire_access_binding_validation_report.json
-│   ├── 007_5_4d_calls_allowed_candidate.json
-│   ├── 007_5_4d_calls_allowed_validation_report.json
+│   ├── 007_5_4b_function_signature_patch.json
+│   ├── 007_5_4b_function_signature_validation_report.json
+│   ├── 007_5_4c_function_behavior_contract_patch.json
+│   ├── 007_5_4c_function_behavior_validation_report.json
+│   ├── 007_5_4d_wire_access_binding_patch.json
+│   ├── 007_5_4d_wire_access_binding_validation_report.json
+│   ├── 007_5_4e_calls_allowed_candidate.json
+│   ├── 007_5_4e_calls_allowed_validation_report.json
 │   ├── 007_5_5_file_layout_candidate.json
 │   ├── 007_5_5_file_layout_validation_report.json
 │   ├── 007_implementation_plan.json

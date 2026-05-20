@@ -8,8 +8,9 @@ from ..schemas.implementation_plan import (
     CORE_DESIGN_CANDIDATE_SCHEMA_VERSION,
     DEPENDENCY_REPAIR_PATCH_SCHEMA_VERSION,
     FILE_LAYOUT_CANDIDATE_SCHEMA_VERSION,
-    FUNCTION_CONTRACT_DETAIL_PATCH_SCHEMA_VERSION,
+    FUNCTION_BEHAVIOR_CONTRACT_PATCH_SCHEMA_VERSION,
     FUNCTION_INVENTORY_CANDIDATE_SCHEMA_VERSION,
+    FUNCTION_SIGNATURE_PATCH_SCHEMA_VERSION,
     MODULE_CONTRACTS_CANDIDATE_SCHEMA_VERSION,
     SCHEMA_VERSION,
     VALIDATION_REPORT_SCHEMA_VERSION,
@@ -20,7 +21,7 @@ from ..stages.implementation_plan import _handler_surfaces, _safe_id, _surface_u
 from .implementation_plan import validate_implementation_plan
 
 
-ALLOWED_FUNCTION_KINDS = {"public_api", "handler", "parser", "serializer", "state_machine", "resource_lifecycle", "error_helper", "internal_helper", "test_support"}
+ALLOWED_FUNCTION_KINDS = {"public_api", "handler", "parser", "serializer", "validator", "state_machine", "resource_lifecycle", "error_helper", "internal_helper"}
 
 
 def validation_report(stage: str, diagnostics: list[PlanningDiagnostic]) -> dict[str, Any]:
@@ -258,6 +259,8 @@ def validate_function_inventory_candidate(candidate: dict[str, Any], module_cont
     if has_errors(diagnostics):
         return diagnostics
     module_ids = _module_contract_ids(module_contracts)
+    if candidate.get("module_id") not in module_ids and candidate.get("module_id") != "all_modules":
+        diagnostics.append(PlanningDiagnostic("error", "unknown_function_inventory_module", f"candidate module_id '{candidate.get('module_id')}' is not a module", path))
     capability_ids = _required_capabilities(profile)
     handler_ids = _handler_ids(core_design)
     message_ids = _message_ids(planning_ir or {})
@@ -300,38 +303,91 @@ def validate_function_inventory_candidate(candidate: dict[str, Any], module_cont
     return diagnostics
 
 
-def validate_function_contract_detail_patch(patch: dict[str, Any], draft: dict[str, Any], constraints: dict[str, Any], *, path: str | None = None) -> list[PlanningDiagnostic]:
-    diagnostics = _shape(patch, FUNCTION_CONTRACT_DETAIL_PATCH_SCHEMA_VERSION, path=path)
+def _batch_function_ids(patch: dict[str, Any], key: str) -> set[str]:
+    return {str(item.get("function_id", "")) for item in patch.get(key, []) if isinstance(item, dict)}
+
+
+def validate_function_signature_patch(patch: dict[str, Any], draft: dict[str, Any], expected_function_ids: set[str] | None = None, *, path: str | None = None) -> list[PlanningDiagnostic]:
+    diagnostics = _shape(patch, FUNCTION_SIGNATURE_PATCH_SCHEMA_VERSION, path=path)
+    if has_errors(diagnostics):
+        return diagnostics
+    functions = _function_by_id(draft)
+    function_ids = set(functions)
+    type_ids = _type_ids(draft)
+    module_ids = _module_contract_ids(draft.get("module_contracts", []))
+    target_ids = _batch_function_ids(patch, "function_signature_updates")
+    if expected_function_ids is not None and target_ids != expected_function_ids:
+        diagnostics.append(PlanningDiagnostic("error", "signature_batch_coverage_mismatch", "signature patch must update exactly the current batch functions", path))
+    seen: set[str] = set()
+    for update in patch["function_signature_updates"]:
+        function_id = update["function_id"]
+        function = functions.get(function_id)
+        if function_id in seen:
+            diagnostics.append(PlanningDiagnostic("error", "duplicate_signature_update", f"duplicate signature update for '{function_id}'", path))
+        seen.add(function_id)
+        if function_id not in function_ids:
+            diagnostics.append(PlanningDiagnostic("error", "unknown_function_signature_target", f"patch updates unknown function '{function_id}'", path))
+            continue
+        signature = update["signature"]
+        if signature["name"] != function.get("name"):
+            diagnostics.append(PlanningDiagnostic("error", "signature_name_mismatch", f"signature name for '{function_id}' must match inventory name", path))
+        if not signature["raw"].strip() or not signature["return_type"].strip():
+            diagnostics.append(PlanningDiagnostic("error", "empty_function_signature", f"function '{function_id}' signature is incomplete", path))
+        for param in signature["params"]:
+            type_ref = str(param.get("type_ref", ""))
+            if type_ref and type_ref not in type_ids:
+                diagnostics.append(PlanningDiagnostic("error", "unknown_signature_param_type_ref", f"function '{function_id}' references unknown type_ref '{type_ref}'", path))
+        for dep in update["signature_dependencies"]:
+            type_ref = str(dep.get("type_ref", ""))
+            owner = str(dep.get("owner_module_id", ""))
+            if type_ref and dep.get("symbol_kind") != "system_type" and type_ref not in type_ids:
+                diagnostics.append(PlanningDiagnostic("error", "unknown_signature_dependency_type", f"function '{function_id}' references unknown signature dependency '{type_ref}'", path))
+            if owner and owner not in module_ids:
+                diagnostics.append(PlanningDiagnostic("error", "unknown_signature_dependency_owner", f"function '{function_id}' signature dependency owner '{owner}' is not a module", path))
+    return diagnostics
+
+
+def validate_function_behavior_contract_patch(patch: dict[str, Any], draft: dict[str, Any], constraints: dict[str, Any], expected_function_ids: set[str] | None = None, *, path: str | None = None) -> list[PlanningDiagnostic]:
+    diagnostics = _shape(patch, FUNCTION_BEHAVIOR_CONTRACT_PATCH_SCHEMA_VERSION, path=path)
     if has_errors(diagnostics):
         return diagnostics
     functions = _function_by_id(draft)
     function_ids = set(functions)
     state_ids = _state_ids(draft)
     state_owner = {str(item.get("state_id", "")): str(item.get("owner_module_id", "")) for item in draft.get("state_design", []) if isinstance(item, dict)}
-    type_ids = _type_ids(draft)
     error_ids = _error_ids(draft)
-    for update in patch["function_contract_updates"]:
+    capability_ids = set(draft.get("traceability", {}).get("required_capabilities", []))
+    target_ids = _batch_function_ids(patch, "function_behavior_updates")
+    if expected_function_ids is not None and target_ids != expected_function_ids:
+        diagnostics.append(PlanningDiagnostic("error", "behavior_batch_coverage_mismatch", "behavior patch must update exactly the current batch functions", path))
+    seen: set[str] = set()
+    for update in patch["function_behavior_updates"]:
         function_id = update["function_id"]
         function = functions.get(function_id)
+        if function_id in seen:
+            diagnostics.append(PlanningDiagnostic("error", "duplicate_behavior_update", f"duplicate behavior update for '{function_id}'", path))
+        seen.add(function_id)
         if function_id not in function_ids:
-            diagnostics.append(PlanningDiagnostic("error", "unknown_function_detail_target", f"patch updates unknown function '{function_id}'", path))
+            diagnostics.append(PlanningDiagnostic("error", "unknown_function_behavior_target", f"patch updates unknown function '{function_id}'", path))
             continue
+        if "callee_function_id" in str(update.get("service_requirements", [])):
+            diagnostics.append(PlanningDiagnostic("error", "behavior_must_not_resolve_calls", f"function '{function_id}' behavior may not include callee_function_id", path))
         for state in update["state_access"]:
             state_id = state["state_id"]
             if state_id not in state_ids:
                 diagnostics.append(PlanningDiagnostic("error", "unknown_function_state_access", f"function '{function_id}' references unknown state '{state_id}'", path))
             if state["access_kind"] in {"write", "read_write"} and state_id in state_owner and state_owner[state_id] != function.get("module_id"):
                 diagnostics.append(PlanningDiagnostic("error", "function_state_write_owner_mismatch", f"function '{function_id}' cannot mutate state '{state_id}' owned by another module", path))
-        for key in ("input_contract", "output_contract"):
-            for type_id in update[key]["type_refs"]:
-                if type_id and type_id not in type_ids:
-                    diagnostics.append(PlanningDiagnostic("error", "unknown_function_contract_type", f"function '{function_id}' references unknown canonical type '{type_id}'", path))
         for error_id in update["error_behavior"]["error_ids"]:
             if error_id not in error_ids:
                 diagnostics.append(PlanningDiagnostic("error", "unknown_function_error_behavior", f"function '{function_id}' references unknown error '{error_id}'", path))
+        for requirement in update["service_requirements"]:
+            for cap in requirement["required_capability_ids"]:
+                if capability_ids and cap not in capability_ids:
+                    diagnostics.append(PlanningDiagnostic("error", "unknown_service_requirement_capability", f"function '{function_id}' service requirement references unknown capability '{cap}'", path))
     for constraint_id in _constraint_ids(constraints):
         if not constraint_id:
-            diagnostics.append(PlanningDiagnostic("error", "invalid_function_detail_constraint_index", "empty constraint_id in engineering constraints", path))
+            diagnostics.append(PlanningDiagnostic("error", "invalid_function_behavior_constraint_index", "empty constraint_id in engineering constraints", path))
     return diagnostics
 
 
@@ -341,7 +397,6 @@ def validate_wire_access_binding_patch(patch: dict[str, Any], draft: dict[str, A
         return diagnostics
     functions = _function_by_id(draft)
     function_ids = set(functions)
-    state_ids = _state_ids(draft)
     field_ids = _field_ids(planning_ir)
     message_ids = _message_ids(planning_ir)
     wire_ids = {entry["wire_mapping_id"] for entry in patch["wire_mapping_entries"]}
@@ -367,8 +422,8 @@ def validate_wire_access_binding_patch(patch: dict[str, Any], draft: dict[str, A
         if entry["function_id"] not in function_ids:
             diagnostics.append(PlanningDiagnostic("error", "unknown_access_path_function", f"access path references unknown function '{entry['function_id']}'", path))
             continue
-        if entry["state_id"] not in state_ids:
-            diagnostics.append(PlanningDiagnostic("error", "unknown_wire_state_access", f"access path references unknown state '{entry['state_id']}'", path))
+        if entry["field_id"] not in field_ids:
+            diagnostics.append(PlanningDiagnostic("error", "unknown_access_path_field", f"access path references unknown field '{entry['field_id']}'", path))
         if entry["access_kind"] in {"write", "read_write"} and function.get("function_kind") not in {"handler", "state_machine", "resource_lifecycle", "public_api"}:
             diagnostics.append(PlanningDiagnostic("error", "wire_access_kind_conflict", f"function '{entry['function_id']}' may not write state through access path", path))
     for update in patch["function_binding_updates"]:
@@ -392,8 +447,16 @@ def validate_calls_allowed_candidate(candidate: dict[str, Any], draft: dict[str,
         return diagnostics
     functions = _function_by_id(draft)
     module_ids = _module_ids_from_arch(selected_architecture or {"architecture": {"modules": draft.get("module_contracts", [])}})
+    service_requirement_ids = {
+        str(requirement.get("service_requirement_id", ""))
+        for function in functions.values()
+        for requirement in function.get("service_requirements", [])
+        if isinstance(requirement, dict) and str(requirement.get("service_requirement_id", ""))
+    }
+    unresolved_service_ids = set(candidate.get("unresolved_service_requirements", []))
+    resolved_service_ids: set[str] = set()
     edges: list[tuple[str, str]] = []
-    for update in candidate["calls_allowed_updates"]:
+    for update in candidate["call_updates"]:
         caller = update["caller_function_id"]
         caller_fn = functions.get(caller)
         if caller not in functions:
@@ -409,9 +472,20 @@ def validate_calls_allowed_candidate(candidate: dict[str, Any], draft: dict[str,
                 diagnostics.append(PlanningDiagnostic("error", "self_call_not_allowed", f"caller '{caller}' may not call itself", path))
             if callee_fn.get("visibility") in {"private", "static"} and callee_fn.get("module_id") != caller_fn.get("module_id"):
                 diagnostics.append(PlanningDiagnostic("error", "private_cross_module_call", f"caller '{caller}' cannot call private/static function '{callee}' across modules", path))
+            cleanup = str(edge.get("return_binding", {}).get("cleanup_function_id", ""))
+            if cleanup and cleanup not in functions:
+                diagnostics.append(PlanningDiagnostic("error", "unknown_call_cleanup_function", f"caller '{caller}' references unknown cleanup function '{cleanup}'", path))
+            for requirement_id in edge.get("service_requirement_ids", []):
+                if requirement_id not in service_requirement_ids:
+                    diagnostics.append(PlanningDiagnostic("error", "unknown_call_service_requirement", f"caller '{caller}' references unknown service requirement '{requirement_id}'", path))
+                resolved_service_ids.add(requirement_id)
             if caller_fn.get("module_id") not in module_ids or callee_fn.get("module_id") not in module_ids:
                 diagnostics.append(PlanningDiagnostic("error", "call_unknown_module", f"call edge '{caller}' -> '{callee}' references unknown module", path))
             edges.append((caller, callee))
+    for requirement_id in sorted(service_requirement_ids - resolved_service_ids - unresolved_service_ids):
+        diagnostics.append(PlanningDiagnostic("error", "unresolved_service_requirement_missing", f"service requirement '{requirement_id}' must be resolved to a call or listed as unresolved", path))
+    for requirement_id in sorted(unresolved_service_ids - service_requirement_ids):
+        diagnostics.append(PlanningDiagnostic("error", "unknown_unresolved_service_requirement", f"unresolved service requirement '{requirement_id}' is unknown", path))
     if _has_cycle(edges):
         diagnostics.append(PlanningDiagnostic("error", "calls_allowed_cycle", "calls_allowed forms a prohibited cycle", path))
     return diagnostics
@@ -537,7 +611,8 @@ def _has_cycle(edges: list[tuple[str, str]]) -> bool:
 validate_core_design = validate_core_design_candidate
 validate_module_contracts = validate_module_contracts_candidate
 validate_function_inventory = validate_function_inventory_candidate
-validate_function_contract_details = validate_function_contract_detail_patch
+validate_function_signatures = validate_function_signature_patch
+validate_function_behavior_contracts = validate_function_behavior_contract_patch
 validate_wire_access_binding = validate_wire_access_binding_patch
 validate_calls_allowed = validate_calls_allowed_candidate
 validate_file_layout = validate_file_layout_candidate

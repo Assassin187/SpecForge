@@ -30,18 +30,6 @@ def _trace(*values: Any) -> list[str]:
     return result
 
 
-def _contract(kind: str, *, type_refs: list[str] | None = None, buffer_refs: list[str] | None = None, notes: str = "") -> dict[str, Any]:
-    return {
-        "contract_kind": kind,
-        "type_refs": type_refs or [],
-        "buffer_refs": buffer_refs or [],
-        "ownership": "borrowed" if kind in {"typed", "buffer", "opaque"} else "none",
-        "nullability": "unknown",
-        "validation_required": kind in {"typed", "buffer"},
-        "notes": notes,
-    }
-
-
 def _error_behavior(error_ids: list[str] | None = None) -> dict[str, Any]:
     return {
         "error_ids": error_ids or [],
@@ -377,14 +365,16 @@ def merge_module_contracts(draft: dict[str, Any], candidate: dict[str, Any]) -> 
 
 
 def _contract_base(*, draft: dict[str, Any], module_id: str, action: str, name: str, function_kind: str, purpose: str, capability_ids: list[str]) -> dict[str, Any]:
+    visibility = "public" if function_kind in {"public_api", "parser", "serializer", "resource_lifecycle"} else "internal"
     return {
         "function_id": f"fn:{module_id}:{action}",
         "name": name,
         "module_id": module_id,
-        "placement_hint": module_id,
-        "required_declaration": function_kind in {"public_api", "parser", "serializer", "handler", "resource_lifecycle"},
-        "visibility": "public",
         "function_kind": function_kind,
+        "coder_function_type": "EVENT_HANDLER" if function_kind == "handler" else "ALGORITHM",
+        "visibility": visibility,
+        "api_surface": "public_header" if visibility == "public" else "internal_header",
+        "grouping_hint": module_id,
         "purpose": purpose,
         "capability_ids": capability_ids,
         "covers_handler_ids": [],
@@ -426,9 +416,10 @@ def fallback_function_inventory(draft: dict[str, Any], module_contract: dict[str
     else:
         functions.append(_contract_base(draft=draft, module_id=module_id, action="run", name=f"{prefix}_run", function_kind="public_api", purpose=f"Run the composed target-role boundary for module {module_id}.", capability_ids=owned))
     return {
-        "schema_version": "function_inventory_candidate/v1",
+        "schema_version": "function_inventory_candidate/v2",
         "candidate_id": f"candidate:function_inventory:{module_id}",
         "producer": _producer("5.4a_function_inventory", "function_inventory_candidate_prompt"),
+        "module_id": module_id,
         "functions": functions,
         "assumptions": [],
         "unresolved_questions": [],
@@ -451,12 +442,19 @@ def merge_function_inventory(draft: dict[str, Any], candidate: dict[str, Any]) -
                 "access_paths": [],
                 "error_behavior": "",
                 "calls_allowed": [],
+                "call_contracts": [],
                 "side_effects": [],
+                "signature_dependencies": [],
+                "interface_type_declarations": [],
+                "resource_access": [],
+                "internal_type_refs": [],
+                "service_requirements": [],
+                "forbidden_symbols": [],
+                "logic_kind": "",
+                "behavior_contract": {},
                 "traceability": {"source_fact_ids": function.get("trace_ref_keys", []), "decision_ids": function.get("trace_ref_keys", [])},
                 **function,
             }
-            item.pop("placement_hint", None)
-            item.pop("required_declaration", None)
             item.pop("trace_ref_keys", None)
             item.pop("status", None)
             result.setdefault("function_contracts", []).append(item)
@@ -466,63 +464,151 @@ def merge_function_inventory(draft: dict[str, Any], candidate: dict[str, Any]) -
     return result
 
 
-def fallback_function_details(draft: dict[str, Any], module_id: str) -> dict[str, Any]:
+def _module_functions(draft: dict[str, Any], module_id: str, functions: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
+    source = functions if functions is not None else draft.get("function_contracts", [])
+    return [item for item in source if isinstance(item, dict) and str(item.get("module_id")) == module_id]
+
+
+def fallback_function_signatures(draft: dict[str, Any], module_id: str, functions: list[dict[str, Any]] | None = None, *, batch_index: int = 0, batch_size: int = 0) -> dict[str, Any]:
+    updates = []
+    for function in _module_functions(draft, module_id, functions):
+        signature, params, _return_type = _default_signature(function, module_id)
+        updates.append(
+            {
+                "function_id": function.get("function_id"),
+                "signature": {
+                    "raw": signature["raw"],
+                    "name": signature["name"],
+                    "storage_class": "static" if str(function.get("visibility")) == "static" else "none",
+                    "return_type": signature["return_type"],
+                    "params": [
+                        {
+                            "name": param["name"],
+                            "type": param["type"],
+                            "type_ref": "",
+                            "direction": "in",
+                            "nullable": bool(param.get("nullable", False)),
+                            "ownership": str(param.get("ownership", "borrowed")),
+                        }
+                        for param in params
+                    ],
+                },
+                "signature_dependencies": [],
+                "interface_type_declarations": [],
+                "trace_ref_keys": function.get("traceability", {}).get("decision_ids", []),
+                "status": "inferred",
+            }
+        )
+    return {
+        "schema_version": "function_signature_patch/v1",
+        "patch_id": f"patch:function_signatures:{module_id}:{batch_index}",
+        "producer": _producer("5.4b_signature_planning", "function_signature_patch_prompt"),
+        "module_id": module_id,
+        "batch": {"index": batch_index, "size": batch_size or len(updates)},
+        "function_signature_updates": updates,
+        "assumptions": [],
+        "unresolved_questions": [],
+    }
+
+
+def merge_function_signatures(draft: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
+    result = deepcopy(draft)
+    updates = {str(item.get("function_id")): item for item in patch.get("function_signature_updates", []) if isinstance(item, dict)}
+    for function in result.get("function_contracts", []):
+        update = updates.get(str(function.get("function_id")))
+        if not update:
+            continue
+        signature = deepcopy(update["signature"])
+        signature["return_type"] = signature.get("return_type", "int")
+        function["signature"] = signature
+        function["signature_dependencies"] = update.get("signature_dependencies", [])
+        function["interface_type_declarations"] = update.get("interface_type_declarations", [])
+        params = [
+            {
+                "type": param.get("type", ""),
+                "name": param.get("name", ""),
+                "nullable": param.get("nullable", False),
+                "ownership": param.get("ownership", "borrowed"),
+                "direction": param.get("direction", "in"),
+                "type_ref": param.get("type_ref", ""),
+            }
+            for param in signature.get("params", [])
+        ]
+        function["input_contract"] = {"params": params}
+        function["output_contract"] = {"return_type": signature.get("return_type", "")}
+    result.setdefault("unresolved_questions", []).extend(patch.get("unresolved_questions", []))
+    result.setdefault("accepted_stage_artifacts", []).append("5.4b_signature_planning")
+    return result
+
+
+def fallback_function_behavior(draft: dict[str, Any], module_id: str, functions: list[dict[str, Any]] | None = None, *, batch_index: int = 0, batch_size: int = 0) -> dict[str, Any]:
     updates = []
     module_error_ids = [
         str(error.get("error_id"))
         for error in draft.get("error_strategy", [])
         if isinstance(error, dict) and str(error.get("owner_module_id", "")) == module_id
     ] or [str(error.get("error_id")) for error in draft.get("error_strategy", []) if isinstance(error, dict) and error.get("error_id")]
-    for function in draft.get("function_contracts", []):
-        if not isinstance(function, dict) or str(function.get("module_id")) != module_id:
-            continue
-        kind = str(function.get("function_kind", "public_api"))
+    for function in _module_functions(draft, module_id, functions):
         updates.append(
             {
                 "function_id": function.get("function_id"),
-                "input_contract": _contract("buffer" if kind in {"parser", "serializer"} else "opaque", notes=f"Inputs required by {kind} function."),
-                "output_contract": _contract("typed", notes="Return generated C status or handle value."),
+                "contract": {
+                    "input": "Inputs are the C signature parameters.",
+                    "action": str(function.get("purpose", "")),
+                    "output": "Result is reflected by return value and documented side effects.",
+                    "preconditions": [],
+                    "postconditions": [],
+                    "invariants_used": [],
+                    "idempotent": False,
+                    "thread_safety": "single_thread_only",
+                },
+                "error_behavior": _error_behavior(module_error_ids),
                 "state_access": [
                     {"state_id": state.get("state_id"), "access_kind": "read_write", "required": True, "reason": "Function belongs to the state owner module."}
                     for state in draft.get("state_design", [])
                     if isinstance(state, dict) and state.get("owner_module_id") == module_id
                 ],
-                "error_behavior": _error_behavior(module_error_ids),
-                "side_effects": [],
-                "preconditions": [],
-                "postconditions": [],
+                "resource_access": [],
+                "internal_type_refs": [],
+                "service_requirements": [],
+                "logic_kind": "EVENT" if function.get("coder_function_type") in {"EVENT", "EVENT_HANDLER"} else "LOGIC",
+                "forbidden_symbols": [],
                 "trace_ref_keys": function.get("traceability", {}).get("decision_ids", []),
                 "status": "inferred",
             }
         )
     return {
-        "schema_version": "function_contract_detail_patch/v1",
-        "patch_id": f"patch:function_details:{module_id}",
-        "producer": _producer("5.4b_function_details", "function_contract_detail_patch_prompt"),
-        "function_contract_updates": updates,
+        "schema_version": "function_behavior_contract_patch/v1",
+        "patch_id": f"patch:function_behavior:{module_id}:{batch_index}",
+        "producer": _producer("5.4c_behavior_contract", "function_behavior_contract_patch_prompt"),
+        "module_id": module_id,
+        "batch": {"index": batch_index, "size": batch_size or len(updates)},
+        "function_behavior_updates": updates,
         "assumptions": [],
         "unresolved_questions": [],
     }
 
 
-def merge_function_details(draft: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
+def merge_function_behavior(draft: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
     result = deepcopy(draft)
-    updates = {str(item.get("function_id")): item for item in patch.get("function_contract_updates", []) if isinstance(item, dict)}
+    updates = {str(item.get("function_id")): item for item in patch.get("function_behavior_updates", []) if isinstance(item, dict)}
     for function in result.get("function_contracts", []):
         update = updates.get(str(function.get("function_id")))
         if not update:
             continue
-        signature, params, return_type = _default_signature(function, str(function.get("module_id", "")))
-        function["signature"] = signature
-        function["input_contract"] = {"params": params, "candidate_contract": update["input_contract"]}
-        function["output_contract"] = {"return_type": return_type, "candidate_contract": update["output_contract"]}
+        contract = update["contract"]
+        function["behavior_contract"] = contract
         function["state_access"] = update["state_access"]
+        function["resource_access"] = update["resource_access"]
+        function["internal_type_refs"] = update["internal_type_refs"]
+        function["service_requirements"] = update["service_requirements"]
         function["error_behavior"] = _error_behavior_text(update["error_behavior"])
-        function["side_effects"] = update["side_effects"]
-        function["preconditions"] = update["preconditions"]
-        function["postconditions"] = update["postconditions"]
+        function["preconditions"] = contract["preconditions"]
+        function["postconditions"] = contract["postconditions"]
+        function["logic_kind"] = update["logic_kind"]
+        function["forbidden_symbols"] = update["forbidden_symbols"]
     result.setdefault("unresolved_questions", []).extend(patch.get("unresolved_questions", []))
-    result.setdefault("accepted_stage_artifacts", []).append("5.4b_function_details")
+    result.setdefault("accepted_stage_artifacts", []).append("5.4c_behavior_contract")
     return result
 
 
@@ -532,8 +618,6 @@ def fallback_wire_access_binding(draft: dict[str, Any], planning_ir: dict[str, A
     serializer_ids = [str(item.get("function_id")) for item in draft.get("function_contracts", []) if isinstance(item, dict) and item.get("function_kind") == "serializer"]
     parser_id = parser_ids[0] if parser_ids else ""
     serializer_id = serializer_ids[0] if serializer_ids else ""
-    states = [item for item in draft.get("state_design", []) if isinstance(item, dict) and item.get("state_id")]
-    state_id = str(states[0].get("state_id")) if states else "state:protocol_session_state"
     entries: list[dict[str, Any]] = []
     access: list[dict[str, Any]] = []
     binding_by_function: dict[str, dict[str, Any]] = {}
@@ -562,10 +646,12 @@ def fallback_wire_access_binding(draft: dict[str, Any], planning_ir: dict[str, A
             {
                 "access_path_id": access_path_id,
                 "function_id": parser_id or serializer_id,
-                "state_id": state_id,
+                "field_id": item["field_id"],
+                "path": item["access_path"],
+                "c_type": "unknown",
                 "access_kind": "read",
-                "access_path": item["access_path"],
-                "required": True,
+                "role": "Protocol field access path.",
+                "validity_condition": "",
                 "trace_ref_keys": item["source_fact_ids"],
                 "status": "inferred",
             }
@@ -574,12 +660,13 @@ def fallback_wire_access_binding(draft: dict[str, Any], planning_ir: dict[str, A
             if function_id:
                 binding_by_function.setdefault(function_id, {"function_id": function_id, "wire_mapping_ids": [], "access_path_ids": []})["access_path_ids"].append(access_path_id)
     return {
-        "schema_version": "wire_access_binding_patch/v1",
+        "schema_version": "wire_access_binding_patch/v2",
         "patch_id": "patch:wire_access_binding:deterministic",
-        "producer": _producer("5.4c_wire_access_binding", "wire_access_binding_patch_prompt"),
+        "producer": _producer("5.4d_wire_access_binding", "wire_access_binding_patch_prompt"),
         "wire_mapping_entries": entries,
         "access_path_entries": access,
         "function_binding_updates": list(binding_by_function.values()),
+        "forbidden_symbols": [],
         "assumptions": [],
         "unresolved_questions": [],
     }
@@ -589,7 +676,6 @@ def merge_wire_access_binding(draft: dict[str, Any], patch: dict[str, Any]) -> d
     result = deepcopy(draft)
     entries = [item for item in patch.get("wire_mapping_entries", []) if isinstance(item, dict)]
     access_entries = [item for item in patch.get("access_path_entries", []) if isinstance(item, dict)]
-    access_by_id = {str(item.get("access_path_id")): item for item in access_entries}
     by_field: dict[str, dict[str, Any]] = {}
     for entry in entries:
         field_id = str(entry.get("field_id", ""))
@@ -614,13 +700,15 @@ def merge_wire_access_binding(draft: dict[str, Any], patch: dict[str, Any]) -> d
             current["serializer_function_id"] = entry.get("function_id", "")
     result["wire_mapping_table"] = list(by_field.values())
     result["access_path_table"] = [
-        {
-            "access_path_id": item["access_path_id"],
-            "path": item["access_path"],
-            "field_id": next((entry.get("field_id", "") for entry in entries if entry.get("function_id") == item.get("function_id")), ""),
-            "owner_module_id": next((state.get("owner_module_id", "") for state in result.get("state_design", []) if state.get("state_id") == item.get("state_id")), ""),
-            "source_fact_ids": item.get("trace_ref_keys", []),
-        }
+            {
+                "access_path_id": item["access_path_id"],
+                "path": item["path"],
+                "field_id": item.get("field_id", ""),
+                "owner_module_id": str(item.get("function_id", "")),
+                "c_type": item.get("c_type", ""),
+                "role": item.get("role", ""),
+                "source_fact_ids": item.get("trace_ref_keys", []),
+            }
         for item in access_entries
     ]
     updates = {str(item.get("function_id")): item for item in patch.get("function_binding_updates", []) if isinstance(item, dict)}
@@ -641,7 +729,7 @@ def merge_wire_access_binding(draft: dict[str, Any], patch: dict[str, Any]) -> d
             ]
             function["access_paths"] = update.get("access_path_ids", [])
     result.setdefault("unresolved_questions", []).extend(patch.get("unresolved_questions", []))
-    result.setdefault("accepted_stage_artifacts", []).append("5.4c_wire_access_binding")
+    result.setdefault("accepted_stage_artifacts", []).append("5.4d_wire_access_binding")
     return result
 
 
@@ -668,9 +756,13 @@ def fallback_calls_allowed(draft: dict[str, Any]) -> dict[str, Any]:
                 "calls_allowed": [
                     {
                         "callee_function_id": call,
-                        "call_reason": "deterministic conservative fallback",
-                        "required": False,
                         "call_kind": "utility" if kind not in {"handler", "public_api"} else "handler_dispatch",
+                        "required": False,
+                        "service_requirement_ids": [],
+                        "call_reason": "deterministic conservative fallback",
+                        "param_bindings": [],
+                        "return_binding": {"policy": "ignore", "target_ref": "", "cleanup_function_id": ""},
+                        "failure_behavior": "ignore",
                         "trace_ref_keys": [],
                         "status": "inferred",
                     }
@@ -680,10 +772,11 @@ def fallback_calls_allowed(draft: dict[str, Any]) -> dict[str, Any]:
             }
         )
     return {
-        "schema_version": "calls_allowed_candidate/v1",
+        "schema_version": "calls_allowed_candidate/v2",
         "candidate_id": "candidate:calls_allowed:deterministic",
-        "producer": _producer("5.4d_calls_allowed", "calls_allowed_candidate_prompt"),
-        "calls_allowed_updates": updates,
+        "producer": _producer("5.4e_call_planning", "calls_allowed_candidate_prompt"),
+        "call_updates": updates,
+        "unresolved_service_requirements": [],
         "assumptions": [],
         "unresolved_questions": [],
     }
@@ -691,13 +784,14 @@ def fallback_calls_allowed(draft: dict[str, Any]) -> dict[str, Any]:
 
 def merge_calls_allowed(draft: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any]:
     result = deepcopy(draft)
-    updates = {str(item.get("caller_function_id")): item for item in candidate.get("calls_allowed_updates", []) if isinstance(item, dict)}
+    updates = {str(item.get("caller_function_id")): item for item in candidate.get("call_updates", []) if isinstance(item, dict)}
     for function in result.get("function_contracts", []):
         update = updates.get(str(function.get("function_id")))
         if update:
             function["calls_allowed"] = [edge["callee_function_id"] for edge in update.get("calls_allowed", [])]
+            function["call_contracts"] = update.get("calls_allowed", [])
     result.setdefault("unresolved_questions", []).extend(candidate.get("unresolved_questions", []))
-    result.setdefault("accepted_stage_artifacts", []).append("5.4d_calls_allowed")
+    result.setdefault("accepted_stage_artifacts", []).append("5.4e_call_planning")
     return result
 
 
@@ -715,6 +809,8 @@ def fallback_file_layout(draft: dict[str, Any]) -> dict[str, Any]:
         header_path = f"{protocol}/{module_id}/{module_id}.h"
         module_functions = [item for item in draft.get("function_contracts", []) if isinstance(item, dict) and str(item.get("module_id")) == module_id]
         public_functions = [str(item.get("function_id")) for item in module_functions if str(item.get("visibility", "public")).lower() == "public"]
+        imports_allowed = [f"file:{dep.get('owner_module_id')}" for function in module_functions for dep in function.get("signature_dependencies", []) if isinstance(dep, dict) and dep.get("owner_module_id") and dep.get("owner_module_id") != module_id]
+        imports_allowed = sorted({item for item in imports_allowed if item})
         files.extend(
             [
                 {
@@ -739,7 +835,7 @@ def fallback_file_layout(draft: dict[str, Any]) -> dict[str, Any]:
                     "exports_function_ids": [],
                     "implements_function_ids": [str(item.get("function_id")) for item in module_functions],
                     "exports_type_ids": [],
-                    "imports_allowed": [header_file_id],
+                    "imports_allowed": [header_file_id, *imports_allowed],
                     "trace_ref_keys": module.get("source_fact_ids", []),
                     "status": "inferred",
                 },

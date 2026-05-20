@@ -249,13 +249,17 @@ class PlanningValidatorTests(unittest.TestCase):
             plan = json.loads((step_logs / STEP_FILENAMES["implementation_plan"]).read_text(encoding="utf-8"))
             module_count = len(plan["module_contracts"])
             inventory_files = sorted(step_logs.glob("007_5_4a_function_inventory_candidate__*.json"))
-            detail_files = sorted(step_logs.glob("007_5_4b_function_contract_detail_patch__*.json"))
+            signature_files = sorted(step_logs.glob("007_5_4b_function_signature_patch__*.json"))
+            behavior_files = sorted(step_logs.glob("007_5_4c_function_behavior_contract_patch__*.json"))
             self.assertEqual(module_count, len(inventory_files))
-            self.assertEqual(module_count, len(detail_files))
+            self.assertGreaterEqual(len(signature_files), module_count)
+            self.assertGreaterEqual(len(behavior_files), module_count)
             inventory = json.loads((step_logs / STEP_FILENAMES["function_inventory_candidate"]).read_text(encoding="utf-8"))
-            detail = json.loads((step_logs / STEP_FILENAMES["function_detail_patch"]).read_text(encoding="utf-8"))
+            signature = json.loads((step_logs / STEP_FILENAMES["function_signature_patch"]).read_text(encoding="utf-8"))
+            behavior = json.loads((step_logs / STEP_FILENAMES["function_behavior_patch"]).read_text(encoding="utf-8"))
             self.assertEqual(len(plan["function_contracts"]), len(inventory["functions"]))
-            self.assertEqual(len(plan["function_contracts"]), len(detail["function_contract_updates"]))
+            self.assertEqual(len(plan["function_contracts"]), len(signature["function_signature_updates"]))
+            self.assertEqual(len(plan["function_contracts"]), len(behavior["function_behavior_updates"]))
 
 
 if __name__ == "__main__":

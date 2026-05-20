@@ -13,8 +13,9 @@ from agent.planning.prompts.templates import (
     core_design_candidate_messages,
     dependency_repair_patch_messages,
     file_layout_candidate_messages,
-    function_contract_detail_patch_messages,
+    function_behavior_contract_patch_messages,
     function_inventory_candidate_messages,
+    function_signature_patch_messages,
     module_contracts_candidate_messages,
     wire_access_binding_patch_messages,
 )
@@ -26,8 +27,9 @@ from agent.planning.stages.implementation_plan_context import (
     build_core_design_context,
     build_dependency_repair_context,
     build_file_layout_context,
-    build_function_detail_context,
+    build_function_behavior_context,
     build_function_inventory_context,
+    build_function_signature_context,
     build_module_contract_context,
     build_wire_access_binding_context,
 )
@@ -37,15 +39,17 @@ from agent.planning.stages.implementation_plan_merger import (
     fallback_core_design,
     fallback_dependency_repair_patch,
     fallback_file_layout,
-    fallback_function_details,
+    fallback_function_behavior,
     fallback_function_inventory,
+    fallback_function_signatures,
     fallback_module_contracts,
     fallback_wire_access_binding,
     merge_calls_allowed,
     merge_core_design,
     merge_file_layout,
-    merge_function_details,
+    merge_function_behavior,
     merge_function_inventory,
+    merge_function_signatures,
     merge_module_contracts,
     merge_wire_access_binding,
 )
@@ -55,8 +59,9 @@ from agent.planning.validators.implementation_plan_stages import (
     validate_core_design_candidate,
     validate_dependency_repair_patch,
     validate_file_layout_candidate,
-    validate_function_contract_detail_patch,
+    validate_function_behavior_contract_patch,
     validate_function_inventory_candidate,
+    validate_function_signature_patch,
     validate_module_contracts_candidate,
     validate_wire_access_binding_patch,
 )
@@ -87,19 +92,19 @@ def _has(diags, code: str) -> bool:
 
 
 def _break_first_state_access(candidate: dict) -> None:
-    for update in candidate["function_contract_updates"]:
+    for update in candidate["function_behavior_updates"]:
         if update["state_access"]:
             update["state_access"][0]["access_kind"] = "bad"
             return
-    candidate["function_contract_updates"][0]["state_access"].append({"state_id": "state:missing", "access_kind": "bad", "required": True, "reason": "bad"})
+    candidate["function_behavior_updates"][0]["state_access"].append({"state_id": "state:missing", "access_kind": "bad", "required": True, "reason": "bad"})
 
 
 def _break_first_call(candidate: dict) -> None:
-    for update in candidate["calls_allowed_updates"]:
+    for update in candidate["call_updates"]:
         if update["calls_allowed"]:
             update["calls_allowed"][0]["call_kind"] = "bad"
             return
-    candidate["calls_allowed_updates"][0]["calls_allowed"].append({"callee_function_id": candidate["calls_allowed_updates"][0]["caller_function_id"], "call_reason": "bad", "required": True, "call_kind": "bad", "trace_ref_keys": [], "status": "assumed"})
+    candidate["call_updates"][0]["calls_allowed"].append({"callee_function_id": candidate["call_updates"][0]["caller_function_id"], "call_kind": "bad", "required": True, "service_requirement_ids": [], "call_reason": "bad", "param_bindings": [], "return_binding": {"policy": "ignore", "target_ref": "", "cleanup_function_id": ""}, "failure_behavior": "ignore", "trace_ref_keys": [], "status": "assumed"})
 
 
 class ImplementationPlanStageCandidateTests(unittest.TestCase):
@@ -124,11 +129,16 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             inventory = fallback_function_inventory(draft, module)
             inventories.append(inventory)
             draft = merge_function_inventory(draft, inventory)
-        detail_patches = []
+        signature_patches = []
         for module in list(draft["module_contracts"]):
-            patch = fallback_function_details(draft, str(module["module_id"]))
-            detail_patches.append(patch)
-            draft = merge_function_details(draft, patch)
+            patch = fallback_function_signatures(draft, str(module["module_id"]))
+            signature_patches.append(patch)
+            draft = merge_function_signatures(draft, patch)
+        behavior_patches = []
+        for module in list(draft["module_contracts"]):
+            patch = fallback_function_behavior(draft, str(module["module_id"]))
+            behavior_patches.append(patch)
+            draft = merge_function_behavior(draft, patch)
         wire = fallback_wire_access_binding(draft, planning_ir)
         draft = merge_wire_access_binding(draft, wire)
         calls = fallback_calls_allowed(draft)
@@ -141,7 +151,8 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             "core": core,
             "modules": modules,
             "inventory": inventories[0],
-            "details": detail_patches[0],
+            "signature": signature_patches[0],
+            "behavior": behavior_patches[0],
             "wire": wire,
             "calls": calls,
             "layout": layout,
@@ -154,7 +165,8 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             self.assertFalse(validate_core_design_candidate(items["core"], planning_ir, profile, selected, constraints))
             self.assertFalse(validate_module_contracts_candidate(items["modules"], selected, profile, constraints, merge_core_design(build_plan_skeleton(planning_ir, profile, constraints, selected), items["core"])))
             self.assertFalse(validate_function_inventory_candidate(items["inventory"], draft["module_contracts"], draft, profile, planning_ir))
-            self.assertFalse(validate_function_contract_detail_patch(items["details"], draft, constraints))
+            self.assertFalse(validate_function_signature_patch(items["signature"], draft))
+            self.assertFalse(validate_function_behavior_contract_patch(items["behavior"], draft, constraints))
             self.assertFalse(validate_wire_access_binding_patch(items["wire"], draft, planning_ir))
             self.assertFalse(validate_calls_allowed_candidate(items["calls"], draft, selected))
             self.assertFalse(validate_file_layout_candidate(items["layout"], draft))
@@ -167,7 +179,8 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
                 (items["core"], lambda c: validate_core_design_candidate(c, planning_ir, profile, selected, constraints), lambda c: c["canonical_types"][0].__setitem__("kind", "bad")),
                 (items["modules"], lambda c: validate_module_contracts_candidate(c, selected, profile, constraints, draft), lambda c: c["module_contracts"][0].__setitem__("status", "bad")),
                 (items["inventory"], lambda c: validate_function_inventory_candidate(c, draft["module_contracts"], draft, profile, planning_ir), lambda c: c["functions"][0].__setitem__("function_kind", "bad")),
-                (items["details"], lambda c: validate_function_contract_detail_patch(c, draft, constraints), _break_first_state_access),
+                (items["signature"], lambda c: validate_function_signature_patch(c, draft), lambda c: c["function_signature_updates"][0]["signature"].__setitem__("storage_class", "bad")),
+                (items["behavior"], lambda c: validate_function_behavior_contract_patch(c, draft, constraints), _break_first_state_access),
                 (items["wire"], lambda c: validate_wire_access_binding_patch(c, draft, planning_ir), lambda c: c["wire_mapping_entries"][0].__setitem__("direction", "bad")),
                 (items["calls"], lambda c: validate_calls_allowed_candidate(c, draft, selected), _break_first_call),
                 (items["layout"], lambda c: validate_file_layout_candidate(c, draft), lambda c: c["files"][0].__setitem__("kind", "bad")),
@@ -196,14 +209,17 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             inventory = copy.deepcopy(items["inventory"])
             inventory["functions"][0]["module_id"] = "missing"
             self.assertTrue(_has(validate_function_inventory_candidate(inventory, draft["module_contracts"], draft, profile, planning_ir), "unknown_function_module"))
-            details = copy.deepcopy(items["details"])
-            details["function_contract_updates"][0]["function_id"] = "fn:missing"
-            self.assertTrue(_has(validate_function_contract_detail_patch(details, draft, constraints), "unknown_function_detail_target"))
+            signature = copy.deepcopy(items["signature"])
+            signature["function_signature_updates"][0]["function_id"] = "fn:missing"
+            self.assertTrue(_has(validate_function_signature_patch(signature, draft), "unknown_function_signature_target"))
+            behavior = copy.deepcopy(items["behavior"])
+            behavior["function_behavior_updates"][0]["function_id"] = "fn:missing"
+            self.assertTrue(_has(validate_function_behavior_contract_patch(behavior, draft, constraints), "unknown_function_behavior_target"))
             wire = copy.deepcopy(items["wire"])
             wire["wire_mapping_entries"][0]["field_id"] = "field:missing"
             self.assertTrue(_has(validate_wire_access_binding_patch(wire, draft, planning_ir), "unknown_wire_field"))
             calls = copy.deepcopy(items["calls"])
-            calls["calls_allowed_updates"][0]["calls_allowed"].append({"callee_function_id": "fn:missing", "call_reason": "bad", "required": True, "call_kind": "utility", "trace_ref_keys": [], "status": "assumed"})
+            calls["call_updates"][0]["calls_allowed"].append({"callee_function_id": "fn:missing", "call_kind": "utility", "required": True, "service_requirement_ids": [], "call_reason": "bad", "param_bindings": [], "return_binding": {"policy": "ignore", "target_ref": "", "cleanup_function_id": ""}, "failure_behavior": "ignore", "trace_ref_keys": [], "status": "assumed"})
             self.assertTrue(_has(validate_calls_allowed_candidate(calls, draft, selected), "unknown_call_callee"))
             layout = copy.deepcopy(items["layout"])
             layout["function_file_assignments"][0]["function_id"] = "fn:missing"
@@ -216,7 +232,8 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
                 lambda c: validate_core_design_candidate(c, planning_ir, profile, selected, constraints),
                 lambda c: validate_module_contracts_candidate(c, selected, profile, constraints, draft),
                 lambda c: validate_function_inventory_candidate(c, draft["module_contracts"], draft, profile, planning_ir),
-                lambda c: validate_function_contract_detail_patch(c, draft, constraints),
+                lambda c: validate_function_signature_patch(c, draft),
+                lambda c: validate_function_behavior_contract_patch(c, draft, constraints),
                 lambda c: validate_wire_access_binding_patch(c, draft, planning_ir),
                 lambda c: validate_calls_allowed_candidate(c, draft, selected),
                 lambda c: validate_file_layout_candidate(c, draft),
@@ -224,10 +241,10 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             ]
             for validator in validators:
                 self.assertTrue(_has(validator(plan), "invalid_schema_version"))
-            for key in ("core", "modules", "inventory", "details", "wire", "calls", "layout", "repair"):
+            for key in ("core", "modules", "inventory", "signature", "behavior", "wire", "calls", "layout", "repair"):
                 candidate = copy.deepcopy(items[key])
                 candidate["dependency_graph"] = {}
-                validator = validators[["core", "modules", "inventory", "details", "wire", "calls", "layout", "repair"].index(key)]
+                validator = validators[["core", "modules", "inventory", "signature", "behavior", "wire", "calls", "layout", "repair"].index(key)]
                 self.assertTrue(_has(validator(candidate), "forbidden_extra_field"))
 
     def test_prompt_uses_output_shape_not_allowed_fields(self) -> None:
@@ -247,11 +264,13 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             planning_ir, profile, constraints, selected, draft, _, _ = self._fixtures(Path(raw_tmp))
             first_module = draft["module_contracts"][0]
             first_module_id = str(first_module["module_id"])
+            first_functions = [item for item in draft["function_contracts"] if item.get("module_id") == first_module_id][:4]
             prompt_payloads = [
                 json.loads(core_design_candidate_messages(build_core_design_context(planning_ir, profile, constraints, selected))[1]["content"]),
                 json.loads(module_contracts_candidate_messages(build_module_contract_context(draft, profile, constraints, selected))[1]["content"]),
                 json.loads(function_inventory_candidate_messages(build_function_inventory_context(draft, first_module))[1]["content"]),
-                json.loads(function_contract_detail_patch_messages(build_function_detail_context(draft, first_module_id, constraints))[1]["content"]),
+                json.loads(function_signature_patch_messages(build_function_signature_context(draft, first_module_id, first_functions, batch_index=0, batch_size=8))[1]["content"]),
+                json.loads(function_behavior_contract_patch_messages(build_function_behavior_context(draft, first_module_id, first_functions, constraints, batch_index=0, batch_size=4))[1]["content"]),
                 json.loads(wire_access_binding_patch_messages(build_wire_access_binding_context(draft, planning_ir))[1]["content"]),
                 json.loads(calls_allowed_candidate_messages(build_calls_allowed_context(draft, selected))[1]["content"]),
                 json.loads(file_layout_candidate_messages(build_file_layout_context(draft, planning_ir, constraints))[1]["content"]),
@@ -268,8 +287,8 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
                 for rule in payload["semantic_validation_rules"] + payload["enum_usage_rules"] + payload["id_reference_rules"]
             )
             self.assertIn("handler_matrix[].trigger must exactly equal that surface", joined_rules)
-            self.assertIn("contract_kind is a structural category only", joined_rules)
-            self.assertIn("status_code, boolean, void, pointer_null, or out_param in error_behavior.return_policy", joined_rules)
+            self.assertIn("signature.name must match the existing function name", joined_rules)
+            self.assertIn("service_requirements may describe needed operations", joined_rules)
             self.assertIn("Parser and serializer functions must not write state", joined_rules)
             self.assertIn("exports_type_ids may contain only canonical type IDs", joined_rules)
             self.assertIn("must be copied exactly from legal_id_universe.file_ids or files[].file_id", joined_rules)

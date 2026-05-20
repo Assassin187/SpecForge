@@ -11,6 +11,9 @@ SchemaSpec = dict[str, Any]
 STATUS_VALUES = {"supported", "inferred", "assumed", "unresolved"}
 CONFIDENCE_VALUES = {"high", "medium", "low"}
 VISIBILITY_VALUES = {"public", "internal", "private", "static"}
+FUNCTION_KIND_VALUES = {"public_api", "handler", "parser", "serializer", "validator", "state_machine", "resource_lifecycle", "error_helper", "internal_helper"}
+CODER_FUNCTION_TYPE_VALUES = {"ALGORITHM", "EVENT", "EVENT_HANDLER"}
+API_SURFACE_VALUES = {"public_header", "internal_header", "source_private", "callback_entry"}
 
 
 def _scalar(name: str, *, enum: set[str] | None = None) -> SchemaSpec:
@@ -234,13 +237,11 @@ FUNCTION_INVENTORY_SCHEMA = _object(
         "function_id": STRING,
         "name": STRING,
         "module_id": STRING,
-        "placement_hint": STRING,
-        "required_declaration": BOOL,
+        "function_kind": _scalar("string", enum=FUNCTION_KIND_VALUES),
+        "coder_function_type": _scalar("string", enum=CODER_FUNCTION_TYPE_VALUES),
         "visibility": VISIBILITY,
-        "function_kind": _scalar(
-            "string",
-            enum={"public_api", "handler", "parser", "serializer", "state_machine", "resource_lifecycle", "error_helper", "internal_helper", "test_support"},
-        ),
+        "api_surface": _scalar("string", enum=API_SURFACE_VALUES),
+        "grouping_hint": STRING,
         "purpose": STRING,
         "capability_ids": STRING_LIST,
         "covers_handler_ids": STRING_LIST,
@@ -251,15 +252,58 @@ FUNCTION_INVENTORY_SCHEMA = _object(
     }
 )
 
-CONTRACT_SCHEMA = _object(
+BATCH_SCHEMA = _object({"index": _scalar("integer"), "size": _scalar("integer")})
+
+SIGNATURE_PARAM_SCHEMA = _object(
     {
-        "contract_kind": _scalar("string", enum={"none", "typed", "buffer", "opaque", "callback", "unknown"}),
-        "type_refs": STRING_LIST,
-        "buffer_refs": STRING_LIST,
+        "name": STRING,
+        "type": STRING,
+        "type_ref": STRING,
+        "direction": _scalar("string", enum={"in", "out", "inout", "return", "unknown"}),
+        "nullable": BOOL,
         "ownership": _scalar("string", enum={"borrowed", "owned", "transferred", "value", "none", "unknown"}),
-        "nullability": _scalar("string", enum={"nullable", "non_null", "mixed", "not_applicable", "unknown"}),
-        "validation_required": BOOL,
-        "notes": STRING,
+    }
+)
+
+FUNCTION_SIGNATURE_SCHEMA = _object(
+    {
+        "raw": STRING,
+        "name": STRING,
+        "storage_class": _scalar("string", enum={"static", "extern", "none"}),
+        "return_type": STRING,
+        "params": _array(SIGNATURE_PARAM_SCHEMA),
+    }
+)
+
+SIGNATURE_DEPENDENCY_SCHEMA = _object(
+    {
+        "symbol_name": STRING,
+        "symbol_kind": _scalar("string", enum={"type", "opaque_handle", "callback_type", "system_type"}),
+        "type_ref": STRING,
+        "owner_module_id": STRING,
+        "dependency_scope": _scalar("string", enum={"header", "source"}),
+        "reason": STRING,
+    }
+)
+
+INTERFACE_TYPE_DECLARATION_SCHEMA = _object(
+    {
+        "name": STRING,
+        "kind": _scalar("string", enum={"opaque_handle", "callback_typedef", "callback_struct", "forward_decl", "type"}),
+        "owner_module_id": STRING,
+        "visibility": VISIBILITY,
+        "reason": STRING,
+    }
+)
+
+FUNCTION_SIGNATURE_UPDATE_SCHEMA = _object(
+    {
+        "function_id": STRING,
+        "signature": FUNCTION_SIGNATURE_SCHEMA,
+        "signature_dependencies": _array(SIGNATURE_DEPENDENCY_SCHEMA),
+        "interface_type_declarations": _array(INTERFACE_TYPE_DECLARATION_SCHEMA),
+        "trace_ref_keys": STRING_LIST,
+        "status": STATUS,
     }
 )
 
@@ -281,16 +325,58 @@ ERROR_BEHAVIOR_SCHEMA = _object(
     }
 )
 
-FUNCTION_CONTRACT_UPDATE_SCHEMA = _object(
+RESOURCE_ACCESS_SCHEMA = _object(
     {
-        "function_id": STRING,
-        "input_contract": CONTRACT_SCHEMA,
-        "output_contract": CONTRACT_SCHEMA,
-        "state_access": _array(STATE_ACCESS_SCHEMA),
-        "error_behavior": ERROR_BEHAVIOR_SCHEMA,
-        "side_effects": STRING_LIST,
+        "resource_id": STRING,
+        "access_kind": _scalar("string", enum={"read", "write", "read_write", "lifecycle"}),
+        "required": BOOL,
+        "reason": STRING,
+    }
+)
+
+INTERNAL_TYPE_REF_SCHEMA = _object(
+    {
+        "symbol_name": STRING,
+        "visibility": _scalar("string", enum={"private", "internal", "public"}),
+        "role": STRING,
+    }
+)
+
+SERVICE_REQUIREMENT_SCHEMA = _object(
+    {
+        "service_requirement_id": STRING,
+        "operation": STRING,
+        "required_capability_ids": STRING_LIST,
+        "expected_inputs": STRING_LIST,
+        "expected_output": STRING,
+        "failure_policy": _scalar("string", enum={"close_connection", "return_error", "cleanup_and_return", "ignore", "unknown"}),
+    }
+)
+
+BEHAVIOR_CONTRACT_SCHEMA = _object(
+    {
+        "input": STRING,
+        "action": STRING,
+        "output": STRING,
         "preconditions": STRING_LIST,
         "postconditions": STRING_LIST,
+        "invariants_used": STRING_LIST,
+        "idempotent": BOOL,
+        "thread_safety": _scalar("string", enum={"single_thread_only", "reentrant", "requires_external_sync", "unknown"}),
+    }
+)
+
+FUNCTION_BEHAVIOR_UPDATE_SCHEMA = _object(
+    {
+        "function_id": STRING,
+        "contract": BEHAVIOR_CONTRACT_SCHEMA,
+        "error_behavior": ERROR_BEHAVIOR_SCHEMA,
+        "state_access": _array(STATE_ACCESS_SCHEMA),
+        "resource_access": _array(RESOURCE_ACCESS_SCHEMA),
+        "internal_type_refs": _array(INTERNAL_TYPE_REF_SCHEMA),
+        "service_requirements": _array(SERVICE_REQUIREMENT_SCHEMA),
+        "logic_kind": _scalar("string", enum={"LOGIC", "EVENT"}),
+        "forbidden_symbols": STRING_LIST,
         "trace_ref_keys": STRING_LIST,
         "status": STATUS,
     }
@@ -314,10 +400,12 @@ ACCESS_PATH_ENTRY_SCHEMA = _object(
     {
         "access_path_id": STRING,
         "function_id": STRING,
-        "state_id": STRING,
+        "field_id": STRING,
+        "path": STRING,
+        "c_type": STRING,
         "access_kind": _scalar("string", enum={"read", "write", "read_write"}),
-        "access_path": STRING,
-        "required": BOOL,
+        "role": STRING,
+        "validity_condition": STRING,
         "trace_ref_keys": STRING_LIST,
         "status": STATUS,
     }
@@ -334,9 +422,19 @@ FUNCTION_BINDING_UPDATE_SCHEMA = _object(
 CALL_EDGE_SCHEMA = _object(
     {
         "callee_function_id": STRING,
-        "call_reason": STRING,
+        "call_kind": _scalar("string", enum={"service_requirement", "parser_delegate", "serializer_delegate", "handler_dispatch", "state_access", "lifecycle", "error_handling", "utility"}),
         "required": BOOL,
-        "call_kind": _scalar("string", enum={"parse_delegate", "serialize_delegate", "state_access", "error_handling", "lifecycle", "handler_dispatch", "utility", "test_only"}),
+        "service_requirement_ids": STRING_LIST,
+        "call_reason": STRING,
+        "param_bindings": _array(_object({"param_name": STRING, "value_ref": STRING, "ownership": STRING, "nullability": STRING})),
+        "return_binding": _object(
+            {
+                "policy": _scalar("string", enum={"ignore", "branch_on_bool", "return_to_caller", "store_then_cleanup", "out_param"}),
+                "target_ref": STRING,
+                "cleanup_function_id": STRING,
+            }
+        ),
+        "failure_behavior": _scalar("string", enum={"close_connection", "return_error", "cleanup_and_return", "ignore"}),
         "trace_ref_keys": STRING_LIST,
         "status": STATUS,
     }
@@ -432,44 +530,61 @@ SCHEMA_SPECS: dict[str, SchemaSpec] = {
             "unresolved_questions": _array(UNRESOLVED_QUESTION_SCHEMA),
         }
     ),
-    "function_inventory_candidate/v1": _object(
+    "function_inventory_candidate/v2": _object(
         {
-            "schema_version": _scalar("string", enum={"function_inventory_candidate/v1"}),
+            "schema_version": _scalar("string", enum={"function_inventory_candidate/v2"}),
             "candidate_id": STRING,
             "producer": PRODUCER_SCHEMA,
+            "module_id": STRING,
             "functions": _array(FUNCTION_INVENTORY_SCHEMA),
             "assumptions": _array(ASSUMPTION_SCHEMA),
             "unresolved_questions": _array(UNRESOLVED_QUESTION_SCHEMA),
         }
     ),
-    "function_contract_detail_patch/v1": _object(
+    "function_signature_patch/v1": _object(
         {
-            "schema_version": _scalar("string", enum={"function_contract_detail_patch/v1"}),
+            "schema_version": _scalar("string", enum={"function_signature_patch/v1"}),
             "patch_id": STRING,
             "producer": PRODUCER_SCHEMA,
-            "function_contract_updates": _array(FUNCTION_CONTRACT_UPDATE_SCHEMA),
+            "module_id": STRING,
+            "batch": BATCH_SCHEMA,
+            "function_signature_updates": _array(FUNCTION_SIGNATURE_UPDATE_SCHEMA),
             "assumptions": _array(ASSUMPTION_SCHEMA),
             "unresolved_questions": _array(UNRESOLVED_QUESTION_SCHEMA),
         }
     ),
-    "wire_access_binding_patch/v1": _object(
+    "function_behavior_contract_patch/v1": _object(
         {
-            "schema_version": _scalar("string", enum={"wire_access_binding_patch/v1"}),
+            "schema_version": _scalar("string", enum={"function_behavior_contract_patch/v1"}),
+            "patch_id": STRING,
+            "producer": PRODUCER_SCHEMA,
+            "module_id": STRING,
+            "batch": BATCH_SCHEMA,
+            "function_behavior_updates": _array(FUNCTION_BEHAVIOR_UPDATE_SCHEMA),
+            "assumptions": _array(ASSUMPTION_SCHEMA),
+            "unresolved_questions": _array(UNRESOLVED_QUESTION_SCHEMA),
+        }
+    ),
+    "wire_access_binding_patch/v2": _object(
+        {
+            "schema_version": _scalar("string", enum={"wire_access_binding_patch/v2"}),
             "patch_id": STRING,
             "producer": PRODUCER_SCHEMA,
             "wire_mapping_entries": _array(WIRE_MAPPING_ENTRY_SCHEMA),
             "access_path_entries": _array(ACCESS_PATH_ENTRY_SCHEMA),
             "function_binding_updates": _array(FUNCTION_BINDING_UPDATE_SCHEMA),
+            "forbidden_symbols": STRING_LIST,
             "assumptions": _array(ASSUMPTION_SCHEMA),
             "unresolved_questions": _array(UNRESOLVED_QUESTION_SCHEMA),
         }
     ),
-    "calls_allowed_candidate/v1": _object(
+    "calls_allowed_candidate/v2": _object(
         {
-            "schema_version": _scalar("string", enum={"calls_allowed_candidate/v1"}),
+            "schema_version": _scalar("string", enum={"calls_allowed_candidate/v2"}),
             "candidate_id": STRING,
             "producer": PRODUCER_SCHEMA,
-            "calls_allowed_updates": _array(CALLS_ALLOWED_UPDATE_SCHEMA),
+            "call_updates": _array(CALLS_ALLOWED_UPDATE_SCHEMA),
+            "unresolved_service_requirements": STRING_LIST,
             "assumptions": _array(ASSUMPTION_SCHEMA),
             "unresolved_questions": _array(UNRESOLVED_QUESTION_SCHEMA),
         }
@@ -583,6 +698,10 @@ def _validate_node(value: Any, spec: SchemaSpec, path: str, diagnostics: list[Pl
     if kind == "boolean":
         if not isinstance(value, bool):
             diagnostics.append(PlanningDiagnostic("error", "invalid_field_type", f"{path} must be a boolean", path))
+        return
+    if kind == "integer":
+        if not isinstance(value, int) or isinstance(value, bool):
+            diagnostics.append(PlanningDiagnostic("error", "invalid_field_type", f"{path} must be an integer", path))
         return
     diagnostics.append(PlanningDiagnostic("error", "unknown_shape_type", f"{path} uses unknown schema type '{kind}'", path))
 

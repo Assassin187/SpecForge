@@ -46,31 +46,38 @@ STAGE_SEMANTIC_RULES = {
         "state_id, error_id, and constraint_id references must come from the accepted core design and engineering constraints.",
         "Do not generate files, functions, calls, access paths, imports, dependency graphs, or code.",
     ],
-    "function_inventory_candidate/v1": [
-        "Generate only a function inventory; do not include input/output contracts, state access, wire mappings, calls, file IDs, declarations, dependency graphs, or code.",
+    "function_inventory_candidate/v2": [
+        "Generate only a function inventory; do not include signatures, input/output contracts, state access, wire mappings, calls, file IDs, dependency graphs, or code.",
         "function_id values must be new and unique within this candidate; function names must be unique.",
         "module_id must be the current module or another module explicitly present in module_contracts.",
         "If the module owns decode, encode, dispatch, state-machine, lifecycle, or error-policy responsibilities, represent them with the matching function_kind values or add unresolved_questions.",
         "covers_handler_ids, covers_message_ids, and covers_field_ids may reference only existing handler, message, and field IDs.",
     ],
-    "function_contract_detail_patch/v1": [
+    "function_signature_patch/v1": [
         "Patch existing function_id values only; never add a new function.",
-        "contract_kind is a structural category only. Use typed for scalar/status/boolean return values; put status_code, boolean, void, pointer_null, or out_param in error_behavior.return_policy.",
-        "type_refs may reference only existing canonical type IDs.",
-        "state_access.access_kind write or read_write is allowed only when the function's module owns that state. Otherwise use read, omit that state access, or add unresolved_questions.",
-        "Do not generate calls_allowed, files, dependency graphs, or code.",
+        "function_signature_updates must include exactly one update for every function in the batch.",
+        "signature.name must match the existing function name.",
+        "signature_dependencies describe type/header needs only; do not generate imports_allowed, calls_allowed, files, dependency graphs, or code.",
     ],
-    "wire_access_binding_patch/v1": [
+    "function_behavior_contract_patch/v1": [
+        "Patch existing function_id values only; never add a new function and never change signatures.",
+        "function_behavior_updates must include exactly one update for every function in the batch.",
+        "service_requirements may describe needed operations/capabilities but must not contain callee_function_id.",
+        "state_access.access_kind write or read_write is allowed only when the function's module owns that state. Otherwise use read, omit that state access, or add unresolved_questions.",
+        "Do not generate calls_allowed, wire mappings, files, dependency graphs, or code.",
+    ],
+    "wire_access_binding_patch/v2": [
         "direction=parse may bind only parser functions; direction=serialize may bind only serializer functions.",
         "Every target wire field must be covered by a parse or serialize wire_mapping_entry, or by unresolved_questions with that exact field_id as target_id.",
         "Parser and serializer functions must not write state through access paths; their access_path_entries should use read unless the function kind permits mutation.",
-        "access_path is an access description, not a new state. state_id must come from existing state_design.",
+        "access path entries describe C access expressions for existing fields; do not invent fields.",
         "Do not add new functions, messages, fields, states, calls, dependency graphs, or code.",
     ],
-    "calls_allowed_candidate/v1": [
+    "calls_allowed_candidate/v2": [
         "caller_function_id and callee_function_id must come from existing functions.",
         "Do not create self-calls.",
         "Do not call private or static functions across module boundaries.",
+        "Resolve service_requirements into concrete calls where possible; otherwise use unresolved_service_requirements.",
         "The planned calls_allowed graph must avoid prohibited cycles.",
         "Do not generate imports, file graphs, dependency graphs, new functions, or code.",
     ],
@@ -486,24 +493,36 @@ def module_contracts_candidate_messages(context: dict[str, Any]) -> list[dict[st
 def function_inventory_candidate_messages(context: dict[str, Any]) -> list[dict[str, str]]:
     return _stage_messages(
         prompt_name="function_inventory_candidate_prompt",
-        task="Plan the function inventory for one module. Do not fill detailed contracts.",
+        task="Plan the function inventory for one module. Do not fill signatures or detailed contracts.",
         context_key="function_inventory_context",
         context=context,
-        expected_schema="function_inventory_candidate/v1",
-        forbidden_fields=["input_contract", "output_contract", "state_access", "wire_mapping", "access_paths", "calls_allowed", "dependency_graph", "code"],
+        expected_schema="function_inventory_candidate/v2",
+        forbidden_fields=["signature", "input_contract", "output_contract", "state_access", "wire_mapping", "access_paths", "calls_allowed", "dependency_graph", "code"],
         validator="validate_function_inventory_candidate",
     )
 
 
-def function_contract_detail_patch_messages(context: dict[str, Any]) -> list[dict[str, str]]:
+def function_signature_patch_messages(context: dict[str, Any]) -> list[dict[str, str]]:
     return _stage_messages(
-        prompt_name="function_contract_detail_patch_prompt",
-        task="Patch details for existing functions only.",
-        context_key="function_detail_context",
+        prompt_name="function_signature_patch_prompt",
+        task="Patch complete C signatures and signature_dependencies for the current function batch.",
+        context_key="function_signature_context",
         context=context,
-        expected_schema="function_contract_detail_patch/v1",
-        forbidden_fields=["new function_id", "new file_id", "new module_id", "new message_id", "new field_id", "calls_allowed", "dependency_graph", "code"],
-        validator="validate_function_contract_detail_patch",
+        expected_schema="function_signature_patch/v1",
+        forbidden_fields=["new function_id", "new file_id", "new module_id", "state_access", "wire_mapping", "access_paths", "calls_allowed", "dependency_graph", "code"],
+        validator="validate_function_signature_patch",
+    )
+
+
+def function_behavior_contract_patch_messages(context: dict[str, Any]) -> list[dict[str, str]]:
+    return _stage_messages(
+        prompt_name="function_behavior_contract_patch_prompt",
+        task="Patch behavior contracts, state/resource access, internal type refs, and service requirements for the current function batch. Do not generate call edges.",
+        context_key="function_behavior_context",
+        context=context,
+        expected_schema="function_behavior_contract_patch/v1",
+        forbidden_fields=["new function_id", "signature changes", "wire_mapping", "access_paths", "callee_function_id", "calls_allowed", "dependency_graph", "code"],
+        validator="validate_function_behavior_contract_patch",
     )
 
 
@@ -513,7 +532,7 @@ def wire_access_binding_patch_messages(context: dict[str, Any]) -> list[dict[str
         task="Bind existing functions to protocol wire fields and access paths.",
         context_key="wire_access_binding_context",
         context=context,
-        expected_schema="wire_access_binding_patch/v1",
+        expected_schema="wire_access_binding_patch/v2",
         forbidden_fields=["new function", "new message", "new field", "new state", "calls_allowed", "dependency_graph", "code"],
         validator="validate_wire_access_binding_patch",
     )
@@ -522,10 +541,10 @@ def wire_access_binding_patch_messages(context: dict[str, Any]) -> list[dict[str
 def calls_allowed_candidate_messages(context: dict[str, Any]) -> list[dict[str, str]]:
     return _stage_messages(
         prompt_name="calls_allowed_candidate_prompt",
-        task="Plan calls_allowed edges after functions, wire binding, and state access are stable.",
+        task="Resolve service requirements into concrete calls_allowed edges after signatures, behavior contracts, and wire binding are stable.",
         context_key="calls_allowed_context",
         context=context,
-        expected_schema="calls_allowed_candidate/v1",
+        expected_schema="calls_allowed_candidate/v2",
         forbidden_fields=["new function", "new file", "new module", "imports_allowed", "dependency_graph", "include graph", "code"],
         validator="validate_calls_allowed_candidate",
     )
