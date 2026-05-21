@@ -9,7 +9,14 @@ def derive_dependency_graph(plan: dict[str, Any]) -> dict[str, Any]:
     files = [item for item in plan.get("file_layout", {}).get("files", []) if isinstance(item, dict)]
     functions = [item for item in plan.get("function_contracts", []) if isinstance(item, dict)]
     module_by_file = {str(item.get("file_id", "")): str(item.get("module_id", "")) for item in files}
-    file_by_module = {str(item.get("module_id", "")): str(item.get("file_id", "")) for item in files}
+    file_by_module: dict[str, str] = {}
+    for item in files:
+        module_id = str(item.get("module_id", ""))
+        file_id = str(item.get("file_id", ""))
+        if not module_id or not file_id:
+            continue
+        if module_id not in file_by_module or str(item.get("header_path", "")).strip():
+            file_by_module[module_id] = file_id
     state_owner = {str(item.get("state_id", "")): str(item.get("owner_module_id", "")) for item in plan.get("state_design", []) if isinstance(item, dict)}
     known_files = set(module_by_file)
     known_functions = {str(item.get("function_id", "")) for item in functions}

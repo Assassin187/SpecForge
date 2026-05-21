@@ -92,6 +92,28 @@ class PlanningValidatorTests(unittest.TestCase):
             self.assertTrue(any(diag.code == "architecture_module_without_capability" for diag in diags), [diag.__dict__ for diag in diags])
             self.assertTrue(any(diag.code == "architecture_uncovered_capability" for diag in diags), [diag.__dict__ for diag in diags])
 
+    def test_architecture_dependency_hints_are_validated(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            _, profile, constraints, candidates, _, _ = _build_artifacts(Path(raw_tmp))
+            base = {"schema_version": "architecture_candidates/v1", "candidates": [copy.deepcopy(candidates["candidates"][0])], "generation_warnings": []}
+            modules = base["candidates"][0]["modules"]
+            provider = modules[1]["module_id"]
+            consumer = modules[0]["module_id"]
+            modules[0]["dependency_hints"] = [provider]
+            self.assertFalse(validate_architecture_candidates(base, profile, constraints))
+
+            unknown = copy.deepcopy(base)
+            unknown["candidates"][0]["modules"][0]["dependency_hints"] = ["missing_module"]
+            self.assertTrue(any(diag.code == "architecture_unknown_dependency_hint" for diag in validate_architecture_candidates(unknown, profile, constraints)))
+
+            self_dep = copy.deepcopy(base)
+            self_dep["candidates"][0]["modules"][0]["dependency_hints"] = [consumer]
+            self.assertTrue(any(diag.code == "architecture_self_dependency_hint" for diag in validate_architecture_candidates(self_dep, profile, constraints)))
+
+            cycle = copy.deepcopy(base)
+            cycle["candidates"][0]["modules"][1]["dependency_hints"] = [consumer]
+            self.assertTrue(any(diag.code == "architecture_dependency_cycle" for diag in validate_architecture_candidates(cycle, profile, constraints)))
+
     def test_implementation_validator_rejects_missing_wire_mapping(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:
             planning_ir, profile, _, _, _, implementation_plan = _build_artifacts(Path(raw_tmp))
@@ -129,9 +151,10 @@ class PlanningValidatorTests(unittest.TestCase):
             self.assertIn("architecture_context", prompt_payload)
             self.assertNotIn("protocol_profile", prompt_payload)
             module_shape = prompt_payload["expected_response"]["candidates"][0]["modules"][0]
-            self.assertEqual(module_shape["dependency_hints"], [])
+            self.assertEqual(module_shape["dependency_hints"], ["provider module_id"])
             self.assertIn("machine API boundary", messages[0]["content"])
-            self.assertTrue(any("dependency_hints must be []" in rule for rule in prompt_payload["hard_validation_rules"]))
+            self.assertFalse(any("dependency_hints must be []" in rule for rule in prompt_payload["hard_validation_rules"]))
+            self.assertTrue(any("consumer module -> provider module" in rule for rule in prompt_payload["hard_validation_rules"]))
             self.assertTrue(any("parseable JSON object" in rule for rule in prompt_payload["hard_validation_rules"]))
 
     def test_core_design_prompt_uses_compact_context(self) -> None:
@@ -259,9 +282,15 @@ class PlanningValidatorTests(unittest.TestCase):
             inventory = json.loads((step_logs / STEP_FILENAMES["function_inventory_candidate"]).read_text(encoding="utf-8"))
             signature = json.loads((step_logs / STEP_FILENAMES["function_signature_patch"]).read_text(encoding="utf-8"))
             behavior = json.loads((step_logs / STEP_FILENAMES["function_behavior_patch"]).read_text(encoding="utf-8"))
-            self.assertEqual(len(plan["function_contracts"]), len(inventory["functions"]))
-            self.assertEqual(len(plan["function_contracts"]), len(signature["function_signature_updates"]))
-            self.assertEqual(len(plan["function_contracts"]), len(behavior["function_behavior_updates"]))
+            inventory_ids = {item["function_id"] for item in inventory["functions"]}
+            runtime_functions = [
+                item for item in plan["function_contracts"]
+                if item.get("function_id") not in inventory_ids
+            ]
+            self.assertEqual(len(plan["function_contracts"]), len(inventory["functions"]) + len(runtime_functions))
+            self.assertEqual(len(inventory["functions"]), len(signature["function_signature_updates"]))
+            self.assertEqual(len(inventory["functions"]), len(behavior["function_behavior_updates"]))
+            self.assertTrue((step_logs / STEP_FILENAMES["runtime_entrypoint_candidate"]).exists())
 
 
 if __name__ == "__main__":

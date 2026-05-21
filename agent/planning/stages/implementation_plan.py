@@ -117,11 +117,13 @@ def _wire_fields(ir: dict[str, Any]) -> list[dict[str, Any]]:
             field_name = str(field.get("name") or f"field_{field_idx}").strip()
             field_id = str(field.get("fact_id") or indexed_fields.get(field_name) or f"fact:message_model_message_or_command_entries_{entry_idx}_fields_{field_idx}")
             access_path_id = f"access:{_safe_id(message_name)}:{_safe_id(field_name)}"
+            field_type = str(field.get("type") or field.get("value_type") or field.get("encoding") or field.get("wire_type") or "").strip()
             result.append(
                 {
                     "field_id": field_id,
                     "message": message_name,
                     "field": field_name,
+                    "field_type": field_type,
                     "access_path_id": access_path_id,
                     "access_path": f"{_safe_id(message_name)}.{_safe_id(field_name)}",
                     "source_fact_ids": [field_id],
@@ -157,6 +159,7 @@ def build_implementation_plan(
         fallback_function_inventory,
         fallback_function_signatures,
         fallback_module_contracts,
+        fallback_runtime_entrypoint,
         fallback_wire_access_binding,
         finalize_dependency_graph,
         merge_calls_allowed,
@@ -166,6 +169,7 @@ def build_implementation_plan(
         merge_function_inventory,
         merge_function_signatures,
         merge_module_contracts,
+        merge_runtime_entrypoint,
         merge_wire_access_binding,
         build_plan_skeleton,
     )
@@ -183,4 +187,5 @@ def build_implementation_plan(
     draft = merge_wire_access_binding(draft, fallback_wire_access_binding(draft, planning_ir))
     draft = merge_calls_allowed(draft, fallback_calls_allowed(draft))
     draft = merge_file_layout(draft, fallback_file_layout(draft))
+    draft = merge_runtime_entrypoint(draft, fallback_runtime_entrypoint(draft))
     return finalize_dependency_graph(draft)

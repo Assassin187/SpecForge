@@ -24,6 +24,7 @@ from .prompts.templates import (
     function_signature_patch_messages,
     module_contracts_candidate_messages,
     protocol_profile_patch_messages,
+    runtime_entrypoint_candidate_messages,
     wire_access_binding_patch_messages,
 )
 from .stages.architecture import build_architecture_context, deterministic_architecture_ranking, select_architecture
@@ -39,6 +40,7 @@ from .stages.implementation_plan_context import (
     build_function_inventory_context,
     build_function_signature_context,
     build_module_contract_context,
+    build_runtime_entrypoint_context,
     build_wire_access_binding_context,
 )
 from .stages.implementation_plan_merger import (
@@ -53,6 +55,7 @@ from .stages.implementation_plan_merger import (
     fallback_function_inventory,
     fallback_function_signatures,
     fallback_module_contracts,
+    fallback_runtime_entrypoint,
     fallback_wire_access_binding,
     finalize_dependency_graph,
     merge_calls_allowed,
@@ -62,6 +65,7 @@ from .stages.implementation_plan_merger import (
     merge_function_inventory,
     merge_function_signatures,
     merge_module_contracts,
+    merge_runtime_entrypoint,
     merge_wire_access_binding,
 )
 from .stages.preflight import build_manifest, validate_input_paths
@@ -85,6 +89,7 @@ from .validators.implementation_plan_stages import (
     validate_function_signature_patch,
     validate_module_contracts_candidate,
     validate_plan_skeleton,
+    validate_runtime_entrypoint_candidate,
     validate_wire_access_binding_patch,
     validation_report,
 )
@@ -130,6 +135,8 @@ STEP_FILENAMES = {
     "wire_access_binding_validation_report": "007_5_4d_wire_access_binding_validation_report.json",
     "calls_allowed_candidate": "007_5_4e_calls_allowed_candidate.json",
     "calls_allowed_validation_report": "007_5_4e_calls_allowed_validation_report.json",
+    "runtime_entrypoint_candidate": "007_5_4f_runtime_entrypoint_candidate.json",
+    "runtime_entrypoint_validation_report": "007_5_4f_runtime_entrypoint_validation_report.json",
     "file_layout_candidate": "007_5_5_file_layout_candidate.json",
     "file_layout_validation_report": "007_5_5_file_layout_validation_report.json",
     "dependency_repair_patch": "007_5_6_dependency_repair_patch.json",
@@ -274,7 +281,11 @@ def _tag_architecture_candidates(candidate_set: dict[str, Any], *, strategy: str
                 modules.append(module)
                 continue
             normalized_module = dict(module)
-            normalized_module["dependency_hints"] = []
+            normalized_module["dependency_hints"] = [
+                str(dep).strip()
+                for dep in normalized_module.get("dependency_hints", [])
+                if str(dep).strip()
+            ]
             modules.append(normalized_module)
         item["modules"] = modules
         items.append(item)
@@ -1270,6 +1281,19 @@ class PlanningAgent:
                 validator=lambda candidate: validate_file_layout_candidate(candidate, draft),
             )
             draft = merge_file_layout(draft, file_candidate)
+
+            runtime_context = build_runtime_entrypoint_context(draft, planning_ir, selected_architecture)
+            runtime_candidate = stage_candidate(
+                stage_label="5.4f_runtime_entrypoint_candidate",
+                prompt_name="runtime_entrypoint_candidate_prompt",
+                messages=runtime_entrypoint_candidate_messages(runtime_context),
+                candidate_key="runtime_entrypoint_candidate",
+                report_key="runtime_entrypoint_validation_report",
+                fallback=fallback_runtime_entrypoint(draft),
+                validator=lambda candidate: validate_runtime_entrypoint_candidate(candidate, draft),
+                max_attempts=1,
+            )
+            draft = merge_runtime_entrypoint(draft, runtime_candidate)
 
             implementation_plan = finalize_dependency_graph(draft)
             dependency_diags = validate_dependency_graph(implementation_plan)

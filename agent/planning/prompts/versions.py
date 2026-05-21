@@ -15,6 +15,7 @@ PROMPT_REGISTRY = {
     "function_behavior_contract_patch_prompt": PROMPT_VERSION,
     "wire_access_binding_patch_prompt": PROMPT_VERSION,
     "calls_allowed_candidate_prompt": PROMPT_VERSION,
+    "runtime_entrypoint_candidate_prompt": PROMPT_VERSION,
     "file_layout_candidate_prompt": PROMPT_VERSION,
     "dependency_repair_patch_prompt": PROMPT_VERSION,
     "validation_explanation_prompt": PROMPT_VERSION,

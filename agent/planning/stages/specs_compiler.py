@@ -42,6 +42,11 @@ def _normalized_spec_stem(file_item: dict[str, Any]) -> Path:
     return Path(*[safe_slug(part) for part in stem.parts if part not in {"", "."}])
 
 
+def _is_source_only_entrypoint(file_item: dict[str, Any]) -> bool:
+    source_path = str(file_item.get("source_path") or file_item.get("path") or "").replace("\\", "/").strip()
+    return str(file_item.get("kind", "")) == "source_only_entrypoint" or source_path.endswith("/main.c") or source_path == "main.c"
+
+
 def _function_trace_id(file_trace_id: str, function: dict[str, Any]) -> str:
     return f"{file_trace_id}/{function.get('name', 'function')}"
 
@@ -123,6 +128,46 @@ def _add_unresolved(unresolved: list[dict[str, Any]], *, kind: str, module_id: s
             "reason": reason,
         }
     )
+
+
+def _module_dependencies_from_graph(spec_blueprint: dict[str, Any], module_ids: list[str]) -> dict[str, set[str]]:
+    known = set(module_ids)
+    deps: dict[str, set[str]] = {module_id: set() for module_id in module_ids}
+    graph = spec_blueprint.get("dependency_graph", {})
+    edges = graph.get("module_edges", []) if isinstance(graph, dict) else []
+    for edge in edges if isinstance(edges, list) else []:
+        if not isinstance(edge, dict):
+            continue
+        source = str(edge.get("from", "")).strip()
+        target = str(edge.get("to", "")).strip()
+        if source in known and target in known and source != target:
+            deps.setdefault(source, set()).add(target)
+    return deps
+
+
+def _topological_generation_order(module_ids: list[str], deps_by_module: dict[str, set[str]]) -> list[str]:
+    ordered: list[str] = []
+    permanent: set[str] = set()
+    temporary: set[str] = set()
+
+    def visit(module_id: str) -> bool:
+        if module_id in permanent:
+            return True
+        if module_id in temporary:
+            return False
+        temporary.add(module_id)
+        for dependency in sorted(deps_by_module.get(module_id, set())):
+            if dependency in deps_by_module and not visit(dependency):
+                return False
+        temporary.remove(module_id)
+        permanent.add(module_id)
+        ordered.append(module_id)
+        return True
+
+    for module_id in module_ids:
+        if not visit(module_id):
+            return module_ids
+    return ordered
 
 
 def _function_spec(function: dict[str, Any], trace_id: str, function_index: dict[str, dict[str, Any]], access_by_id: dict[str, dict[str, Any]]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
@@ -362,6 +407,9 @@ def compile_spec_bundle(spec_blueprint: dict[str, Any], output_dir: str | Path) 
     function_index = {str(function.get("function_id", "")): function for function in functions if str(function.get("function_id", "")).strip()}
     file_by_id = {str(item.get("file_id", "")): item for item in files}
     module_by_id = {str(item.get("module_id", "")): item for item in modules if str(item.get("module_id", "")).strip()}
+    module_ids = [str(item.get("module_id", "")) for item in modules if str(item.get("module_id", "")).strip()]
+    deps_by_module = _module_dependencies_from_graph(spec_blueprint, module_ids)
+    generation_order = _topological_generation_order(module_ids, deps_by_module)
     primary_file_by_module: dict[str, str] = {}
     for item in files:
         module_id = str(item.get("module_id", ""))
@@ -384,18 +432,23 @@ def compile_spec_bundle(spec_blueprint: dict[str, Any], output_dir: str | Path) 
             for target in file_item.get("imports_allowed", [])
             if str(target) in file_by_id and str(file_by_id[target].get("header_path", "")).strip()
         ]
-        header_data, source_data = _data_declarations(
-            protocol,
-            module_id,
-            file_item,
-            module_item,
-            file_functions,
-            canonical_type_index,
-            include_module_public_roles=primary_file_by_module.get(module_id) == file_id,
-            unresolved=unresolved_lowering,
-        )
+        source_only = _is_source_only_entrypoint(file_item)
+        if source_only:
+            header_data, source_data = [], []
+        else:
+            header_data, source_data = _data_declarations(
+                protocol,
+                module_id,
+                file_item,
+                module_item,
+                file_functions,
+                canonical_type_index,
+                include_module_public_roles=primary_file_by_module.get(module_id) == file_id,
+                unresolved=unresolved_lowering,
+            )
         source_interfaces: list[dict[str, Any]] = []
         header_interfaces: list[dict[str, Any]] = []
+        spec_stem = _normalized_spec_stem(file_item)
         for function in file_functions:
             function_trace_id = _function_trace_id(file_trace_id, function)
             is_public = is_public_interface_function(function, file_item, module_item)
@@ -406,8 +459,10 @@ def compile_spec_bundle(spec_blueprint: dict[str, Any], output_dir: str | Path) 
                 header_interfaces.append(_header_interface(function))
             function_spec, unresolved = _function_spec(function, function_trace_id, function_index, access_by_id)
             unresolved_lowering.extend(unresolved)
-            spec_dir = spec_root / _normalized_spec_stem(file_item)
-            fn_path = write_json(spec_dir / f"{safe_slug(str(function.get('name', 'function')))}_spec.json", function_spec)
+            spec_dir = spec_root / spec_stem
+            fn_slug = safe_slug(str(function.get("name", "function")))
+            fn_filename = f"{fn_slug}_function_spec.json" if fn_slug == spec_stem.name else f"{fn_slug}_spec.json"
+            fn_path = write_json(spec_dir / fn_filename, function_spec)
             function_spec_paths.append(str(fn_path))
 
         file_access_ids = {
@@ -424,12 +479,6 @@ def compile_spec_bundle(spec_blueprint: dict[str, Any], output_dir: str | Path) 
                 "ROLE": str(file_item.get("responsibility", "")) or "Generated C source/header unit.",
                 "DOC_REF": lower_doc_ref(file_item),
             },
-            "HEADER": {
-                "PATH": str(file_item.get("header_path", "")),
-                "DEPENDENCY": sorted({header for header in imported_headers if header != file_item.get("header_path", "")}),
-                "DATA": header_data,
-                "INTERFACE": header_interfaces,
-            },
             "SOURCE": {
                 "PATH": str(file_item.get("source_path", "")),
                 "DEPENDENCY": [
@@ -441,6 +490,13 @@ def compile_spec_bundle(spec_blueprint: dict[str, Any], output_dir: str | Path) 
                 "INTERFACE": source_interfaces,
             },
         }
+        if not source_only:
+            file_spec["HEADER"] = {
+                "PATH": str(file_item.get("header_path", "")),
+                "DEPENDENCY": sorted({header for header in imported_headers if header != file_item.get("header_path", "")}),
+                "DATA": header_data,
+                "INTERFACE": header_interfaces,
+            }
         public_symbols = lower_module_artifacts_for_coder([file_spec])
         if public_symbols:
             file_spec["PUBLIC_SYMBOLS"] = public_symbols
@@ -448,7 +504,6 @@ def compile_spec_bundle(spec_blueprint: dict[str, Any], output_dir: str | Path) 
         lowered_access = lower_access_paths_for_coder(file_access)
         if lowered_access:
             file_spec["ACCESS_PATHS"] = lowered_access
-        spec_stem = _normalized_spec_stem(file_item)
         file_spec_path = write_json(spec_root / spec_stem / f"{spec_stem.name}_spec.json", file_spec)
         file_spec_paths.append(str(file_spec_path))
         file_specs_by_file_id[file_id] = file_spec
@@ -465,7 +520,7 @@ def compile_spec_bundle(spec_blueprint: dict[str, Any], output_dir: str | Path) 
             {
                 "NAME": module_id,
                 "ROLE": str(module.get("role", "")) or "Planning module.",
-                "DEPENDENCIES": [str(dep) for dep in module.get("dependencies", []) if str(dep).strip()],
+                "DEPENDENCIES": sorted(deps_by_module.get(module_id, set())),
                 "ARTIFACTS": artifacts,
                 "FILES": [
                     str(path)
@@ -480,8 +535,9 @@ def compile_spec_bundle(spec_blueprint: dict[str, Any], output_dir: str | Path) 
         "KIND": "PROTOCOL_MODULE_SPEC",
         "PROTOCOL": protocol_meta,
         "MODULES": module_entries,
-        "GENERATION_ORDER": [str(item) for item in spec_blueprint.get("generation_order", []) if str(item).strip()]
-        or [str(item.get("module_id", "")) for item in modules if str(item.get("module_id", "")).strip()],
+        "GENERATION_ORDER": generation_order
+        or [str(item) for item in spec_blueprint.get("generation_order", []) if str(item).strip()]
+        or module_ids,
         "CONSISTENCY_RULES": [
             {"ID": "C1", "RULE": "file_function_trace_ids_must_match", "DOC_REF": []},
             {"ID": "C2", "RULE": "public_functions_declared_in_headers", "DOC_REF": []},

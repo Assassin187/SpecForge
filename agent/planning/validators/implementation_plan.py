@@ -28,6 +28,16 @@ def _field_ids(planning_ir: dict[str, Any] | None) -> set[str]:
     return result
 
 
+def _is_runtime_entrypoint_function(function: dict[str, Any]) -> bool:
+    signature = function.get("signature", {}) if isinstance(function.get("signature"), dict) else {}
+    return str(function.get("coder_function_type", "")).upper() == "ENTRYPOINT" and str(signature.get("name") or function.get("name", "")) == "main"
+
+
+def _source_is_main(file_item: dict[str, Any]) -> bool:
+    source_path = str(file_item.get("source_path") or file_item.get("path") or "").replace("\\", "/")
+    return source_path.endswith("/main.c") or source_path == "main.c"
+
+
 def validate_implementation_plan(
     plan: dict[str, Any],
     *,
@@ -47,6 +57,8 @@ def validate_implementation_plan(
     function_ids = {str(item.get("function_id", "")) for item in functions if isinstance(item, dict)}
     paths: set[str] = set()
     covered_caps: set[str] = set()
+    files_by_module: dict[str, list[dict[str, Any]]] = {}
+    functions_by_module: dict[str, list[dict[str, Any]]] = {}
     for module in modules:
         if not isinstance(module, dict):
             diagnostics.append(PlanningDiagnostic("error", "invalid_module_contract", "module_contracts item must be object", path))
@@ -68,10 +80,14 @@ def validate_implementation_plan(
             diagnostics.append(PlanningDiagnostic("error", "invalid_file_layout", "file_layout item must be object", path))
             continue
         module_id = str(file_item.get("module_id", "")).strip()
+        files_by_module.setdefault(module_id, []).append(file_item)
         if module_id not in module_ids:
             diagnostics.append(PlanningDiagnostic("error", "unknown_file_module", f"File belongs to unknown module '{module_id}'", path))
+        source_only_entrypoint = str(file_item.get("kind", "")) == "source_only_entrypoint" or _source_is_main(file_item)
         for key in ("source_path", "header_path"):
             value = str(file_item.get(key, "")).strip()
+            if key == "header_path" and source_only_entrypoint and not value:
+                continue
             if not value:
                 diagnostics.append(PlanningDiagnostic("error", "missing_file_path", f"File '{file_item.get('file_id')}' missing {key}", path))
                 continue
@@ -89,10 +105,11 @@ def validate_implementation_plan(
         if not isinstance(function, dict):
             diagnostics.append(PlanningDiagnostic("error", "invalid_function_contract", "function_contracts item must be object", path))
             continue
+        functions_by_module.setdefault(str(function.get("module_id", "")), []).append(function)
         file_id = str(function.get("file_id", "")).strip()
         if file_id not in file_ids:
             diagnostics.append(PlanningDiagnostic("error", "unknown_function_file", f"Function belongs to unknown file '{file_id}'", path))
-        if str(function.get("visibility", "")).lower() == "public" and not str(function.get("declared_in", "")).strip():
+        if str(function.get("visibility", "")).lower() == "public" and not str(function.get("declared_in", "")).strip() and not _is_runtime_entrypoint_function(function):
             diagnostics.append(PlanningDiagnostic("error", "public_function_not_declared", f"Public function '{function.get('name')}' has no declared_in", path))
         signature = function.get("signature", {})
         if not isinstance(signature, dict) or not signature.get("raw"):
@@ -143,4 +160,13 @@ def validate_implementation_plan(
     for item in plan.get("wire_mapping_table", []):
         if isinstance(item, dict) and str(item.get("access_path_id", "")) not in access_path_ids:
             diagnostics.append(PlanningDiagnostic("error", "unknown_wire_access_path", f"Wire mapping '{item.get('mapping_id')}' references unknown access path", path))
+    for item in plan.get("access_path_table", []):
+        if isinstance(item, dict) and str(item.get("c_type", "")).strip().lower() == "unknown":
+            diagnostics.append(PlanningDiagnostic("error", "unknown_access_path_type", f"Access path '{item.get('access_path_id')}' has TYPE unknown", path))
+    for module in modules:
+        if not isinstance(module, dict):
+            continue
+        module_id = str(module.get("module_id", ""))
+        if "role_composition" in {str(cap) for cap in module.get("owned_capabilities", [])} and not files_by_module.get(module_id) and not functions_by_module.get(module_id):
+            diagnostics.append(PlanningDiagnostic("error", "empty_role_composition_module", f"role_composition module '{module_id}' has no files or functions", path))
     return diagnostics

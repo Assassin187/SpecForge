@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 import tempfile
 import unittest
@@ -228,6 +229,118 @@ class CoderSchemaLoweringTests(unittest.TestCase):
             self.assertIn(("zapline_frame_t", "TYPE"), artifact_keys)
             self.assertNotIn("FILE_SPEC", {item["KIND"] for item in artifacts})
             self.assertFalse([item for item in artifacts if item["NAME"].startswith(("file:", "func:")) or "/" in item["NAME"]])
+
+    def test_dependency_graph_lowers_to_module_dependencies_and_order(self) -> None:
+        blueprint = copy.deepcopy(_zap_blueprint())
+        blueprint["modules"].append(
+            {
+                "module_id": "relay",
+                "role": "Run relay flow using framing.",
+                "public_api_policy": {
+                    "exposes_public_api": True,
+                    "api_surface_kind": "public_module_api",
+                    "exported_capability_ids": ["relay"],
+                    "expected_public_function_roles": ["relay_run"],
+                    "expected_public_type_roles": [],
+                    "no_public_api_reason": "",
+                },
+                "dependencies": [],
+            }
+        )
+        blueprint["files"].append(
+            {
+                "file_id": "file:zapline/relay/relay",
+                "module_id": "relay",
+                "source_path": "zapline/relay/relay.c",
+                "header_path": "zapline/relay/relay.h",
+                "responsibility": "Relay flow unit.",
+                "exports": ["func:relay:run"],
+                "exports_type_ids": [],
+                "imports_allowed": ["file:zapline/framing/framing"],
+            }
+        )
+        blueprint["functions"].append(
+            {
+                "function_id": "func:relay:run",
+                "file_id": "file:zapline/relay/relay",
+                "module_id": "relay",
+                "name": "zapline_relay_run",
+                "function_kind": "public_api",
+                "visibility": "public",
+                "api_surface": "public",
+                "exported": True,
+                "export_reason": "Relay flow API.",
+                "public_api_role": "relay_run",
+                "purpose": "Run relay flow.",
+                "signature": {"raw": "int zapline_relay_run(zapline_relay_t* ctx)", "name": "zapline_relay_run", "return_type": "int", "params": [{"type": "zapline_relay_t*", "name": "ctx", "nullable": False, "ownership": "borrowed"}]},
+                "behavior_contract": {"input": "ctx", "action": "run", "output": "status"},
+            }
+        )
+        blueprint["dependency_graph"] = {
+            "schema_version": "dependency_graph/v1",
+            "module_edges": [{"from": "relay", "to": "framing", "kind": "function_call"}],
+            "file_edges": [],
+            "function_edges": [],
+        }
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(blueprint, Path(raw_tmp))
+            module_spec = json.loads(Path(manifest["module_spec_path"]).read_text(encoding="utf-8"))
+            modules = {item["NAME"]: item for item in module_spec["MODULES"]}
+            self.assertEqual(modules["relay"]["DEPENDENCIES"], ["framing"])
+            self.assertLess(module_spec["GENERATION_ORDER"].index("framing"), module_spec["GENERATION_ORDER"].index("relay"))
+
+    def test_source_only_main_file_enters_module_files_and_loader(self) -> None:
+        blueprint = copy.deepcopy(_zap_blueprint())
+        blueprint["files"].append(
+            {
+                "file_id": "file:main",
+                "module_id": "framing",
+                "kind": "source_only_entrypoint",
+                "source_path": "main.c",
+                "header_path": "",
+                "responsibility": "Source-only runtime entrypoint.",
+                "exports": [],
+                "exports_type_ids": [],
+                "implements": ["func:framing:main"],
+                "imports_allowed": ["file:zapline/framing/framing"],
+            }
+        )
+        blueprint["functions"].append(
+            {
+                "function_id": "func:framing:main",
+                "file_id": "file:main",
+                "module_id": "framing",
+                "name": "main",
+                "function_kind": "public_api",
+                "coder_function_type": "ENTRYPOINT",
+                "visibility": "internal",
+                "api_surface": "module_internal",
+                "exported": False,
+                "export_reason": "",
+                "public_api_role": "",
+                "purpose": "Start the process.",
+                "signature": {
+                    "raw": "int main(int argc, char** argv)",
+                    "name": "main",
+                    "return_type": "int",
+                    "params": [
+                        {"type": "int", "name": "argc", "nullable": False, "ownership": "borrowed"},
+                        {"type": "char**", "name": "argv", "nullable": False, "ownership": "borrowed"},
+                    ],
+                },
+                "behavior_contract": {"input": "argc/argv", "action": "start", "output": "status"},
+            }
+        )
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(blueprint, Path(raw_tmp))
+            diagnostics = validate_coder_compatibility(manifest["spec_root"])
+            self.assertFalse([diag.__dict__ for diag in diagnostics if diag.level == "error"])
+            module_spec = json.loads(Path(manifest["module_spec_path"]).read_text(encoding="utf-8"))
+            self.assertIn("main.c", module_spec["MODULES"][0]["FILES"])
+            main_spec = next(path for path in Path(manifest["spec_root"]).rglob("*_spec.json") if path.name == "main_spec.json")
+            self.assertNotIn("HEADER", json.loads(main_spec.read_text(encoding="utf-8")))
+            bundle = load_spec_bundle_from_root(manifest["spec_root"])
+            self.assertIn("main.c", bundle.modules_in_order[0].files)
 
     def test_protocol_metadata_uses_neutral_fallbacks(self) -> None:
         blueprint = _zap_blueprint()

@@ -17,6 +17,7 @@ from agent.planning.prompts.templates import (
     function_inventory_candidate_messages,
     function_signature_patch_messages,
     module_contracts_candidate_messages,
+    runtime_entrypoint_candidate_messages,
     wire_access_binding_patch_messages,
 )
 from agent.planning.stages.architecture import build_architecture_candidates, select_architecture
@@ -31,6 +32,7 @@ from agent.planning.stages.implementation_plan_context import (
     build_function_inventory_context,
     build_function_signature_context,
     build_module_contract_context,
+    build_runtime_entrypoint_context,
     build_wire_access_binding_context,
 )
 from agent.planning.stages.implementation_plan_merger import (
@@ -43,6 +45,7 @@ from agent.planning.stages.implementation_plan_merger import (
     fallback_function_inventory,
     fallback_function_signatures,
     fallback_module_contracts,
+    fallback_runtime_entrypoint,
     fallback_wire_access_binding,
     merge_calls_allowed,
     merge_core_design,
@@ -51,6 +54,7 @@ from agent.planning.stages.implementation_plan_merger import (
     merge_function_inventory,
     merge_function_signatures,
     merge_module_contracts,
+    merge_runtime_entrypoint,
     merge_wire_access_binding,
 )
 from agent.planning.stages.protocol_profile import build_protocol_profile
@@ -63,6 +67,7 @@ from agent.planning.validators.implementation_plan_stages import (
     validate_function_inventory_candidate,
     validate_function_signature_patch,
     validate_module_contracts_candidate,
+    validate_runtime_entrypoint_candidate,
     validate_wire_access_binding_patch,
 )
 
@@ -160,17 +165,22 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
         draft = merge_calls_allowed(draft, calls)
         layout = fallback_file_layout(draft)
         draft = merge_file_layout(draft, layout)
+        runtime = fallback_runtime_entrypoint(draft)
+        final_draft = merge_runtime_entrypoint(draft, runtime)
         repair = fallback_dependency_repair_patch(draft, [{"code": "dependency_cycle", "message": "cycle"}])
         plan = build_implementation_plan(planning_ir, profile, constraints, selected)
         return planning_ir, profile, constraints, selected, draft, plan, {
             "core": core,
             "modules": modules,
             "inventory": inventories[0],
+            "inventories": inventories,
             "signature": signature_patches[0],
             "behavior": behavior_patches[0],
             "wire": wire,
             "calls": calls,
             "layout": layout,
+            "runtime": runtime,
+            "final_draft": final_draft,
             "repair": repair,
         }
 
@@ -185,6 +195,7 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             self.assertFalse(validate_wire_access_binding_patch(items["wire"], draft, planning_ir))
             self.assertFalse(validate_calls_allowed_candidate(items["calls"], draft, selected))
             self.assertFalse(validate_file_layout_candidate(items["layout"], draft))
+            self.assertFalse(validate_runtime_entrypoint_candidate(items["runtime"], draft))
             self.assertFalse(validate_dependency_repair_patch(items["repair"], draft))
 
     def test_shape_rejects_extra_missing_and_wrong_enum(self) -> None:
@@ -199,6 +210,7 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
                 (items["wire"], lambda c: validate_wire_access_binding_patch(c, draft, planning_ir), lambda c: c["wire_mapping_entries"][0].__setitem__("direction", "bad")),
                 (items["calls"], lambda c: validate_calls_allowed_candidate(c, draft, selected), _break_first_call),
                 (items["layout"], lambda c: validate_file_layout_candidate(c, draft), lambda c: c["files"][0].__setitem__("kind", "bad")),
+                (items["runtime"], lambda c: validate_runtime_entrypoint_candidate(c, draft), lambda c: c["entrypoint_signature"].__setitem__("storage_class", "bad")),
                 (items["repair"], lambda c: validate_dependency_repair_patch(c, draft), lambda c: c["repair_actions"][0].__setitem__("action_kind", "bad")),
             ]
             for valid, validator, break_enum in cases:
@@ -239,6 +251,29 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             layout = copy.deepcopy(items["layout"])
             layout["function_file_assignments"][0]["function_id"] = "fn:missing"
             self.assertTrue(_has(validate_file_layout_candidate(layout, draft), "layout_assigns_unknown_function"))
+            runtime = copy.deepcopy(items["runtime"])
+            runtime["key_flow_module_id"] = "missing"
+            self.assertTrue(_has(validate_runtime_entrypoint_candidate(runtime, draft), "runtime_entrypoint_unknown_key_module"))
+
+    def test_runtime_entrypoint_rejects_handler_proxy_lifecycle(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            _, _, _, _, draft, _, items = self._fixtures(Path(raw_tmp))
+            runtime = copy.deepcopy(items["runtime"])
+            key_module = runtime["key_flow_module_id"]
+            draft["function_contracts"].append(
+                {
+                    "function_id": f"fn:{key_module}:handle_proxy",
+                    "name": "handle_connect_message",
+                    "module_id": key_module,
+                    "function_kind": "handler",
+                    "visibility": "public",
+                    "api_surface": "public",
+                    "exported": True,
+                    "public_api_role": "runtime_create",
+                }
+            )
+            runtime["lifecycle_function_ids"]["create"] = f"fn:{key_module}:handle_proxy"
+            self.assertTrue(_has(validate_runtime_entrypoint_candidate(runtime, draft), "runtime_entrypoint_lifecycle_not_api"))
 
     def test_module_contract_public_api_policy_is_required(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:
@@ -258,6 +293,19 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             modules = copy.deepcopy(items["modules"])
             modules["module_contracts"][0]["public_api_policy"]["exported_capability_ids"] = ["capability:missing"]
             self.assertTrue(_has(validate_module_contracts_candidate(modules, selected, profile, constraints, draft), "unknown_public_api_policy_capability"))
+
+    def test_key_flow_module_requires_lifecycle_public_policy(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            _, profile, constraints, selected, draft, _, items = self._fixtures(Path(raw_tmp))
+            modules = copy.deepcopy(items["modules"])
+            key_module = next(module for module in modules["module_contracts"] if "role_composition" in module["owned_capability_ids"])
+            key_module["public_api_policy"]["exposes_public_api"] = False
+            self.assertTrue(_has(validate_module_contracts_candidate(modules, selected, profile, constraints, draft), "key_flow_module_public_api_disabled"))
+
+            modules = copy.deepcopy(items["modules"])
+            key_module = next(module for module in modules["module_contracts"] if "role_composition" in module["owned_capability_ids"])
+            key_module["public_api_policy"]["expected_public_function_roles"] = ["runtime_create", "runtime_destroy"]
+            self.assertTrue(_has(validate_module_contracts_candidate(modules, selected, profile, constraints, draft), "key_flow_module_missing_lifecycle_roles"))
 
     def test_function_inventory_public_api_visibility_rules(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:
@@ -320,6 +368,30 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
                 function["public_api_role"] = ""
             self.assertTrue(_has(validate_function_inventory_candidate(aggregate, draft["module_contracts"], draft, profile, planning_ir), "no_public_functions_for_public_modules"))
 
+    def test_key_flow_function_inventory_requires_lifecycle_functions(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            planning_ir, profile, _, _, draft, _, items = self._fixtures(Path(raw_tmp))
+            key_module = next(module for module in draft["module_contracts"] if "role_composition" in module["owned_capabilities"])
+            inventory = next(item for item in items["inventories"] if item["module_id"] == key_module["module_id"])
+            self.assertFalse(validate_function_inventory_candidate(inventory, draft["module_contracts"], draft, profile, planning_ir))
+
+            missing_run = copy.deepcopy(inventory)
+            missing_run["functions"] = [function for function in missing_run["functions"] if function.get("public_api_role") != "runtime_run"]
+            self.assertTrue(_has(validate_function_inventory_candidate(missing_run, draft["module_contracts"], draft, profile, planning_ir), "key_flow_missing_lifecycle_functions"))
+
+            handler_lifecycle = copy.deepcopy(inventory)
+            lifecycle = next(function for function in handler_lifecycle["functions"] if function.get("public_api_role") == "runtime_create")
+            lifecycle["function_kind"] = "handler"
+            lifecycle["name"] = "handle_connect_message"
+            self.assertTrue(_has(validate_function_inventory_candidate(handler_lifecycle, draft["module_contracts"], draft, profile, planning_ir), "lifecycle_role_uses_handler"))
+
+            internal_lifecycle = copy.deepcopy(inventory)
+            lifecycle = next(function for function in internal_lifecycle["functions"] if function.get("public_api_role") == "runtime_start")
+            lifecycle["exported"] = False
+            lifecycle["visibility"] = "internal"
+            lifecycle["api_surface"] = "module_internal"
+            self.assertTrue(_has(validate_function_inventory_candidate(internal_lifecycle, draft["module_contracts"], draft, profile, planning_ir), "lifecycle_function_not_public"))
+
     def test_public_function_signature_and_contract_are_complete(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:
             _, _, constraints, _, draft, _, items = self._fixtures(Path(raw_tmp))
@@ -374,14 +446,15 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
                 lambda c: validate_wire_access_binding_patch(c, draft, planning_ir),
                 lambda c: validate_calls_allowed_candidate(c, draft, selected),
                 lambda c: validate_file_layout_candidate(c, draft),
+                lambda c: validate_runtime_entrypoint_candidate(c, draft),
                 lambda c: validate_dependency_repair_patch(c, draft),
             ]
             for validator in validators:
                 self.assertTrue(_has(validator(plan), "invalid_schema_version"))
-            for key in ("core", "modules", "inventory", "signature", "behavior", "wire", "calls", "layout", "repair"):
+            for key in ("core", "modules", "inventory", "signature", "behavior", "wire", "calls", "layout", "runtime", "repair"):
                 candidate = copy.deepcopy(items[key])
                 candidate["dependency_graph"] = {}
-                validator = validators[["core", "modules", "inventory", "signature", "behavior", "wire", "calls", "layout", "repair"].index(key)]
+                validator = validators[["core", "modules", "inventory", "signature", "behavior", "wire", "calls", "layout", "runtime", "repair"].index(key)]
                 self.assertTrue(_has(validator(candidate), "forbidden_extra_field"))
 
     def test_prompt_uses_output_shape_not_allowed_fields(self) -> None:
@@ -411,6 +484,7 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
                 json.loads(wire_access_binding_patch_messages(build_wire_access_binding_context(draft, planning_ir))[1]["content"]),
                 json.loads(calls_allowed_candidate_messages(build_calls_allowed_context(draft, selected))[1]["content"]),
                 json.loads(file_layout_candidate_messages(build_file_layout_context(draft, planning_ir, constraints))[1]["content"]),
+                json.loads(runtime_entrypoint_candidate_messages(build_runtime_entrypoint_context(draft, planning_ir, selected))[1]["content"]),
                 json.loads(dependency_repair_patch_messages(build_dependency_repair_context(draft, [{"code": "dependency_cycle", "message": "cycle"}]))[1]["content"]),
             ]
             for payload in prompt_payloads:
@@ -428,6 +502,7 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             self.assertIn("service_requirements may describe needed operations", joined_rules)
             self.assertIn("Parser and serializer functions must not write state", joined_rules)
             self.assertIn("exports_type_ids may contain only canonical type IDs", joined_rules)
+            self.assertIn("entrypoint_signature should normally be int main", joined_rules)
             self.assertIn("must be copied exactly from legal_id_universe.file_ids or files[].file_id", joined_rules)
 
     def test_valid_candidate_merges_and_invalid_candidate_is_not_merged(self) -> None:
@@ -559,6 +634,38 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
                     "call_not_in_callable_universe",
                 )
             )
+
+    def test_wire_access_fallback_keeps_field_specific_targets_and_types(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            planning_ir, _, _, _, draft, _, items = self._fixtures(Path(raw_tmp))
+            wire = items["wire"]
+            self.assertFalse(any(entry.get("c_type") == "unknown" for entry in wire["access_path_entries"]))
+            connect_entries = [
+                entry for entry in wire["wire_mapping_entries"]
+                if "connect" in str(entry.get("packet_name", "")).lower()
+            ]
+            for entry in connect_entries:
+                self.assertNotEqual(entry.get("target_path"), "fixed_header.packet_type")
+                self.assertIn(str(entry.get("wire_field", "")).lower().replace(" ", "_"), str(entry.get("target_path", "")).lower())
+
+            merged = merge_wire_access_binding(draft, wire)
+            access_by_id = {entry["access_path_id"]: entry for entry in merged["access_path_table"]}
+            for function in merged["function_contracts"]:
+                mappings = function.get("wire_mapping", [])
+                if len(mappings) < 2:
+                    continue
+                access_ids = [mapping["access_path_id"] for mapping in mappings]
+                self.assertGreater(len(set(access_ids)), 1)
+                for mapping in mappings:
+                    access = access_by_id[mapping["access_path_id"]]
+                    self.assertEqual(access["field_id"], mapping["field_id"])
+                break
+            else:
+                self.fail("expected at least one codec function with multiple wire mappings")
+
+            broken = copy.deepcopy(wire)
+            broken["access_path_entries"][0]["c_type"] = "unknown"
+            self.assertTrue(_has(validate_wire_access_binding_patch(broken, draft, planning_ir), "unknown_coder_access_path_type"))
 
 
 if __name__ == "__main__":

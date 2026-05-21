@@ -478,6 +478,38 @@ CALLS_ALLOWED_UPDATE_SCHEMA = _object(
     }
 )
 
+LIFECYCLE_FUNCTION_IDS_SCHEMA = _object(
+    {
+        "create": STRING,
+        "start": STRING,
+        "run": STRING,
+        "destroy": STRING,
+    }
+)
+
+STARTUP_STEP_SCHEMA = _object(
+    {
+        "step": STRING,
+        "function_id": STRING,
+        "description": STRING,
+    }
+)
+
+RUNTIME_ENTRYPOINT_SCHEMA = _object(
+    {
+        "schema_version": _scalar("string", enum={"runtime_entrypoint_candidate/v1"}),
+        "candidate_id": STRING,
+        "producer": PRODUCER_SCHEMA,
+        "key_flow_module_id": STRING,
+        "lifecycle_function_ids": LIFECYCLE_FUNCTION_IDS_SCHEMA,
+        "source_path": STRING,
+        "entrypoint_signature": FUNCTION_SIGNATURE_SCHEMA,
+        "startup_sequence": _array(STARTUP_STEP_SCHEMA),
+        "assumptions": _array(ASSUMPTION_SCHEMA),
+        "unresolved_questions": _array(UNRESOLVED_QUESTION_SCHEMA),
+    }
+)
+
 FILE_ITEM_SCHEMA = _object(
     {
         "file_id": STRING,
@@ -621,6 +653,7 @@ SCHEMA_SPECS: dict[str, SchemaSpec] = {
             "unresolved_questions": _array(UNRESOLVED_QUESTION_SCHEMA),
         }
     ),
+    "runtime_entrypoint_candidate/v1": RUNTIME_ENTRYPOINT_SCHEMA,
     "file_layout_candidate/v2": _object(
         {
             "schema_version": _scalar("string", enum={"file_layout_candidate/v2"}),

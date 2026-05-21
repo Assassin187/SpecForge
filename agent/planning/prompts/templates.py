@@ -47,6 +47,7 @@ STAGE_SEMANTIC_RULES = {
         "state_id, error_id, and constraint_id references must come from the accepted core design and engineering constraints.",
         "public_api_policy is module-boundary planning only. It must decide whether the module exposes a public API and why, but it must not name files, headers, functions, include graphs, dependency graphs, or code.",
         "If public_api_policy.exposes_public_api is true, exported_capability_ids should identify the capability basis and expected_public_function_roles or expected_public_type_roles must describe the public surface roles.",
+        "If a module owns role_composition, or owns semantic_dispatch plus state_machine plus a runtime/error/connection capability, treat it as the protocol key-flow module: exposes_public_api must be true and expected_public_function_roles must include runtime_create, runtime_start, runtime_run, and runtime_destroy.",
         "expected_public_type_roles must reference or be directly resolvable to accepted canonical_types; do not invent protocol-specific public type names outside the canonical type table.",
         "If public_api_policy.exposes_public_api is false, no_public_api_reason must explain why the module is internal-only.",
         "Do not generate files, functions, calls, access paths, imports, dependency graphs, or code.",
@@ -59,6 +60,7 @@ STAGE_SEMANTIC_RULES = {
         "api_surface, visibility, exported, export_reason, and public_api_role describe whether the function is externally visible beyond the module.",
         "Public functions must be justified by module capabilities and public_api_policy; do not create public functions from protocol names, role names, examples, or filename guesses.",
         "If the current module exposes public function roles in public_api_policy, at least one function must have exported=true, api_surface=public, visibility=public, export_reason, and public_api_role unless the policy only expects public types.",
+        "For a protocol key-flow module, generate distinct public lifecycle functions for runtime_create, runtime_start, runtime_run, and runtime_destroy using names ending in _create, _start, _run or _serve, and _destroy; do not reuse message handlers as lifecycle functions.",
         "If the module owns decode, encode, dispatch, state-machine, lifecycle, or error-policy responsibilities, represent them with the matching function_kind values or add unresolved_questions.",
         "coder_function_type must be ALGORITHM, EVENT, or ENTRYPOINT; handlers are not automatically EVENT.",
         "Use EVENT only when the later behavior patch can provide trigger, precondition, input, action, state_change, response, and event_type; otherwise use ALGORITHM.",
@@ -109,6 +111,15 @@ STAGE_SEMANTIC_RULES = {
         "If callable_functions is present, callee_function_id must come from that list or from a same-module existing function.",
         "The planned calls_allowed graph must avoid prohibited cycles.",
         "Do not generate imports, file graphs, dependency graphs, new functions, or code.",
+    ],
+    "runtime_entrypoint_candidate/v1": [
+        "Plan only the process/runtime entrypoint for starting the deployable target. Do not move protocol flow logic into main.c.",
+        "key_flow_module_id must be an existing module that owns the main broker/server/client/application flow boundary.",
+        "The entrypoint may name lifecycle function IDs for create, start, run, and destroy. Reuse only existing public lifecycle APIs from the key-flow module; do not point lifecycle_function_ids at message handlers.",
+        "source_path should normally be main.c. The runtime entrypoint is logically not a protocol module, but the source file will be archived under key_flow_module_id for coder compatibility.",
+        "entrypoint_signature should normally be int main(int argc, char** argv).",
+        "startup_sequence should describe parse args, create, start, run, destroy, and status return; it must reference lifecycle IDs where applicable.",
+        "Do not generate final dependency_graph, code, protocol handlers, parser/serializer logic, or broker/server/client message processing details.",
     ],
     "file_layout_candidate/v2": [
         "Each files[] item is one source_header_pair FILE_SPEC unit with source_path and header_path.",
@@ -340,7 +351,7 @@ def architecture_candidate_messages(
                                         "owned_capabilities": ["capability_id from required_capabilities"],
                                         "consumed_capabilities": ["capability_id from required_capabilities"],
                                         "state_owned": ["string"],
-                                        "dependency_hints": [],
+                                        "dependency_hints": ["provider module_id"],
                                         "support_module": False,
                                     }
                                 ],
@@ -371,8 +382,9 @@ def architecture_candidate_messages(
                         "A non-support module must own at least one capability.",
                         "Capabilities mentioned in responsibilities, rationale, or consumed_capabilities do not count as covered.",
                         "semantic_dispatch, role_composition, and canonical_type_ownership are real capabilities when present and must be explicitly owned.",
-                        "Architecture candidates must not plan dependency relationships; every module.dependency_hints must be [].",
-                        "module_graph_hints must be []. Module dependency planning belongs to implementation plan Module Contract Planning via imports_allowed and calls_allowed.",
+                        "module.dependency_hints may express engineering intent only, with direction consumer module -> provider module.",
+                        "Every dependency_hints entry must reference an existing module_id, must not reference the same module, and must not create a cycle.",
+                        "module_graph_hints must be []. Architecture still must not output a final dependency_graph; Step 6 derives the final graph deterministically from implementation-plan dependency inputs.",
                         "Capability group hints are non-binding priors, not required module names.",
                         "You may split, merge, rename, or ignore hints.",
                         "The selected architecture will be judged by capability coverage, cohesion, coupling, constraint satisfaction, and acyclicity.",
@@ -382,7 +394,8 @@ def architecture_candidate_messages(
                         "Describing semantic dispatch in text but omitting semantic_dispatch from owned_capabilities.",
                         "Creating orchestration modules with empty owned_capabilities.",
                         "Moving a capability to consumed_capabilities without any module owning it.",
-                        "Filling dependency_hints or module_graph_hints during architecture search.",
+                        "Using dependency_hints as a final call graph, include graph, or dependency_graph.",
+                        "Making low-level codec/data model/runtime adapter modules depend on high-level broker/server/client flow modules.",
                         "Copying hint IDs directly as fixed module names without considering the design strategy.",
                     ],
                 }
@@ -445,6 +458,13 @@ def architecture_ranking_messages(architecture_context: dict[str, Any], architec
                         "selected_candidate_id must be one of the candidate IDs.",
                         "Scores must evaluate capability coverage, constraint satisfaction, cohesion, coupling, acyclicity, state ownership clarity, testability, implementation simplicity, and target scope fit.",
                         "Do not output modified architecture candidates.",
+                    ],
+                    "application_protocol_engineering_experience": [
+                        "Prefer implementable module boundaries seen in small application-layer protocol implementations: network/runtime adapter, protocol codec/data model, state/session/resource ownership, routing/dispatch, and one broker/server/client flow module.",
+                        "A flow module such as broker/server/client should compose lower modules and own lifecycle-facing public API; lower-level codec, data model, session, or transport modules should not depend back on that flow module.",
+                        "Score down capability buckets that merely collect labels but do not map to C source/header units with coherent ownership.",
+                        "Score down empty facade modules, empty role_composition modules, or role_composition that has no realistic lifecycle/API boundary.",
+                        "dependency_hints should be acyclic consumer -> provider intent and should improve implementation order, not duplicate protocol facts.",
                     ],
                     "architecture_context": architecture_context,
                     "architecture_candidates": architecture_candidates,
@@ -589,6 +609,18 @@ def calls_allowed_candidate_messages(context: dict[str, Any]) -> list[dict[str, 
         expected_schema="calls_allowed_candidate/v2",
         forbidden_fields=["new function", "new file", "new module", "imports_allowed", "dependency_graph", "include graph", "code"],
         validator="validate_calls_allowed_candidate",
+    )
+
+
+def runtime_entrypoint_candidate_messages(context: dict[str, Any]) -> list[dict[str, str]]:
+    return _stage_messages(
+        prompt_name="runtime_entrypoint_candidate_prompt",
+        task="Plan one source-only runtime entrypoint for starting the deployable target. Reuse existing lifecycle APIs when present and keep protocol flow logic in the key flow module.",
+        context_key="runtime_entrypoint_context",
+        context=context,
+        expected_schema="runtime_entrypoint_candidate/v1",
+        forbidden_fields=["protocol handler logic", "parser/serializer logic", "new protocol module", "final dependency_graph", "include graph", "code"],
+        validator="validate_runtime_entrypoint_candidate",
     )
 
 

@@ -114,18 +114,16 @@ def validate_architecture_candidates(
                 if cap not in required_caps:
                     diagnostics.append(PlanningDiagnostic("error", "architecture_unknown_capability", f"Module '{module_id}' owns unknown capability '{cap}'", path))
                 covered_caps.add(cap)
-            for dep in module.get("dependency_hints", []):
-                if str(dep) and str(dep) not in module_ids:
-                    # Hints can refer forward; do a second pass below.
-                    pass
-            if module.get("dependency_hints"):
-                diagnostics.append(PlanningDiagnostic("error", "architecture_dependency_hints_forbidden", f"Module '{module_id}' must leave dependency_hints empty", path))
             dependency_edges[module_id] = [str(dep) for dep in module.get("dependency_hints", []) if str(dep).strip()]
         for module in modules:
             if isinstance(module, dict):
+                module_id = str(module.get("module_id", "")).strip()
                 for dep in module.get("dependency_hints", []):
-                    if str(dep) not in module_ids:
+                    dep_id = str(dep).strip()
+                    if dep_id not in module_ids:
                         diagnostics.append(PlanningDiagnostic("error", "architecture_unknown_dependency_hint", f"Module '{module.get('module_id')}' hints unknown dependency '{dep}'", path))
+                    if dep_id and dep_id == module_id:
+                        diagnostics.append(PlanningDiagnostic("error", "architecture_self_dependency_hint", f"Module '{module_id}' must not depend on itself", path))
         if _has_cycle(dependency_edges):
             diagnostics.append(PlanningDiagnostic("error", "architecture_dependency_cycle", f"Candidate '{candidate.get('candidate_id')}' has cyclic dependency hints", path))
         for cap in sorted(required_caps - covered_caps):

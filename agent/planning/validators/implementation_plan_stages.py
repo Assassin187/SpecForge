@@ -12,6 +12,7 @@ from ..schemas.implementation_plan import (
     FUNCTION_INVENTORY_CANDIDATE_SCHEMA_VERSION,
     FUNCTION_SIGNATURE_PATCH_SCHEMA_VERSION,
     MODULE_CONTRACTS_CANDIDATE_SCHEMA_VERSION,
+    RUNTIME_ENTRYPOINT_CANDIDATE_SCHEMA_VERSION,
     SCHEMA_VERSION,
     VALIDATION_REPORT_SCHEMA_VERSION,
     WIRE_ACCESS_BINDING_PATCH_SCHEMA_VERSION,
@@ -24,6 +25,41 @@ from .implementation_plan import validate_implementation_plan
 
 
 ALLOWED_FUNCTION_KINDS = {"public_api", "handler", "parser", "serializer", "validator", "state_machine", "resource_lifecycle", "error_helper", "internal_helper"}
+LIFECYCLE_ROLES = {"runtime_create", "runtime_start", "runtime_run", "runtime_destroy"}
+
+
+def _capability_values(module: dict[str, Any]) -> set[str]:
+    return {
+        str(cap)
+        for key in ("owned_capability_ids", "owned_capabilities")
+        for cap in module.get(key, [])
+        if str(cap).strip()
+    }
+
+
+def _is_key_flow_module(module: dict[str, Any]) -> bool:
+    caps = _capability_values(module)
+    return "role_composition" in caps or (
+        {"semantic_dispatch", "state_machine"}.issubset(caps)
+        and bool(caps & {"connection_termination", "timeout_handling", "protocol_error_policy"})
+    )
+
+
+def _lifecycle_name_matches(action: str, name: str) -> bool:
+    if action == "run":
+        return name.endswith("_run") or name.endswith("_serve")
+    return name.endswith(f"_{action}")
+
+
+def _is_lifecycle_api(function: dict[str, Any], action: str) -> bool:
+    role = str(function.get("public_api_role", ""))
+    name = str(function.get("name", ""))
+    return (
+        role == f"runtime_{action}"
+        and str(function.get("function_kind", "")) != "handler"
+        and _is_public_function(function)
+        and _lifecycle_name_matches(action, name)
+    )
 
 
 def validation_report(stage: str, diagnostics: list[PlanningDiagnostic]) -> dict[str, Any]:
@@ -266,6 +302,12 @@ def validate_module_contracts_candidate(candidate: dict[str, Any], selected_arch
         exposes = bool(policy.get("exposes_public_api"))
         function_roles = [str(role) for role in policy.get("expected_public_function_roles", []) if str(role).strip()]
         type_roles = [str(role) for role in policy.get("expected_public_type_roles", []) if str(role).strip()]
+        if _is_key_flow_module(module):
+            missing_roles = sorted(LIFECYCLE_ROLES - set(function_roles))
+            if not exposes:
+                diagnostics.append(PlanningDiagnostic("error", "key_flow_module_public_api_disabled", f"key flow module '{module_id}' must expose lifecycle public API", path))
+            if missing_roles:
+                diagnostics.append(PlanningDiagnostic("error", "key_flow_module_missing_lifecycle_roles", f"key flow module '{module_id}' public_api_policy lacks lifecycle roles: {', '.join(missing_roles)}", path))
         for role in type_roles:
             if normalize_type_key(role) not in canonical_type_keys:
                 diagnostics.append(PlanningDiagnostic("error", "unknown_public_api_policy_type_role", f"module '{module_id}' public_api_policy expected type role '{role}' does not match canonical_types", path))
@@ -313,6 +355,7 @@ def validate_function_inventory_candidate(candidate: dict[str, Any], module_cont
     seen_names: set[str] = set()
     kinds: set[str] = set()
     public_by_module: dict[str, list[str]] = {module_id: [] for module_id in module_ids}
+    lifecycle_by_module: dict[str, dict[str, dict[str, Any]]] = {module_id: {} for module_id in module_ids}
     for function in candidate["functions"]:
         function_id = function["function_id"]
         name = function["name"]
@@ -341,6 +384,16 @@ def validate_function_inventory_candidate(candidate: dict[str, Any], module_cont
             diagnostics.append(PlanningDiagnostic("error", "private_helper_public_visibility", f"helper function '{function_id}' may not be public", path))
         if _is_public_function(function):
             public_by_module.setdefault(str(function["module_id"]), []).append(function_id)
+        role = str(function.get("public_api_role", ""))
+        if role in LIFECYCLE_ROLES:
+            action = role.removeprefix("runtime_")
+            lifecycle_by_module.setdefault(str(function["module_id"]), {})[action] = function
+            if function.get("function_kind") == "handler":
+                diagnostics.append(PlanningDiagnostic("error", "lifecycle_role_uses_handler", f"lifecycle role '{role}' may not be assigned to handler function '{function_id}'", path))
+            if not _is_public_function(function):
+                diagnostics.append(PlanningDiagnostic("error", "lifecycle_function_not_public", f"lifecycle function '{function_id}' must be public/exported", path))
+            if not _lifecycle_name_matches(action, str(function.get("name", ""))):
+                diagnostics.append(PlanningDiagnostic("error", "lifecycle_function_bad_name", f"lifecycle function '{function_id}' name must end with lifecycle action suffix", path))
         for cap in function["capability_ids"]:
             if cap not in capability_ids:
                 diagnostics.append(PlanningDiagnostic("error", "unknown_function_inventory_capability", f"function '{function_id}' references unknown capability '{cap}'", path))
@@ -368,6 +421,10 @@ def validate_function_inventory_candidate(candidate: dict[str, Any], module_cont
         policy = _public_policy(modules_by_id.get(module_id, {}))
         if bool(policy.get("exposes_public_api")) and policy.get("expected_public_function_roles") and not public_by_module.get(module_id):
             diagnostics.append(PlanningDiagnostic("error", "module_public_api_without_public_function", f"module '{module_id}' exposes public function roles but inventory has no public/exported function", path))
+        if _is_key_flow_module(modules_by_id.get(module_id, {})):
+            missing = sorted({"create", "start", "run", "destroy"} - set(lifecycle_by_module.get(module_id, {})))
+            if missing:
+                diagnostics.append(PlanningDiagnostic("error", "key_flow_missing_lifecycle_functions", f"key flow module '{module_id}' inventory lacks lifecycle functions: {', '.join(missing)}", path))
     if candidate.get("module_id") == "all_modules":
         all_no_public = not any(public_by_module.values())
         all_modules_internal = all(
@@ -559,6 +616,8 @@ def validate_wire_access_binding_patch(patch: dict[str, Any], draft: dict[str, A
             diagnostics.append(PlanningDiagnostic("error", "unknown_access_path_field", f"access path references unknown field '{entry['field_id']}'", path))
         if not entry["path"].strip() or not entry["c_type"].strip():
             diagnostics.append(PlanningDiagnostic("error", "incomplete_coder_access_path", f"access path '{entry['access_path_id']}' lacks path or c_type", path))
+        if str(entry.get("c_type", "")).strip().lower() == "unknown":
+            diagnostics.append(PlanningDiagnostic("error", "unknown_coder_access_path_type", f"access path '{entry['access_path_id']}' must not lower TYPE as unknown", path))
         if entry["access_kind"] in {"write", "read_write"} and function.get("function_kind") not in {"handler", "state_machine", "resource_lifecycle", "public_api"}:
             diagnostics.append(PlanningDiagnostic("error", "wire_access_kind_conflict", f"function '{entry['function_id']}' may not write state through access path", path))
     for update in patch["function_binding_updates"]:
@@ -573,6 +632,41 @@ def validate_wire_access_binding_patch(patch: dict[str, Any], draft: dict[str, A
     unresolved = _unresolved_targets(patch)
     for field_id in sorted(field_ids - mapped_fields - unresolved):
         diagnostics.append(PlanningDiagnostic("error", "uncovered_wire_field", f"wire field '{field_id}' is not covered by parser/serializer or unresolved_questions", path))
+    return diagnostics
+
+
+def validate_runtime_entrypoint_candidate(candidate: dict[str, Any], draft: dict[str, Any], *, path: str | None = None) -> list[PlanningDiagnostic]:
+    diagnostics = _shape(candidate, RUNTIME_ENTRYPOINT_CANDIDATE_SCHEMA_VERSION, path=path)
+    if has_errors(diagnostics):
+        return diagnostics
+    module_ids = _module_contract_ids(draft.get("module_contracts", []))
+    functions = _function_by_id(draft)
+    key_module = str(candidate.get("key_flow_module_id", "")).strip()
+    if key_module not in module_ids:
+        diagnostics.append(PlanningDiagnostic("error", "runtime_entrypoint_unknown_key_module", f"runtime entrypoint key_flow_module_id '{key_module}' is not a module", path))
+    source_path = str(candidate.get("source_path", "")).strip()
+    if not source_path.endswith(".c"):
+        diagnostics.append(PlanningDiagnostic("error", "runtime_entrypoint_source_not_c", "runtime entrypoint source_path must be a .c file", path))
+    signature = candidate.get("entrypoint_signature", {})
+    if signature.get("name") != "main" or signature.get("return_type") != "int" or "argc" not in signature.get("raw", ""):
+        diagnostics.append(PlanningDiagnostic("error", "runtime_entrypoint_signature_not_main", "runtime entrypoint signature should be int main(int argc, char** argv)", path))
+    lifecycle = candidate.get("lifecycle_function_ids", {})
+    for action in ("create", "start", "run", "destroy"):
+        function_id = str(lifecycle.get(action, "")).strip()
+        if not function_id:
+            diagnostics.append(PlanningDiagnostic("error", "runtime_entrypoint_missing_lifecycle_id", f"runtime entrypoint missing {action} lifecycle function id", path))
+            continue
+        known = functions.get(function_id)
+        if known and str(known.get("module_id", "")) != key_module:
+            diagnostics.append(PlanningDiagnostic("error", "runtime_entrypoint_lifecycle_wrong_module", f"lifecycle function '{function_id}' is not in key flow module '{key_module}'", path))
+        if known and not _is_lifecycle_api(known, action):
+            diagnostics.append(PlanningDiagnostic("error", "runtime_entrypoint_lifecycle_not_api", f"lifecycle function '{function_id}' is not a public {action} lifecycle API", path))
+        if not known and not function_id.startswith(f"fn:{key_module}:"):
+            diagnostics.append(PlanningDiagnostic("error", "runtime_entrypoint_lifecycle_id_outside_module", f"new lifecycle function '{function_id}' must belong to key flow module '{key_module}'", path))
+    sequence_steps = {str(item.get("step", "")) for item in candidate.get("startup_sequence", []) if isinstance(item, dict)}
+    for required in ("parse_args", "create", "start", "run", "destroy"):
+        if required not in sequence_steps:
+            diagnostics.append(PlanningDiagnostic("error", "runtime_entrypoint_sequence_missing_step", f"startup_sequence missing '{required}' step", path))
     return diagnostics
 
 
@@ -767,6 +861,47 @@ def validate_full_implementation_plan(plan: dict[str, Any], *, profile: dict[str
     diagnostics = validate_implementation_plan(plan, profile=profile, planning_ir=planning_ir, path=path)
     if plan.get("dependency_graph") is None:
         diagnostics.append(PlanningDiagnostic("error", "missing_final_dependency_graph", "final implementation_plan must include deterministic dependency_graph", path))
+    blocking = [
+        item
+        for item in plan.get("unresolved_questions", [])
+        if isinstance(item, dict) and bool(item.get("blocking"))
+    ]
+    if blocking:
+        diagnostics.append(PlanningDiagnostic("error", "blocking_unresolved_questions", "final implementation_plan still contains blocking unresolved questions", path))
+    files = [item for item in plan.get("file_layout", {}).get("files", []) if isinstance(item, dict)]
+    functions = [item for item in plan.get("function_contracts", []) if isinstance(item, dict)]
+    entrypoints = [
+        function
+        for function in functions
+        if str(function.get("coder_function_type", "")).upper() == "ENTRYPOINT"
+        and str((function.get("signature", {}) if isinstance(function.get("signature"), dict) else {}).get("name") or function.get("name", "")) == "main"
+    ]
+    main_files = [
+        item
+        for item in files
+        if str(item.get("source_path") or item.get("path") or "").replace("\\", "/").endswith("main.c")
+    ]
+    target_role = str(profile.get("target_role", {}).get("value", profile.get("target_role", "")) if isinstance(profile.get("target_role"), dict) else profile.get("target_role", "")).strip()
+    if target_role and not (entrypoints and main_files):
+        diagnostics.append(PlanningDiagnostic("error", "missing_runtime_entrypoint", f"deployable target role '{target_role}' requires a runtime entrypoint main.c", path))
+    key_module_ids = {str(item.get("module_id", "")) for item in main_files if str(item.get("module_id", "")).strip()}
+    if entrypoints:
+        key_module_ids.update(str(item.get("module_id", "")) for item in entrypoints if str(item.get("module_id", "")).strip())
+    for module_id in sorted(key_module_ids):
+        module_functions = [item for item in functions if str(item.get("module_id", "")) == module_id]
+        public_names = {
+            str(item.get("name", ""))
+            for item in module_functions
+            if bool(item.get("exported")) or str(item.get("visibility", "")).lower() == "public" or str(item.get("api_surface", "")).lower() == "public"
+        }
+        missing = []
+        for suffix in ("_create", "_start", "_destroy"):
+            if not any(name.endswith(suffix) for name in public_names):
+                missing.append(suffix.removeprefix("_"))
+        if not any(name.endswith("_run") or name.endswith("_serve") for name in public_names):
+            missing.append("run")
+        if missing:
+            diagnostics.append(PlanningDiagnostic("error", "runtime_key_flow_missing_lifecycle_api", f"key flow module '{module_id}' lacks public lifecycle API: {', '.join(sorted(missing))}", path))
     return diagnostics
 
 
@@ -805,4 +940,5 @@ validate_function_signatures = validate_function_signature_patch
 validate_function_behavior_contracts = validate_function_behavior_contract_patch
 validate_wire_access_binding = validate_wire_access_binding_patch
 validate_calls_allowed = validate_calls_allowed_candidate
+validate_runtime_entrypoint = validate_runtime_entrypoint_candidate
 validate_file_layout = validate_file_layout_candidate

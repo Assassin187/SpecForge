@@ -68,6 +68,7 @@ def _selected_modules(selected_architecture: dict[str, Any]) -> list[dict[str, A
             "owned_capability_ids": [str(cap) for cap in module.get("owned_capabilities", []) if str(cap).strip()],
             "consumed_capability_ids": [str(cap) for cap in module.get("consumed_capabilities", []) if str(cap).strip()],
             "state_owned": [str(item) for item in module.get("state_owned", []) if str(item).strip()],
+            "dependency_hints": [str(item) for item in module.get("dependency_hints", []) if str(item).strip()],
             "support_module": bool(module.get("support_module", False)),
         }
         for module in modules
@@ -115,6 +116,7 @@ def _field_summaries(planning_ir: dict[str, Any]) -> list[dict[str, Any]]:
             "field_id": item["field_id"],
             "message": item["message"],
             "field": item["field"],
+            "field_type": item.get("field_type", ""),
             "access_path_id": item["access_path_id"],
             "access_path": item["access_path"],
         }
@@ -389,6 +391,90 @@ def build_file_layout_context(draft: dict[str, Any], planning_ir: dict[str, Any]
         "target_language": str(_target_directives(planning_ir).get("language", "C")),
         "layout_policy": "source_header_pair",
         "engineering_constraints": _constraints(constraints),
+        "legal_id_universe": _legal_ids_from_draft(draft),
+    }
+
+
+def _key_flow_module_candidates(draft: dict[str, Any]) -> list[dict[str, Any]]:
+    modules = [item for item in draft.get("module_contracts", []) if isinstance(item, dict)]
+    functions = [item for item in draft.get("function_contracts", []) if isinstance(item, dict)]
+    scored: list[tuple[int, dict[str, Any]]] = []
+    for index, module in enumerate(modules):
+        module_id = str(module.get("module_id", ""))
+        text = " ".join(
+            [
+                module_id,
+                str(module.get("name", "")),
+                str(module.get("purpose", "")),
+                " ".join(str(cap) for cap in module.get("owned_capabilities", [])),
+            ]
+        ).lower()
+        score = 0
+        if any(word in text for word in ("broker", "server", "client", "flow", "app")):
+            score += 40
+        if "role_composition" in module.get("owned_capabilities", []):
+            score += 30
+        if "semantic_dispatch" in module.get("owned_capabilities", []):
+            score += 20
+        if module.get("support_module"):
+            score -= 30
+        score -= index
+        public_functions = [
+            function
+            for function in functions
+            if str(function.get("module_id", "")) == module_id
+            and (bool(function.get("exported")) or str(function.get("visibility", "")).lower() == "public")
+        ]
+        lifecycle_roles = [
+            str(function.get("function_id", ""))
+            for function in public_functions
+            if str(function.get("name", "")).endswith(("_create", "_start", "_run", "_serve", "_destroy"))
+        ]
+        scored.append(
+            (
+                score + len(lifecycle_roles) * 5,
+                {
+                    "module_id": module_id,
+                    "purpose": module.get("purpose", ""),
+                    "owned_capabilities": module.get("owned_capabilities", []),
+                    "existing_public_lifecycle_function_ids": lifecycle_roles,
+                },
+            )
+        )
+    return [item for _score, item in sorted(scored, key=lambda pair: pair[0], reverse=True)]
+
+
+def build_runtime_entrypoint_context(draft: dict[str, Any], planning_ir: dict[str, Any], selected_architecture: dict[str, Any]) -> dict[str, Any]:
+    lifecycle_candidates = [
+        {
+            "function_id": item.get("function_id"),
+            "name": item.get("name"),
+            "module_id": item.get("module_id"),
+            "visibility": item.get("visibility"),
+            "exported": item.get("exported"),
+            "signature": item.get("signature", {}),
+        }
+        for item in draft.get("function_contracts", [])
+        if isinstance(item, dict)
+        and str(item.get("function_kind", "")) in {"resource_lifecycle", "public_api"}
+        and str(item.get("name", "")).endswith(("_create", "_start", "_run", "_serve", "_destroy"))
+    ]
+    return {
+        "schema_version": "runtime_entrypoint_context/v1",
+        "protocol": _protocol_summary(planning_ir, {}),
+        "selected_modules": _selected_modules(selected_architecture),
+        "module_contracts": draft.get("module_contracts", []),
+        "key_flow_module_candidates": _key_flow_module_candidates(draft),
+        "existing_lifecycle_candidates": lifecycle_candidates,
+        "file_layout": draft.get("file_layout", {}),
+        "default_source_path": "main.c",
+        "default_entrypoint_signature": "int main(int argc, char** argv)",
+        "runtime_entrypoint_policy": {
+            "entrypoint_starts_protocol_only": True,
+            "protocol_flow_stays_in_key_flow_module": True,
+            "source_only_file_allowed": True,
+            "archive_file_under_key_flow_module": True,
+        },
         "legal_id_universe": _legal_ids_from_draft(draft),
     }
 
