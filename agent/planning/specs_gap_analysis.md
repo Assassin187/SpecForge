@@ -7,7 +7,13 @@
 ## 对比对象
 
 - 当前 planning 输出：
-  `/home/ljf/SpecForge/agent/planning/out/mqtt/broker__c__linux_epoll__minimum_v1/20260520_161430_860466/spec_bundle`
+  `/home/ljf/SpecForge/agent/planning/out/mqtt/broker__c__linux_epoll__minimum_v1/20260521_154436_105118/spec_bundle`
+- 上一轮 planning 输出：
+  `/home/ljf/SpecForge/agent/planning/out/mqtt/broker__c__linux_epoll__minimum_v1/20260521_122233_184179/spec_bundle`
+- 历史 planning 输出：
+  `/home/ljf/SpecForge/agent/planning/out/mqtt/broker__c__linux_epoll__minimum_v1/20260521_111408_138774/spec_bundle`
+- 历史 planning 输出：
+  `/home/ljf/SpecForge/agent/planning/out/mqtt/broker__c__linux_epoll__minimum_v1/20260520_205352_313760/spec_bundle`
 - 示例 specs：
   `/home/ljf/SpecForge/specs-example/mqtt_specs`
 - coder schema：
@@ -17,22 +23,230 @@
 
 ## 总体结论
 
-当前 planning 输出已经具备 `PROTOCOL_MODULE_SPEC`、`FILE_SPEC`、`FUNCTION_SPEC` 三类文件，能被 `agent.coder.specs.load_spec_bundle_from_root()` 轻量加载；但它还不是 coder 当前 dialect 下的有效 specs。核心问题是：planning 输出更接近 planning IR 的实现意图清单，而示例 specs 是严格面向 coder generation 的工程规格。
+### 2026-05-21 16:13 最新产物复核
 
-严格 JSON Schema validation 结果：
+复核对象：
 
-| 项目 | 示例 specs | 当前 planning specs |
+`/home/ljf/SpecForge/agent/planning/out/mqtt/broker__c__linux_epoll__minimum_v1/20260521_154436_105118/spec_bundle`
+
+本轮 Public Type Lowering & Header Type Completeness 修复后，最新 bundle 已经解决上一轮最突出的问题：public functions 已经不再引用“header 中完全不可见”的 `struct fixed_header*`、`struct connect*`、`struct subscribe*`、`struct publish*`。这些 expected public type roles 已经被 compiler 消费并 lowering 到 `codec_framing_spec.json` 的 public `HEADER.DATA`，同时进入 `mqtt_module_spec.json` 的 `codec_framing.ARTIFACTS`。
+
+最新核心统计：
+
+| 项目 | 2026-05-21 12:22 | 2026-05-21 15:44 |
+|---|---:|---:|
+| `FILE_SPEC` | 4 | 4 |
+| `FUNCTION_SPEC` | 26 | 30 |
+| schema invalid files | 0 | 0 |
+| schema errors | 0 | 0 |
+| loader errors | 0 | 0 |
+| planning coder semantic errors | 0 | 0 |
+| `HEADER.INTERFACE` 总数 | 3 | 8 |
+| `SOURCE.INTERFACE` 总数 | 26 | 30 |
+| public source functions | 3 | 8 |
+| private source functions | 23 | 22 |
+| module artifacts | 7 | 16 |
+| module artifact `FUNC` | 3 | 8 |
+| module artifact `TYPE` | 4 | 8 |
+| public canonical `TYPE_SPEC` | 0 | 4 |
+| `unresolved_lowering` | 未记录 type 缺失 | 0 |
+
+已解决或进一步改善的 gap：
+
+- Public header 可编译性明显提升。`codec_framing_spec.json` 现在有 8 个 public header functions：`decode_fixed_header`、`decode_connect`、`decode_subscribe`、`decode_publish`、`encode_connack`、`encode_suback`、`encode_pingresp`、`encode_publish`。
+- 上一轮缺失的 public signature types 已进入 `HEADER.DATA`：`fixed_header`、`connect`、`subscribe`、`publish` 均有 public `TYPE_SPEC: STRUCT`。当前 public signatures 中出现的非内建 refs 都能解析到同文件 public `HEADER.DATA` 或 runtime/builtin types。
+- `expected_public_type_roles` 已被真正消费。`planning_decisions.json` 中 `codec_framing.public_api_policy.expected_public_type_roles` 仍为 `type:fixed_header`、`type:connect`、`type:subscribe`、`type:publish`，并新增/保留了 `resolved_public_type_roles`，全部解析到对应 public type。
+- `MODULES[].ARTIFACTS` 更有用。`codec_framing.ARTIFACTS` 已从上一轮 3 个 `FUNC` 扩展为 8 个 `FUNC` + 5 个 `TYPE`，其中真实 public API types 包括 `fixed_header`、`connect`、`subscribe`、`publish`，不再只有 opaque module handle。
+- semantic gate 没有对当前 bundle 报错是合理结果。`planning_ir_refs.json` 的 `unresolved_lowering=[]`，`014_planning_validation_report.json` 显示 `status=success`、`coder_schema_status=passed`、`coder_loader_status=passed`、`error_count=0`、`warning_count=0`。
+- strict schema 与 coder loader 兼容继续保持：schema invalid files、schema errors、loader errors 均为 0。
+
+仍未解决的 gap：
+
+- Gap 3 仍未解决：本轮没有生成 `main.c`，也没有 broker/app lifecycle public API；这符合本轮非目标，但仍影响 coder 直接生成 runnable broker。
+- Gap 4、17 仍未解决：`mqtt_module_spec.json` 中 `MODULES[].DEPENDENCIES` 仍为空。public type 可见性已改善，但模块依赖关系仍没有显式暴露给 coder。
+- Gap 15 仍未根治：wire mapping / semantic target 聚合问题不属于本轮修复范围，当前仍需要后续单独处理。
+- Gap 16 仍未解决：仍没有 `TEST_VECTORS`。
+- Gap 19 只改善了一部分：function specs 从 26 增至 30，public API 从 3 增至 8，但整体 function inventory 仍远少于示例 specs，connection/session/topic/router/broker app helper 族仍不足。
+- `role_composition` 仍然没有 files/artifacts。这一模块目前不会破坏 public type lowering，但对最终 runnable composition 仍是后续问题。
+
+新增观察：
+
+- 当前 type lowering 是针对现有 canonical type table 的 deterministic consumption，不是 protocol-specific hardcode。从产物看，`fixed_header/connect/subscribe/publish` 的出现来自 `canonical_types` 和 `public_api_policy.expected_public_type_roles`，不是由 compiler 猜 MQTT 类型。
+- Opaque module handles 仍作为 public `TYPE` artifacts 存在：`mqtt_codec_framing_t`、`mqtt_transport_runtime_t`、`mqtt_semantic_state_t`、`mqtt_resource_routing_t`。这本身可接受，但后续如果 coder 需要实例化或管理这些 handles，还需要 lifecycle/API ownership 继续补齐。
+- Public canonical structs 已生成，但字段语义仍偏基础 lowering。它们解决了 header type declaration completeness，不等于已经补齐完整 shared packet/data model。
+
+### 2026-05-21 15:15 最新产物复核
+
+复核对象：
+
+`/home/ljf/SpecForge/agent/planning/out/mqtt/broker__c__linux_epoll__minimum_v1/20260521_122233_184179/spec_bundle`
+
+本轮 public API signal 修复后，旧的 P0 现象已经明显改善：最新 bundle 不再是 `HEADER.INTERFACE=0`，也不再是所有 source functions 都 private。`codec_framing` 已经通过 5.3 `public_api_policy`、5.4a function visibility/exported signal、5.5 file exports、specs compiler lowering 生成了 public header declarations 和 module `FUNC` artifacts。
+
+最新核心统计：
+
+| 项目 | 2026-05-21 11:14 | 2026-05-21 12:22 |
 |---|---:|---:|
 | `PROTOCOL_MODULE_SPEC` | 1 | 1 |
-| `FILE_SPEC` | 11 | 5 |
-| `FUNCTION_SPEC` | 89 | 29 |
-| schema invalid files | 0 | 35 |
-| schema errors | 0 | 632 |
-| `HEADER.INTERFACE` 总数 | 57 | 0 |
-| `SOURCE.INTERFACE` 总数 | 89 | 29 |
-| 有 `TEST_VECTORS` 的 spec | 1 | 0 |
-| 有 `ACCESS_PATHS` 的 spec | 4 | 2 |
-| 有 `WIRE_MAPPING` 的 function spec | 1 | 2 |
+| `FILE_SPEC` | 5 | 4 |
+| `FUNCTION_SPEC` | 28 | 26 |
+| schema invalid files | 0 | 0 |
+| schema errors | 0 | 0 |
+| loader errors | 0 | 0 |
+| planning coder semantic errors | 0 | 0 |
+| `HEADER.INTERFACE` 总数 | 0 | 3 |
+| `SOURCE.INTERFACE` 总数 | 28 | 26 |
+| public source functions | 0 | 3 |
+| module dependencies | 0 | 0 |
+| module artifacts | 5 | 7 |
+| module artifact `FUNC` | 0 | 3 |
+| module artifact `TYPE` | 5 | 4 |
+| 有 `TEST_VECTORS` 的 spec | 0 | 0 |
+| 有 `ACCESS_PATHS` 的 spec | 3 | 4 |
+| 有 `WIRE_MAPPING` 的 function spec | 2 | 0 |
+
+已解决或进一步改善的 gap：
+
+- Gap 2 的 P0 现象部分解决：`HEADER.INTERFACE` 不再全空。`codec_framing_spec.json` 现在有 3 个 public functions：`decode_fixed_header`、`encode_connect`、`encode_publish`。
+- Gap 5 明显改善：`MODULES[].ARTIFACTS` 不再只有 opaque `TYPE`，`codec_framing.ARTIFACTS` 已包含 3 个 `FUNC` artifact，且没有发现 `FILE_SPEC` artifact。
+- Step 5 public API signal 已经贯通一段：`planning_decisions.json` 中 `codec_framing.public_api_policy.exposes_public_api=true`，其 expected public function roles 被 lowering 到 public `HEADER.INTERFACE`。
+- strict schema、coder loader、planning validation report 继续通过。`014_planning_validation_report.json` 显示 `status=success`、`coder_schema_status=passed`、`coder_loader_status=passed`、diagnostics 为 0。
+- 其他模块不暴露 public API 已经有结构化 reason：`transport_runtime`、`semantic_state`、`resource_routing`、`role_composition` 均为 `exposes_public_api=false`，并带 `no_public_api_reason`。
+
+仍未解决的 gap：
+
+- Gap 12、13 仍是当前最关键残留：public functions 的 signatures 暴露了 public-ish C types，但这些 types 没有进入 `HEADER.DATA`。例如：
+  - `decode_fixed_header(... struct fixed_header* out_header, ...)`
+  - `encode_connect(const struct connect* msg, ...)`
+  - `encode_publish(const struct publish* msg, ...)`
+  但 public `HEADER.DATA` 只有 `mqtt_codec_framing_t`、`mqtt_transport_runtime_t`、`mqtt_semantic_state_t`、`mqtt_resource_routing_t` 这些 opaque module handles，没有 `struct fixed_header`、`struct connect`、`struct publish` 或等价 `TYPE_SPEC`。
+- Gap 3 仍未解决：没有 `main.c`，没有 broker/app lifecycle public API。`role_composition` 仍在 `GENERATION_ORDER` 末尾，但 `FILES=[]`、`ARTIFACTS=[]`、没有 public entrypoint。
+- Gap 4、17 仍未解决：`mqtt_module_spec.json` 中 `MODULES[].DEPENDENCIES` 仍全为空；dependency validation report 虽然有 derived edge count，但 module spec 没把依赖暴露给 coder。
+- Gap 15 仍未根治：implementation plan 里 `WIRE_MAPPING`/`ACCESS_PATHS` 仍有明显语义问题，`ACCESS_PATHS.c_type` 大量为 `unknown`，多个 field mapping 被聚合到 `access:fixed_header:packet_type`。
+- Gap 16 仍未解决：没有 `TEST_VECTORS`。
+- Gap 19 仍未解决：function 数量从 28 降到 26，仍远少于示例 specs 的 89 个，connection/session/topic/router/broker app helper 族仍不足。
+
+新增或暴露的新问题：
+
+- Semantic gate 对 expected public type roles 仍有盲区。`codec_framing.public_api_policy.expected_public_type_roles` 明确列出 `fixed_header`、`connect`、`subscribe`、`publish`，但最终没有对应 public `HEADER.DATA`/`ARTIFACTS`，validation report 仍为 0 error。
+- Public API 已经从“完全没有”变成“有函数但缺类型”。这比旧 P0 前进一步，但对 C header renderer 来说仍可能生成不可编译 header，因为 public declarations 引用了未声明 struct。
+- `planning_decisions.json` 的 shape 变成 `items` map，而不是之前分析脚本预期的 `modules/functions` lists。当前 semantic gate 能通过，但后续工具和人工分析需要统一读取 sidecar 的实际结构，避免误判 public intent count 为 0。
+- `SOURCE.INTERFACE` 中 `semantic_state` 的 `dispatch_publish_in` 等仍是 `FUNCTION_TYPE: ENTRYPOINT`，但 visibility 是 private/internal，且没有 header declaration。这不一定违反本轮 public API policy，但会继续削弱 coder 对 runnable broker boundary 的发现能力。
+- `canonical_types` 已经有 `fixed_header/connect/subscribe/publish`，但 specs compiler 没有把它们 lowering 到 public `HEADER.DATA`。下一轮应优先打通 `expected_public_type_roles -> canonical_types -> HEADER.DATA TYPE_SPEC -> MODULES[].ARTIFACTS TYPE -> public signature type validation`。
+
+下一轮优先级建议：
+
+1. 收紧 semantic gate：`expected_public_type_roles` 非空时，必须有对应 public `HEADER.DATA` 或 module `TYPE` artifact；public function signature 引用的 `struct X` 必须在 header 可见。
+2. 修 specs compiler 的 public type lowering：从 `canonical_types` deterministic 生成 schema-compatible `HEADER.DATA` `TYPE_SPEC`，不要在 compiler 里用协议名、模块名、函数名猜类型。
+3. 保持本轮边界：不要为了补 public types 引入 MQTT/broker/main 特例；broker lifecycle、`main.c`、test vectors、wire mapping 语义可作为后续独立轮次处理。
+
+### 2026-05-21 11:14 最新产物复核
+
+本轮 specs compiler 与 compatibility validation 修改后，最新 bundle 继续保持 strict schema 和 loader 兼容，并且通过新增的 planning-side coder semantic gate。需要注意的是：semantic gate 通过不等于 public API gap 已解决，因为当前 `SOURCE.INTERFACE` 里没有任何 function 被标注为 `public`，所以 gate 没有看到“应公开但未进 header”的结构化信号。
+
+最新与示例 specs 的核心统计：
+
+| 项目 | 示例 specs | 2026-05-20 20:53 | 2026-05-21 11:14 |
+|---|---:|---:|---:|
+| `PROTOCOL_MODULE_SPEC` | 1 | 1 | 1 |
+| `FILE_SPEC` | 11 | 4 | 5 |
+| `FUNCTION_SPEC` | 89 | 30 | 28 |
+| schema invalid files | 0 | 0 | 0 |
+| schema errors | 0 | 0 | 0 |
+| loader errors | 0 | 0 | 0 |
+| planning coder semantic errors | 示例不适用 | 4 | 0 |
+| `HEADER.INTERFACE` 总数 | 57 | 0 | 0 |
+| `SOURCE.INTERFACE` 总数 | 89 | 30 | 28 |
+| public source functions | 58 | 0 | 0 |
+| module dependencies | 8 | 0 | 0 |
+| module artifacts | 31 | 4 | 5 |
+| module artifact `FUNC` | 18 | 0 | 0 |
+| module artifact `TYPE` | 13 | 4 | 5 |
+| 有 `TEST_VECTORS` 的 spec | 1 | 0 | 0 |
+| 有 `ACCESS_PATHS` 的 spec | 4 | 3 | 3 |
+| 有 `WIRE_MAPPING` 的 function spec | 1 | 2 | 2 |
+
+已解决或进一步改善的 gap：
+
+- Gap 1：strict schema dialect 兼容继续保持。最新 5 个 `FILE_SPEC`、28 个 `FUNCTION_SPEC`、1 个 `PROTOCOL_MODULE_SPEC` 均 schema-valid，loader errors 为 0。
+- Gap 5：`MODULES[].ARTIFACTS` 不再出现 `FILE_SPEC`，并且现在由 strict header data 抽取，每个模块至少有一个 public opaque handle type artifact。这比上一版的 artifacts 语义更稳定，但还不够有用。
+- Gap 6、11：function type lowering 有进展。最新不再全部降为 `ALGORITHM`，出现 2 个 `ENTRYPOINT` 和 1 个 schema-valid `EVENT`，其中 `handle_epoll_event` 带完整 `TRIGGER/PRECONDITION/INPUT/ACTION/STATE_CHANGE/RESPONSE/EVENT_TYPE`。
+- Gap 3 的一小部分：`role_composition` 不再是空模块，现在有 `role_composition.h/c` 和两个 source functions：`route_client_message_to_broker`、`bind_broker_response_to_client`。
+- Gap 7、8、9、10、14：枚举、interface kind、ownership、contract shape、`ACCESS_PATHS` shape 仍保持 schema-compatible。
+
+仍未解决的 gap：
+
+- Gap 2：`HEADER.INTERFACE` 仍为 0。所有 28 个 functions 仍只在 `SOURCE.INTERFACE`，且 visibility 全为 `private`。coder header renderer 仍不会得到任何 public function declaration。
+- Gap 3：仍没有可用 app/main lifecycle。`role_composition` 虽然不再为空，但没有 public API，也没有 `main.c`，因此还不能形成 runnable broker/application boundary。
+- Gap 4、17：模块边界和 layout 仍是概念模块：`transport_runtime`、`codec_framing`、`semantic_state`、`resource_routing`、`role_composition`；依赖仍全为空，没有对齐示例的 `network/protocol/session/topic/router/broker_app` 工程依赖链。
+- Gap 12、13：shared public data model 仍缺失，且比上一版更“干净但更空”。最新 `HEADER.DATA` 只有 5 个 opaque module handles，没有 `mqtt_packet_t`、payload structs、fixed header/connect/subscribe/publish public type model。
+- Gap 15：`WIRE_MAPPING` 语义问题仍在。`decode_fixed_header_spec.json` 仍把 CONNECT/SUBSCRIBE/PUBLISH 多个 fields 的 `TARGET` 聚合到 `fixed_header.packet_type`，schema 合法但协议语义错误。
+- Gap 16：仍没有 `TEST_VECTORS`。
+- Gap 18：`PROTOCOL.SPEC_VERSION` 仍是 `unspecified`。`PROTOCOL.NAME` 最新为 facts 原值 `mqtt`，与示例 `MQTT` 不一致；这是移除协议特例后的结果，不是 schema 错误，但会影响与示例 dialect 的一致性。
+- Gap 19：function 数量仍不足，最新 28 个，比示例 89 个少很多，也比上一版 30 个少 2 个；缺少 connection/session/topic/router 等工程 helper 族。
+
+新增或暴露的新问题：
+
+- Compatibility gate 出现“无 public signal 即通过”的盲区：最新 bundle 的 semantic errors 为 0，但这是因为没有任何 `SOURCE.INTERFACE` 被标为 public，不代表 header public API 已满足。后续需要在 Step 5 prompt/schema 中强制 public API ownership 标注，或让 validation 对 `public_api_policy.exposes_public_api` 但无 public FUNC 的模块报 warning/error。
+- Artifacts 现在语义一致但信息量不足：5 个 modules 的 artifacts 都只有 `mqtt_<module>_t` opaque TYPE，没有任何 `FUNC`，不能达到“关键函数和结构清单”的设计目标。
+- `ENTRYPOINT`/`EVENT` function 仍是 private source-only：`accept_new_connection`、`close_connection`、`handle_epoll_event` 的 function spec 类型更准确，但 file spec 没有把它们公开或纳入 artifacts，coder 无法从 module boundary 发现它们。
+- `PROTOCOL.NAME` 从 `MQTT` 变成 `mqtt`，说明 protocol metadata lowering 已经协议无关，但缺少 canonical display-name normalization。建议后续从 `protocol_facts.protocol_meta` 增加规范名字段，而不是在 compiler 中恢复 MQTT 特例。
+- 示例 specs 在新增 semantic gate 下会报 artifacts 不全，这说明当前 gate 是针对新生成 bundle 的更强一致性检查；如果要把示例 specs 也作为 semantic baseline，需要先更新示例 `MODULES[].ARTIFACTS`，或把该检查限定为 planning-generated bundles。
+
+### 2026-05-20 20:53 新版复核
+
+第五阶段提示词与 specs compile 重构后，当前 bundle 已经解决了最底层的 coder schema dialect 问题：`agent.coder.specs.load_spec_bundle_from_root()` 可加载，且 4 个 `FILE_SPEC`、30 个 `FUNCTION_SPEC`、1 个 `PROTOCOL_MODULE_SPEC` 全部通过 `specs_schema` strict validation。旧版 35 个 invalid spec / 632 个 schema errors 已清零。
+
+但这次修复主要解决了“schema 合法性”，还没有解决“能让 coder 生成 runnable broker”的工程完整性。最关键的残留问题是所有 `HEADER.INTERFACE` 仍为空，30 个 functions 全部只出现在 `SOURCE.INTERFACE` 且 `VISIBILITY: private`，因此 header 没有 public API，`main.c`/broker lifecycle 仍无从绑定。
+
+新版与示例 specs 的核心统计：
+
+| 项目 | 示例 specs | 旧 planning specs | 当前 planning specs |
+|---|---:|---:|---:|
+| `PROTOCOL_MODULE_SPEC` | 1 | 1 | 1 |
+| `FILE_SPEC` | 11 | 5 | 4 |
+| `FUNCTION_SPEC` | 89 | 29 | 30 |
+| schema invalid files | 0 | 35 | 0 |
+| schema errors | 0 | 632 | 0 |
+| loader diagnostics | 0 | 未统计 | 0 |
+| `HEADER.INTERFACE` 总数 | 57 | 0 | 0 |
+| `SOURCE.INTERFACE` 总数 | 89 | 29 | 30 |
+| public source functions | 58 | 0 | 0 |
+| module dependencies | 8 | 0 | 0 |
+| module artifacts | 31 | 5 | 4 |
+| 有 `TEST_VECTORS` 的 spec | 1 | 0 | 0 |
+| 有 `ACCESS_PATHS` 的 spec | 4 | 31 | 3 |
+| 有 `WIRE_MAPPING` 的 function spec | 1 | 29 | 2 |
+
+已解决或基本解决的 gap：
+
+- Gap 1：严格 schema dialect 不兼容。已解决；planning 专用字段已移到 `planning_decisions.json`、`planning_traceability.json`、`planning_ir_refs.json` sidecar，核心 specs 不再混入 schema 禁止字段。
+- Gap 5：`MODULES[].ARTIFACTS` 使用 `FILE_SPEC` kind。已解决 schema 违规；当前 artifacts 只保留 `TYPE`，但数量和语义仍不足。
+- Gap 6：function type 枚举未归一化。已解决 schema 层问题；当前全部 lowering 为 `ALGORITHM`。
+- Gap 7：visibility 枚举大小写和取值不兼容。已解决 schema 层问题；data 使用 `PUBLIC/PRIVATE`，interface 使用 `private`。
+- Gap 8：interface `KIND` 使用 `FUNCTION`。已解决；当前 `SOURCE.INTERFACE.KIND` 全部为 `FUNC`。
+- Gap 9：parameter ownership 枚举不兼容。已解决；当前只出现 `BORROWED`、`OWNED_BY_CALLER`、`OWNED`。
+- Gap 10：`SOURCE.INTERFACE.CONTRACT` shape 不兼容。已解决；当前 contract 使用 `PRECONDITION/POSTCONDITION/IDEMPOTENT/THREAD_SAFETY`。
+- Gap 11：`EVENT` body shape 不兼容。已规避；当前没有 `EVENT` function，全部用 `ALGORITHM + LOGIC`，schema 合法但损失了 handler/event 语义。
+- Gap 14：`ACCESS_PATHS` 格式不兼容。已解决格式问题；当前 items 使用 `PATH/TYPE/ROLE`，但覆盖质量仍不足。
+- Gap 18：`PROTOCOL` metadata 的 `NAME` 和 `ROLES`。已部分解决；当前为 `NAME: MQTT`、`ROLES: [BROKER]`，但 `SPEC_VERSION` 仍是 `unspecified`。
+
+仍未解决的 gap：
+
+- Gap 2、3：仍缺 public API 和可用 broker/app 入口；当前没有 `main.c`，没有 `mqtt_broker_create/start/run/stop/destroy`，`role_composition` 仍是空 files 模块。
+- Gap 4、17：模块仍停留在概念层，且 layout 仍是 `mqtt/<module>/<module>.h/c`，没有对齐示例的 `network/protocol/broker/topic/router/main` 工程边界。
+- Gap 12、13：shared public data model 仍不够；当前只有 opaque module handles 与 `fixed_header/connect/subscribe/publish` 这类裸 type 名，缺少 `mqtt_packet_t`、payload structs、session/router/network public types。
+- Gap 15、16、19：wire mapping、test vectors、function 粒度仍明显不足；尤其 `WIRE_MAPPING` 虽然 schema 合法，但 semantic target 质量有新风险。
+
+新增问题：
+
+- `role_composition` 出现在 `GENERATION_ORDER` 中，但 `FILES: []`、`ARTIFACTS: []`、`DOC_REF: []`，作为最后模块会继续误导 coder 的 app 模块发现逻辑。
+- 所有 functions 被强制降级为 private `ALGORITHM`，解决了 schema validation，却删除了 public API、entrypoint 与 event handler 信号；这是从“非法但有意图”变成“合法但不可调用”。
+- `WIRE_MAPPING` 出现错误 target 聚合：例如 `decode_fixed_header_spec.json` 中多个 CONNECT/SUBSCRIBE/PUBLISH fields 都写到 `fixed_header.packet_type`，虽然 schema 合法，但协议语义错误。
+- `ACCESS_PATHS` 的 `TYPE` 多为 `unknown`，且没有绑定到 declared public `TYPE_SPEC`，coder 仍难以生成可共享的 C struct 访问路径。
+- sidecar trace ids 出现重复 `mqtt/mqtt/...` 前缀；不影响 coder loader，但会削弱 planning traceability 与人工调试可读性。
+
+# 初始差距分析
 
 ## 1. 严格 schema dialect 不兼容
 

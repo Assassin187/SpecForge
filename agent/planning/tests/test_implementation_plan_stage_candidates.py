@@ -240,6 +240,128 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             layout["function_file_assignments"][0]["function_id"] = "fn:missing"
             self.assertTrue(_has(validate_file_layout_candidate(layout, draft), "layout_assigns_unknown_function"))
 
+    def test_module_contract_public_api_policy_is_required(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            _, profile, constraints, selected, draft, _, items = self._fixtures(Path(raw_tmp))
+            modules = copy.deepcopy(items["modules"])
+            policy = modules["module_contracts"][0]["public_api_policy"]
+            policy["expected_public_function_roles"] = []
+            policy["expected_public_type_roles"] = []
+            self.assertTrue(_has(validate_module_contracts_candidate(modules, selected, profile, constraints, draft), "public_api_policy_without_expected_surface"))
+
+            modules = copy.deepcopy(items["modules"])
+            policy = modules["module_contracts"][0]["public_api_policy"]
+            policy["exposes_public_api"] = False
+            policy["no_public_api_reason"] = ""
+            self.assertTrue(_has(validate_module_contracts_candidate(modules, selected, profile, constraints, draft), "missing_no_public_api_reason"))
+
+            modules = copy.deepcopy(items["modules"])
+            modules["module_contracts"][0]["public_api_policy"]["exported_capability_ids"] = ["capability:missing"]
+            self.assertTrue(_has(validate_module_contracts_candidate(modules, selected, profile, constraints, draft), "unknown_public_api_policy_capability"))
+
+    def test_function_inventory_public_api_visibility_rules(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            planning_ir, profile, _, _, draft, _, items = self._fixtures(Path(raw_tmp))
+            inventory = copy.deepcopy(items["inventory"])
+            for function in inventory["functions"]:
+                function["exported"] = False
+                function["visibility"] = "internal"
+                function["api_surface"] = "module_internal"
+                function["export_reason"] = ""
+                function["public_api_role"] = ""
+            self.assertTrue(_has(validate_function_inventory_candidate(inventory, draft["module_contracts"], draft, profile, planning_ir), "module_public_api_without_public_function"))
+
+            inventory = copy.deepcopy(items["inventory"])
+            public_function = next(function for function in inventory["functions"] if function["exported"])
+            public_function["visibility"] = "internal"
+            self.assertTrue(_has(validate_function_inventory_candidate(inventory, draft["module_contracts"], draft, profile, planning_ir), "exported_function_not_public"))
+
+            inventory = copy.deepcopy(items["inventory"])
+            public_function = next(function for function in inventory["functions"] if function["exported"])
+            public_function["visibility"] = "static"
+            self.assertTrue(_has(validate_function_inventory_candidate(inventory, draft["module_contracts"], draft, profile, planning_ir), "static_function_exported"))
+
+            aggregate = {
+                "schema_version": "function_inventory_candidate/v2",
+                "candidate_id": "candidate:test:aggregate",
+                "producer": {"stage": "5.4a_function_inventory", "prompt_name": "function_inventory_candidate_prompt", "prompt_version": "test"},
+                "module_id": "all_modules",
+                "functions": [
+                    {
+                        "function_id": function["function_id"],
+                        "name": function["name"],
+                        "module_id": function["module_id"],
+                        "function_kind": function["function_kind"],
+                        "coder_function_type": function["coder_function_type"],
+                        "visibility": function["visibility"],
+                        "api_surface": function["api_surface"],
+                        "exported": function["exported"],
+                        "export_reason": function["export_reason"],
+                        "public_api_role": function["public_api_role"],
+                        "grouping_hint": function["grouping_hint"],
+                        "purpose": function["purpose"],
+                        "capability_ids": function["capability_ids"],
+                        "covers_handler_ids": function["covers_handler_ids"],
+                        "covers_message_ids": function["covers_message_ids"],
+                        "covers_field_ids": function["covers_field_ids"],
+                        "trace_ref_keys": function.get("traceability", {}).get("decision_ids", []),
+                        "status": "inferred",
+                    }
+                    for function in draft["function_contracts"]
+                ],
+                "assumptions": [],
+                "unresolved_questions": [],
+            }
+            for function in aggregate["functions"]:
+                function["exported"] = False
+                function["visibility"] = "internal"
+                function["api_surface"] = "module_internal"
+                function["export_reason"] = ""
+                function["public_api_role"] = ""
+            self.assertTrue(_has(validate_function_inventory_candidate(aggregate, draft["module_contracts"], draft, profile, planning_ir), "no_public_functions_for_public_modules"))
+
+    def test_public_function_signature_and_contract_are_complete(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            _, _, constraints, _, draft, _, items = self._fixtures(Path(raw_tmp))
+            public_id = next(function["function_id"] for function in draft["function_contracts"] if function.get("exported"))
+            signature = copy.deepcopy(items["signature"])
+            update = next(item for item in signature["function_signature_updates"] if item["function_id"] == public_id)
+            update["signature"]["raw"] = ""
+            self.assertTrue(_has(validate_function_signature_patch(signature, draft), "public_function_incomplete_signature"))
+
+            signature = copy.deepcopy(items["signature"])
+            update = next(item for item in signature["function_signature_updates"] if item["function_id"] == public_id)
+            update["interface_type_declarations"].append({"name": "zap_private_t", "kind": "type", "owner_module_id": draft["module_contracts"][0]["module_id"], "visibility": "internal", "reason": "bad"})
+            self.assertTrue(_has(validate_function_signature_patch(signature, draft), "public_signature_uses_private_interface_type"))
+
+            behavior = copy.deepcopy(items["behavior"])
+            update = next(item for item in behavior["function_behavior_updates"] if item["function_id"] == public_id)
+            update["contract"]["input"] = ""
+            self.assertTrue(_has(validate_function_behavior_contract_patch(behavior, draft, constraints), "public_function_incomplete_contract"))
+
+    def test_file_layout_declares_public_only_in_headers(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            _, _, _, _, draft, _, items = self._fixtures(Path(raw_tmp))
+            public_id = next(function["function_id"] for function in draft["function_contracts"] if function.get("exported"))
+            layout = copy.deepcopy(items["layout"])
+            for file_item in layout["files"]:
+                file_item["exports_function_ids"] = [function_id for function_id in file_item["exports_function_ids"] if function_id != public_id]
+            for assignment in layout["function_file_assignments"]:
+                if assignment["function_id"] == public_id:
+                    assignment["declaration_file_id"] = ""
+            diags = validate_file_layout_candidate(layout, draft)
+            self.assertTrue(_has(diags, "public_function_header_export_count_mismatch"))
+            self.assertTrue(_has(diags, "public_function_not_declared"))
+
+            private_id = next(function["function_id"] for function in draft["function_contracts"] if not function.get("exported"))
+            layout = copy.deepcopy(items["layout"])
+            layout["files"][0]["exports_function_ids"].append(private_id)
+            self.assertTrue(_has(validate_file_layout_candidate(layout, draft), "private_function_exported_in_header"))
+
+            layout = copy.deepcopy(items["layout"])
+            layout["files"][0]["implements_function_ids"].append(layout["files"][0]["implements_function_ids"][0])
+            self.assertTrue(_has(validate_file_layout_candidate(layout, draft), "function_definition_count_mismatch"))
+
     def test_full_plan_and_dependency_graph_are_rejected_as_stage_outputs(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:
             planning_ir, profile, constraints, selected, draft, plan, items = self._fixtures(Path(raw_tmp))

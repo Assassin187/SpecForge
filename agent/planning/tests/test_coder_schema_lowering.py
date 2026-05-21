@@ -18,7 +18,10 @@ from agent.planning.stages.coder_spec_lowering import (
 from agent.planning.stages.implementation_plan import build_implementation_plan
 from agent.planning.stages.protocol_profile import build_protocol_profile
 from agent.planning.stages.specs_compiler import compile_spec_bundle
+from agent.planning.validators.coder_compat import validate_coder_compatibility
 from agent.planning.validators.coder_schema import validate_coder_spec_bundle_against_schema
+from agent.coder.generation import render_header
+from agent.coder.specs import load_spec_bundle_from_root
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -39,6 +42,120 @@ def _target_profile(root: Path) -> Path:
         encoding="utf-8",
     )
     return path
+
+
+def _zap_blueprint() -> dict:
+    return {
+        "schema_version": "spec_blueprint/v1",
+        "protocol_name": "zapline",
+        "protocol_metadata": {"name": "ZapLine", "protocol_version": "1.2"},
+        "target_profile": {"target_role": "relay"},
+        "roles": ["fallback_role"],
+        "canonical_types": [
+            {
+                "type_id": "type:zapline_frame",
+                "name": "zapline_frame_t",
+                "kind": "struct",
+                "owner_module_id": "framing",
+                "source_message_ids": [],
+                "source_field_ids": [],
+                "fields": [
+                    {"field_name": "opcode", "field_type": "uint8_t", "required": True, "source_field_id": "", "validation_notes": "Frame opcode."},
+                    {"field_name": "payload", "field_type": "buffer", "required": True, "source_field_id": "", "validation_notes": "Frame payload bytes."},
+                ],
+                "enum_values": [],
+                "trace_ref_keys": [],
+                "status": "supported",
+            }
+        ],
+        "modules": [
+            {
+                "module_id": "framing",
+                "role": "Encode and inspect ZapLine frames.",
+                "public_api_policy": {
+                    "exposes_public_api": True,
+                    "api_surface_kind": "public_module_api",
+                    "exported_capability_ids": ["frame_encoding"],
+                    "expected_public_function_roles": ["frame_encoder"],
+                    "expected_public_type_roles": ["zapline_frame_t"],
+                    "no_public_api_reason": "",
+                },
+                "dependencies": [],
+            }
+        ],
+        "files": [
+            {
+                "file_id": "file:zapline/framing/framing",
+                "module_id": "framing",
+                "source_path": "zapline/framing/framing.c",
+                "header_path": "zapline/framing/framing.h",
+                "responsibility": "Frame codec unit.",
+                "exports": ["func:framing:encode"],
+                "exports_type_ids": [],
+                "imports_allowed": [],
+            }
+        ],
+        "functions": [
+            {
+                "function_id": "func:framing:encode",
+                "file_id": "file:zapline/framing/framing",
+                "module_id": "framing",
+                "name": "zapline_frame_encode",
+                "function_kind": "public_api",
+                "visibility": "public",
+                "api_surface": "public",
+                "exported": True,
+                "export_reason": "Frame encoding is the module public API.",
+                "public_api_role": "frame_encoder",
+                "purpose": "Encode one ZapLine frame.",
+                "signature": {
+                    "raw": "int zapline_frame_encode(zapline_framing_t* ctx, const uint8_t* input, size_t len)",
+                    "name": "zapline_frame_encode",
+                    "return_type": "int",
+                    "params": [
+                        {"type": "zapline_framing_t*", "name": "ctx", "nullable": False, "ownership": "borrowed"},
+                        {"type": "const uint8_t*", "name": "input", "nullable": False, "ownership": "borrowed"},
+                        {"type": "size_t", "name": "len", "nullable": False, "ownership": "borrowed"},
+                    ],
+                },
+                "interface_type_declarations": [{"name": "zapline_frame_t", "visibility": "public", "reason": "Public frame object."}],
+                "behavior_contract": {"preconditions": ["ctx != NULL"], "postconditions": ["returns status"], "input": "frame bytes", "action": "encode", "output": "status"},
+            },
+            {
+                "function_id": "func:framing:crc",
+                "file_id": "file:zapline/framing/framing",
+                "module_id": "framing",
+                "name": "zapline_crc_update",
+                "function_kind": "internal_helper",
+                "visibility": "internal",
+                "api_surface": "module_internal",
+                "exported": False,
+                "export_reason": "",
+                "public_api_role": "",
+                "purpose": "Update checksum.",
+                "signature": {"raw": "static uint16_t zapline_crc_update(uint16_t crc, uint8_t byte)", "name": "zapline_crc_update", "return_type": "uint16_t", "params": []},
+                "behavior_contract": {"input": "crc and byte", "action": "update crc", "output": "crc"},
+            },
+            {
+                "function_id": "func:framing:debug",
+                "file_id": "file:zapline/framing/framing",
+                "module_id": "framing",
+                "name": "zapline_debug_dump",
+                "function_kind": "internal_helper",
+                "visibility": "static",
+                "storage_class": "static",
+                "api_surface": "static_helper",
+                "exported": False,
+                "export_reason": "",
+                "public_api_role": "",
+                "purpose": "Static debug helper.",
+                "signature": {"raw": "static void zapline_debug_dump(void)", "name": "zapline_debug_dump", "return_type": "void", "params": []},
+                "behavior_contract": {"input": "none", "action": "dump", "output": "none"},
+            },
+        ],
+        "access_path_table": [],
+        "generation_order": ["framing"],
+    }
 
 
 class CoderSchemaLoweringTests(unittest.TestCase):
@@ -78,6 +195,179 @@ class CoderSchemaLoweringTests(unittest.TestCase):
                     self.assertNotIn("CAPABILITY_IDS", raw)
                     self.assertNotIn("STATE_ACCESS", raw)
                     self.assertNotIn("CALLS_ALLOWED", raw)
+
+    def test_non_mqtt_public_interfaces_artifacts_and_metadata_lowering(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(_zap_blueprint(), Path(raw_tmp))
+            diagnostics = validate_coder_compatibility(manifest["spec_root"])
+            self.assertFalse([diag.__dict__ for diag in diagnostics if diag.level == "error"])
+
+            bundle = load_spec_bundle_from_root(manifest["spec_root"])
+            self.assertEqual(bundle.protocol.name, "ZapLine")
+            self.assertEqual(bundle.protocol.spec_version, "1.2")
+            self.assertEqual(bundle.protocol.roles, ["RELAY"])
+
+            file_spec = next(iter(bundle.file_specs_by_trace.values()))
+            header_names = [item.name for item in file_spec.header_interfaces]
+            source_names = [item.name for item in file_spec.source_interfaces]
+            public_types = {item["NAME"]: item for item in file_spec.header_data if item.get("KIND") == "TYPE" and item.get("VISIBILITY") == "PUBLIC"}
+            self.assertIn("zapline_frame_encode", header_names)
+            self.assertIn("zapline_frame_encode", source_names)
+            self.assertNotIn("zapline_crc_update", header_names)
+            self.assertNotIn("zapline_debug_dump", header_names)
+            self.assertEqual(public_types["zapline_frame_t"]["TYPE_SPEC"]["TYPE_KIND"], "STRUCT")
+
+            rendered = render_header(bundle, file_spec)
+            self.assertIn("zapline_frame_encode", rendered)
+            self.assertIn("typedef struct zapline_frame", rendered)
+            module_spec = json.loads(Path(manifest["module_spec_path"]).read_text(encoding="utf-8"))
+            artifacts = module_spec["MODULES"][0]["ARTIFACTS"]
+            artifact_keys = {(item["NAME"], item["KIND"]) for item in artifacts}
+            self.assertIn(("zapline_frame_encode", "FUNC"), artifact_keys)
+            self.assertIn(("zapline_framing_t", "TYPE"), artifact_keys)
+            self.assertIn(("zapline_frame_t", "TYPE"), artifact_keys)
+            self.assertNotIn("FILE_SPEC", {item["KIND"] for item in artifacts})
+            self.assertFalse([item for item in artifacts if item["NAME"].startswith(("file:", "func:")) or "/" in item["NAME"]])
+
+    def test_protocol_metadata_uses_neutral_fallbacks(self) -> None:
+        blueprint = _zap_blueprint()
+        blueprint.pop("protocol_metadata")
+        blueprint.pop("target_profile")
+        blueprint["protocol_name"] = ""
+        blueprint["roles"] = []
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(blueprint, Path(raw_tmp))
+            diagnostics = validate_coder_spec_bundle_against_schema(manifest["spec_root"])
+            self.assertFalse([diag.__dict__ for diag in diagnostics if diag.level == "error"])
+            module_spec = json.loads(Path(manifest["module_spec_path"]).read_text(encoding="utf-8"))
+            self.assertEqual(module_spec["PROTOCOL"]["NAME"], "UNSPECIFIED_PROTOCOL")
+            self.assertEqual(module_spec["PROTOCOL"]["SPEC_VERSION"], "unspecified")
+            self.assertEqual(module_spec["PROTOCOL"]["ROLES"], ["UNSPECIFIED_ROLE"])
+
+    def test_coder_semantics_reject_missing_header_and_bad_artifact_name(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(_zap_blueprint(), Path(raw_tmp))
+            spec_root = Path(manifest["spec_root"])
+            file_path = next(path for path in spec_root.rglob("*_spec.json") if path.name == "framing_spec.json")
+            file_spec = json.loads(file_path.read_text(encoding="utf-8"))
+            file_spec["HEADER"]["INTERFACE"] = []
+            file_path.write_text(json.dumps(file_spec, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            diagnostics = validate_coder_compatibility(spec_root)
+            self.assertIn("coder_public_source_missing_header", {diag.code for diag in diagnostics if diag.level == "error"})
+
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(_zap_blueprint(), Path(raw_tmp))
+            module_path = Path(manifest["module_spec_path"])
+            module_spec = json.loads(module_path.read_text(encoding="utf-8"))
+            module_spec["MODULES"][0]["ARTIFACTS"][0]["NAME"] = "file:zapline/framing"
+            module_path.write_text(json.dumps(module_spec, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            diagnostics = validate_coder_compatibility(manifest["spec_root"])
+            self.assertIn("coder_artifact_invalid_name", {diag.code for diag in diagnostics if diag.level == "error"})
+
+    def test_coder_semantics_reject_public_api_intent_gaps(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            blueprint = _zap_blueprint()
+            for function in blueprint["functions"]:
+                function["visibility"] = "internal"
+                function["api_surface"] = "module_internal"
+                function["exported"] = False
+                function["export_reason"] = ""
+                function["public_api_role"] = ""
+            manifest, _ = compile_spec_bundle(blueprint, Path(raw_tmp))
+            diagnostics = validate_coder_compatibility(manifest["spec_root"])
+            self.assertIn("coder_public_api_policy_missing_function_surface", {diag.code for diag in diagnostics if diag.level == "error"})
+
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            blueprint = _zap_blueprint()
+            blueprint["functions"][0]["signature"] = {"raw": "", "name": "", "return_type": "", "params": []}
+            manifest, _ = compile_spec_bundle(blueprint, Path(raw_tmp))
+            diagnostics = validate_coder_compatibility(manifest["spec_root"])
+            self.assertIn("coder_public_lowering_unresolved", {diag.code for diag in diagnostics if diag.level == "error"})
+
+    def test_coder_semantics_reject_missing_public_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(_zap_blueprint(), Path(raw_tmp))
+            module_path = Path(manifest["module_spec_path"])
+            module_spec = json.loads(module_path.read_text(encoding="utf-8"))
+            module_spec["MODULES"][0]["ARTIFACTS"] = [item for item in module_spec["MODULES"][0]["ARTIFACTS"] if item["KIND"] != "FUNC"]
+            module_path.write_text(json.dumps(module_spec, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            diagnostics = validate_coder_compatibility(manifest["spec_root"])
+            self.assertIn("coder_public_func_missing_artifact", {diag.code for diag in diagnostics if diag.level == "error"})
+
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(_zap_blueprint(), Path(raw_tmp))
+            module_path = Path(manifest["module_spec_path"])
+            module_spec = json.loads(module_path.read_text(encoding="utf-8"))
+            module_spec["MODULES"][0]["ARTIFACTS"] = [item for item in module_spec["MODULES"][0]["ARTIFACTS"] if not (item["KIND"] == "TYPE" and item["NAME"] == "zapline_frame_t")]
+            module_path.write_text(json.dumps(module_spec, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            diagnostics = validate_coder_compatibility(manifest["spec_root"])
+            self.assertIn("coder_public_data_missing_artifact", {diag.code for diag in diagnostics if diag.level == "error"})
+
+    def test_public_opaque_type_lowering_and_by_value_rejection(self) -> None:
+        blueprint = _zap_blueprint()
+        blueprint["canonical_types"] = [
+            {
+                "type_id": "type:zapline_cursor",
+                "name": "zapline_cursor_t",
+                "kind": "struct",
+                "owner_module_id": "framing",
+                "source_message_ids": [],
+                "source_field_ids": [],
+                "fields": [],
+                "enum_values": [],
+                "trace_ref_keys": [],
+                "status": "supported",
+            }
+        ]
+        blueprint["modules"][0]["public_api_policy"]["expected_public_type_roles"] = ["zapline_cursor_t"]
+        blueprint["functions"][0]["signature"]["raw"] = "int zapline_frame_encode(zapline_framing_t* ctx, zapline_cursor_t* cursor)"
+        blueprint["functions"][0]["signature"]["params"] = [
+            {"type": "zapline_framing_t*", "name": "ctx", "nullable": False, "ownership": "borrowed"},
+            {"type": "zapline_cursor_t*", "name": "cursor", "nullable": False, "ownership": "borrowed"},
+        ]
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(blueprint, Path(raw_tmp))
+            diagnostics = validate_coder_compatibility(manifest["spec_root"])
+            self.assertFalse([diag.__dict__ for diag in diagnostics if diag.level == "error"])
+            file_path = next(path for path in Path(manifest["spec_root"]).rglob("*_spec.json") if path.name == "framing_spec.json")
+            file_spec = json.loads(file_path.read_text(encoding="utf-8"))
+            type_specs = {item["NAME"]: item["TYPE_SPEC"] for item in file_spec["HEADER"]["DATA"] if item.get("KIND") == "TYPE" and "TYPE_SPEC" in item}
+            self.assertEqual(type_specs["zapline_cursor_t"]["TYPE_KIND"], "OPAQUE")
+
+        blueprint["functions"][0]["signature"]["raw"] = "int zapline_frame_encode(zapline_framing_t* ctx, zapline_cursor_t cursor)"
+        blueprint["functions"][0]["signature"]["params"][1]["type"] = "zapline_cursor_t"
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(blueprint, Path(raw_tmp))
+            diagnostics = validate_coder_compatibility(manifest["spec_root"])
+            self.assertIn("coder_public_lowering_unresolved", {diag.code for diag in diagnostics if diag.level == "error"})
+
+    def test_coder_semantics_reject_public_signature_unknown_type_and_missing_role(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            blueprint = _zap_blueprint()
+            blueprint["functions"][0]["signature"]["raw"] = "int zapline_frame_encode(zapline_framing_t* ctx, unknown_frame_t* frame)"
+            blueprint["functions"][0]["signature"]["params"] = [
+                {"type": "zapline_framing_t*", "name": "ctx", "nullable": False, "ownership": "borrowed"},
+                {"type": "unknown_frame_t*", "name": "frame", "nullable": False, "ownership": "borrowed"},
+            ]
+            manifest, _ = compile_spec_bundle(blueprint, Path(raw_tmp))
+            diagnostics = validate_coder_compatibility(manifest["spec_root"])
+            self.assertIn("coder_public_signature_unknown_type", {diag.code for diag in diagnostics if diag.level == "error"})
+
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            blueprint = _zap_blueprint()
+            blueprint["modules"][0]["public_api_policy"]["expected_public_type_roles"] = ["missing_public_type"]
+            manifest, _ = compile_spec_bundle(blueprint, Path(raw_tmp))
+            diagnostics = validate_coder_compatibility(manifest["spec_root"])
+            self.assertIn("coder_public_api_policy_missing_expected_type_role", {diag.code for diag in diagnostics if diag.level == "error"})
+
+    def test_specs_compiler_has_no_protocol_role_special_cases(self) -> None:
+        texts = [
+            (ROOT / "agent" / "planning" / "stages" / "specs_compiler.py").read_text(encoding="utf-8"),
+            (ROOT / "agent" / "planning" / "stages" / "coder_spec_lowering.py").read_text(encoding="utf-8"),
+        ]
+        for text in texts:
+            for forbidden in ('"mqtt"', '"MQTT"', '"broker"', '"BROKER"', '"server"', '"SERVER"', '"client"', '"CLIENT"'):
+                self.assertNotIn(forbidden, text)
 
 
 if __name__ == "__main__":

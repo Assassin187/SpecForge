@@ -570,6 +570,27 @@ python3 -m agent planning plan \
   --target-profile agent/planning/planning_target_profile_mqtt.json
 ```
 
+从中间阶段续跑：
+
+```bash
+python3 -m agent planning plan \
+  --facts agent/facts/gold_facts/mqtt_min/protocol_facts.json \
+  --target-profile agent/planning/planning_target_profile_mqtt.json \
+  --resume-from-stage implementation_plan
+```
+
+续跑并指定本次新 run 的输出目录：
+
+```bash
+python3 -m agent planning plan \
+  --facts agent/facts/gold_facts/mqtt_min/protocol_facts.json \
+  --target-profile agent/planning/planning_target_profile_mqtt.json \
+  --resume-from-stage implementation_plan \
+  --output-dir /tmp/specforge_planning_resume
+```
+
+`--resume-from-stage` 会自动从当前 facts/target 对应的默认输出根中选择最近一次 run 作为继承来源；`--output-dir` 只表示本次新 run 的写入位置，不表示 source run。
+
 运行需要环境变量 `ALI_API`。Protocol Profile 和 Architecture 属于 mandatory LLM 阶段，无法获得合法输出会失败退出；Implementation Plan Synthesis 属于 staged hybrid 阶段，子步骤 LLM 输出不合法时使用 deterministic fallback 继续推进。
 
 ### 验证已有输出目录

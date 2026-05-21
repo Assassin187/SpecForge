@@ -13,7 +13,8 @@ CONFIDENCE_VALUES = {"high", "medium", "low"}
 VISIBILITY_VALUES = {"public", "internal", "private", "static"}
 FUNCTION_KIND_VALUES = {"public_api", "handler", "parser", "serializer", "validator", "state_machine", "resource_lifecycle", "error_helper", "internal_helper"}
 CODER_FUNCTION_TYPE_VALUES = {"ALGORITHM", "EVENT", "ENTRYPOINT"}
-API_SURFACE_VALUES = {"public_header", "internal_header", "source_private", "callback_entry"}
+API_SURFACE_VALUES = {"public", "module_internal", "private_helper", "static_helper"}
+API_SURFACE_KIND_VALUES = {"public_module_api", "internal_module", "facade_or_coordinator", "data_model_provider", "runtime_adapter", "test_support"}
 
 
 def _scalar(name: str, *, enum: set[str] | None = None) -> SchemaSpec:
@@ -180,7 +181,13 @@ TEST_PLAN_SEED_SCHEMA = _object(
 PUBLIC_API_POLICY_SCHEMA = _object(
     {
         "exposes_public_api": BOOL,
+        "api_surface_kind": _scalar("string", enum=API_SURFACE_KIND_VALUES),
         "api_style": _scalar("string", enum={"opaque_handle", "callback", "procedural", "none", "unknown"}),
+        "exported_capability_ids": STRING_LIST,
+        "expected_public_function_roles": STRING_LIST,
+        "expected_public_type_roles": STRING_LIST,
+        "no_public_api_reason": STRING,
+        "trace_ref_keys": STRING_LIST,
         "visibility_rules": STRING_LIST,
         "notes": STRING,
     }
@@ -241,6 +248,9 @@ FUNCTION_INVENTORY_SCHEMA = _object(
         "coder_function_type": _scalar("string", enum=CODER_FUNCTION_TYPE_VALUES),
         "visibility": VISIBILITY,
         "api_surface": _scalar("string", enum=API_SURFACE_VALUES),
+        "exported": BOOL,
+        "export_reason": STRING,
+        "public_api_role": STRING,
         "grouping_hint": STRING,
         "purpose": STRING,
         "capability_ids": STRING_LIST,

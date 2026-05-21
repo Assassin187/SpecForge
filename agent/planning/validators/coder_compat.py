@@ -4,6 +4,7 @@ from pathlib import Path
 
 from ..diagnostics import PlanningDiagnostic
 from .coder_schema import validate_coder_spec_bundle_against_schema
+from .coder_semantics import validate_coder_semantics
 
 
 def validate_coder_compatibility(spec_root: str | Path, schema_root: str | Path | None = None, *, strict_schema: bool = True) -> list[PlanningDiagnostic]:
@@ -27,4 +28,6 @@ def validate_coder_compatibility(spec_root: str | Path, schema_root: str | Path 
                 item.path,
             )
         )
+    if not any(item.level == "error" for item in diagnostics):
+        diagnostics.extend(validate_coder_semantics(bundle))
     return diagnostics

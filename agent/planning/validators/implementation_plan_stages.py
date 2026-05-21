@@ -17,6 +17,7 @@ from ..schemas.implementation_plan import (
     WIRE_ACCESS_BINDING_PATCH_SCHEMA_VERSION,
 )
 from ..schemas.implementation_plan_candidates import validate_shape
+from ..stages.coder_spec_lowering import normalize_type_key
 from ..stages.implementation_plan import _handler_surfaces, _safe_id, _surface_units, _wire_fields
 from ..stages.implementation_plan_context import SYSTEM_TYPE_IDS
 from .implementation_plan import validate_implementation_plan
@@ -132,6 +133,19 @@ def _function_by_id(draft: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return {str(item.get("function_id", "")): item for item in draft.get("function_contracts", []) if isinstance(item, dict) and item.get("function_id")}
 
 
+def _module_by_id(module_contracts: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    return {str(item.get("module_id", "")): item for item in module_contracts if isinstance(item, dict) and str(item.get("module_id", "")).strip()}
+
+
+def _public_policy(module: dict[str, Any]) -> dict[str, Any]:
+    policy = module.get("public_api_policy", {})
+    return policy if isinstance(policy, dict) else {}
+
+
+def _is_public_function(function: dict[str, Any]) -> bool:
+    return bool(function.get("exported")) or str(function.get("api_surface", "")).lower() == "public" or str(function.get("visibility", "")).lower() == "public"
+
+
 def _file_ids(draft: dict[str, Any]) -> set[str]:
     return {str(item.get("file_id", "")) for item in draft.get("file_layout", {}).get("files", []) if isinstance(item, dict) and item.get("file_id")}
 
@@ -224,6 +238,13 @@ def validate_module_contracts_candidate(candidate: dict[str, Any], selected_arch
     constraint_ids = _constraint_ids(constraints)
     state_ids = _state_ids(core_design)
     error_ids = _error_ids(core_design)
+    canonical_type_keys = {
+        key
+        for item in core_design.get("canonical_types", [])
+        if isinstance(item, dict)
+        for key in (normalize_type_key(item.get("type_id", "")), normalize_type_key(item.get("name", "")))
+        if key
+    }
     primary_owner: dict[str, str] = {}
     for module in candidate["module_contracts"]:
         module_id = module["module_id"]
@@ -234,6 +255,27 @@ def validate_module_contracts_candidate(candidate: dict[str, Any], selected_arch
         for cap in module["owned_capability_ids"] + module["consumed_capability_ids"]:
             if cap not in capability_ids:
                 diagnostics.append(PlanningDiagnostic("error", "unknown_module_contract_capability", f"module '{module_id}' references unknown capability '{cap}'", path))
+        policy = _public_policy(module)
+        exported_caps = [str(cap) for cap in policy.get("exported_capability_ids", []) if str(cap).strip()]
+        for cap in exported_caps:
+            if cap not in capability_ids:
+                diagnostics.append(PlanningDiagnostic("error", "unknown_public_api_policy_capability", f"module '{module_id}' public_api_policy references unknown capability '{cap}'", path))
+        for trace_ref in policy.get("trace_ref_keys", []) if isinstance(policy.get("trace_ref_keys"), list) else []:
+            if not str(trace_ref).strip():
+                diagnostics.append(PlanningDiagnostic("error", "empty_public_api_policy_trace_ref", f"module '{module_id}' public_api_policy has an empty trace ref", path))
+        exposes = bool(policy.get("exposes_public_api"))
+        function_roles = [str(role) for role in policy.get("expected_public_function_roles", []) if str(role).strip()]
+        type_roles = [str(role) for role in policy.get("expected_public_type_roles", []) if str(role).strip()]
+        for role in type_roles:
+            if normalize_type_key(role) not in canonical_type_keys:
+                diagnostics.append(PlanningDiagnostic("error", "unknown_public_api_policy_type_role", f"module '{module_id}' public_api_policy expected type role '{role}' does not match canonical_types", path))
+        if exposes:
+            if not function_roles and not type_roles:
+                diagnostics.append(PlanningDiagnostic("error", "public_api_policy_without_expected_surface", f"module '{module_id}' exposes public API but declares no expected public function/type roles", path))
+            if not exported_caps and not str(policy.get("notes", "")).strip():
+                diagnostics.append(PlanningDiagnostic("error", "public_api_policy_without_exported_capability", f"module '{module_id}' exposes public API but lists no exported capabilities or reason", path))
+        elif not str(policy.get("no_public_api_reason", "")).strip():
+            diagnostics.append(PlanningDiagnostic("error", "missing_no_public_api_reason", f"module '{module_id}' does not expose public API but gives no reason", path))
         for cap in module["owned_capability_ids"]:
             previous = primary_owner.setdefault(cap, module_id)
             if previous != module_id:
@@ -262,6 +304,7 @@ def validate_function_inventory_candidate(candidate: dict[str, Any], module_cont
     module_ids = _module_contract_ids(module_contracts)
     if candidate.get("module_id") not in module_ids and candidate.get("module_id") != "all_modules":
         diagnostics.append(PlanningDiagnostic("error", "unknown_function_inventory_module", f"candidate module_id '{candidate.get('module_id')}' is not a module", path))
+    modules_by_id = _module_by_id(module_contracts)
     capability_ids = _required_capabilities(profile)
     handler_ids = _handler_ids(core_design)
     message_ids = _message_ids(planning_ir or {})
@@ -269,6 +312,7 @@ def validate_function_inventory_candidate(candidate: dict[str, Any], module_cont
     seen_ids: set[str] = set()
     seen_names: set[str] = set()
     kinds: set[str] = set()
+    public_by_module: dict[str, list[str]] = {module_id: [] for module_id in module_ids}
     for function in candidate["functions"]:
         function_id = function["function_id"]
         name = function["name"]
@@ -281,6 +325,22 @@ def validate_function_inventory_candidate(candidate: dict[str, Any], module_cont
         kinds.add(function["function_kind"])
         if function["module_id"] not in module_ids:
             diagnostics.append(PlanningDiagnostic("error", "unknown_function_module", f"function '{function_id}' belongs to unknown module", path))
+        if bool(function.get("exported")):
+            if function.get("api_surface") != "public" or function.get("visibility") != "public":
+                diagnostics.append(PlanningDiagnostic("error", "exported_function_not_public", f"function '{function_id}' is exported but not public", path))
+            if not str(function.get("public_api_role", "")).strip():
+                diagnostics.append(PlanningDiagnostic("error", "exported_function_missing_role", f"function '{function_id}' is exported but has no public_api_role", path))
+            if not str(function.get("export_reason", "")).strip():
+                diagnostics.append(PlanningDiagnostic("error", "exported_function_missing_reason", f"function '{function_id}' is exported but has no export_reason", path))
+        if function.get("visibility") == "static":
+            if bool(function.get("exported")):
+                diagnostics.append(PlanningDiagnostic("error", "static_function_exported", f"static function '{function_id}' may not be exported", path))
+            if function.get("api_surface") == "public":
+                diagnostics.append(PlanningDiagnostic("error", "static_function_public_surface", f"static function '{function_id}' may not have public api_surface", path))
+        if function.get("api_surface") in {"private_helper", "static_helper"} and function.get("visibility") == "public":
+            diagnostics.append(PlanningDiagnostic("error", "private_helper_public_visibility", f"helper function '{function_id}' may not be public", path))
+        if _is_public_function(function):
+            public_by_module.setdefault(str(function["module_id"]), []).append(function_id)
         for cap in function["capability_ids"]:
             if cap not in capability_ids:
                 diagnostics.append(PlanningDiagnostic("error", "unknown_function_inventory_capability", f"function '{function_id}' references unknown capability '{cap}'", path))
@@ -303,6 +363,20 @@ def validate_function_inventory_candidate(candidate: dict[str, Any], module_cont
         diagnostics.append(PlanningDiagnostic("error", "missing_serializer_function", "message_encode requires a serializer entry function or unresolved question", path))
     if any(cap in candidate_caps for cap in {"semantic_dispatch", "state_machine", "protocol_error_policy"}) and core_design.get("handler_matrix") and "handler" not in kinds:
         diagnostics.append(PlanningDiagnostic("error", "missing_handler_function", "handler_matrix requires handler functions", path))
+    candidate_module_ids = module_ids if candidate.get("module_id") == "all_modules" else {str(candidate.get("module_id", ""))}
+    for module_id in sorted(candidate_module_ids & module_ids):
+        policy = _public_policy(modules_by_id.get(module_id, {}))
+        if bool(policy.get("exposes_public_api")) and policy.get("expected_public_function_roles") and not public_by_module.get(module_id):
+            diagnostics.append(PlanningDiagnostic("error", "module_public_api_without_public_function", f"module '{module_id}' exposes public function roles but inventory has no public/exported function", path))
+    if candidate.get("module_id") == "all_modules":
+        all_no_public = not any(public_by_module.values())
+        all_modules_internal = all(
+            not bool(_public_policy(module).get("exposes_public_api")) and bool(str(_public_policy(module).get("no_public_api_reason", "")).strip())
+            for module in module_contracts
+            if isinstance(module, dict)
+        )
+        if all_no_public and not all_modules_internal:
+            diagnostics.append(PlanningDiagnostic("error", "no_public_functions_for_public_modules", "function inventory has no public/exported functions but at least one module lacks an explicit no-public API policy", path))
     return diagnostics
 
 
@@ -351,11 +425,18 @@ def validate_function_signature_patch(patch: dict[str, Any], draft: dict[str, An
             diagnostics.append(PlanningDiagnostic("error", "unknown_function_signature_target", f"patch updates unknown function '{function_id}'", path))
             continue
         signature = update["signature"]
+        is_public = _is_public_function(function)
         if signature["name"] != function.get("name"):
             diagnostics.append(PlanningDiagnostic("error", "signature_name_mismatch", f"signature name for '{function_id}' must match inventory name", path))
         if not signature["raw"].strip() or not signature["return_type"].strip():
             diagnostics.append(PlanningDiagnostic("error", "empty_function_signature", f"function '{function_id}' signature is incomplete", path))
+        if is_public and signature.get("storage_class") == "static":
+            diagnostics.append(PlanningDiagnostic("error", "public_function_static_signature", f"public function '{function_id}' must not have static storage class", path))
+        if is_public and (not signature["name"].strip() or not signature["raw"].strip() or not signature["return_type"].strip()):
+            diagnostics.append(PlanningDiagnostic("error", "public_function_incomplete_signature", f"public function '{function_id}' lacks a lowerable C signature", path))
         for param in signature["params"]:
+            if is_public and (not str(param.get("name", "")).strip() or not str(param.get("type", "")).strip()):
+                diagnostics.append(PlanningDiagnostic("error", "public_function_incomplete_param", f"public function '{function_id}' has an incomplete signature parameter", path))
             if param["ownership"] not in {"BORROWED", "OWNED", "OWNED_BY_CALLER", "TRANSFER", "SHARED", "UNKNOWN"}:
                 diagnostics.append(PlanningDiagnostic("error", "invalid_param_ownership", f"function '{function_id}' has non-coder ownership '{param['ownership']}'", path))
             type_ref = str(param.get("type_ref", ""))
@@ -374,6 +455,10 @@ def validate_function_signature_patch(patch: dict[str, Any], draft: dict[str, An
                 diagnostics.append(PlanningDiagnostic("error", "unknown_signature_system_type", f"function '{function_id}' references unknown system type '{type_ref}'", path))
             if owner and owner not in module_ids:
                 diagnostics.append(PlanningDiagnostic("error", "unknown_signature_dependency_owner", f"function '{function_id}' signature dependency owner '{owner}' is not a module", path))
+        if is_public:
+            for declaration in update.get("interface_type_declarations", []):
+                if str(declaration.get("visibility", "")).lower() in {"private", "internal"}:
+                    diagnostics.append(PlanningDiagnostic("error", "public_signature_uses_private_interface_type", f"public function '{function_id}' exposes private/internal type '{declaration.get('name')}'", path))
     return diagnostics
 
 
@@ -402,6 +487,13 @@ def validate_function_behavior_contract_patch(patch: dict[str, Any], draft: dict
             continue
         if "callee_function_id" in str(update.get("service_requirements", [])):
             diagnostics.append(PlanningDiagnostic("error", "behavior_must_not_resolve_calls", f"function '{function_id}' behavior may not include callee_function_id", path))
+        if _is_public_function(function):
+            contract = update.get("contract", {})
+            missing_contract = [key for key in ("input", "action", "output", "thread_safety") if not str(contract.get(key, "")).strip()]
+            if missing_contract:
+                diagnostics.append(PlanningDiagnostic("error", "public_function_incomplete_contract", f"public function '{function_id}' behavior contract is missing: {', '.join(missing_contract)}", path))
+            if update["error_behavior"]["propagation"] == "unknown" or update["error_behavior"]["return_policy"] == "unknown":
+                diagnostics.append(PlanningDiagnostic("error", "public_function_unknown_error_channel", f"public function '{function_id}' has unknown error propagation or return policy", path))
         if update["logic_kind"] == "EVENT":
             event_contract = update.get("event_contract", {})
             missing = [
@@ -522,7 +614,7 @@ def validate_calls_allowed_candidate(
                 diagnostics.append(PlanningDiagnostic("error", "call_not_in_callable_universe", f"caller '{caller}' may not call '{callee}' in this scoped batch", path))
             if callee == caller:
                 diagnostics.append(PlanningDiagnostic("error", "self_call_not_allowed", f"caller '{caller}' may not call itself", path))
-            if callee_fn.get("visibility") in {"private", "static"} and callee_fn.get("module_id") != caller_fn.get("module_id"):
+            if (callee_fn.get("visibility") in {"private", "static"} or callee_fn.get("api_surface") in {"private_helper", "static_helper"}) and callee_fn.get("module_id") != caller_fn.get("module_id"):
                 diagnostics.append(PlanningDiagnostic("error", "private_cross_module_call", f"caller '{caller}' cannot call private/static function '{callee}' across modules", path))
             cleanup = str(edge.get("return_binding", {}).get("cleanup_function_id", ""))
             if cleanup and cleanup not in functions:
@@ -549,9 +641,12 @@ def validate_file_layout_candidate(candidate: dict[str, Any], draft: dict[str, A
         return diagnostics
     module_ids = _module_contract_ids(draft.get("module_contracts", []))
     function_ids = _function_ids(draft)
+    functions = _function_by_id(draft)
     type_ids = _type_ids(draft)
     file_ids: set[str] = set()
     paths: set[str] = set()
+    exports_by_function: dict[str, list[str]] = {}
+    implements_by_function: dict[str, list[str]] = {}
     for file_item in candidate["files"]:
         file_id = file_item["file_id"]
         expected_file_id = f"file:{str(file_item['source_path']).removesuffix('.c')}"
@@ -571,6 +666,10 @@ def validate_file_layout_candidate(candidate: dict[str, Any], draft: dict[str, A
         for function_id in file_item["exports_function_ids"] + file_item["implements_function_ids"]:
             if function_id not in function_ids:
                 diagnostics.append(PlanningDiagnostic("error", "layout_references_unknown_function", f"file '{file_id}' references unknown function '{function_id}'", path))
+        for function_id in file_item["exports_function_ids"]:
+            exports_by_function.setdefault(function_id, []).append(file_id)
+        for function_id in file_item["implements_function_ids"]:
+            implements_by_function.setdefault(function_id, []).append(file_id)
         for type_id in file_item["exports_type_ids"]:
             if type_ids and type_id not in type_ids:
                 diagnostics.append(PlanningDiagnostic("error", "layout_exports_unknown_type", f"file '{file_id}' exports unknown type '{type_id}'", path))
@@ -582,11 +681,23 @@ def validate_file_layout_candidate(candidate: dict[str, Any], draft: dict[str, A
                 diagnostics.append(PlanningDiagnostic("error", "layout_imports_self", f"file '{file_item['file_id']}' must not import itself", path))
             if str(imported).startswith("header:") or str(imported).endswith((".h", ".c")):
                 diagnostics.append(PlanningDiagnostic("error", "layout_imports_path_or_header", f"file '{file_item['file_id']}' imports non-FILE_SPEC target '{imported}'", path))
-    assigned = {item["function_id"] for item in candidate["function_file_assignments"]}
+    assignment_counts: dict[str, int] = {}
+    for item in candidate["function_file_assignments"]:
+        assignment_counts[item["function_id"]] = assignment_counts.get(item["function_id"], 0) + 1
+    assigned = set(assignment_counts)
     for missing in sorted(function_ids - assigned):
         diagnostics.append(PlanningDiagnostic("error", "unassigned_function_file", f"function '{missing}' is not assigned to a file", path))
+    for function_id, count in assignment_counts.items():
+        if function_id in function_ids and count != 1:
+            diagnostics.append(PlanningDiagnostic("error", "function_assignment_count_mismatch", f"function '{function_id}' must have exactly one file assignment, found {count}", path))
+    for function_id in sorted(function_ids):
+        definitions = implements_by_function.get(function_id, [])
+        if len(definitions) != 1:
+            diagnostics.append(PlanningDiagnostic("error", "function_definition_count_mismatch", f"function '{function_id}' must have exactly one source definition, found {len(definitions)}", path))
     for assignment in candidate["function_file_assignments"]:
         function_id = assignment["function_id"]
+        function = functions.get(function_id, {})
+        is_public = _is_public_function(function) or assignment["visibility"] == "public"
         if function_id not in function_ids:
             diagnostics.append(PlanningDiagnostic("error", "layout_assigns_unknown_function", f"layout assigns unknown function '{function_id}'", path))
         if assignment["implementation_file_id"] not in file_ids:
@@ -594,13 +705,32 @@ def validate_file_layout_candidate(candidate: dict[str, Any], draft: dict[str, A
         declaration_file_id = assignment["declaration_file_id"]
         if declaration_file_id and declaration_file_id not in file_ids:
             diagnostics.append(PlanningDiagnostic("error", "layout_assigns_unknown_file", f"layout assigns function to unknown declaration file '{declaration_file_id}'", path))
-        if assignment["visibility"] == "public":
+        export_count = len(exports_by_function.get(function_id, []))
+        if is_public:
+            if export_count != 1:
+                diagnostics.append(PlanningDiagnostic("error", "public_function_header_export_count_mismatch", f"public function '{function_id}' must appear in exactly one header export list, found {export_count}", path))
             if not declaration_file_id:
-                diagnostics.append(PlanningDiagnostic("error", "public_function_not_declared", f"public function '{function_id}' has no declaration file", path))
+                diagnostics.append(PlanningDiagnostic("error", "public_function_not_declared", f"public function '{function_id}' in module '{function.get('module_id', '')}' has no declaration file", path))
             elif declaration_file_id != assignment["implementation_file_id"]:
                 diagnostics.append(PlanningDiagnostic("error", "public_function_declared_outside_file_unit", f"public function '{function_id}' must be declared in its FILE_SPEC unit", path))
+        else:
+            if export_count:
+                diagnostics.append(PlanningDiagnostic("error", "private_function_exported_in_header", f"private/static function '{function_id}' must not appear in header exports", path))
         if assignment["visibility"] in {"private", "static"} and declaration_file_id:
             diagnostics.append(PlanningDiagnostic("error", "private_function_exposed_in_header", f"private/static function '{function_id}' must not be exposed in a FILE_SPEC header", path))
+    modules_with_public_functions = {str(function.get("module_id", "")) for function in functions.values() if _is_public_function(function)}
+    module_export_counts: dict[str, int] = {}
+    for item in candidate["files"]:
+        if isinstance(item, dict):
+            module_export_counts[str(item.get("module_id", ""))] = module_export_counts.get(str(item.get("module_id", "")), 0) + len(item.get("exports_function_ids", []))
+    for module in draft.get("module_contracts", []):
+        if not isinstance(module, dict):
+            continue
+        module_id = str(module.get("module_id", ""))
+        policy = _public_policy(module)
+        if bool(policy.get("exposes_public_api")) and module_id in modules_with_public_functions:
+            if module_export_counts.get(module_id, 0) == 0:
+                diagnostics.append(PlanningDiagnostic("error", "public_module_without_header_declarations", f"module '{module_id}' exposes public API but has no header declarations", path))
     return diagnostics
 
 

@@ -1,12 +1,19 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from ..artifact_io import safe_slug
+from .implementation_plan_context import SYSTEM_TYPE_IDS
 
 
 CODER_FUNCTION_TYPES = {"ALGORITHM", "EVENT", "ENTRYPOINT"}
 EVENT_FIELDS = ("trigger", "precondition", "input", "action", "state_change", "response", "event_type")
+ARTIFACT_KINDS = {"TYPE", "FUNC", "VAR", "CONST", "MACRO"}
+C_SYMBOL_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_C_QUALIFIERS = {"const", "volatile", "restrict", "static", "extern", "signed", "unsigned"}
+_SYSTEM_TYPE_KEYS = {str(item).strip().lower() for item in SYSTEM_TYPE_IDS}
+_SYSTEM_TYPE_KEYS.update({"unsigned char", "unsigned int", "unsigned short", "unsigned long", "long long", "unsigned long long"})
 
 
 def normalize_param_ownership_for_coder(value: Any) -> str:
@@ -29,6 +36,300 @@ def normalize_data_visibility_for_coder(value: Any) -> str:
 
 def normalize_interface_visibility_for_coder(value: Any) -> str:
     return "public" if str(value or "").strip().lower() in {"public", "exported", "external"} else "private"
+
+
+def _string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip() for item in value if str(item).strip()]
+
+
+def _nested_value(raw: dict[str, Any], path: tuple[str, ...]) -> Any:
+    cursor: Any = raw
+    for key in path:
+        if not isinstance(cursor, dict):
+            return None
+        cursor = cursor.get(key)
+    return cursor
+
+
+def _first_text(*values: Any) -> str:
+    for value in values:
+        if isinstance(value, dict):
+            value = value.get("value")
+        text = str(value or "").strip()
+        if text:
+            return text
+    return ""
+
+
+def _role_values(value: Any) -> list[str]:
+    roles: list[str] = []
+    if isinstance(value, str):
+        roles.append(value)
+    elif isinstance(value, list):
+        for item in value:
+            if isinstance(item, dict):
+                roles.append(str(item.get("role") or item.get("name") or item.get("value") or ""))
+            else:
+                roles.append(str(item))
+    elif isinstance(value, dict):
+        roles.append(str(value.get("role") or value.get("name") or value.get("value") or ""))
+    return [role.strip().upper() for role in roles if role.strip()]
+
+
+def is_c_symbol(name: str) -> bool:
+    return bool(C_SYMBOL_RE.fullmatch(name.strip()))
+
+
+def is_artifact_name_for_coder(name: str) -> bool:
+    text = name.strip()
+    if not is_c_symbol(text):
+        return False
+    lowered = text.lower()
+    return not (lowered.startswith(("file:", "func:", "type:")) or "/" in text or "\\" in text or text.endswith((".h", ".c", ".json")))
+
+
+def normalize_type_key(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    text = text.removeprefix("type:")
+    text = re.sub(r"\[[^\]]*\]", "", text)
+    text = text.replace("*", " ").replace("&", " ")
+    text = re.sub(r"\b(?:const|volatile|restrict|static|extern)\b", " ", text)
+    text = re.sub(r"\s+", " ", text).strip().rstrip(";")
+    for prefix in ("struct ", "enum ", "union "):
+        if text.startswith(prefix):
+            text = text[len(prefix) :]
+            break
+    if text.endswith("_t"):
+        text = text[:-2]
+    return re.sub(r"[^A-Za-z0-9_]+", "_", text).strip("_").lower()
+
+
+def is_builtin_or_system_c_type(value: Any) -> bool:
+    text = str(value or "").strip()
+    if not text:
+        return False
+    cleaned = re.sub(r"\[[^\]]*\]", "", text).replace("*", " ").replace("&", " ")
+    cleaned = re.sub(r"\b(?:const|volatile|restrict|static|extern)\b", " ", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip().lower()
+    if cleaned in _SYSTEM_TYPE_KEYS:
+        return True
+    if cleaned.startswith(("struct ", "enum ", "union ")):
+        return cleaned in _SYSTEM_TYPE_KEYS
+    tokens = [token for token in cleaned.split() if token not in _C_QUALIFIERS]
+    return " ".join(tokens) in _SYSTEM_TYPE_KEYS
+
+
+def _strip_param_name(param: str) -> str:
+    text = param.strip()
+    if not text or text == "void":
+        return ""
+    text = text.split("=", 1)[0].strip()
+    text = re.sub(r"\[[^\]]*\]\s*$", "", text).strip()
+    match = re.match(r"(.+?)([*\s]+)([A-Za-z_][A-Za-z0-9_]*)$", text)
+    if match:
+        return (match.group(1) + match.group(2)).strip()
+    return text
+
+
+def _type_ref_record(raw_type: str) -> dict[str, Any] | None:
+    raw = str(raw_type or "").strip()
+    if not raw or raw == "void" or is_builtin_or_system_c_type(raw):
+        return None
+    key = normalize_type_key(raw)
+    if not key:
+        return None
+    return {
+        "raw": raw,
+        "name": re.sub(r"^(?:const|volatile|restrict)\s+", "", raw).replace("*", "").strip(),
+        "key": key,
+        "pointer": "*" in raw,
+    }
+
+
+def extract_c_signature_type_refs(signature_or_params: Any) -> list[dict[str, Any]]:
+    refs: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    def add(raw_type: Any) -> None:
+        record = _type_ref_record(str(raw_type or ""))
+        if record is None or record["key"] in seen:
+            return
+        seen.add(record["key"])
+        refs.append(record)
+
+    if isinstance(signature_or_params, dict):
+        add(signature_or_params.get("return_type") or signature_or_params.get("RETURN"))
+        for param in signature_or_params.get("params", []) if isinstance(signature_or_params.get("params"), list) else []:
+            if isinstance(param, dict):
+                add(param.get("type") or param.get("TYPE"))
+        return refs
+    if isinstance(signature_or_params, list):
+        for param in signature_or_params:
+            if isinstance(param, dict):
+                add(param.get("type") or param.get("TYPE"))
+            else:
+                add(_strip_param_name(str(param)))
+        return refs
+
+    raw = str(signature_or_params or "").strip().rstrip(";")
+    if "(" not in raw or ")" not in raw:
+        add(raw)
+        return refs
+    left, rest = raw.split("(", 1)
+    params = rest.rsplit(")", 1)[0]
+    return_type = re.sub(r"\s+[A-Za-z_][A-Za-z0-9_]*\s*$", "", left).strip()
+    add(return_type)
+    for param in [part.strip() for part in params.split(",") if part.strip()]:
+        add(_strip_param_name(param))
+    return refs
+
+
+def canonical_type_symbol(type_item: dict[str, Any]) -> str:
+    return str(type_item.get("c_symbol") or type_item.get("c_type_name") or type_item.get("name", "")).strip()
+
+
+def _canonical_field_type(value: Any) -> str:
+    text = str(value or "").strip()
+    lowered = text.lower()
+    mapping = {
+        "string": "char*",
+        "bytes": "uint8_t*",
+        "buffer": "uint8_t*",
+        "varint": "uint32_t",
+        "boolean": "bool",
+    }
+    return mapping.get(lowered, text or "uint8_t")
+
+
+def lower_canonical_type_to_header_data(type_item: dict[str, Any]) -> dict[str, Any] | None:
+    name = canonical_type_symbol(type_item)
+    if not is_c_symbol(name):
+        return None
+    kind = str(type_item.get("kind", "")).strip().lower()
+    declaration: dict[str, Any] = {
+        "NAME": name,
+        "KIND": "TYPE",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": str(type_item.get("role") or type_item.get("purpose") or f"Public canonical type {name}."),
+    }
+    fields = [item for item in type_item.get("fields", []) if isinstance(item, dict)] if isinstance(type_item.get("fields"), list) else []
+    enum_values = [item for item in type_item.get("enum_values", []) if isinstance(item, dict)] if isinstance(type_item.get("enum_values"), list) else []
+    if kind == "enum":
+        declaration["TYPE_SPEC"] = {
+            "TYPE_KIND": "ENUM",
+            "ENUM_VALUES": [
+                {
+                    "NAME": str(item.get("name", "")),
+                    "VALUE": str(item.get("value", "")),
+                    "ROLE": str(item.get("role") or item.get("source_field_id") or "Canonical enum value."),
+                }
+                for item in enum_values
+                if str(item.get("name", "")).strip()
+            ],
+        }
+    elif kind == "struct" and fields:
+        declaration["TYPE_SPEC"] = {
+            "TYPE_KIND": "STRUCT",
+            "FIELDS": [
+                {
+                    "NAME": str(field.get("field_name", "")),
+                    "TYPE": _canonical_field_type(field.get("field_type", "")),
+                    "ROLE": str(field.get("validation_notes") or field.get("source_field_id") or "Canonical field."),
+                }
+                for field in fields
+                if str(field.get("field_name", "")).strip()
+            ],
+        }
+    elif kind == "alias":
+        declaration["TYPE_SPEC"] = {"TYPE_KIND": "ALIAS", "ALIAS_OF": str(type_item.get("alias_of") or type_item.get("base_type") or "uint8_t")}
+    else:
+        declaration["TYPE_SPEC"] = {"TYPE_KIND": "OPAQUE"}
+    return declaration
+
+
+def _exported_function_ids(file_item: dict[str, Any]) -> set[str]:
+    return {
+        *set(_string_list(file_item.get("exports"))),
+        *set(_string_list(file_item.get("exports_function_ids"))),
+    }
+
+
+def is_public_interface_function(function: dict[str, Any], file_item: dict[str, Any], module_item: dict[str, Any] | None = None) -> bool:
+    visibility = str(function.get("visibility", "")).strip().lower()
+    storage_class = str(function.get("storage_class", "")).strip().lower()
+    if visibility in {"private", "internal", "static"} or storage_class == "static":
+        return False
+
+    function_id = str(function.get("function_id", "")).strip()
+    if bool(function.get("exported")):
+        return True
+    if visibility in {"public", "exported", "external"}:
+        return True
+    if str(function.get("api_surface", "")).strip().lower() == "public":
+        return True
+    if function_id and function_id in _exported_function_ids(file_item):
+        return True
+    return False
+
+
+def lower_protocol_meta_for_coder(spec_blueprint: dict[str, Any]) -> dict[str, Any]:
+    protocol_metadata = spec_blueprint.get("protocol_metadata", {}) if isinstance(spec_blueprint.get("protocol_metadata"), dict) else {}
+    protocol_facts = spec_blueprint.get("protocol_facts", {}) if isinstance(spec_blueprint.get("protocol_facts"), dict) else {}
+    fact_meta = protocol_facts.get("protocol_meta", {}) if isinstance(protocol_facts.get("protocol_meta"), dict) else {}
+    target_profile = spec_blueprint.get("target_profile", {}) if isinstance(spec_blueprint.get("target_profile"), dict) else {}
+    target_directives = spec_blueprint.get("target_directives_ref", {}).get("directives", {}) if isinstance(spec_blueprint.get("target_directives_ref"), dict) else {}
+
+    def directive_value(name: str) -> Any:
+        return _nested_value(target_directives, (name, "value"))
+
+    name = _first_text(
+        fact_meta.get("protocol_name"),
+        protocol_metadata.get("name"),
+        protocol_metadata.get("protocol_name"),
+        target_profile.get("protocol_name"),
+        directive_value("protocol_name"),
+        spec_blueprint.get("protocol_name"),
+        "UNSPECIFIED_PROTOCOL",
+    )
+    version = _first_text(
+        fact_meta.get("protocol_version"),
+        fact_meta.get("spec_version"),
+        fact_meta.get("version"),
+        protocol_metadata.get("protocol_version"),
+        protocol_metadata.get("spec_version"),
+        protocol_metadata.get("version"),
+        target_profile.get("protocol_version"),
+        target_profile.get("spec_version"),
+        target_profile.get("version"),
+        directive_value("protocol_version"),
+        directive_value("spec_version"),
+        directive_value("version"),
+        "unspecified",
+    )
+    roles: list[str] = []
+    for source in (
+        _role_values(target_profile.get("target_role")),
+        _role_values(target_profile.get("enabled_roles")),
+        _role_values(directive_value("target_role")),
+        _role_values(directive_value("enabled_roles")),
+        _role_values(spec_blueprint.get("roles")),
+        _role_values(protocol_metadata.get("roles")),
+        _role_values(fact_meta.get("roles")),
+    ):
+        if source:
+            roles = source
+            break
+    seen: set[str] = set()
+    unique_roles = []
+    for role in roles or ["UNSPECIFIED_ROLE"]:
+        if role not in seen:
+            seen.add(role)
+            unique_roles.append(role)
+    return {"NAME": name, "SPEC_VERSION": version or "unspecified", "ROLES": unique_roles}
 
 
 def _event_contract(function: dict[str, Any]) -> dict[str, Any]:
@@ -178,27 +479,6 @@ def lower_access_paths_for_coder(entries: list[dict[str, Any]]) -> list[dict[str
     return result
 
 
-def lower_public_symbols_for_coder(file_item: dict[str, Any], functions: list[dict[str, Any]]) -> list[dict[str, str]]:
-    symbols: list[dict[str, str]] = []
-    seen: set[tuple[str, str]] = set()
-
-    def add(symbol: dict[str, str]) -> None:
-        key = (symbol["NAME"], symbol["KIND"])
-        if symbol["NAME"] and key not in seen:
-            seen.add(key)
-            symbols.append(symbol)
-
-    for function in functions:
-        if normalize_interface_visibility_for_coder(function.get("visibility")) != "public":
-            continue
-        signature = function.get("signature", {}) if isinstance(function.get("signature"), dict) else {}
-        add({"NAME": str(function.get("name", "")), "KIND": "FUNC", "SIGNATURE": signature_raw(signature), "ROLE": str(function.get("purpose", ""))})
-    for type_id in file_item.get("exports_type_ids", []) if isinstance(file_item.get("exports_type_ids"), list) else []:
-        name = str(type_id).split(":")[-1]
-        add({"NAME": name, "KIND": "TYPE", "ROLE": "Exported type from planning file layout."})
-    return symbols
-
-
 def lower_call_contract_for_coder(edge: dict[str, Any], function_index: dict[str, dict[str, Any]]) -> dict[str, Any] | None:
     callee = function_index.get(str(edge.get("callee_function_id", "")))
     if not callee:
@@ -235,22 +515,28 @@ def lower_rely_for_coder(function: dict[str, Any], function_index: dict[str, dic
     return {"STRUCT": structs, "FUNC": funcs, "VAR": []}
 
 
-def lower_module_artifacts_for_coder(files: list[dict[str, Any]], functions_by_file: dict[str, list[dict[str, Any]]]) -> list[dict[str, str]]:
+def lower_module_artifacts_for_coder(file_specs: list[dict[str, Any]]) -> list[dict[str, str]]:
     artifacts: list[dict[str, str]] = []
     seen: set[tuple[str, str]] = set()
 
     def add(name: str, kind: str, role: str) -> None:
+        kind = kind.upper()
+        if kind not in ARTIFACT_KINDS or not is_artifact_name_for_coder(name):
+            return
         key = (name, kind)
         if name and key not in seen:
             seen.add(key)
             artifacts.append({"NAME": name, "KIND": kind, "ROLE": role or "Public module artifact."})
 
-    for file_item in files:
-        for function in functions_by_file.get(str(file_item.get("file_id", "")), []):
-            if normalize_interface_visibility_for_coder(function.get("visibility")) == "public":
-                add(str(function.get("name", "")), "FUNC", str(function.get("purpose", "")))
-        for type_id in file_item.get("exports_type_ids", []) if isinstance(file_item.get("exports_type_ids"), list) else []:
-            add(str(type_id).split(":")[-1], "TYPE", "Exported type from planning file layout.")
+    for file_spec in file_specs:
+        header = file_spec.get("HEADER", {}) if isinstance(file_spec.get("HEADER"), dict) else {}
+        for item in header.get("INTERFACE", []) if isinstance(header.get("INTERFACE"), list) else []:
+            if isinstance(item, dict) and str(item.get("VISIBILITY", "")).lower() == "public":
+                add(str(item.get("NAME", "")), "FUNC", str(item.get("ROLE", "")))
+        for item in header.get("DATA", []) if isinstance(header.get("DATA"), list) else []:
+            if not isinstance(item, dict) or str(item.get("VISIBILITY", "")).upper() != "PUBLIC":
+                continue
+            add(str(item.get("NAME", "")), str(item.get("KIND", "")), str(item.get("ROLE", "")))
     return artifacts
 
 
@@ -267,13 +553,21 @@ def sidecar_payload(spec_blueprint: dict[str, Any], unresolved_lowering: list[di
                 continue
             traceability["items"][key] = item.get("traceability", {})
             decisions["items"][key] = {
+                "public_api_policy": item.get("public_api_policy", {}),
                 "capability_ids": item.get("capability_ids", []),
+                "visibility": item.get("visibility", ""),
+                "api_surface": item.get("api_surface", ""),
+                "exported": item.get("exported", False),
+                "public_api_role": item.get("public_api_role", ""),
+                "resolved_public_type_roles": item.get("resolved_public_type_roles", {}),
+                "exports": item.get("exports", []),
                 "state_access": item.get("state_access", []),
                 "resource_access": item.get("resource_access", []),
                 "calls_allowed": item.get("calls_allowed", []),
                 "service_requirements": item.get("service_requirements", []),
             }
             refs["items"][key] = {
+                "name": item.get("name", ""),
                 "function_id": item.get("function_id", ""),
                 "file_id": item.get("file_id", ""),
                 "module_id": item.get("module_id", ""),

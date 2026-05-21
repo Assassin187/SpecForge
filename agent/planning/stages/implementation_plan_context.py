@@ -229,7 +229,7 @@ def _callable_functions(draft: dict[str, Any], module_id: str) -> list[dict[str,
         visibility = str(function.get("visibility", "")).lower()
         same_module = str(function.get("module_id", "")) == module_id
         api_surface = str(function.get("api_surface", ""))
-        cross_module_api = visibility == "public" or api_surface in {"public_header", "internal_header", "callback_entry"}
+        cross_module_api = visibility == "public" or api_surface == "public"
         if same_module or (visibility not in {"private", "static"} and cross_module_api):
             result.append(
                 {

@@ -9,16 +9,25 @@ def build_spec_blueprint(implementation_plan: dict[str, Any]) -> dict[str, Any]:
     modules = implementation_plan.get("module_contracts", [])
     files = implementation_plan.get("file_layout", {}).get("files", [])
     functions = implementation_plan.get("function_contracts", [])
+    target_role = implementation_plan.get("target_directives_ref", {}).get("directives", {}).get("target_role", "target")
+    if isinstance(target_role, dict):
+        target_role = target_role.get("value", "target")
     return {
         "schema_version": SCHEMA_VERSION,
         "protocol_name": implementation_plan.get("protocol_name", "protocol"),
-        "roles": [str(implementation_plan.get("target_directives_ref", {}).get("directives", {}).get("target_role", "target")).upper()],
+        "protocol_metadata": implementation_plan.get("protocol_metadata", {}),
+        "protocol_facts": implementation_plan.get("protocol_facts", {}),
+        "target_profile": implementation_plan.get("target_profile", {}),
+        "target_directives_ref": implementation_plan.get("target_directives_ref", {}),
+        "roles": [str(target_role).upper()],
         "source_artifact": "007_implementation_plan.json",
+        "canonical_types": implementation_plan.get("canonical_types", []),
         "modules": [
             {
                 "module_id": item.get("module_id"),
                 "name": item.get("name", item.get("module_id")),
                 "role": item.get("purpose", ""),
+                "public_api_policy": item.get("public_api_policy", {}),
                 "owned_capabilities": item.get("owned_capabilities", []),
                 "dependencies": [],
                 "traceability": {

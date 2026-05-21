@@ -51,8 +51,7 @@ def _error_behavior_text(value: Any) -> str:
     )
 
 
-def _default_signature(function: dict[str, Any], module_id: str) -> tuple[dict[str, Any], list[dict[str, Any]], str]:
-    protocol = str(function.get("protocol_name", "protocol"))
+def _default_signature(function: dict[str, Any], module_id: str, protocol: str = "protocol") -> tuple[dict[str, Any], list[dict[str, Any]], str]:
     prefix = f"{_safe_id(protocol)}_{_safe_id(module_id)}"
     handle_type = f"{prefix}_t"
     kind = str(function.get("function_kind", "public_api"))
@@ -282,7 +281,13 @@ def fallback_module_contracts(draft: dict[str, Any], profile: dict[str, Any], co
                 "consumed_capability_ids": [str(cap) for cap in module.get("consumed_capabilities", [])],
                 "public_api_policy": {
                     "exposes_public_api": True,
+                    "api_surface_kind": "public_module_api",
                     "api_style": "opaque_handle",
+                    "exported_capability_ids": owned,
+                    "expected_public_function_roles": ["module_boundary_operation"],
+                    "expected_public_type_roles": [],
+                    "no_public_api_reason": "",
+                    "trace_ref_keys": source_fact_ids,
                     "visibility_rules": ["Expose public functions in generated headers.", "Keep module-owned state opaque."],
                     "notes": "Deterministic fallback public API policy.",
                 },
@@ -350,7 +355,7 @@ def merge_module_contracts(draft: dict[str, Any], candidate: dict[str, Any]) -> 
             "owned_capabilities": item["owned_capability_ids"],
             "consumed_capabilities": item["consumed_capability_ids"],
             "support_module": False,
-            "public_api_policy": item["public_api_policy"]["notes"],
+            "public_api_policy": deepcopy(item["public_api_policy"]),
             "state_owned": item["owned_state_ids"],
             "errors_raised": item["error_responsibility_ids"],
             "constraints": item["constraint_ids"],
@@ -365,8 +370,19 @@ def merge_module_contracts(draft: dict[str, Any], candidate: dict[str, Any]) -> 
     return result
 
 
-def _contract_base(*, draft: dict[str, Any], module_id: str, action: str, name: str, function_kind: str, purpose: str, capability_ids: list[str]) -> dict[str, Any]:
-    visibility = "public" if function_kind in {"public_api", "parser", "serializer", "resource_lifecycle"} else "internal"
+def _contract_base(
+    *,
+    draft: dict[str, Any],
+    module_id: str,
+    action: str,
+    name: str,
+    function_kind: str,
+    purpose: str,
+    capability_ids: list[str],
+    exported: bool = False,
+    public_api_role: str = "",
+) -> dict[str, Any]:
+    visibility = "public" if exported else "internal"
     return {
         "function_id": f"fn:{module_id}:{action}",
         "name": name,
@@ -374,7 +390,10 @@ def _contract_base(*, draft: dict[str, Any], module_id: str, action: str, name: 
         "function_kind": function_kind,
         "coder_function_type": "ALGORITHM",
         "visibility": visibility,
-        "api_surface": "public_header" if visibility == "public" else "internal_header",
+        "api_surface": "public" if exported else "module_internal",
+        "exported": exported,
+        "export_reason": "Exported by module public_api_policy." if exported else "",
+        "public_api_role": public_api_role if exported else "",
         "grouping_hint": module_id,
         "purpose": purpose,
         "capability_ids": capability_ids,
@@ -391,31 +410,42 @@ def fallback_function_inventory(draft: dict[str, Any], module_contract: dict[str
     module_id = str(module_contract.get("module_id", "module"))
     prefix = f"{_safe_id(protocol)}_{_safe_id(module_id)}"
     owned = [str(cap) for cap in module_contract.get("owned_capabilities", [])]
+    policy = module_contract.get("public_api_policy", {}) if isinstance(module_contract.get("public_api_policy"), dict) else {}
+    public_roles = [str(role) for role in policy.get("expected_public_function_roles", []) if str(role).strip()]
+    exported_caps = [str(cap) for cap in policy.get("exported_capability_ids", []) if str(cap).strip()] or owned
     functions = [
         _contract_base(draft=draft, module_id=module_id, action="create", name=f"{prefix}_create", function_kind="resource_lifecycle", purpose=f"Allocate and initialize the {module_id} module context.", capability_ids=owned[:1]),
         _contract_base(draft=draft, module_id=module_id, action="destroy", name=f"{prefix}_destroy", function_kind="resource_lifecycle", purpose=f"Release resources owned by the {module_id} module context.", capability_ids=owned[:1]),
     ]
-    if module_id == "transport_runtime":
-        for action in ("start", "run_once", "stop"):
-            functions.append(_contract_base(draft=draft, module_id=module_id, action=action, name=f"{prefix}_{action}", function_kind="public_api", purpose=f"Perform transport runtime action: {action}.", capability_ids=[cap for cap in owned if cap in {"transport_io", "connection_lifecycle", "connection_buffering"}]))
-    elif module_id == "protocol_codec":
-        functions.append(_contract_base(draft=draft, module_id=module_id, action="decode_message", name=f"{prefix}_decode_message", function_kind="parser", purpose="Protocol codec decode message entry point.", capability_ids=[cap for cap in owned if cap.startswith("message_") or cap.endswith("framing")]))
-        functions.append(_contract_base(draft=draft, module_id=module_id, action="encode_message", name=f"{prefix}_encode_message", function_kind="serializer", purpose="Protocol codec encode message entry point.", capability_ids=[cap for cap in owned if cap.startswith("message_") or cap.endswith("framing")]))
-    elif module_id == "semantic_core":
-        functions.append(_contract_base(draft=draft, module_id=module_id, action="dispatch_message", name=f"{prefix}_dispatch_message", function_kind="handler", purpose="Dispatch a decoded message to the target-role handler matrix.", capability_ids=[cap for cap in owned if cap in {"semantic_dispatch", "state_machine", "protocol_error_policy"}]))
+    for index, role in enumerate(public_roles or ["module_boundary_operation"]):
+        action = _safe_id(role) or f"public_{index + 1}"
+        functions.append(
+            _contract_base(
+                draft=draft,
+                module_id=module_id,
+                action=action,
+                name=f"{prefix}_{action}",
+                function_kind="public_api",
+                purpose=f"Public module API for {role}.",
+                capability_ids=exported_caps,
+                exported=True,
+                public_api_role=role,
+            )
+        )
+    if any(cap in owned for cap in {"message_decode"}) or any("decode" in cap or "framing" in cap for cap in owned):
+        functions.append(_contract_base(draft=draft, module_id=module_id, action="decode_message", name=f"{prefix}_decode_message", function_kind="parser", purpose="Decode protocol message data owned by this module.", capability_ids=[cap for cap in owned if "decode" in cap or "framing" in cap]))
+    if any(cap in owned for cap in {"message_encode"}) or any("encode" in cap or "framing" in cap for cap in owned):
+        functions.append(_contract_base(draft=draft, module_id=module_id, action="encode_message", name=f"{prefix}_encode_message", function_kind="serializer", purpose="Encode protocol message data owned by this module.", capability_ids=[cap for cap in owned if "encode" in cap or "framing" in cap]))
+    if any(cap in owned for cap in {"semantic_dispatch", "state_machine", "protocol_error_policy"}):
+        functions.append(_contract_base(draft=draft, module_id=module_id, action="dispatch", name=f"{prefix}_dispatch", function_kind="handler", purpose="Dispatch protocol semantics owned by this module.", capability_ids=[cap for cap in owned if cap in {"semantic_dispatch", "state_machine", "protocol_error_policy"}]))
         for handler in draft.get("handler_matrix", []):
-            if not isinstance(handler, dict):
+            if not isinstance(handler, dict) or str(handler.get("owner_module_id", "")) != module_id:
                 continue
             surface = str(handler.get("trigger") or handler.get("handler_id") or "surface")
             surface_id = _safe_id(surface)
             item = _contract_base(draft=draft, module_id=module_id, action=f"handle_{surface_id}", name=f"{prefix}_handle_{surface_id}", function_kind="handler", purpose=f"Handle target-scope surface unit {surface}.", capability_ids=[cap for cap in owned if cap in {"semantic_dispatch", "state_machine", "protocol_error_policy"}])
             item["covers_handler_ids"] = [str(handler.get("handler_id", ""))]
             functions.append(item)
-    elif module_id == "resource_store":
-        for action in ("open_session", "close_session", "lookup_resource"):
-            functions.append(_contract_base(draft=draft, module_id=module_id, action=action, name=f"{prefix}_{action}", function_kind="state_machine", purpose=f"Resource and session lifecycle helper: {action}.", capability_ids=owned))
-    else:
-        functions.append(_contract_base(draft=draft, module_id=module_id, action="run", name=f"{prefix}_run", function_kind="public_api", purpose=f"Run the composed target-role boundary for module {module_id}.", capability_ids=owned))
     return {
         "schema_version": "function_inventory_candidate/v2",
         "candidate_id": f"candidate:function_inventory:{module_id}",
@@ -504,7 +534,7 @@ def _service_requirement_ids(functions: list[dict[str, Any]]) -> list[str]:
 def fallback_function_signatures(draft: dict[str, Any], module_id: str, functions: list[dict[str, Any]] | None = None, *, batch_index: int = 0, batch_size: int = 0) -> dict[str, Any]:
     updates = []
     for function in _module_functions(draft, module_id, functions):
-        signature, params, _return_type = _default_signature(function, module_id)
+        signature, params, _return_type = _default_signature(function, module_id, str(draft.get("protocol_name", "protocol")))
         updates.append(
             {
                 "function_id": function.get("function_id"),
