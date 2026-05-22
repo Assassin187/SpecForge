@@ -110,6 +110,13 @@ ARCHITECTURE_LOW_TEMPERATURE = 0.2
 ARCHITECTURE_JSON_RETRY_ATTEMPTS = 3
 
 
+# LLM thinking-mode toggles (module-level for easy centralized control)
+PROTOCOL_PROFILE_ENABLE_THINKING = False
+ARCHITECTURE_CANDIDATE_ENABLE_THINKING = True
+ARCHITECTURE_RANKING_ENABLE_THINKING = True
+IMPLEMENTATION_PLAN_ENABLE_THINKING = False
+
+
 STEP_FILENAMES = {
     "planning_run_manifest": "000_planning_run_manifest.json",
     "planning_ir": "003_planning_ir.json",
@@ -447,6 +454,7 @@ def _llm_token_event(meta: dict[str, Any]) -> str:
         f"completion={int(usage.get('completion_tokens', 0) or 0)} "
         f"total={int(usage.get('total_tokens', 0) or 0)} "
         f"temperature={meta.get('temperature', 'unknown') if isinstance(meta, dict) else 'unknown'} "
+        f"thinking={str(bool(meta.get('enable_thinking')) if isinstance(meta, dict) else False).lower()} "
         f"failed={bool(meta.get('failed')) if isinstance(meta, dict) else False} "
         f"hit_completion_limit={bool(meta.get('hit_completion_limit')) if isinstance(meta, dict) else False}"
     )
@@ -973,11 +981,14 @@ class PlanningAgent:
             previous_reasons: list[str] = []
             base_messages = protocol_profile_patch_messages(planning_ir, profile)
             for attempt in range(1, self.config.llm_max_retries + 1):
-                store.log_event(f"stage=protocol_profile llm_attempt={attempt} prompt=protocol_profile_patch_prompt start")
+                store.log_event(
+                    f"stage=protocol_profile llm_attempt={attempt} prompt=protocol_profile_patch_prompt thinking={str(PROTOCOL_PROFILE_ENABLE_THINKING).lower()} start"
+                )
                 candidate, candidate_diags, meta = request_json_candidate(
                     prompt_name="protocol_profile_patch_prompt",
                     messages=_retry_messages(base_messages, previous_reasons, attempt),
                     config=self.config,
+                    enable_thinking=PROTOCOL_PROFILE_ENABLE_THINKING,
                 )
                 store.write_agent_log(f"004_protocol_profile_patch_llm_attempt_{attempt}_meta", str(meta))
                 token_tracker.add_attempt(stage="protocol_profile", prompt_name="protocol_profile_patch_prompt", attempt=attempt, meta=meta)
@@ -1089,7 +1100,7 @@ class PlanningAgent:
                     request_id = _architecture_generation_id(round_name, strategy)
                     messages = architecture_candidate_messages(architecture_context, strategy)
                     store.log_event(
-                        f"stage=architecture generation_request={request_counter} strategy={strategy} temperature={temperature} start"
+                        f"stage=architecture generation_request={request_counter} strategy={strategy} temperature={temperature} thinking={str(ARCHITECTURE_CANDIDATE_ENABLE_THINKING).lower()} start"
                     )
                     round_requests.append(
                         {
@@ -1107,7 +1118,7 @@ class PlanningAgent:
                             messages=request["messages"],
                             config=self.config,
                             temperature=temperature,
-                            enable_thinking=True,
+                            enable_thinking=ARCHITECTURE_CANDIDATE_ENABLE_THINKING,
                         ): request
                         for request in round_requests
                     }
@@ -1128,6 +1139,7 @@ class PlanningAgent:
                                 "enabled": True,
                                 "prompt_name": "architecture_candidate_prompt",
                                 "temperature": temperature,
+                                "enable_thinking": ARCHITECTURE_CANDIDATE_ENABLE_THINKING,
                                 "failed": True,
                             }
                         round_results.append((request, llm_candidates, llm_diags, meta))
@@ -1193,7 +1205,7 @@ class PlanningAgent:
                 messages=ranking_messages,
                 config=self.config,
                 temperature=ARCHITECTURE_LOW_TEMPERATURE,
-                enable_thinking=True,
+                enable_thinking=ARCHITECTURE_RANKING_ENABLE_THINKING,
             )
             token_tracker.add_attempt(stage="architecture", prompt_name="architecture_ranking_prompt", attempt=1, meta=ranking_meta)
             store.write_agent_log("006_architecture_ranking_llm_attempt_1_meta", str(ranking_meta))
@@ -1294,11 +1306,14 @@ class PlanningAgent:
                 attempts = max_attempts if max_attempts is not None else self.config.llm_max_retries
                 artifact_suffix = safe_slug(step_log_suffix) if step_log_suffix else ""
                 for attempt in range(1, attempts + 1):
-                    store.log_event(f"stage=implementation_plan substage={stage_label} llm_attempt={attempt} prompt={prompt_name} start")
+                    store.log_event(
+                        f"stage=implementation_plan substage={stage_label} llm_attempt={attempt} prompt={prompt_name} thinking={str(IMPLEMENTATION_PLAN_ENABLE_THINKING).lower()} start"
+                    )
                     candidate, llm_diags, meta = request_json_candidate(
                         prompt_name=prompt_name,
                         messages=_retry_messages(messages, previous_reasons, attempt),
                         config=self.config,
+                        enable_thinking=IMPLEMENTATION_PLAN_ENABLE_THINKING,
                     )
                     log_key = f"{candidate_key}_{artifact_suffix}" if artifact_suffix else candidate_key
                     store.write_agent_log(f"{log_key}_llm_attempt_{attempt}_meta", str(meta))

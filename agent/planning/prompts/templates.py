@@ -319,9 +319,7 @@ def architecture_candidate_messages(
             "role": "system",
             "content": (
                 "You are SpecForge Planning Agent architecture candidate generator. "
-                f"{JSON_ONLY_RULES} Return JSON matching architecture_candidates/v1. "
-                "This is a machine API boundary: the response must be accepted by json.loads exactly as returned, "
-                "and any natural-language text outside the JSON object is a failed response. "
+                "Return one strict JSON object matching architecture_candidates/v1; json.loads(response_text) must succeed. "
                 "You may generate module-level design only. Do not generate file paths, functions, call graphs, include graphs, or code. "
                 "The capability group hints are non-binding engineering priors. They are not required module names. "
                 "You may split, merge, rename, or ignore them if the protocol profile suggests a better architecture. "
@@ -336,7 +334,6 @@ def architecture_candidate_messages(
                     "prompt_version": PROMPT_REGISTRY["architecture_candidate_prompt"],
                     "design_strategy": design_strategy,
                     "required_top_level_keys": ["schema_version", "candidates", "generation_warnings"],
-                    "forbidden_top_level_keys": ["output_schema", "expected_response"],
                     "expected_response": {
                         "schema_version": "architecture_candidates/v1",
                         "candidates": [
@@ -381,11 +378,7 @@ def architecture_candidate_messages(
                         "minimal_scope": "Prefer the smallest target-scope architecture that still satisfies every capability and constraint; small does not mean generic, so use natural protocol boundaries such as broker/session/topic/router where supported.",
                     }.get(design_strategy, "Generate a coherent module-level architecture for the target scope."),
                     "hard_validation_rules": [
-                        "Output exactly one parseable JSON object and no text before or after it; json.loads(response_text) must return an object.",
-                        "Do not wrap the JSON in markdown fences.",
-                        "Use strict standard JSON only: double-quoted strings, true/false/null, no single quotes, no Python True/False/None, no comments, no trailing comma, and no trailing semicolon.",
-                        "Do not explain your reasoning outside JSON fields.",
-                        "Return the expected_response object itself, not an object containing expected_response or output_schema.",
+                        "Return strict JSON only: no markdown, no prose, no comments, no trailing comma, and no trailing semicolon.",
                         "The top-level schema_version must be exactly architecture_candidates/v1.",
                         "Return at least one valid candidate and do not add empty placeholder candidates.",
                         "Every required_capability_ids entry must appear in at least one module.owned_capabilities.",
@@ -404,19 +397,6 @@ def architecture_candidate_messages(
                         "You may split, merge, rename, or ignore hints.",
                         "The selected architecture will be judged by capability coverage, cohesion, coupling, constraint satisfaction, and acyclicity.",
                         "Before returning, compute required_capability_ids minus the union of module.owned_capabilities; it must be empty.",
-                    ],
-                    "known_rejection_patterns_to_avoid": [
-                        "Describing semantic dispatch in text but omitting semantic_dispatch from owned_capabilities.",
-                        "Creating orchestration modules with empty owned_capabilities.",
-                        "Moving a capability to consumed_capabilities without any module owning it.",
-                        "Using dependency_hints as a final call graph, include graph, or dependency_graph.",
-                        "Making low-level codec/data model/runtime adapter modules depend on high-level broker/server/client flow modules.",
-                        "Creating a dependency cycle in module.dependency_hints.",
-                        "Copying hint IDs directly as fixed module names without considering the design strategy.",
-                        "Using only generic layer names when protocol-domain names are derivable from protocol, role, surfaces, state, routing, or resources.",
-                        "Creating semantic_core, semantic_state, resource_store, or role_composition modules when broker_app, server_app, session, topic, router, resource, or another protocol-domain name is supported.",
-                        "Returning a second empty placeholder candidate.",
-                        "Returning JSON with a trailing semicolon, trailing comma, markdown fence, single quotes, comments, or Python True/False/None.",
                     ],
                 }
             ),
