@@ -10,7 +10,8 @@ from unittest.mock import patch
 from agent.planning.adapters.facts_input import build_planning_ir
 from agent.planning.adapters.target_profile import load_target_profile
 from agent.planning.config import PlanningConfig
-from agent.planning.orchestrator import PlanningAgent, STEP_FILENAMES
+from agent.planning.diagnostics import PlanningDiagnostic
+from agent.planning.orchestrator import PlanningAgent, STEP_FILENAMES, request_architecture_json_candidate
 from agent.planning.prompts.templates import architecture_candidate_messages, core_design_candidate_messages
 from agent.planning.stages.architecture import build_architecture_candidates, build_architecture_context, select_architecture
 from agent.planning.stages.blueprint import build_spec_blueprint
@@ -155,7 +156,78 @@ class PlanningValidatorTests(unittest.TestCase):
             self.assertIn("machine API boundary", messages[0]["content"])
             self.assertFalse(any("dependency_hints must be []" in rule for rule in prompt_payload["hard_validation_rules"]))
             self.assertTrue(any("consumer module -> provider module" in rule for rule in prompt_payload["hard_validation_rules"]))
-            self.assertTrue(any("parseable JSON object" in rule for rule in prompt_payload["hard_validation_rules"]))
+            self.assertTrue(any("json.loads" in rule for rule in prompt_payload["hard_validation_rules"]))
+            self.assertTrue(any("trailing semicolon" in rule for rule in prompt_payload["hard_validation_rules"]))
+            self.assertTrue(any("DAG" in rule for rule in prompt_payload["hard_validation_rules"]))
+            self.assertTrue(any("High-level role modules" in rule for rule in prompt_payload["hard_validation_rules"]))
+            self.assertTrue(any("fallback names only" in rule for rule in prompt_payload["domain_derivation_instructions"]))
+            self.assertTrue(any("broker_app" in rule and "topic" in rule for rule in prompt_payload["domain_derivation_instructions"]))
+
+    def test_architecture_json_retry_accepts_third_valid_response(self) -> None:
+        messages = [{"role": "user", "content": "{}"}]
+        valid = {"schema_version": "architecture_candidates/v1", "candidates": [], "generation_warnings": []}
+        calls: list[list[dict[str, str]]] = []
+
+        def fake_request(*, prompt_name, messages, config, temperature=None, enable_thinking=False):
+            calls.append(messages)
+            meta = {
+                "enabled": True,
+                "prompt_name": prompt_name,
+                "usage": {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3},
+                "content_length": 5,
+                "temperature": temperature,
+                "enable_thinking": enable_thinking,
+            }
+            if len(calls) < 3:
+                return None, [PlanningDiagnostic("warning", "invalid_llm_json", "bad json")], meta
+            return valid, [], meta
+
+        with patch("agent.planning.orchestrator.request_json_candidate", side_effect=fake_request):
+            candidate, diags, meta = request_architecture_json_candidate(
+                messages=messages,
+                config=PlanningConfig(),
+                temperature=0.7,
+                enable_thinking=True,
+            )
+
+        self.assertEqual(candidate, valid)
+        self.assertFalse(diags)
+        self.assertEqual(len(calls), 3)
+        self.assertEqual(meta["json_retry_attempts"], 3)
+        self.assertEqual(meta["usage"], {"prompt_tokens": 3, "completion_tokens": 6, "total_tokens": 9})
+        self.assertIn("json.loads", calls[1][-1]["content"])
+        self.assertIn("Do not change the architecture task", calls[1][-1]["content"])
+
+    def test_architecture_json_retry_stops_after_three_invalid_json_responses(self) -> None:
+        calls = 0
+
+        def fake_request(*, prompt_name, messages, config, temperature=None, enable_thinking=False):
+            nonlocal calls
+            calls += 1
+            return (
+                None,
+                [PlanningDiagnostic("warning", "invalid_llm_json", f"bad json {calls}")],
+                {
+                    "enabled": True,
+                    "prompt_name": prompt_name,
+                    "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+                    "content_length": 0,
+                },
+            )
+
+        with patch("agent.planning.orchestrator.request_json_candidate", side_effect=fake_request):
+            candidate, diags, meta = request_architecture_json_candidate(
+                messages=[{"role": "user", "content": "{}"}],
+                config=PlanningConfig(),
+                temperature=0.7,
+                enable_thinking=True,
+            )
+
+        self.assertIsNone(candidate)
+        self.assertEqual(calls, 3)
+        self.assertTrue(any(diag.code == "invalid_llm_json" for diag in diags))
+        self.assertEqual(meta["json_retry_attempts"], 3)
+        self.assertEqual(meta["usage"], {"prompt_tokens": 3, "completion_tokens": 3, "total_tokens": 6})
 
     def test_core_design_prompt_uses_compact_context(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:
@@ -197,7 +269,7 @@ class PlanningValidatorTests(unittest.TestCase):
                 ],
             }
 
-            def fake_request(*, prompt_name, messages, config, temperature=None):
+            def fake_request(*, prompt_name, messages, config, temperature=None, enable_thinking=False):
                 calls.append((prompt_name, messages))
                 if prompt_name == "protocol_profile_patch_prompt":
                     return _noop_profile_patch_candidate(), [], {"mocked": True}
@@ -232,7 +304,7 @@ class PlanningValidatorTests(unittest.TestCase):
             target = _target_profile(Path(raw_tmp))
             _, _, _, architecture_candidates, _, implementation_plan = _build_artifacts(Path(raw_tmp))
 
-            def fake_request(*, prompt_name, messages, config, temperature=None):
+            def fake_request(*, prompt_name, messages, config, temperature=None, enable_thinking=False):
                 if prompt_name == "protocol_profile_patch_prompt":
                     return _noop_profile_patch_candidate(), [], {"mocked": True}
                 if prompt_name == "architecture_candidate_prompt":
@@ -256,7 +328,7 @@ class PlanningValidatorTests(unittest.TestCase):
             target = _target_profile(Path(raw_tmp))
             _, _, _, architecture_candidates, _, _ = _build_artifacts(Path(raw_tmp))
 
-            def fake_request(*, prompt_name, messages, config, temperature=None):
+            def fake_request(*, prompt_name, messages, config, temperature=None, enable_thinking=False):
                 if prompt_name == "protocol_profile_patch_prompt":
                     return _noop_profile_patch_candidate(), [], {"mocked": True}
                 if prompt_name == "architecture_candidate_prompt":

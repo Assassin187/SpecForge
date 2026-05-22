@@ -20,7 +20,7 @@ class LLMRequest:
     top_p: float
     temperature: float
     is_stream: bool = True
-    enable_thinking: bool = True
+    enable_thinking: bool = False
     max_completion_tokens: int | None = None
 
 
@@ -58,7 +58,7 @@ def chat_with_llm_with_usage(
     top_p: float = 0.5,
     temperature: float = 0.5,
     is_stream: bool = True,
-    enable_thinking: bool = True,
+    enable_thinking: bool = False,
     max_completion_tokens: int | None = None,
     delay: int = DEFAULT_RETRY_DELAY,
     attempts: int = DEFAULT_RETRY_ATTEMPTS,
@@ -80,6 +80,7 @@ def chat_with_llm_with_usage(
                 "top_p": top_p,
                 "temperature": temperature,
                 "stream": is_stream,
+                "extra_body": {"enable_thinking": enable_thinking},
             }
             if max_completion_tokens is not None:
                 request_kwargs["max_tokens"] = max_completion_tokens
@@ -121,7 +122,7 @@ def chat_with_llm(
     top_p: float = 0.5,
     temperature: float = 0.5,
     is_stream: bool = True,
-    enable_thinking: bool = True,
+    enable_thinking: bool = False,
     max_completion_tokens: int | None = None,
     delay: int = DEFAULT_RETRY_DELAY,
     attempts: int = DEFAULT_RETRY_ATTEMPTS,

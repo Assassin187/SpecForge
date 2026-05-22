@@ -142,7 +142,7 @@ class PlanningCompatibilityDiscoveryTests(unittest.TestCase):
             selected_architecture = select_architecture(architecture_candidates, profile)
             implementation_plan = build_implementation_plan(planning_ir, profile, constraints, selected_architecture)
 
-            def fake_request(*, prompt_name, messages, config, temperature=None):
+            def fake_request(*, prompt_name, messages, config, temperature=None, enable_thinking=False):
                 if prompt_name == "protocol_profile_patch_prompt":
                     return _noop_profile_patch_candidate(), [], {"mocked": True}
                 if prompt_name == "architecture_candidate_prompt":
@@ -209,7 +209,7 @@ class PlanningCompatibilityDiscoveryTests(unittest.TestCase):
             constraints = activate_constraints(profile)
             architecture_candidates = build_architecture_candidates(planning_ir, profile, constraints)
 
-            def fake_request(*, prompt_name, messages, config, temperature=None):
+            def fake_request(*, prompt_name, messages, config, temperature=None, enable_thinking=False):
                 if prompt_name == "protocol_profile_patch_prompt":
                     return _noop_profile_patch_candidate(), [], {"mocked": True}
                 if prompt_name == "architecture_candidate_prompt":
@@ -237,6 +237,101 @@ class PlanningCompatibilityDiscoveryTests(unittest.TestCase):
             self.assertEqual(manifest["resume"]["from_stage"], "specs_compile")
             self.assertEqual(Path(manifest["resume"]["source_output_dir"]), source_dir)
             self.assertIn("spec_blueprint", manifest["resume"]["inherited_artifacts"])
+
+    def test_stop_after_architecture_writes_prefix_only(self) -> None:
+        facts = ROOT / "agent" / "facts" / "gold_facts" / "mqtt_min" / "protocol_facts.json"
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            tmp = Path(raw_tmp)
+            target = _write_target_profile(tmp, role="broker")
+            target_profile, target_diags = load_target_profile(target)
+            self.assertIsNotNone(target_profile, [diag.__dict__ for diag in target_diags])
+            planning_ir, ir_diags = build_planning_ir(facts, target_profile)
+            self.assertIsNotNone(planning_ir, [diag.__dict__ for diag in ir_diags])
+            profile = build_protocol_profile(planning_ir)
+            constraints = activate_constraints(profile)
+            architecture_candidates = build_architecture_candidates(planning_ir, profile, constraints)
+            thinking_by_prompt: dict[str, list[bool]] = {}
+
+            def fake_request(*, prompt_name, messages, config, temperature=None, enable_thinking=False):
+                thinking_by_prompt.setdefault(prompt_name, []).append(enable_thinking)
+                if prompt_name == "protocol_profile_patch_prompt":
+                    return _noop_profile_patch_candidate(), [], {"mocked": True}
+                if prompt_name == "architecture_candidate_prompt":
+                    return architecture_candidates, [], {"mocked": True}
+                if prompt_name == "architecture_ranking_prompt":
+                    return _ranking_candidate(messages), [], {"mocked": True}
+                raise AssertionError(f"{prompt_name} should not run after architecture")
+
+            with patch("agent.planning.orchestrator.request_json_candidate", side_effect=fake_request):
+                result = PlanningAgent(facts, target, output_dir=tmp / "run").plan(stop_after_stage="architecture")
+
+            self.assertTrue(result.success, [diag.__dict__ for diag in result.diagnostics])
+            self.assertTrue((result.output_dir / "_step_logs" / "006_selected_architecture.json").exists())
+            self.assertFalse((result.output_dir / "_step_logs" / "007_implementation_plan.json").exists())
+            manifest = json.loads((result.output_dir / "_step_logs" / "000_planning_run_manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(manifest["status"], "stopped")
+            self.assertEqual(manifest["stop"]["after_stage"], "architecture")
+            self.assertEqual(thinking_by_prompt["protocol_profile_patch_prompt"], [False])
+            self.assertTrue(all(thinking_by_prompt["architecture_candidate_prompt"]))
+            self.assertEqual(thinking_by_prompt["architecture_ranking_prompt"], [True])
+
+    def test_resume_from_implementation_plan_substage_inherits_prior_substage_artifacts(self) -> None:
+        facts = ROOT / "agent" / "facts" / "gold_facts" / "mqtt_min" / "protocol_facts.json"
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            tmp = Path(raw_tmp)
+            target = _write_target_profile(tmp, role="broker")
+            target_profile, target_diags = load_target_profile(target)
+            self.assertIsNotNone(target_profile, [diag.__dict__ for diag in target_diags])
+            planning_ir, ir_diags = build_planning_ir(facts, target_profile)
+            self.assertIsNotNone(planning_ir, [diag.__dict__ for diag in ir_diags])
+            profile = build_protocol_profile(planning_ir)
+            constraints = activate_constraints(profile)
+            architecture_candidates = build_architecture_candidates(planning_ir, profile, constraints)
+
+            def source_request(*, prompt_name, messages, config, temperature=None, enable_thinking=False):
+                if prompt_name == "protocol_profile_patch_prompt":
+                    return _noop_profile_patch_candidate(), [], {"mocked": True}
+                if prompt_name == "architecture_candidate_prompt":
+                    return architecture_candidates, [], {"mocked": True}
+                if prompt_name == "architecture_ranking_prompt":
+                    return _ranking_candidate(messages), [], {"mocked": True}
+                return None, [], {"mocked": True}
+
+            resumed_prompts: list[str] = []
+            forbidden = {
+                "protocol_profile_patch_prompt",
+                "architecture_candidate_prompt",
+                "architecture_ranking_prompt",
+                "core_design_candidate_prompt",
+                "module_contracts_candidate_prompt",
+                "function_inventory_candidate_prompt",
+                "function_signature_patch_prompt",
+                "function_behavior_contract_patch_prompt",
+            }
+
+            def resumed_request(*, prompt_name, messages, config, temperature=None, enable_thinking=False):
+                resumed_prompts.append(prompt_name)
+                if prompt_name in forbidden:
+                    raise AssertionError(f"{prompt_name} should have been inherited before 5.4d")
+                return None, [], {"mocked": True}
+
+            output_root = tmp / "planning_out"
+            source_dir = output_root / "mqtt" / target_profile.slug / "20260101_000000_000000"
+            resumed_dir = output_root / "mqtt" / target_profile.slug / "20260102_000000_000000"
+            with patch("agent.planning.orchestrator.DEFAULT_OUTPUT_ROOT", output_root):
+                with patch("agent.planning.orchestrator.request_json_candidate", side_effect=source_request):
+                    source = PlanningAgent(facts, target, output_dir=source_dir).plan()
+                self.assertTrue(source.success, [diag.__dict__ for diag in source.diagnostics])
+                with patch("agent.planning.orchestrator.request_json_candidate", side_effect=resumed_request):
+                    resumed = PlanningAgent(facts, target, output_dir=resumed_dir).plan(resume_from_stage="5.4d")
+
+            self.assertTrue(resumed.success, [diag.__dict__ for diag in resumed.diagnostics])
+            self.assertIn("wire_access_binding_patch_prompt", resumed_prompts)
+            self.assertIn("function_behavior_patch", resumed.artifact_paths)
+            manifest = json.loads((resumed.output_dir / "_step_logs" / "000_planning_run_manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(manifest["resume"]["from_stage"], "implementation_plan_5_4d")
+            self.assertIn("function_behavior_patch", manifest["resume"]["inherited_artifacts"])
+            self.assertNotIn("wire_access_binding_patch", manifest["resume"]["inherited_artifacts"])
 
     def test_resume_prefix_rejects_input_hash_mismatch(self) -> None:
         facts = ROOT / "agent" / "facts" / "gold_facts" / "mqtt_min" / "protocol_facts.json"

@@ -45,10 +45,32 @@ python3 -m agent.planning plan \
 - `engineering_constraints`
 - `architecture`
 - `implementation_plan`
+- `implementation_plan_5_1`（别名：`5.1` / `implementation_plan_skeleton`）
+- `implementation_plan_5_2`（别名：`5.2` / `core_design`）
+- `implementation_plan_5_3`（别名：`5.3` / `module_contracts`）
+- `implementation_plan_5_4a`（别名：`5.4a` / `function_inventory`）
+- `implementation_plan_5_4b`（别名：`5.4b` / `function_signatures`）
+- `implementation_plan_5_4c`（别名：`5.4c` / `function_behavior`）
+- `implementation_plan_5_4d`（别名：`5.4d` / `wire_access_binding`）
+- `implementation_plan_5_4e`（别名：`5.4e` / `calls_allowed`）
+- `implementation_plan_5_5`（别名：`5.5` / `file_layout`）
+- `implementation_plan_5_4f`（别名：`5.4f` / `runtime_entrypoint`）
+- `implementation_plan_5_6`（别名：`5.6` / `dependency_repair`）
 - `spec_blueprint`
 - `specs_compile`
 
-启用续跑时，Planning Agent 会在当前 facts/target 对应的默认输出根中寻找最近一次 run，校验指定阶段之前所需的中间产物、输入文件 hash 和 compatibility versions，然后把继承产物写入新的 run 目录。指定阶段本身会重新执行；`implementation_plan` 内部 5.x 子步骤不单独作为续跑入口。
+启用续跑时，Planning Agent 会在当前 facts/target 对应的默认输出根中寻找最近一次 run，校验指定阶段之前所需的中间产物、输入文件 hash 和 compatibility versions，然后把继承产物写入新的 run 目录。指定阶段本身会重新执行；`implementation_plan_5_x` 会继承并 merge 之前的 Step 5 子阶段 artifact，然后从指定子阶段继续。
+
+`plan` 也支持在指定阶段完成后正常停止：
+
+```bash
+python3 -m agent.planning plan \
+  --facts <protocol_facts.json> \
+  --target-profile <target_profile.json> \
+  --stop-after-stage architecture
+```
+
+`--stop-after-stage` 接受与 `--resume-from-stage` 相同的阶段名和别名。停止 run 会写入已完成阶段的 artifact、`013_token_usage_summary.json`、`014_planning_validation_report.json` 和 manifest，manifest status 为 `stopped`。
 
 ## 当前流程
 
@@ -577,6 +599,24 @@ python3 -m agent planning plan \
   --facts agent/facts/gold_facts/mqtt_min/protocol_facts.json \
   --target-profile agent/planning/planning_target_profile_mqtt.json \
   --resume-from-stage implementation_plan
+```
+
+从 Step 5 子阶段续跑：
+
+```bash
+python3 -m agent planning plan \
+  --facts agent/facts/gold_facts/mqtt_min/protocol_facts.json \
+  --target-profile agent/planning/planning_target_profile_mqtt.json \
+  --resume-from-stage 5.4d
+```
+
+完成 Step 4 架构生成后停止：
+
+```bash
+python3 -m agent planning plan \
+  --facts agent/facts/gold_facts/mqtt_min/protocol_facts.json \
+  --target-profile agent/planning/planning_target_profile_mqtt.json \
+  --stop-after-stage architecture
 ```
 
 续跑并指定本次新 run 的输出目录：

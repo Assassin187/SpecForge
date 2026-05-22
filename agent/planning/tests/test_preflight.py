@@ -64,6 +64,21 @@ class PlanningPreflightTests(unittest.TestCase):
             ]
         )
         self.assertEqual(args.resume_from_stage, "architecture")
+        args = parser.parse_args(
+            [
+                "plan",
+                "--facts",
+                "facts.json",
+                "--target-profile",
+                "target.json",
+                "--resume-from-stage",
+                "5.4d",
+                "--stop-after-stage",
+                "architecture",
+            ]
+        )
+        self.assertEqual(args.resume_from_stage, "5.4d")
+        self.assertEqual(args.stop_after_stage, "architecture")
         with self.assertRaises(SystemExit):
             parser.parse_args(["plan", "--facts", "facts.json", "--target-profile", "target.json", "--resume-from-stage", "bad"])
 

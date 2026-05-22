@@ -34,6 +34,7 @@ def request_json_candidate(
     messages: list[dict[str, str]],
     config: PlanningConfig,
     temperature: float | None = None,
+    enable_thinking: bool = False,
 ) -> tuple[dict[str, Any] | None, list[PlanningDiagnostic], dict[str, Any]]:
     try:
         from agent.common.llm_client import FIXED_MODEL, chat_with_llm_with_usage
@@ -44,7 +45,7 @@ def request_json_candidate(
             top_p=config.llm_top_p,
             temperature=config.llm_temperature if temperature is None else temperature,
             is_stream=True,
-            enable_thinking=True,
+            enable_thinking=enable_thinking,
             max_completion_tokens=config.llm_max_completion_tokens,
             attempts=1,
         )
@@ -53,6 +54,7 @@ def request_json_candidate(
             "enabled": True,
             "prompt_name": prompt_name,
             "temperature": config.llm_temperature if temperature is None else temperature,
+            "enable_thinking": enable_thinking,
             "failed": True,
         }
 
@@ -68,6 +70,7 @@ def request_json_candidate(
         "usage": usage,
         "content_length": len(response.content),
         "temperature": config.llm_temperature if temperature is None else temperature,
+        "enable_thinking": enable_thinking,
         "raw_response": response.content,
         "hit_completion_limit": bool(config.llm_max_completion_tokens and response.usage.completion_tokens >= config.llm_max_completion_tokens),
     }

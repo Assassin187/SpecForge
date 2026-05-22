@@ -320,10 +320,12 @@ def architecture_candidate_messages(
             "content": (
                 "You are SpecForge Planning Agent architecture candidate generator. "
                 f"{JSON_ONLY_RULES} Return JSON matching architecture_candidates/v1. "
-                "This is a machine API boundary: any natural-language text outside the JSON object is a failed response. "
+                "This is a machine API boundary: the response must be accepted by json.loads exactly as returned, "
+                "and any natural-language text outside the JSON object is a failed response. "
                 "You may generate module-level design only. Do not generate file paths, functions, call graphs, include graphs, or code. "
                 "The capability group hints are non-binding engineering priors. They are not required module names. "
-                "You may split, merge, rename, or ignore them if the protocol profile suggests a better architecture."
+                "You may split, merge, rename, or ignore them if the protocol profile suggests a better architecture. "
+                "Prefer protocol-domain module names inferred from protocol.name, target_role, required_surface_units, and profile_summary."
             ),
         },
         {
@@ -366,24 +368,37 @@ def architecture_candidate_messages(
                     "architecture_context": architecture_context,
                     "required_capability_ids": required_capability_ids,
                     "non_binding_capability_group_hints": architecture_context.get("non_binding_capability_group_hints", []),
+                    "domain_derivation_instructions": [
+                        "First infer protocol-domain nouns from architecture_context.protocol.name, protocol.target_role, required_surface_units, profile_summary, capability evidence, and constraint obligations.",
+                        "Use those nouns to name modules before falling back to generic layers. For MQTT broker, natural module names may include broker_app, session, topic, router, protocol_codec, and network. For FTP server, natural module names may include server_app, command_codec, resource, filesystem, and session.",
+                        "If statefulness is persistent_state, consider a protocol-domain session/state owner. If routing_intensity or resource_intensity is high, consider protocol-domain routing/resource modules such as topic, router, resource, mailbox, channel, filesystem, or stream where supported by the protocol facts.",
+                        "Generic module names such as semantic_core, semantic_state, resource_store, and role_composition are fallback names only when no protocol-domain noun can be derived.",
+                        "Assign role_composition to a high-level protocol role module such as broker_app, server_app, or client_app whenever such a role module is derivable.",
+                    ],
                     "strategy_guidance": {
-                        "capability_clustered": "Cluster modules around cohesive capability ownership and make ownership boundaries explicit.",
-                        "layered_runtime_codec_semantic": "Prefer runtime, codec, semantic, resource/state, and app-facing layers with low coupling.",
-                        "minimal_scope": "Prefer the smallest target-scope architecture that still satisfies every capability and constraint.",
+                        "capability_clustered": "Cluster modules around cohesive capability ownership, but choose protocol-domain ownership boundaries instead of copying capability-group hint names.",
+                        "layered_runtime_codec_semantic": "Keep low-coupling runtime and codec layers where useful, but include a target-role module and protocol-domain state/routing/resource modules when the facts support them.",
+                        "minimal_scope": "Prefer the smallest target-scope architecture that still satisfies every capability and constraint; small does not mean generic, so use natural protocol boundaries such as broker/session/topic/router where supported.",
                     }.get(design_strategy, "Generate a coherent module-level architecture for the target scope."),
                     "hard_validation_rules": [
-                        "Output exactly one parseable JSON object and no text before or after it.",
+                        "Output exactly one parseable JSON object and no text before or after it; json.loads(response_text) must return an object.",
                         "Do not wrap the JSON in markdown fences.",
+                        "Use strict standard JSON only: double-quoted strings, true/false/null, no single quotes, no Python True/False/None, no comments, no trailing comma, and no trailing semicolon.",
                         "Do not explain your reasoning outside JSON fields.",
                         "Return the expected_response object itself, not an object containing expected_response or output_schema.",
                         "The top-level schema_version must be exactly architecture_candidates/v1.",
+                        "Return at least one valid candidate and do not add empty placeholder candidates.",
                         "Every required_capability_ids entry must appear in at least one module.owned_capabilities.",
                         "Every module.owned_capabilities entry must come from required_capability_ids.",
                         "A non-support module must own at least one capability.",
                         "Capabilities mentioned in responsibilities, rationale, or consumed_capabilities do not count as covered.",
                         "semantic_dispatch, role_composition, and canonical_type_ownership are real capabilities when present and must be explicitly owned.",
-                        "module.dependency_hints may express engineering intent only, with direction consumer module -> provider module.",
-                        "Every dependency_hints entry must reference an existing module_id, must not reference the same module, and must not create a cycle.",
+                        "Every module must include dependency_hints to express engineering dependencies; [] is allowed only when the module has no provider dependency.",
+                        "module.dependency_hints direction is consumer module -> provider module.",
+                        "High-level role modules may depend on lower-level network, protocol_codec, session, topic/resource/router, and data-model modules.",
+                        "Lower-level network, codec, data-model, parser, serializer, resource, and state owner modules must not depend on high-level broker/server/client role modules.",
+                        "Every dependency_hints entry must reference an existing module_id, must not reference the same module, and the full dependency_hints graph must be a DAG.",
+                        "Before returning, check the dependency_hints graph for cycles; if a cycle exists, remove the less certain edge instead of representing mutual collaboration as dependencies.",
                         "module_graph_hints must be []. Architecture still must not output a final dependency_graph; Step 6 derives the final graph deterministically from implementation-plan dependency inputs.",
                         "Capability group hints are non-binding priors, not required module names.",
                         "You may split, merge, rename, or ignore hints.",
@@ -396,7 +411,12 @@ def architecture_candidate_messages(
                         "Moving a capability to consumed_capabilities without any module owning it.",
                         "Using dependency_hints as a final call graph, include graph, or dependency_graph.",
                         "Making low-level codec/data model/runtime adapter modules depend on high-level broker/server/client flow modules.",
+                        "Creating a dependency cycle in module.dependency_hints.",
                         "Copying hint IDs directly as fixed module names without considering the design strategy.",
+                        "Using only generic layer names when protocol-domain names are derivable from protocol, role, surfaces, state, routing, or resources.",
+                        "Creating semantic_core, semantic_state, resource_store, or role_composition modules when broker_app, server_app, session, topic, router, resource, or another protocol-domain name is supported.",
+                        "Returning a second empty placeholder candidate.",
+                        "Returning JSON with a trailing semicolon, trailing comma, markdown fence, single quotes, comments, or Python True/False/None.",
                     ],
                 }
             ),

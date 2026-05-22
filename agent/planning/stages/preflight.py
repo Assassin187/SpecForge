@@ -40,6 +40,7 @@ def build_manifest(
     artifact_paths: dict[str, Path] | None = None,
     failure: dict[str, Any] | None = None,
     resume: dict[str, Any] | None = None,
+    stop: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     artifact_paths = artifact_paths or {}
     manifest = {
@@ -72,6 +73,8 @@ def build_manifest(
     }
     if resume is not None:
         manifest["resume"] = resume
+    if stop is not None:
+        manifest["stop"] = stop
     return manifest
 
 

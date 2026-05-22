@@ -72,6 +72,7 @@ class ArtifactStore:
         self.step_logs_dir = self.output_dir / STEP_LOGS_DIRNAME
         self.validation_reports_dir = self.output_dir / VALIDATION_REPORTS_DIRNAME
         self.resume_metadata: dict[str, Any] | None = None
+        self.stop_metadata: dict[str, Any] | None = None
         self.agent_logs_dir.mkdir(parents=True, exist_ok=True)
         self.step_logs_dir.mkdir(parents=True, exist_ok=True)
         self.validation_reports_dir.mkdir(parents=True, exist_ok=True)
