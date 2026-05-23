@@ -11,7 +11,7 @@ from agent.coder.specs import load_spec_bundle_from_root
 from agent.planning.adapters.facts_input import build_planning_ir
 from agent.planning.adapters.target_profile import load_target_profile
 from agent.planning.config import PlanningConfig
-from agent.planning.orchestrator import PlanningAgent, compare_output_to_reference, find_latest_resume_source, validate_resume_prefix
+from agent.planning.orchestrator import PlanningAgent, compare_output_to_reference, find_latest_resume_source, validate_resume_prefix, validate_resume_source_dir
 from agent.planning.stages.architecture import build_architecture_candidates, select_architecture
 from agent.planning.stages.constraints import activate_constraints
 from agent.planning.stages.implementation_plan import build_implementation_plan
@@ -238,6 +238,50 @@ class PlanningCompatibilityDiscoveryTests(unittest.TestCase):
             self.assertEqual(Path(manifest["resume"]["source_output_dir"]), source_dir)
             self.assertIn("spec_blueprint", manifest["resume"]["inherited_artifacts"])
 
+    def test_resume_from_explicit_source_dir(self) -> None:
+        facts = ROOT / "agent" / "facts" / "gold_facts" / "mqtt_min" / "protocol_facts.json"
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            tmp = Path(raw_tmp)
+            target = _write_target_profile(tmp, role="broker")
+            target_profile, target_diags = load_target_profile(target)
+            self.assertIsNotNone(target_profile, [diag.__dict__ for diag in target_diags])
+            planning_ir, ir_diags = build_planning_ir(facts, target_profile)
+            self.assertIsNotNone(planning_ir, [diag.__dict__ for diag in ir_diags])
+            profile = build_protocol_profile(planning_ir)
+            constraints = activate_constraints(profile)
+            architecture_candidates = build_architecture_candidates(planning_ir, profile, constraints)
+
+            def fake_request(*, prompt_name, messages, config, temperature=None, enable_thinking=False):
+                if prompt_name == "protocol_profile_patch_prompt":
+                    return _noop_profile_patch_candidate(), [], {"mocked": True}
+                if prompt_name == "architecture_candidate_prompt":
+                    return architecture_candidates, [], {"mocked": True}
+                if prompt_name == "architecture_ranking_prompt":
+                    return _ranking_candidate(messages), [], {"mocked": True}
+                return None, [], {"mocked": True}
+
+            source_dir = tmp / "manual_source"
+            resumed_dir = tmp / "manual_resumed"
+            with patch("agent.planning.orchestrator.request_json_candidate", side_effect=fake_request):
+                source = PlanningAgent(facts, target, output_dir=source_dir).plan()
+            self.assertTrue(source.success, [diag.__dict__ for diag in source.diagnostics])
+            with patch("agent.planning.orchestrator.request_json_candidate", side_effect=AssertionError("resume should use explicit artifacts")):
+                resumed = PlanningAgent(facts, target, output_dir=resumed_dir).plan(
+                    resume_from_stage="specs_compile",
+                    resume_source_dir=source_dir,
+                )
+
+            self.assertTrue(resumed.success, [diag.__dict__ for diag in resumed.diagnostics])
+            manifest = json.loads((resumed.output_dir / "_step_logs" / "000_planning_run_manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(Path(manifest["resume"]["source_output_dir"]), source_dir)
+            self.assertIn("spec_blueprint", manifest["resume"]["inherited_artifacts"])
+
+    def test_resume_source_dir_requires_step_logs(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            source_dir, diagnostics = validate_resume_source_dir(Path(raw_tmp))
+        self.assertIsNone(source_dir)
+        self.assertEqual([diag.code for diag in diagnostics], ["missing_resume_step_logs"])
+
     def test_stop_after_architecture_writes_prefix_only(self) -> None:
         facts = ROOT / "agent" / "facts" / "gold_facts" / "mqtt_min" / "protocol_facts.json"
         with tempfile.TemporaryDirectory() as raw_tmp:
@@ -275,6 +319,41 @@ class PlanningCompatibilityDiscoveryTests(unittest.TestCase):
             self.assertTrue(all(thinking_by_prompt["architecture_candidate_prompt"]))
             self.assertEqual(thinking_by_prompt["architecture_ranking_prompt"], [True])
 
+    def test_implementation_plan_thinking_can_be_set_per_substage(self) -> None:
+        facts = ROOT / "agent" / "facts" / "gold_facts" / "mqtt_min" / "protocol_facts.json"
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            tmp = Path(raw_tmp)
+            target = _write_target_profile(tmp, role="broker")
+            target_profile, target_diags = load_target_profile(target)
+            self.assertIsNotNone(target_profile, [diag.__dict__ for diag in target_diags])
+            planning_ir, ir_diags = build_planning_ir(facts, target_profile)
+            self.assertIsNotNone(planning_ir, [diag.__dict__ for diag in ir_diags])
+            profile = build_protocol_profile(planning_ir)
+            constraints = activate_constraints(profile)
+            architecture_candidates = build_architecture_candidates(planning_ir, profile, constraints)
+            thinking_by_prompt: dict[str, list[bool]] = {}
+
+            def fake_request(*, prompt_name, messages, config, temperature=None, enable_thinking=False):
+                thinking_by_prompt.setdefault(prompt_name, []).append(enable_thinking)
+                if prompt_name == "protocol_profile_patch_prompt":
+                    return _noop_profile_patch_candidate(), [], {"mocked": True, "enable_thinking": enable_thinking}
+                if prompt_name == "architecture_candidate_prompt":
+                    return architecture_candidates, [], {"mocked": True, "enable_thinking": enable_thinking}
+                if prompt_name == "architecture_ranking_prompt":
+                    return _ranking_candidate(messages), [], {"mocked": True, "enable_thinking": enable_thinking}
+                return None, [], {"mocked": True, "enable_thinking": enable_thinking}
+
+            with patch.dict(
+                "agent.planning.orchestrator.IMPLEMENTATION_PLAN_THINKING_BY_STAGE",
+                {"implementation_plan_5_2": True, "implementation_plan_5_3": False},
+            ):
+                with patch("agent.planning.orchestrator.request_json_candidate", side_effect=fake_request):
+                    result = PlanningAgent(facts, target, output_dir=tmp / "run").plan(stop_after_stage="5.3")
+
+            self.assertTrue(result.success, [diag.__dict__ for diag in result.diagnostics])
+            self.assertTrue(all(thinking_by_prompt["core_design_candidate_prompt"]))
+            self.assertFalse(any(thinking_by_prompt["module_artifacts_candidate_prompt"]))
+
     def test_resume_from_implementation_plan_substage_inherits_prior_substage_artifacts(self) -> None:
         facts = ROOT / "agent" / "facts" / "gold_facts" / "mqtt_min" / "protocol_facts.json"
         with tempfile.TemporaryDirectory() as raw_tmp:
@@ -303,6 +382,7 @@ class PlanningCompatibilityDiscoveryTests(unittest.TestCase):
                 "architecture_candidate_prompt",
                 "architecture_ranking_prompt",
                 "core_design_candidate_prompt",
+                "module_artifacts_candidate_prompt",
                 "module_contracts_candidate_prompt",
                 "function_inventory_candidate_prompt",
                 "function_signature_patch_prompt",

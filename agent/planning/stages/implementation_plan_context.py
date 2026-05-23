@@ -278,7 +278,12 @@ def build_core_design_context(
 
 def build_module_contract_context(draft: dict[str, Any], profile: dict[str, Any], constraints: dict[str, Any], selected_architecture: dict[str, Any]) -> dict[str, Any]:
     return {
-        "schema_version": "module_contract_context/v1",
+        "schema_version": "module_artifacts_context/v1",
+        "protocol": {
+            "name": str(draft.get("protocol_name", "protocol")),
+            "target_role": _field_value(profile.get("target_role"), "target"),
+            "minimum_scope": _field_value(profile.get("minimum_scope"), "minimum_v1"),
+        },
         "selected_modules": _selected_modules(selected_architecture),
         "core_design_summary": _accepted_summary(draft),
         "required_capabilities": _required_capabilities(profile),
@@ -294,9 +299,35 @@ def build_module_contract_context(draft: dict[str, Any], profile: dict[str, Any]
 
 
 def build_function_inventory_context(draft: dict[str, Any], module_contract: dict[str, Any]) -> dict[str, Any]:
+    module_id = str(module_contract.get("module_id", ""))
+    modules = [item for item in draft.get("module_contracts", []) if isinstance(item, dict)]
+    providers = {str(dep) for dep in module_contract.get("dependencies", []) if str(dep).strip()}
+    provider_modules = [item for item in modules if str(item.get("module_id", "")) in providers]
+    consumers = [
+        item
+        for item in modules
+        if module_id in {str(dep) for dep in item.get("dependencies", []) if str(dep).strip()}
+    ]
     return {
         "schema_version": "function_inventory_context/v1",
         "module_contract": module_contract,
+        "current_module_artifacts": module_contract.get("artifacts", []),
+        "current_module_dependencies": module_contract.get("dependencies", []),
+        "provider_module_artifacts": [
+            {
+                "module_id": item.get("module_id"),
+                "artifacts": item.get("artifacts", []),
+            }
+            for item in provider_modules
+        ],
+        "consumer_module_artifact_dependencies": [
+            {
+                "module_id": item.get("module_id"),
+                "artifacts": item.get("artifacts", []),
+            }
+            for item in consumers
+        ],
+        "global_service_flow_hints": draft.get("service_flow_hints", []),
         "core_design_summary": _accepted_summary(draft),
         "legal_id_universe": _legal_ids_from_draft(draft),
     }

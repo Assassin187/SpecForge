@@ -7,6 +7,7 @@ VALIDATION_REPORT_SCHEMA_VERSION = "validation_report/v1"
 
 CORE_DESIGN_CANDIDATE_SCHEMA_VERSION = "core_design_candidate/v1"
 MODULE_CONTRACTS_CANDIDATE_SCHEMA_VERSION = "module_contracts_candidate/v1"
+MODULE_ARTIFACTS_CANDIDATE_SCHEMA_VERSION = "module_artifacts_candidate/v1"
 FUNCTION_INVENTORY_CANDIDATE_SCHEMA_VERSION = "function_inventory_candidate/v2"
 FUNCTION_SIGNATURE_PATCH_SCHEMA_VERSION = "function_signature_patch/v1"
 FUNCTION_BEHAVIOR_CONTRACT_PATCH_SCHEMA_VERSION = "function_behavior_contract_patch/v1"

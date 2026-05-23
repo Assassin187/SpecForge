@@ -26,6 +26,7 @@ def build_parser() -> argparse.ArgumentParser:
     plan.add_argument("--target-profile", required=True)
     plan.add_argument("--output-dir")
     plan.add_argument("--resume-from-stage", choices=RESUME_STAGE_OPTIONS)
+    plan.add_argument("--resume-source-dir", help="Planning Agent output directory to inherit artifacts from")
     plan.add_argument("--stop-after-stage", choices=STOP_AFTER_STAGE_OPTIONS)
 
     verify = sub.add_parser("verify", help="Verify an existing Planning Agent output directory")
@@ -66,7 +67,11 @@ def cmd_plan(args: argparse.Namespace) -> int:
         output_dir=_path(args.output_dir) if args.output_dir else None,
         config=PlanningConfig(),
     )
-    result = agent.plan(resume_from_stage=args.resume_from_stage, stop_after_stage=args.stop_after_stage)
+    result = agent.plan(
+        resume_from_stage=args.resume_from_stage,
+        resume_source_dir=_path(args.resume_source_dir) if args.resume_source_dir else None,
+        stop_after_stage=args.stop_after_stage,
+    )
     _print_diagnostics(result.diagnostics)
     print(f"Output: {result.output_dir}")
     return 0 if result.success else 1

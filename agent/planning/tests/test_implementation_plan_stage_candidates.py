@@ -16,6 +16,7 @@ from agent.planning.prompts.templates import (
     function_behavior_contract_patch_messages,
     function_inventory_candidate_messages,
     function_signature_patch_messages,
+    module_artifacts_candidate_messages,
     module_contracts_candidate_messages,
     runtime_entrypoint_candidate_messages,
     wire_access_binding_patch_messages,
@@ -44,6 +45,7 @@ from agent.planning.stages.implementation_plan_merger import (
     fallback_function_behavior,
     fallback_function_inventory,
     fallback_function_signatures,
+    fallback_module_artifacts,
     fallback_module_contracts,
     fallback_runtime_entrypoint,
     fallback_wire_access_binding,
@@ -53,6 +55,7 @@ from agent.planning.stages.implementation_plan_merger import (
     merge_function_behavior,
     merge_function_inventory,
     merge_function_signatures,
+    merge_module_artifacts,
     merge_module_contracts,
     merge_runtime_entrypoint,
     merge_wire_access_binding,
@@ -66,6 +69,7 @@ from agent.planning.validators.implementation_plan_stages import (
     validate_function_behavior_contract_patch,
     validate_function_inventory_candidate,
     validate_function_signature_patch,
+    validate_module_artifacts_candidate,
     validate_module_contracts_candidate,
     validate_runtime_entrypoint_candidate,
     validate_wire_access_binding_patch,
@@ -294,6 +298,46 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             modules["module_contracts"][0]["public_api_policy"]["exported_capability_ids"] = ["capability:missing"]
             self.assertTrue(_has(validate_module_contracts_candidate(modules, selected, profile, constraints, draft), "unknown_public_api_policy_capability"))
 
+    def test_module_artifacts_candidate_rules(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            planning_ir, profile, constraints, selected, _, _, items = self._fixtures(Path(raw_tmp))
+            core_draft = merge_core_design(build_plan_skeleton(planning_ir, profile, constraints, selected), items["core"])
+            artifacts = fallback_module_artifacts(core_draft, profile, constraints, selected)
+            self.assertEqual(artifacts["schema_version"], "module_artifacts_candidate/v1")
+            self.assertFalse(validate_module_artifacts_candidate(artifacts, selected, profile, constraints, core_draft))
+
+            missing = copy.deepcopy(artifacts)
+            missing["modules"] = missing["modules"][1:]
+            self.assertTrue(_has(validate_module_artifacts_candidate(missing, selected, profile, constraints, core_draft), "missing_architecture_module_artifacts"))
+
+            duplicate = copy.deepcopy(artifacts)
+            duplicate["modules"][0]["artifacts"].append(copy.deepcopy(duplicate["modules"][0]["artifacts"][0]))
+            self.assertTrue(_has(validate_module_artifacts_candidate(duplicate, selected, profile, constraints, core_draft), "duplicate_module_artifact_name"))
+
+            bad_dep = copy.deepcopy(artifacts)
+            bad_dep["modules"][0]["dependencies"] = ["missing"]
+            self.assertTrue(_has(validate_module_artifacts_candidate(bad_dep, selected, profile, constraints, core_draft), "unknown_module_artifact_dependency"))
+
+            bad_name = copy.deepcopy(artifacts)
+            bad_name["modules"][0]["artifacts"][0]["name"] = "read"
+            self.assertTrue(_has(validate_module_artifacts_candidate(bad_name, selected, profile, constraints, core_draft), "forbidden_bare_module_artifact_name"))
+
+    def test_function_inventory_is_seeded_by_module_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            planning_ir, profile, constraints, selected, _, _, items = self._fixtures(Path(raw_tmp))
+            core_draft = merge_core_design(build_plan_skeleton(planning_ir, profile, constraints, selected), items["core"])
+            artifact_candidate = fallback_module_artifacts(core_draft, profile, constraints, selected)
+            draft = merge_module_artifacts(core_draft, artifact_candidate)
+            module = next(item for item in draft["module_contracts"] if item["artifacts"])
+            inventory = fallback_function_inventory(draft, module)
+            func_artifacts = {item["name"] for item in module["artifacts"] if item["kind"] == "FUNC"}
+            inventory_names = {item["name"] for item in inventory["functions"]}
+            self.assertTrue(func_artifacts.issubset(inventory_names))
+
+            missing = copy.deepcopy(inventory)
+            missing["functions"] = [item for item in missing["functions"] if item["name"] != next(iter(func_artifacts))]
+            self.assertTrue(_has(validate_function_inventory_candidate(missing, draft["module_contracts"], draft, profile, planning_ir), "function_inventory_missing_artifact_function"))
+
     def test_key_flow_module_requires_lifecycle_public_policy(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:
             _, profile, constraints, selected, draft, _, items = self._fixtures(Path(raw_tmp))
@@ -477,6 +521,7 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             first_functions = [item for item in draft["function_contracts"] if item.get("module_id") == first_module_id][:4]
             prompt_payloads = [
                 json.loads(core_design_candidate_messages(build_core_design_context(planning_ir, profile, constraints, selected))[1]["content"]),
+                json.loads(module_artifacts_candidate_messages(build_module_contract_context(draft, profile, constraints, selected))[1]["content"]),
                 json.loads(module_contracts_candidate_messages(build_module_contract_context(draft, profile, constraints, selected))[1]["content"]),
                 json.loads(function_inventory_candidate_messages(build_function_inventory_context(draft, first_module))[1]["content"]),
                 json.loads(function_signature_patch_messages(build_function_signature_context(draft, first_module_id, first_functions, batch_index=0, batch_size=8))[1]["content"]),

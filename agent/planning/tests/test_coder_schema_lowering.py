@@ -230,6 +230,19 @@ class CoderSchemaLoweringTests(unittest.TestCase):
             self.assertNotIn("FILE_SPEC", {item["KIND"] for item in artifacts})
             self.assertFalse([item for item in artifacts if item["NAME"].startswith(("file:", "func:")) or "/" in item["NAME"]])
 
+    def test_planned_module_artifacts_lower_to_module_spec(self) -> None:
+        blueprint = copy.deepcopy(_zap_blueprint())
+        blueprint["modules"][0]["artifacts"] = [
+            {"name": "zapline_runtime_t", "kind": "TYPE", "role": "Planned runtime handle."},
+            {"name": "zapline_runtime_run", "kind": "FUNC", "role": "Run the planned runtime boundary."},
+        ]
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(blueprint, Path(raw_tmp))
+            module_spec = json.loads(Path(manifest["module_spec_path"]).read_text(encoding="utf-8"))
+            artifact_keys = {(item["NAME"], item["KIND"]) for item in module_spec["MODULES"][0]["ARTIFACTS"]}
+            self.assertIn(("zapline_runtime_t", "TYPE"), artifact_keys)
+            self.assertIn(("zapline_runtime_run", "FUNC"), artifact_keys)
+
     def test_dependency_graph_lowers_to_module_dependencies_and_order(self) -> None:
         blueprint = copy.deepcopy(_zap_blueprint())
         blueprint["modules"].append(

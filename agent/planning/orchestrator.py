@@ -22,7 +22,7 @@ from .prompts.templates import (
     function_behavior_contract_patch_messages,
     function_inventory_candidate_messages,
     function_signature_patch_messages,
-    module_contracts_candidate_messages,
+    module_artifacts_candidate_messages,
     protocol_profile_patch_messages,
     runtime_entrypoint_candidate_messages,
     wire_access_binding_patch_messages,
@@ -54,7 +54,7 @@ from .stages.implementation_plan_merger import (
     fallback_function_behavior,
     fallback_function_inventory,
     fallback_function_signatures,
-    fallback_module_contracts,
+    fallback_module_artifacts,
     fallback_runtime_entrypoint,
     fallback_wire_access_binding,
     finalize_dependency_graph,
@@ -64,7 +64,7 @@ from .stages.implementation_plan_merger import (
     merge_function_behavior,
     merge_function_inventory,
     merge_function_signatures,
-    merge_module_contracts,
+    merge_module_artifacts,
     merge_runtime_entrypoint,
     merge_wire_access_binding,
 )
@@ -87,7 +87,7 @@ from .validators.implementation_plan_stages import (
     validate_function_behavior_contract_patch,
     validate_function_inventory_candidate,
     validate_function_signature_patch,
-    validate_module_contracts_candidate,
+    validate_module_artifacts_candidate,
     validate_plan_skeleton,
     validate_runtime_entrypoint_candidate,
     validate_wire_access_binding_patch,
@@ -115,6 +115,19 @@ PROTOCOL_PROFILE_ENABLE_THINKING = False
 ARCHITECTURE_CANDIDATE_ENABLE_THINKING = True
 ARCHITECTURE_RANKING_ENABLE_THINKING = True
 IMPLEMENTATION_PLAN_ENABLE_THINKING = False
+IMPLEMENTATION_PLAN_THINKING_BY_STAGE = {
+    "implementation_plan_5_1": IMPLEMENTATION_PLAN_ENABLE_THINKING,
+    "implementation_plan_5_2": IMPLEMENTATION_PLAN_ENABLE_THINKING,
+    "implementation_plan_5_3": True,
+    "implementation_plan_5_4a": IMPLEMENTATION_PLAN_ENABLE_THINKING,
+    "implementation_plan_5_4b": IMPLEMENTATION_PLAN_ENABLE_THINKING,
+    "implementation_plan_5_4c": IMPLEMENTATION_PLAN_ENABLE_THINKING,
+    "implementation_plan_5_4d": IMPLEMENTATION_PLAN_ENABLE_THINKING,
+    "implementation_plan_5_4e": IMPLEMENTATION_PLAN_ENABLE_THINKING,
+    "implementation_plan_5_5": IMPLEMENTATION_PLAN_ENABLE_THINKING,
+    "implementation_plan_5_4f": IMPLEMENTATION_PLAN_ENABLE_THINKING,
+    "implementation_plan_5_6": IMPLEMENTATION_PLAN_ENABLE_THINKING,
+}
 
 
 STEP_FILENAMES = {
@@ -131,6 +144,8 @@ STEP_FILENAMES = {
     "implementation_plan_skeleton": "007_5_1_plan_skeleton.json",
     "core_design_candidate": "007_5_2_core_design_candidate.json",
     "core_design_validation_report": "007_5_2_core_design_validation_report.json",
+    "module_artifacts_candidate": "007_5_3_module_artifacts_candidate.json",
+    "module_artifacts_validation_report": "007_5_3_module_artifacts_validation_report.json",
     "module_contracts_candidate": "007_5_3_module_contracts_candidate.json",
     "module_contracts_validation_report": "007_5_3_module_contracts_validation_report.json",
     "function_inventory_candidate": "007_5_4a_function_inventory_candidate.json",
@@ -187,6 +202,8 @@ RESUME_STAGE_ALIASES = {
     "5.2_core_design": "implementation_plan_5_2",
     "core_design": "implementation_plan_5_2",
     "5.3": "implementation_plan_5_3",
+    "5.3_module_artifacts": "implementation_plan_5_3",
+    "module_artifacts": "implementation_plan_5_3",
     "5.3_module_contracts": "implementation_plan_5_3",
     "module_contracts": "implementation_plan_5_3",
     "5.4a": "implementation_plan_5_4a",
@@ -244,8 +261,8 @@ _IMPLEMENTATION_PLAN_5_3_PREFIX_KEYS = (
 )
 _IMPLEMENTATION_PLAN_5_4A_PREFIX_KEYS = (
     *_IMPLEMENTATION_PLAN_5_3_PREFIX_KEYS,
-    "module_contracts_candidate",
-    "module_contracts_validation_report",
+    "module_artifacts_candidate",
+    "module_artifacts_validation_report",
 )
 _IMPLEMENTATION_PLAN_5_4B_PREFIX_KEYS = (
     *_IMPLEMENTATION_PLAN_5_4A_PREFIX_KEYS,
@@ -328,6 +345,10 @@ def normalize_resume_stage(stage: str | None) -> str | None:
 
 def normalize_stop_after_stage(stage: str | None) -> str | None:
     return normalize_resume_stage(stage)
+
+
+def implementation_plan_enable_thinking(stage: str) -> bool:
+    return IMPLEMENTATION_PLAN_THINKING_BY_STAGE.get(stage, IMPLEMENTATION_PLAN_ENABLE_THINKING)
 
 
 def _diagnostic_reasons(diagnostics: list[PlanningDiagnostic]) -> list[str]:
@@ -588,6 +609,15 @@ def find_latest_resume_source(
     return sorted(candidates, key=lambda item: item.name, reverse=True)[0] if candidates else None
 
 
+def validate_resume_source_dir(source_dir: str | Path) -> tuple[Path | None, list[PlanningDiagnostic]]:
+    root = Path(source_dir).expanduser()
+    if not root.exists() or not root.is_dir():
+        return None, [PlanningDiagnostic("error", "invalid_resume_source_dir", "Resume source directory does not exist", str(root))]
+    if not (root / "_step_logs").is_dir():
+        return None, [PlanningDiagnostic("error", "missing_resume_step_logs", "Resume source directory must contain _step_logs", str(root / "_step_logs"))]
+    return root, []
+
+
 def load_resume_artifacts(source_dir: str | Path, required_keys: tuple[str, ...]) -> tuple[dict[str, Any], dict[str, Path], list[PlanningDiagnostic]]:
     root = Path(source_dir).expanduser()
     artifacts: dict[str, Any] = {}
@@ -784,7 +814,13 @@ class PlanningAgent:
         artifact_paths["planning_run_manifest"] = manifest_path
         return PlanningResult(not has_errors(diagnostics), self.output_dir, diagnostics, artifact_paths)
 
-    def plan(self, *, resume_from_stage: str | None = None, stop_after_stage: str | None = None) -> PlanningResult:
+    def plan(
+        self,
+        *,
+        resume_from_stage: str | None = None,
+        resume_source_dir: str | Path | None = None,
+        stop_after_stage: str | None = None,
+    ) -> PlanningResult:
         resume_from_stage = normalize_resume_stage(resume_from_stage)
         stop_after_stage = normalize_stop_after_stage(stop_after_stage)
         store = ArtifactStore(self.output_dir)
@@ -808,6 +844,15 @@ class PlanningAgent:
                 "source_output_dir": None,
                 "inherited_artifacts": {},
             }
+        elif resume_source_dir is not None:
+            diagnostics.append(
+                PlanningDiagnostic(
+                    "error",
+                    "resume_source_without_stage",
+                    "--resume-source-dir requires --resume-from-stage",
+                    str(Path(resume_source_dir).expanduser()),
+                )
+            )
         if stop_after_stage is not None:
             if stop_after_stage not in RESUME_STAGES:
                 diagnostics.append(
@@ -866,8 +911,13 @@ class PlanningAgent:
         if resume_from_stage is not None and not has_errors(diagnostics):
             required_keys = _RESUME_REQUIRED_KEYS[resume_from_stage]
             if required_keys:
-                source_dir = find_latest_resume_source(self.facts_path, self.target_profile_path, self.output_dir)
-                if source_dir is None:
+                if resume_source_dir is None:
+                    source_dir = find_latest_resume_source(self.facts_path, self.target_profile_path, self.output_dir)
+                    source_diags: list[PlanningDiagnostic] = []
+                else:
+                    source_dir, source_diags = validate_resume_source_dir(resume_source_dir)
+                    diagnostics.extend(source_diags)
+                if source_dir is None and not source_diags:
                     diagnostics.append(
                         PlanningDiagnostic(
                             "error",
@@ -1291,6 +1341,7 @@ class PlanningAgent:
             def stage_candidate(
                 *,
                 stage_label: str,
+                thinking_stage: str,
                 prompt_name: str,
                 messages: list[dict[str, str]],
                 candidate_key: str,
@@ -1305,15 +1356,16 @@ class PlanningAgent:
                 accepted_diags: list[PlanningDiagnostic] = []
                 attempts = max_attempts if max_attempts is not None else self.config.llm_max_retries
                 artifact_suffix = safe_slug(step_log_suffix) if step_log_suffix else ""
+                enable_thinking = implementation_plan_enable_thinking(thinking_stage)
                 for attempt in range(1, attempts + 1):
                     store.log_event(
-                        f"stage=implementation_plan substage={stage_label} llm_attempt={attempt} prompt={prompt_name} thinking={str(IMPLEMENTATION_PLAN_ENABLE_THINKING).lower()} start"
+                        f"stage=implementation_plan substage={stage_label} llm_attempt={attempt} prompt={prompt_name} thinking={str(enable_thinking).lower()} start"
                     )
                     candidate, llm_diags, meta = request_json_candidate(
                         prompt_name=prompt_name,
                         messages=_retry_messages(messages, previous_reasons, attempt),
                         config=self.config,
-                        enable_thinking=IMPLEMENTATION_PLAN_ENABLE_THINKING,
+                        enable_thinking=enable_thinking,
                     )
                     log_key = f"{candidate_key}_{artifact_suffix}" if artifact_suffix else candidate_key
                     store.write_agent_log(f"{log_key}_llm_attempt_{attempt}_meta", str(meta))
@@ -1361,6 +1413,7 @@ class PlanningAgent:
                 core_context = build_core_design_context(planning_ir, profile, constraints, selected_architecture)
                 core_candidate = stage_candidate(
                     stage_label="5.2_core_design",
+                    thinking_stage="implementation_plan_5_2",
                     prompt_name="core_design_candidate_prompt",
                     messages=core_design_candidate_messages(core_context),
                     candidate_key="core_design_candidate",
@@ -1381,21 +1434,22 @@ class PlanningAgent:
             if _implementation_plan_substage_should_run("implementation_plan_5_3", resume_from_stage):
                 module_context = build_module_contract_context(draft, profile, constraints, selected_architecture)
                 module_candidate = stage_candidate(
-                    stage_label="5.3_module_contracts",
-                    prompt_name="module_contracts_candidate_prompt",
-                    messages=module_contracts_candidate_messages(module_context),
-                    candidate_key="module_contracts_candidate",
-                    report_key="module_contracts_validation_report",
-                    fallback=fallback_module_contracts(draft, profile, constraints, selected_architecture),
-                    validator=lambda candidate: validate_module_contracts_candidate(candidate, selected_architecture, profile, constraints, draft),
+                    stage_label="5.3_module_artifacts",
+                    thinking_stage="implementation_plan_5_3",
+                    prompt_name="module_artifacts_candidate_prompt",
+                    messages=module_artifacts_candidate_messages(module_context),
+                    candidate_key="module_artifacts_candidate",
+                    report_key="module_artifacts_validation_report",
+                    fallback=fallback_module_artifacts(draft, profile, constraints, selected_architecture),
+                    validator=lambda candidate: validate_module_artifacts_candidate(candidate, selected_architecture, profile, constraints, draft),
                 )
             else:
                 module_candidate = inherited_stage_candidate(
-                    stage_label="5.3_module_contracts",
-                    candidate_key="module_contracts_candidate",
-                    validator=lambda candidate: validate_module_contracts_candidate(candidate, selected_architecture, profile, constraints, draft),
+                    stage_label="5.3_module_artifacts",
+                    candidate_key="module_artifacts_candidate",
+                    validator=lambda candidate: validate_module_artifacts_candidate(candidate, selected_architecture, profile, constraints, draft),
                 )
-            draft = merge_module_contracts(draft, module_candidate)
+            draft = merge_module_artifacts(draft, module_candidate)
             if _should_stop_after("implementation_plan_5_3", stop_after_stage):
                 return finish_early("implementation_plan_5_3")
 
@@ -1413,19 +1467,99 @@ class PlanningAgent:
                     "assumptions": [],
                     "unresolved_questions": [],
                 }
-                for module in list(draft.get("module_contracts", [])):
+                inventory_modules = [module for module in draft.get("module_contracts", []) if isinstance(module, dict)]
+                inventory_draft = draft
+
+                def request_inventory_candidate(module_index: int, module: dict[str, Any]) -> dict[str, Any]:
                     module_id = str(module.get("module_id", ""))
-                    inventory_context = build_function_inventory_context(draft, module)
-                    inventory_candidate = stage_candidate(
-                        stage_label=f"5.4a_function_inventory:{module_id}",
-                        prompt_name="function_inventory_candidate_prompt",
-                        messages=function_inventory_candidate_messages(inventory_context),
-                        candidate_key="function_inventory_candidate",
-                        report_key="function_inventory_validation_report",
-                        fallback=fallback_function_inventory(draft, module),
-                        step_log_suffix=module_id,
-                        validator=lambda candidate, module_contracts=draft.get("module_contracts", []): validate_function_inventory_candidate(candidate, module_contracts, draft, profile, planning_ir),
+                    stage_label = f"5.4a_function_inventory:{module_id}"
+                    prompt_name = "function_inventory_candidate_prompt"
+                    messages = function_inventory_candidate_messages(build_function_inventory_context(inventory_draft, module))
+                    fallback = fallback_function_inventory(inventory_draft, module)
+                    previous_reasons: list[str] = []
+                    accepted: dict[str, Any] | None = None
+                    accepted_diags: list[PlanningDiagnostic] = []
+                    attempts: list[dict[str, Any]] = []
+                    enable_thinking = implementation_plan_enable_thinking("implementation_plan_5_4a")
+                    for attempt in range(1, self.config.llm_max_retries + 1):
+                        candidate, llm_diags, meta = request_json_candidate(
+                            prompt_name=prompt_name,
+                            messages=_retry_messages(messages, previous_reasons, attempt),
+                            config=self.config,
+                            enable_thinking=enable_thinking,
+                        )
+                        attempt_record: dict[str, Any] = {"attempt": attempt, "meta": meta, "accepted": False, "rejection_reasons": []}
+                        if candidate is None:
+                            previous_reasons = _diagnostic_reasons(llm_diags) or ["LLM did not return a JSON object."]
+                            attempt_record["rejection_reasons"] = previous_reasons
+                            attempts.append(attempt_record)
+                            continue
+                        candidate_diags = validate_function_inventory_candidate(candidate, inventory_draft.get("module_contracts", []), inventory_draft, profile, planning_ir)
+                        if stage_passed(candidate_diags):
+                            accepted = candidate
+                            accepted_diags = candidate_diags
+                            attempt_record["accepted"] = True
+                            attempts.append(attempt_record)
+                            break
+                        previous_reasons = _diagnostic_reasons(candidate_diags)
+                        attempt_record["rejection_reasons"] = previous_reasons
+                        attempts.append(attempt_record)
+                    fallback_used = accepted is None
+                    if accepted is None:
+                        accepted = fallback
+                        accepted_diags = validate_function_inventory_candidate(accepted, inventory_draft.get("module_contracts", []), inventory_draft, profile, planning_ir)
+                    return {
+                        "module_index": module_index,
+                        "module_id": module_id,
+                        "stage_label": stage_label,
+                        "prompt_name": prompt_name,
+                        "candidate_key": "function_inventory_candidate",
+                        "report_key": "function_inventory_validation_report",
+                        "step_log_suffix": module_id,
+                        "accepted": accepted,
+                        "accepted_diags": accepted_diags,
+                        "attempts": attempts,
+                        "fallback_used": fallback_used,
+                    }
+
+                inventory_results: list[dict[str, Any]] = []
+                with ThreadPoolExecutor(max_workers=max(1, len(inventory_modules))) as executor:
+                    future_map = {
+                        executor.submit(request_inventory_candidate, module_index, module): module_index
+                        for module_index, module in enumerate(inventory_modules)
+                    }
+                    for future in as_completed(future_map):
+                        inventory_results.append(future.result())
+
+                for result in sorted(inventory_results, key=lambda item: item["module_index"]):
+                    module_id = result["module_id"]
+                    stage_label = result["stage_label"]
+                    prompt_name = result["prompt_name"]
+                    log_key = f"function_inventory_candidate_{safe_slug(module_id)}"
+                    for record in result["attempts"]:
+                        attempt = int(record["attempt"])
+                        store.write_agent_log(f"{log_key}_llm_attempt_{attempt}_meta", str(record["meta"]))
+                        token_tracker.add_attempt(stage="implementation_plan", prompt_name=prompt_name, attempt=attempt, meta=record["meta"], accepted=bool(record["accepted"]))
+                        store.log_event(
+                            f"stage=implementation_plan substage={stage_label} llm_attempt={attempt} prompt={prompt_name} {_llm_token_event(record['meta'])}"
+                        )
+                        reasons = [str(reason) for reason in record.get("rejection_reasons", []) if str(reason)]
+                        if reasons:
+                            store.write_agent_log(f"{log_key}_llm_attempt_{attempt}_rejection", "\n".join(reasons))
+                            store.log_event(f"stage=implementation_plan substage={stage_label} llm_attempt={attempt} rejected reason={reasons[0]}")
+                        elif record["accepted"]:
+                            store.log_event(f"stage=implementation_plan substage={stage_label} llm_attempt={attempt} accepted")
+                    inventory_candidate = result["accepted"]
+                    if result["fallback_used"]:
+                        store.log_event(f"stage=implementation_plan substage={stage_label} fallback=deterministic")
+                    candidate_path = store.write_step_json(_suffixed_step_filename(STEP_FILENAMES["function_inventory_candidate"], module_id), inventory_candidate)
+                    report_path = store.write_step_json(
+                        _suffixed_step_filename(STEP_FILENAMES["function_inventory_validation_report"], module_id),
+                        validation_report(stage_label, result["accepted_diags"]),
                     )
+                    artifact_suffix = safe_slug(module_id)
+                    artifact_paths[f"function_inventory_candidate_{artifact_suffix}"] = candidate_path
+                    artifact_paths[f"function_inventory_validation_report_{artifact_suffix}"] = report_path
                     inventory_aggregate["functions"].extend(inventory_candidate.get("functions", []))
                     inventory_aggregate["assumptions"].extend(inventory_candidate.get("assumptions", []))
                     inventory_aggregate["unresolved_questions"].extend(inventory_candidate.get("unresolved_questions", []))
@@ -1471,6 +1605,7 @@ class PlanningAgent:
                         signature_context = build_function_signature_context(draft, module_id, batch, batch_index=batch_index, batch_size=8)
                         signature_patch = stage_candidate(
                             stage_label=f"5.4b_signature_planning:{module_id}:{batch_index}",
+                            thinking_stage="implementation_plan_5_4b",
                             prompt_name="function_signature_patch_prompt",
                             messages=function_signature_patch_messages(signature_context),
                             candidate_key="function_signature_patch",
@@ -1525,6 +1660,7 @@ class PlanningAgent:
                         behavior_context = build_function_behavior_context(draft, module_id, batch, constraints, batch_index=batch_index, batch_size=4)
                         behavior_patch = stage_candidate(
                             stage_label=f"5.4c_behavior_contract:{module_id}:{batch_index}",
+                            thinking_stage="implementation_plan_5_4c",
                             prompt_name="function_behavior_contract_patch_prompt",
                             messages=function_behavior_contract_patch_messages(behavior_context),
                             candidate_key="function_behavior_patch",
@@ -1559,6 +1695,7 @@ class PlanningAgent:
                 wire_context = build_wire_access_binding_context(draft, planning_ir)
                 wire_patch = stage_candidate(
                     stage_label="5.4d_wire_access_binding",
+                    thinking_stage="implementation_plan_5_4d",
                     prompt_name="wire_access_binding_patch_prompt",
                     messages=wire_access_binding_patch_messages(wire_context),
                     candidate_key="wire_access_binding_patch",
@@ -1608,6 +1745,7 @@ class PlanningAgent:
                         callable_ids = {str(item.get("function_id", "")) for item in calls_context.get("callable_functions", []) if isinstance(item, dict)}
                         calls_candidate = stage_candidate(
                             stage_label=f"5.4e_call_planning:{module_id}:{batch_index}",
+                            thinking_stage="implementation_plan_5_4e",
                             prompt_name="calls_allowed_candidate_prompt",
                             messages=calls_allowed_candidate_messages(calls_context),
                             candidate_key="calls_allowed_candidate",
@@ -1649,6 +1787,7 @@ class PlanningAgent:
                 file_context = build_file_layout_context(draft, planning_ir, constraints)
                 file_candidate = stage_candidate(
                     stage_label="5.5_file_layout",
+                    thinking_stage="implementation_plan_5_5",
                     prompt_name="file_layout_candidate_prompt",
                     messages=file_layout_candidate_messages(file_context),
                     candidate_key="file_layout_candidate",
@@ -1670,6 +1809,7 @@ class PlanningAgent:
                 runtime_context = build_runtime_entrypoint_context(draft, planning_ir, selected_architecture)
                 runtime_candidate = stage_candidate(
                     stage_label="5.4f_runtime_entrypoint_candidate",
+                    thinking_stage="implementation_plan_5_4f",
                     prompt_name="runtime_entrypoint_candidate_prompt",
                     messages=runtime_entrypoint_candidate_messages(runtime_context),
                     candidate_key="runtime_entrypoint_candidate",
@@ -1694,6 +1834,7 @@ class PlanningAgent:
                 repair_context = build_dependency_repair_context(draft, _diagnostics_as_dependency_errors(dependency_diags))
                 repair_patch = stage_candidate(
                     stage_label="5.6_dependency_repair",
+                    thinking_stage="implementation_plan_5_6",
                     prompt_name="dependency_repair_patch_prompt",
                     messages=dependency_repair_patch_messages(repair_context),
                     candidate_key="dependency_repair_patch",

@@ -282,6 +282,187 @@ def merge_core_design(draft: dict[str, Any], candidate: dict[str, Any]) -> dict[
     return result
 
 
+def _module_doc_refs(module: dict[str, Any], capability_refs: dict[str, dict[str, Any]]) -> list[str]:
+    owned = [str(cap) for cap in module.get("owned_capabilities", []) if str(cap).strip()]
+    return sorted(
+        {
+            str(ref)
+            for cap in owned
+            for ref in capability_refs.get(cap, {}).get("source_fact_ids", [])
+            if str(ref).strip()
+        }
+    )
+
+
+def _add_artifact(artifacts: list[dict[str, str]], seen: set[tuple[str, str]], name: str, kind: str, role: str) -> None:
+    key = (name, kind)
+    if name and key not in seen:
+        seen.add(key)
+        artifacts.append({"name": name, "kind": kind, "role": role})
+
+
+def _module_artifacts_for(module: dict[str, Any], protocol: str, target_role: str) -> list[dict[str, str]]:
+    module_id = _safe_id(str(module.get("module_id", module.get("name", "module"))))
+    text = " ".join(
+        [
+            module_id,
+            str(module.get("name", "")),
+            " ".join(str(item) for item in module.get("responsibilities", [])),
+            " ".join(str(item) for item in module.get("owned_capabilities", [])),
+        ]
+    ).lower()
+    prefix = _safe_id(protocol)
+    artifacts: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+
+    def add(name: str, kind: str, role: str) -> None:
+        _add_artifact(artifacts, seen, name, kind, role)
+
+    if any(word in text for word in ("network", "transport", "tcp")):
+        add(f"{prefix}_connection_t", "TYPE", "Opaque protocol connection object.")
+        add(f"{prefix}_tcp_server_t", "TYPE", "Protocol TCP server runtime object.")
+        add(f"{prefix}_tcp_callbacks_t", "TYPE", "Callbacks used by the network runtime.")
+        add(f"{prefix}_connection_read", "FUNC", "Read bytes from a protocol connection.")
+        add(f"{prefix}_connection_send", "FUNC", "Queue bytes for a protocol connection.")
+        add(f"{prefix}_connection_flush", "FUNC", "Flush queued connection bytes.")
+        add(f"{prefix}_connection_close", "FUNC", "Close a protocol connection.")
+    elif any(word in text for word in ("semantic", "state_machine", "protocol_error_policy")):
+        add(f"{prefix}_{module_id}_t", "TYPE", f"Opaque {module_id} semantic module object.")
+        add(f"{prefix}_{module_id}_dispatch", "FUNC", "Dispatch decoded protocol semantics.")
+    elif any(word in text for word in ("codec", "framing", "decode", "encode", "parser", "serializer")):
+        add(f"{prefix}_packet_t", "TYPE", "Decoded protocol packet container.")
+        add(f"{prefix}_bytes_t", "TYPE", "Encoded protocol byte buffer.")
+        add(f"{prefix}_decoder_feed", "FUNC", "Incrementally decode protocol bytes into packets.")
+        add(f"{prefix}_encode_message", "FUNC", "Encode an outbound protocol packet.")
+    elif "session" in text:
+        add(f"{prefix}_session_t", "TYPE", "Protocol session object.")
+        add(f"{prefix}_session_manager_t", "TYPE", "Session lookup and lifecycle registry.")
+        add(f"{prefix}_session_mark_connected", "FUNC", "Mark a session as connected.")
+        add(f"{prefix}_session_send", "FUNC", "Send protocol bytes through a session.")
+        add(f"{prefix}_session_manager_get", "FUNC", "Lookup or create a managed session.")
+    elif "topic" in text or "resource" in text:
+        add(f"{prefix}_topic_tree_t", "TYPE", "Protocol topic/resource matching table.")
+        add(f"{prefix}_topic_match", "FUNC", "Match one topic/resource pattern.")
+        add(f"{prefix}_topic_tree_match_subscribers", "FUNC", "Find subscribers matching a topic/resource.")
+    elif "router" in text or "dispatch" in text:
+        add(f"{prefix}_message_router_t", "TYPE", "Protocol message router object.")
+        add(f"{prefix}_message_router_subscribe", "FUNC", "Register a route/subscription.")
+        add(f"{prefix}_message_router_publish", "FUNC", "Route or publish an inbound message.")
+    elif "role_composition" in text or "app" in text or target_role in {"broker", "server", "client"} and any(word in text for word in ("broker", "server", "client", "role")):
+        role = _safe_id(target_role or "app")
+        add(f"{prefix}_{role}_t", "TYPE", "Top-level protocol runtime object.")
+        add(f"{prefix}_{role}_create", "FUNC", "Create the top-level protocol runtime.")
+        add(f"{prefix}_{role}_run", "FUNC", "Run the top-level protocol runtime.")
+        add(f"{prefix}_{role}_destroy", "FUNC", "Destroy the top-level protocol runtime.")
+        add("main", "FUNC", "Process entrypoint for the generated target.")
+    else:
+        add(f"{prefix}_{module_id}_t", "TYPE", f"Opaque {module_id} module object.")
+        add(f"{prefix}_{module_id}_init", "FUNC", f"Initialize the {module_id} module boundary.")
+    return artifacts
+
+
+def _module_generation_order(modules: list[dict[str, Any]], dependencies_by_module: dict[str, list[str]]) -> list[str]:
+    module_ids = [_safe_id(str(module.get("module_id", module.get("name", "module")))) for module in modules if isinstance(module, dict)]
+    remaining = set(module_ids)
+    result: list[str] = []
+    while remaining:
+        ready = [
+            module_id
+            for module_id in module_ids
+            if module_id in remaining and all(dep not in remaining for dep in dependencies_by_module.get(module_id, []))
+        ]
+        if not ready:
+            result.extend(module_id for module_id in module_ids if module_id in remaining)
+            break
+        for module_id in ready:
+            remaining.remove(module_id)
+            result.append(module_id)
+    return result
+
+
+def fallback_module_artifacts(draft: dict[str, Any], profile: dict[str, Any], constraints: dict[str, Any], selected_architecture: dict[str, Any]) -> dict[str, Any]:
+    capability_refs = _capability_refs(profile)
+    protocol = str(draft.get("protocol_name", "protocol"))
+    target_role = _field_value(profile.get("target_role"), str(_target_directives(draft).get("target_role", "target")))
+    modules = [module for module in selected_architecture.get("architecture", {}).get("modules", []) if isinstance(module, dict)]
+    module_ids = {_safe_id(str(module.get("module_id", module.get("name", "module")))) for module in modules}
+    dependencies_by_module: dict[str, list[str]] = {}
+    entries: list[dict[str, Any]] = []
+    for module in modules:
+        module_id = _safe_id(str(module.get("module_id", module.get("name", "module"))))
+        dependencies = [
+            _safe_id(str(dep))
+            for dep in module.get("dependency_hints", [])
+            if _safe_id(str(dep)) in module_ids and _safe_id(str(dep)) != module_id
+        ]
+        dependencies_by_module[module_id] = sorted(set(dependencies))
+        entries.append(
+            {
+                "module_id": module_id,
+                "name": str(module.get("name", module_id)) or module_id,
+                "role": "; ".join(str(item) for item in module.get("responsibilities", []) if str(item).strip()) or f"Provide the {module_id} module boundary.",
+                "dependencies": dependencies_by_module[module_id],
+                "artifacts": _module_artifacts_for(module, protocol, target_role),
+                "files": [f"{protocol}/{module_id}/{module_id}.h", f"{protocol}/{module_id}/{module_id}.c"],
+                "doc_ref": _module_doc_refs(module, capability_refs),
+            }
+        )
+    return {
+        "schema_version": "module_artifacts_candidate/v1",
+        "candidate_id": "candidate:module_artifacts:deterministic",
+        "producer": _producer("5.3_module_artifacts", "module_artifacts_candidate_prompt"),
+        "modules": entries,
+        "generation_order": _module_generation_order(modules, dependencies_by_module),
+        "consistency_rules": [
+            {"id": "module_artifacts_unique_symbols", "rule": "artifact names are unique within each module", "doc_ref": []},
+            {"id": "module_artifacts_dependency_order", "rule": "generation_order lists providers before consumers", "doc_ref": []},
+        ],
+        "forbidden_symbols": [
+            {"name": name, "kind": "FUNC", "reason": "Bare C/POSIX-like symbols must use a protocol/module prefix."}
+            for name in ("connect", "read", "write", "close", "send", "publish", "subscribe")
+        ],
+        "assumptions": [],
+        "unresolved_questions": [],
+    }
+
+
+def merge_module_artifacts(draft: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any]:
+    result = deepcopy(draft)
+    arch_index = result.get("deterministic_indexes", {}).get("module_index", {})
+    result["module_contracts"] = []
+    for item in candidate.get("modules", []):
+        if not isinstance(item, dict):
+            continue
+        module_id = str(item.get("module_id", ""))
+        arch_module = arch_index.get(module_id, {}) if isinstance(arch_index, dict) else {}
+        result["module_contracts"].append(
+            {
+                "module_id": module_id,
+                "name": item.get("name", module_id),
+                "purpose": item.get("role", ""),
+                "role": item.get("role", ""),
+                "owned_capabilities": [str(cap) for cap in arch_module.get("owned_capabilities", [])],
+                "consumed_capabilities": [str(cap) for cap in arch_module.get("consumed_capabilities", [])],
+                "support_module": bool(arch_module.get("support_module", False)),
+                "dependencies": [str(dep) for dep in item.get("dependencies", []) if str(dep).strip()],
+                "artifacts": deepcopy(item.get("artifacts", [])),
+                "files": [str(path) for path in item.get("files", []) if str(path).strip()],
+                "doc_ref": [str(ref) for ref in item.get("doc_ref", []) if str(ref).strip()],
+                "state_owned": [str(state) for state in arch_module.get("state_owned", [])],
+                "errors_raised": ["error:protocol_error"],
+                "constraints": list(result.get("traceability", {}).get("constraint_ids", [])),
+                "source_fact_ids": [str(ref) for ref in item.get("doc_ref", []) if str(ref).strip()],
+                "decision_ids": [f"decision:module:{module_id}"],
+            }
+        )
+    result["module_generation_order"] = [str(item) for item in candidate.get("generation_order", []) if str(item).strip()]
+    result["module_consistency_rules"] = deepcopy(candidate.get("consistency_rules", []))
+    result["forbidden_symbols"] = deepcopy(candidate.get("forbidden_symbols", []))
+    result.setdefault("unresolved_questions", []).extend(candidate.get("unresolved_questions", []))
+    result.setdefault("accepted_stage_artifacts", []).append("5.3_module_artifacts")
+    return result
+
+
 def fallback_module_contracts(draft: dict[str, Any], profile: dict[str, Any], constraints: dict[str, Any], selected_architecture: dict[str, Any]) -> dict[str, Any]:
     capability_refs = _capability_refs(profile)
     modules = selected_architecture.get("architecture", {}).get("modules", [])
@@ -418,7 +599,7 @@ def _contract_base(
         "visibility": visibility,
         "api_surface": "public" if exported else "module_internal",
         "exported": exported,
-        "export_reason": "Exported by module public_api_policy." if exported else "",
+        "export_reason": "Exported by module artifact plan." if exported else "",
         "public_api_role": public_api_role if exported else "",
         "grouping_hint": module_id,
         "purpose": purpose,
@@ -431,11 +612,59 @@ def _contract_base(
     }
 
 
+def _artifact_function_kind(name: str) -> tuple[str, str, str]:
+    if name == "main":
+        return "public_api", "ENTRYPOINT", "runtime_entrypoint"
+    if name.endswith(("_create", "_destroy", "_start", "_run", "_serve", "_stop")):
+        role = "runtime_run" if name.endswith(("_run", "_serve")) else f"runtime_{name.rsplit('_', 1)[-1]}"
+        return "resource_lifecycle", "ALGORITHM", role
+    if "decode" in name or "decoder" in name:
+        return "parser", "ALGORITHM", "decoder"
+    if "encode" in name or "encoder" in name:
+        return "serializer", "ALGORITHM", "encoder"
+    if any(word in name for word in ("route", "publish", "subscribe", "handle", "dispatch")):
+        return "handler", "ALGORITHM", "module_boundary_operation"
+    return "public_api", "ALGORITHM", "module_boundary_operation"
+
+
 def fallback_function_inventory(draft: dict[str, Any], module_contract: dict[str, Any]) -> dict[str, Any]:
     protocol = str(draft.get("protocol_name", "protocol"))
     module_id = str(module_contract.get("module_id", "module"))
     prefix = f"{_safe_id(protocol)}_{_safe_id(module_id)}"
     owned = [str(cap) for cap in module_contract.get("owned_capabilities", [])]
+    artifact_functions = [
+        item
+        for item in module_contract.get("artifacts", [])
+        if isinstance(item, dict) and str(item.get("kind", "")).upper() == "FUNC" and str(item.get("name", "")).strip()
+    ]
+    if artifact_functions:
+        functions = []
+        for artifact in artifact_functions:
+            name = str(artifact.get("name", "")).strip()
+            function_kind, coder_function_type, public_api_role = _artifact_function_kind(name)
+            action = _safe_id(name.removeprefix(f"{_safe_id(protocol)}_")) or _safe_id(name)
+            item = _contract_base(
+                draft=draft,
+                module_id=module_id,
+                action=action,
+                name=name,
+                function_kind=function_kind,
+                purpose=str(artifact.get("role", "")) or f"Implement artifact {name}.",
+                capability_ids=owned[:1],
+                exported=True,
+                public_api_role=public_api_role,
+            )
+            item["coder_function_type"] = coder_function_type
+            functions.append(item)
+        return {
+            "schema_version": "function_inventory_candidate/v2",
+            "candidate_id": f"candidate:function_inventory:{module_id}",
+            "producer": _producer("5.4a_function_inventory", "function_inventory_candidate_prompt"),
+            "module_id": module_id,
+            "functions": functions,
+            "assumptions": [],
+            "unresolved_questions": [],
+        }
     policy = module_contract.get("public_api_policy", {}) if isinstance(module_contract.get("public_api_policy"), dict) else {}
     public_roles = [str(role) for role in policy.get("expected_public_function_roles", []) if str(role).strip()]
     exported_caps = [str(cap) for cap in policy.get("exported_capability_ids", []) if str(cap).strip()] or owned

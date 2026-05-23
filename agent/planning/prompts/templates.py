@@ -52,13 +52,29 @@ STAGE_SEMANTIC_RULES = {
         "If public_api_policy.exposes_public_api is false, no_public_api_reason must explain why the module is internal-only.",
         "Do not generate files, functions, calls, access paths, imports, dependency graphs, or code.",
     ],
+    "module_artifacts_candidate/v1": [
+        "modules[].module_id values must come from selected modules, and every selected architecture module must have exactly one module artifact entry.",
+        "Every non-support module must declare at least one artifact. Artifacts are the module's concrete C-facing TYPE/FUNC seed inventory, not reasoning notes.",
+        "artifacts[] may contain only name, kind, and role. Do not output public_api_policy, capability ownership claims, state ownership claims, constraint bindings, or nested reasoning structures.",
+        "artifact kind must be TYPE or FUNC. artifact name must be a C-friendly symbol; prefer a protocol prefix such as mqtt_ and avoid bare names such as connect, read, write, close, send, publish, or subscribe.",
+        "For broker/server/client role-composition modules, include lifecycle or app boundary FUNC artifacts such as protocol-prefixed create/run/destroy functions or main.",
+        "For network/runtime modules, expose connection/server/callback TYPE artifacts and read/send/flush/close-style FUNC artifacts when applicable.",
+        "For codec modules, expose packet/container/buffer TYPE artifacts plus decoder and encoder FUNC artifacts when applicable.",
+        "For session, topic/resource, router, and app modules, expose the core module TYPE and the minimum cross-module FUNC artifacts needed by downstream implementation.",
+        "Do not concentrate all artifacts in the codec module; cover the implementation boundaries present in selected_modules.",
+        "FUNC artifacts seed the next function inventory stage. TYPE artifacts seed canonical type/header/data lowering.",
+        "If facts are insufficient, generate a reasonable minimum_v1 artifact and record the assumption; only blocking issues belong in unresolved_questions.",
+    ],
     "function_inventory_candidate/v2": [
         "Generate only a function inventory; do not include signatures, input/output contracts, state access, wire mappings, calls, file IDs, dependency graphs, or code.",
         "function_id values must be new and unique within this candidate; function names must be unique.",
         "module_id must be the current module or another module explicitly present in module_contracts.",
         "function_kind describes functional responsibility such as parser, serializer, handler, validator, lifecycle, resource, or helper. It is not the public/private visibility decision.",
         "api_surface, visibility, exported, export_reason, and public_api_role describe whether the function is externally visible beyond the module.",
-        "Public functions must be justified by module capabilities and public_api_policy; do not create public functions from protocol names, role names, examples, or filename guesses.",
+        "For every current_module_artifacts item with kind=FUNC, generate a function with the same name or add a blocking unresolved_questions item naming that artifact.",
+        "Do not generate functions for kind=TYPE artifacts; they are seeds for canonical type/header/data lowering.",
+        "Cross-module service intent may reference only provider_module_artifacts FUNC names; do not call provider private helpers that are not declared as artifacts.",
+        "Public functions must be justified by module artifacts or legacy public_api_policy; do not create public functions from protocol names, role names, examples, or filename guesses.",
         "If the current module exposes public function roles in public_api_policy, at least one function must have exported=true, api_surface=public, visibility=public, export_reason, and public_api_role unless the policy only expects public types.",
         "For a protocol key-flow module, generate distinct public lifecycle functions for runtime_create, runtime_start, runtime_run, and runtime_destroy using names ending in _create, _start, _run or _serve, and _destroy; do not reuse message handlers as lifecycle functions.",
         "If the module owns decode, encode, dispatch, state-machine, lifecycle, or error-policy responsibilities, represent them with the matching function_kind values or add unresolved_questions.",
@@ -541,14 +557,18 @@ def core_design_candidate_messages(context: dict[str, Any]) -> list[dict[str, st
 
 
 def module_contracts_candidate_messages(context: dict[str, Any]) -> list[dict[str, str]]:
+    return module_artifacts_candidate_messages(context)
+
+
+def module_artifacts_candidate_messages(context: dict[str, Any]) -> list[dict[str, str]]:
     return _stage_messages(
-        prompt_name="module_contracts_candidate_prompt",
-        task="Plan module contracts from the selected architecture and accepted core design.",
-        context_key="module_contract_context",
+        prompt_name="module_artifacts_candidate_prompt",
+        task="Plan concrete module artifacts from the selected architecture and accepted core design.",
+        context_key="module_artifacts_context",
         context=context,
-        expected_schema="module_contracts_candidate/v1",
-        forbidden_fields=["file layout", "file_id", "file path", "function_id", "function list", "calls_allowed", "imports_allowed", "dependency_graph", "access paths", "code"],
-        validator="validate_module_contracts_candidate",
+        expected_schema="module_artifacts_candidate/v1",
+        forbidden_fields=["public_api_policy", "capability_ownership_claims", "state_ownership_claims", "constraint_bindings", "function_id", "function list", "calls_allowed", "imports_allowed", "code"],
+        validator="validate_module_artifacts_candidate",
     )
 
 

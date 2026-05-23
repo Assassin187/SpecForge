@@ -211,6 +211,42 @@ MODULE_CONTRACT_SCHEMA = _object(
     }
 )
 
+MODULE_ARTIFACT_SCHEMA = _object(
+    {
+        "name": STRING,
+        "kind": _scalar("string", enum={"TYPE", "FUNC"}),
+        "role": STRING,
+    }
+)
+
+MODULE_ARTIFACT_ENTRY_SCHEMA = _object(
+    {
+        "module_id": STRING,
+        "name": STRING,
+        "role": STRING,
+        "dependencies": STRING_LIST,
+        "artifacts": _array(MODULE_ARTIFACT_SCHEMA),
+        "files": STRING_LIST,
+        "doc_ref": STRING_LIST,
+    }
+)
+
+MODULE_ARTIFACT_CONSISTENCY_RULE_SCHEMA = _object(
+    {
+        "id": STRING,
+        "rule": STRING,
+        "doc_ref": STRING_LIST,
+    }
+)
+
+MODULE_ARTIFACT_FORBIDDEN_SYMBOL_SCHEMA = _object(
+    {
+        "name": STRING,
+        "kind": _scalar("string", enum={"TYPE", "FUNC", "FIELD", "ENUM", "MACRO"}),
+        "reason": STRING,
+    }
+)
+
 CAPABILITY_OWNERSHIP_SCHEMA = _object(
     {
         "capability_id": STRING,
@@ -590,6 +626,19 @@ SCHEMA_SPECS: dict[str, SchemaSpec] = {
             "capability_ownership_claims": _array(CAPABILITY_OWNERSHIP_SCHEMA),
             "state_ownership_claims": _array(STATE_OWNERSHIP_SCHEMA),
             "constraint_bindings": _array(CONSTRAINT_BINDING_SCHEMA),
+            "assumptions": _array(ASSUMPTION_SCHEMA),
+            "unresolved_questions": _array(UNRESOLVED_QUESTION_SCHEMA),
+        }
+    ),
+    "module_artifacts_candidate/v1": _object(
+        {
+            "schema_version": _scalar("string", enum={"module_artifacts_candidate/v1"}),
+            "candidate_id": STRING,
+            "producer": PRODUCER_SCHEMA,
+            "modules": _array(MODULE_ARTIFACT_ENTRY_SCHEMA),
+            "generation_order": STRING_LIST,
+            "consistency_rules": _array(MODULE_ARTIFACT_CONSISTENCY_RULE_SCHEMA),
+            "forbidden_symbols": _array(MODULE_ARTIFACT_FORBIDDEN_SYMBOL_SCHEMA),
             "assumptions": _array(ASSUMPTION_SCHEMA),
             "unresolved_questions": _array(UNRESOLVED_QUESTION_SCHEMA),
         }

@@ -29,7 +29,10 @@ def build_spec_blueprint(implementation_plan: dict[str, Any]) -> dict[str, Any]:
                 "role": item.get("purpose", ""),
                 "public_api_policy": item.get("public_api_policy", {}),
                 "owned_capabilities": item.get("owned_capabilities", []),
-                "dependencies": [],
+                "dependencies": item.get("dependencies", []),
+                "artifacts": item.get("artifacts", []),
+                "files": item.get("files", []),
+                "doc_ref": item.get("doc_ref", []),
                 "traceability": {
                     "source_fact_ids": item.get("source_fact_ids", []),
                     "decision_ids": item.get("decision_ids", []),
@@ -73,5 +76,7 @@ def build_spec_blueprint(implementation_plan: dict[str, Any]) -> dict[str, Any]:
         "dependency_graph": implementation_plan.get("dependency_graph", {}),
         "resource_lifecycle": implementation_plan.get("resource_lifecycle", []),
         "error_strategy": implementation_plan.get("error_strategy", []),
-        "generation_order": [item.get("module_id") for item in modules if isinstance(item, dict)],
+        "generation_order": implementation_plan.get("module_generation_order") or [item.get("module_id") for item in modules if isinstance(item, dict)],
+        "module_consistency_rules": implementation_plan.get("module_consistency_rules", []),
+        "forbidden_symbols": implementation_plan.get("forbidden_symbols", []),
     }

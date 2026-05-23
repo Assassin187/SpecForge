@@ -158,7 +158,7 @@ def build_implementation_plan(
         fallback_function_behavior,
         fallback_function_inventory,
         fallback_function_signatures,
-        fallback_module_contracts,
+        fallback_module_artifacts,
         fallback_runtime_entrypoint,
         fallback_wire_access_binding,
         finalize_dependency_graph,
@@ -168,7 +168,7 @@ def build_implementation_plan(
         merge_function_behavior,
         merge_function_inventory,
         merge_function_signatures,
-        merge_module_contracts,
+        merge_module_artifacts,
         merge_runtime_entrypoint,
         merge_wire_access_binding,
         build_plan_skeleton,
@@ -176,7 +176,7 @@ def build_implementation_plan(
 
     draft = build_plan_skeleton(planning_ir, profile, constraints, selected_architecture)
     draft = merge_core_design(draft, fallback_core_design(draft, planning_ir, constraints, selected_architecture, profile))
-    draft = merge_module_contracts(draft, fallback_module_contracts(draft, profile, constraints, selected_architecture))
+    draft = merge_module_artifacts(draft, fallback_module_artifacts(draft, profile, constraints, selected_architecture))
     for module in list(draft.get("module_contracts", [])):
         draft = merge_function_inventory(draft, fallback_function_inventory(draft, module))
     for module in list(draft.get("module_contracts", [])):

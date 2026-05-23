@@ -19,9 +19,11 @@ from .coder_spec_lowering import (
     lower_event_or_logic_for_coder,
     lower_forbidden_symbols_for_coder,
     lower_module_artifacts_for_coder,
+    lower_planned_module_artifacts_for_coder,
     lower_protocol_meta_for_coder,
     lower_rely_for_coder,
     lower_signature_for_coder,
+    merge_coder_artifacts,
     normalize_type_key,
     normalize_data_visibility_for_coder,
     normalize_function_type_for_coder,
@@ -514,20 +516,23 @@ def compile_spec_bundle(spec_blueprint: dict[str, Any], output_dir: str | Path) 
         module_id = str(module.get("module_id", "module"))
         module_files = [item for item in files if item.get("module_id") == module_id]
         module_file_specs = [file_specs_by_file_id[str(item.get("file_id", ""))] for item in module_files if str(item.get("file_id", "")) in file_specs_by_file_id]
-        artifacts = lower_module_artifacts_for_coder(module_file_specs)
+        planned_artifacts = lower_planned_module_artifacts_for_coder(module.get("artifacts", []))
+        artifacts = merge_coder_artifacts(planned_artifacts, lower_module_artifacts_for_coder(module_file_specs))
         all_public_symbols.extend({"NAME": item["NAME"], "KIND": item["KIND"], "ROLE": item["ROLE"]} for item in artifacts)
+        planned_files = [str(path) for path in module.get("files", []) if str(path).strip()]
+        lowered_files = [
+            str(path)
+            for item in module_files
+            for path in (item.get("header_path", ""), item.get("source_path", ""))
+            if str(path).strip()
+        ]
         module_entries.append(
             {
                 "NAME": module_id,
                 "ROLE": str(module.get("role", "")) or "Planning module.",
-                "DEPENDENCIES": sorted(deps_by_module.get(module_id, set())),
+                "DEPENDENCIES": sorted(set(str(dep) for dep in module.get("dependencies", []) if str(dep).strip()) | deps_by_module.get(module_id, set())),
                 "ARTIFACTS": artifacts,
-                "FILES": [
-                    str(path)
-                    for item in module_files
-                    for path in (item.get("header_path", ""), item.get("source_path", ""))
-                    if str(path).strip()
-                ],
+                "FILES": planned_files or lowered_files,
                 "DOC_REF": lower_doc_ref(module),
             }
         )
@@ -541,8 +546,16 @@ def compile_spec_bundle(spec_blueprint: dict[str, Any], output_dir: str | Path) 
         "CONSISTENCY_RULES": [
             {"ID": "C1", "RULE": "file_function_trace_ids_must_match", "DOC_REF": []},
             {"ID": "C2", "RULE": "public_functions_declared_in_headers", "DOC_REF": []},
+            *[
+                {"ID": str(item.get("id", "")), "RULE": str(item.get("rule", "")), "DOC_REF": lower_doc_ref(item)}
+                for item in spec_blueprint.get("module_consistency_rules", [])
+                if isinstance(item, dict) and str(item.get("id", "")).strip() and str(item.get("rule", "")).strip()
+            ],
         ],
     }
+    forbidden = lower_forbidden_symbols_for_coder(spec_blueprint.get("forbidden_symbols", []))
+    if forbidden:
+        module_spec["FORBIDDEN_SYMBOLS"] = forbidden
     if all_public_symbols:
         seen: set[tuple[str, str]] = set()
         module_spec["PUBLIC_SYMBOLS"] = []

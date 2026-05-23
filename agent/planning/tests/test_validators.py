@@ -344,6 +344,7 @@ class PlanningValidatorTests(unittest.TestCase):
 
             self.assertTrue(result.success, [diag.__dict__ for diag in result.diagnostics])
             step_logs = result.output_dir / "_step_logs"
+            self.assertTrue((step_logs / STEP_FILENAMES["module_artifacts_candidate"]).exists())
             plan = json.loads((step_logs / STEP_FILENAMES["implementation_plan"]).read_text(encoding="utf-8"))
             module_count = len(plan["module_contracts"])
             inventory_files = sorted(step_logs.glob("007_5_4a_function_inventory_candidate__*.json"))

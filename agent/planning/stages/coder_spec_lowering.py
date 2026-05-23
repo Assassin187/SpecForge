@@ -434,6 +434,7 @@ def lower_doc_ref(item: dict[str, Any]) -> list[str]:
     traceability = item.get("traceability", {}) if isinstance(item.get("traceability"), dict) else {}
     values: list[Any] = []
     values.extend(item.get("trace_ref_keys", []) if isinstance(item.get("trace_ref_keys"), list) else [])
+    values.extend(item.get("doc_ref", []) if isinstance(item.get("doc_ref"), list) else [])
     values.extend(traceability.get("source_fact_ids", []) if isinstance(traceability.get("source_fact_ids"), list) else [])
     values.extend(item.get("source_fact_ids", []) if isinstance(item.get("source_fact_ids"), list) else [])
     return sorted({str(value) for value in values if str(value).strip()})
@@ -538,6 +539,41 @@ def lower_module_artifacts_for_coder(file_specs: list[dict[str, Any]]) -> list[d
                 continue
             add(str(item.get("NAME", "")), str(item.get("KIND", "")), str(item.get("ROLE", "")))
     return artifacts
+
+
+def lower_planned_module_artifacts_for_coder(artifacts: list[dict[str, Any]]) -> list[dict[str, str]]:
+    result: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for artifact in artifacts:
+        if not isinstance(artifact, dict):
+            continue
+        name = str(artifact.get("name") or artifact.get("NAME") or "").strip()
+        kind = str(artifact.get("kind") or artifact.get("KIND") or "").upper()
+        role = str(artifact.get("role") or artifact.get("ROLE") or "").strip()
+        if kind not in ARTIFACT_KINDS or not is_artifact_name_for_coder(name):
+            continue
+        key = (name, kind)
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append({"NAME": name, "KIND": kind, "ROLE": role or "Planned module artifact."})
+    return result
+
+
+def merge_coder_artifacts(*artifact_lists: list[dict[str, str]]) -> list[dict[str, str]]:
+    result: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for artifacts in artifact_lists:
+        for artifact in artifacts:
+            if not isinstance(artifact, dict):
+                continue
+            name = str(artifact.get("NAME", "")).strip()
+            kind = str(artifact.get("KIND", "")).upper()
+            if not name or not kind or (name, kind) in seen:
+                continue
+            seen.add((name, kind))
+            result.append({"NAME": name, "KIND": kind, "ROLE": str(artifact.get("ROLE", "")) or "Module artifact."})
+    return result
 
 
 def sidecar_payload(spec_blueprint: dict[str, Any], unresolved_lowering: list[dict[str, Any]]) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:

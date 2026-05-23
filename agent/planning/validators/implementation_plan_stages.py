@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from ..diagnostics import PlanningDiagnostic, has_errors
@@ -11,6 +12,7 @@ from ..schemas.implementation_plan import (
     FUNCTION_BEHAVIOR_CONTRACT_PATCH_SCHEMA_VERSION,
     FUNCTION_INVENTORY_CANDIDATE_SCHEMA_VERSION,
     FUNCTION_SIGNATURE_PATCH_SCHEMA_VERSION,
+    MODULE_ARTIFACTS_CANDIDATE_SCHEMA_VERSION,
     MODULE_CONTRACTS_CANDIDATE_SCHEMA_VERSION,
     RUNTIME_ENTRYPOINT_CANDIDATE_SCHEMA_VERSION,
     SCHEMA_VERSION,
@@ -26,6 +28,8 @@ from .implementation_plan import validate_implementation_plan
 
 ALLOWED_FUNCTION_KINDS = {"public_api", "handler", "parser", "serializer", "validator", "state_machine", "resource_lifecycle", "error_helper", "internal_helper"}
 LIFECYCLE_ROLES = {"runtime_create", "runtime_start", "runtime_run", "runtime_destroy"}
+BARE_C_SYMBOL_DENYLIST = {"connect", "read", "write", "close", "send", "publish", "subscribe"}
+C_SYMBOL_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 def _capability_values(module: dict[str, Any]) -> set[str]:
@@ -118,6 +122,59 @@ def _support_module_ids(selected_architecture: dict[str, Any]) -> set[str]:
         for item in selected_architecture.get("architecture", {}).get("modules", [])
         if isinstance(item, dict) and item.get("support_module")
     }
+
+
+def _selected_arch_modules_by_id(selected_architecture: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    return {
+        str(item.get("module_id", "")).strip(): item
+        for item in selected_architecture.get("architecture", {}).get("modules", [])
+        if isinstance(item, dict) and str(item.get("module_id", "")).strip()
+    }
+
+
+def _module_text(module: dict[str, Any]) -> str:
+    return " ".join(
+        [
+            str(module.get("module_id", "")),
+            str(module.get("name", "")),
+            str(module.get("role", "")),
+            str(module.get("purpose", "")),
+            " ".join(str(item) for item in module.get("responsibilities", [])),
+            " ".join(str(item) for item in module.get("owned_capabilities", [])),
+            " ".join(str(item) for item in module.get("owned_capability_ids", [])),
+        ]
+    ).lower()
+
+
+def _has_cycle_edges(edges: list[tuple[str, str]]) -> bool:
+    graph: dict[str, list[str]] = {}
+    for source, target in edges:
+        if source and target:
+            graph.setdefault(source, []).append(target)
+    visiting: set[str] = set()
+    visited: set[str] = set()
+
+    def visit(node: str) -> bool:
+        if node in visiting:
+            return True
+        if node in visited:
+            return False
+        visiting.add(node)
+        for target in graph.get(node, []):
+            if visit(target):
+                return True
+        visiting.remove(node)
+        visited.add(node)
+        return False
+
+    return any(visit(node) for node in graph)
+
+
+def _target_role(profile: dict[str, Any]) -> str:
+    value = profile.get("target_role", "")
+    if isinstance(value, dict):
+        value = value.get("value", "")
+    return str(value).lower()
 
 
 def _state_ids(draft: dict[str, Any]) -> set[str]:
@@ -261,6 +318,117 @@ def validate_core_design_candidate(candidate: dict[str, Any], planning_ir: dict[
     unresolved = _unresolved_targets(candidate)
     for surface in sorted(_target_surface_ids(planning_ir, profile) - covered_surfaces - unresolved):
         diagnostics.append(PlanningDiagnostic("error", "uncovered_target_surface", f"target-scope surface '{surface}' is not in handler_matrix or unresolved_questions", path))
+    return diagnostics
+
+
+def validate_module_artifacts_candidate(candidate: dict[str, Any], selected_architecture: dict[str, Any], profile: dict[str, Any], constraints: dict[str, Any], core_design: dict[str, Any], *, path: str | None = None) -> list[PlanningDiagnostic]:
+    diagnostics = _shape(candidate, MODULE_ARTIFACTS_CANDIDATE_SCHEMA_VERSION, path=path)
+    if has_errors(diagnostics):
+        return diagnostics
+
+    arch_by_id = _selected_arch_modules_by_id(selected_architecture)
+    arch_module_ids = set(arch_by_id)
+    support_modules = _support_module_ids(selected_architecture)
+    modules = [item for item in candidate.get("modules", []) if isinstance(item, dict)]
+    if not modules:
+        diagnostics.append(PlanningDiagnostic("error", "empty_module_artifacts", "module artifacts candidate must include modules", path))
+        return diagnostics
+
+    seen_modules: set[str] = set()
+    module_ids: set[str] = set()
+    for module in modules:
+        module_id = str(module.get("module_id", "")).strip()
+        if module_id in seen_modules:
+            diagnostics.append(PlanningDiagnostic("error", "duplicate_module_artifact_module", f"module_id '{module_id}' appears more than once", path))
+        seen_modules.add(module_id)
+        module_ids.add(module_id)
+        if module_id not in arch_module_ids:
+            diagnostics.append(PlanningDiagnostic("error", "unknown_module_artifacts_module", f"module_id '{module_id}' is not selected", path))
+        artifacts = [item for item in module.get("artifacts", []) if isinstance(item, dict)]
+        if module_id not in support_modules and not artifacts:
+            diagnostics.append(PlanningDiagnostic("error", "module_artifacts_empty_non_support_module", f"module '{module_id}' declares no artifacts", path))
+        seen_artifacts: set[str] = set()
+        kinds = {str(item.get("kind", "")).upper() for item in artifacts}
+        names = [str(item.get("name", "")).strip() for item in artifacts]
+        name_text = " ".join(names).lower()
+        for artifact in artifacts:
+            name = str(artifact.get("name", "")).strip()
+            kind = str(artifact.get("kind", "")).upper()
+            role = str(artifact.get("role", "")).strip()
+            if name in seen_artifacts:
+                diagnostics.append(PlanningDiagnostic("error", "duplicate_module_artifact_name", f"module '{module_id}' repeats artifact '{name}'", path))
+            seen_artifacts.add(name)
+            if kind not in {"TYPE", "FUNC"}:
+                diagnostics.append(PlanningDiagnostic("error", "invalid_module_artifact_kind", f"artifact '{name}' in module '{module_id}' uses invalid kind '{kind}'", path))
+            if not role:
+                diagnostics.append(PlanningDiagnostic("error", "empty_module_artifact_role", f"artifact '{name}' in module '{module_id}' has empty role", path))
+            if not C_SYMBOL_RE.match(name):
+                diagnostics.append(PlanningDiagnostic("error", "invalid_module_artifact_c_symbol", f"artifact '{name}' in module '{module_id}' is not a C-friendly symbol", path))
+            if name in BARE_C_SYMBOL_DENYLIST:
+                diagnostics.append(PlanningDiagnostic("error", "forbidden_bare_module_artifact_name", f"artifact '{name}' in module '{module_id}' must use a protocol/module prefix", path))
+        text = _module_text(module) + " " + _module_text(arch_by_id.get(module_id, {}))
+        if "semantic" not in text and any(word in text for word in ("codec", "framing", "parser", "encoder", "decoder")):
+            if "FUNC" not in kinds or "decode" not in name_text or "encod" not in name_text:
+                diagnostics.append(PlanningDiagnostic("error", "codec_module_missing_decoder_encoder_artifacts", f"codec module '{module_id}' must include decoder and encoder FUNC artifacts", path))
+        if any(word in text for word in ("network", "transport", "tcp")):
+            has_network_type = any(word in name_text for word in ("connection", "server", "callback", "_cb", "_fn"))
+            has_network_func = any(word in name_text for word in ("read", "send", "flush", "close"))
+            if not (has_network_type or has_network_func):
+                diagnostics.append(PlanningDiagnostic("error", "network_module_missing_boundary_artifacts", f"network module '{module_id}' must expose connection/server/callback or read/send/close artifacts", path))
+        for domain in ("session", "router", "topic", "resource"):
+            if domain in text and "TYPE" not in kinds:
+                diagnostics.append(PlanningDiagnostic("error", f"{domain}_module_missing_type_artifact", f"{domain} module '{module_id}' must include a TYPE artifact", path))
+            if domain in text and "FUNC" not in kinds:
+                diagnostics.append(PlanningDiagnostic("error", f"{domain}_module_missing_core_func_artifact", f"{domain} module '{module_id}' must include a core FUNC artifact", path))
+
+    for missing in sorted(arch_module_ids - module_ids):
+        diagnostics.append(PlanningDiagnostic("error", "missing_architecture_module_artifacts", f"selected module '{missing}' is missing from module artifacts", path))
+    for added in sorted(module_ids - arch_module_ids):
+        diagnostics.append(PlanningDiagnostic("error", "added_module_artifacts_module", f"module artifacts added unknown module '{added}'", path))
+
+    dependency_edges: list[tuple[str, str]] = []
+    for module in modules:
+        module_id = str(module.get("module_id", "")).strip()
+        for dep in module.get("dependencies", []):
+            dep_id = str(dep).strip()
+            if dep_id not in module_ids:
+                diagnostics.append(PlanningDiagnostic("error", "unknown_module_artifact_dependency", f"module '{module_id}' depends on unknown module '{dep_id}'", path))
+            if dep_id == module_id:
+                diagnostics.append(PlanningDiagnostic("error", "self_module_artifact_dependency", f"module '{module_id}' depends on itself", path))
+            dependency_edges.append((dep_id, module_id))
+    if _has_cycle_edges(dependency_edges):
+        diagnostics.append(PlanningDiagnostic("error", "module_artifacts_dependency_cycle", "module artifact dependencies contain a cycle", path))
+
+    generation_order = [str(item).strip() for item in candidate.get("generation_order", []) if str(item).strip()]
+    if set(generation_order) != module_ids or len(generation_order) != len(module_ids):
+        diagnostics.append(PlanningDiagnostic("error", "module_artifacts_generation_order_mismatch", "generation_order must contain every module_id exactly once", path))
+    order_index = {module_id: index for index, module_id in enumerate(generation_order)}
+    for dep_id, module_id in dependency_edges:
+        if dep_id in order_index and module_id in order_index and order_index[dep_id] > order_index[module_id]:
+            diagnostics.append(PlanningDiagnostic("error", "module_artifacts_generation_order_not_topological", f"generation_order places dependency '{dep_id}' after '{module_id}'", path))
+
+    role_composition_modules = [
+        module_id
+        for module_id, module in arch_by_id.items()
+        if "role_composition" in [str(cap) for cap in module.get("owned_capabilities", [])]
+    ]
+    if _target_role(profile) == "broker" and role_composition_modules:
+        role_modules = [
+            module
+            for module in modules
+            if any(word in _module_text(module) for word in ("broker", "server", "client", "app", "role_composition"))
+        ]
+        if not role_modules:
+            diagnostics.append(PlanningDiagnostic("error", "broker_role_module_missing", "broker target with role_composition must include a broker/server/client/app module", path))
+        elif not any(
+            artifact.get("kind") == "FUNC"
+            and (str(artifact.get("name", "")) == "main" or str(artifact.get("name", "")).endswith(("_create", "_start", "_run", "_serve", "_destroy")))
+            for module in role_modules
+            for artifact in module.get("artifacts", [])
+            if isinstance(artifact, dict)
+        ):
+            diagnostics.append(PlanningDiagnostic("error", "broker_role_module_missing_lifecycle_artifact", "broker role module must include lifecycle FUNC artifact or main", path))
+
     return diagnostics
 
 
@@ -418,10 +586,27 @@ def validate_function_inventory_candidate(candidate: dict[str, Any], module_cont
         diagnostics.append(PlanningDiagnostic("error", "missing_handler_function", "handler_matrix requires handler functions", path))
     candidate_module_ids = module_ids if candidate.get("module_id") == "all_modules" else {str(candidate.get("module_id", ""))}
     for module_id in sorted(candidate_module_ids & module_ids):
+        expected_artifact_funcs = {
+            str(artifact.get("name", "")).strip()
+            for artifact in modules_by_id.get(module_id, {}).get("artifacts", [])
+            if isinstance(artifact, dict) and str(artifact.get("kind", "")).upper() == "FUNC" and str(artifact.get("name", "")).strip()
+        }
+        inventory_names = {
+            str(function.get("name", "")).strip()
+            for function in candidate.get("functions", [])
+            if isinstance(function, dict) and str(function.get("module_id", "")) == module_id
+        }
+        blocking_unresolved = {
+            str(item.get("target_id", "")).strip()
+            for item in candidate.get("unresolved_questions", [])
+            if isinstance(item, dict) and bool(item.get("blocking"))
+        }
+        for missing_artifact in sorted(expected_artifact_funcs - inventory_names - blocking_unresolved):
+            diagnostics.append(PlanningDiagnostic("error", "function_inventory_missing_artifact_function", f"module '{module_id}' FUNC artifact '{missing_artifact}' is missing from function inventory", path))
         policy = _public_policy(modules_by_id.get(module_id, {}))
         if bool(policy.get("exposes_public_api")) and policy.get("expected_public_function_roles") and not public_by_module.get(module_id):
             diagnostics.append(PlanningDiagnostic("error", "module_public_api_without_public_function", f"module '{module_id}' exposes public function roles but inventory has no public/exported function", path))
-        if _is_key_flow_module(modules_by_id.get(module_id, {})):
+        if _is_key_flow_module(modules_by_id.get(module_id, {})) and not modules_by_id.get(module_id, {}).get("artifacts"):
             missing = sorted({"create", "start", "run", "destroy"} - set(lifecycle_by_module.get(module_id, {})))
             if missing:
                 diagnostics.append(PlanningDiagnostic("error", "key_flow_missing_lifecycle_functions", f"key flow module '{module_id}' inventory lacks lifecycle functions: {', '.join(missing)}", path))
@@ -935,6 +1120,7 @@ def _has_cycle(edges: list[tuple[str, str]]) -> bool:
 
 validate_core_design = validate_core_design_candidate
 validate_module_contracts = validate_module_contracts_candidate
+validate_module_artifacts = validate_module_artifacts_candidate
 validate_function_inventory = validate_function_inventory_candidate
 validate_function_signatures = validate_function_signature_patch
 validate_function_behavior_contracts = validate_function_behavior_contract_patch

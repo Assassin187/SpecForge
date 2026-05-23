@@ -61,6 +61,18 @@ python3 -m agent.planning plan \
 
 启用续跑时，Planning Agent 会在当前 facts/target 对应的默认输出根中寻找最近一次 run，校验指定阶段之前所需的中间产物、输入文件 hash 和 compatibility versions，然后把继承产物写入新的 run 目录。指定阶段本身会重新执行；`implementation_plan_5_x` 会继承并 merge 之前的 Step 5 子阶段 artifact，然后从指定子阶段继续。
 
+也可以显式指定继承来源目录：
+
+```bash
+python3 -m agent.planning plan \
+  --facts <protocol_facts.json> \
+  --target-profile <target_profile.json> \
+  --resume-from-stage 5.4d \
+  --resume-source-dir /home/ljf/SpecForge/agent/planning/out/mqtt/broker__c__linux_epoll__minimum_v1/20260522_112210_186032
+```
+
+`--resume-source-dir` 必须和 `--resume-from-stage` 一起使用，目录必须包含 `_step_logs/`，并且 `_step_logs/` 中必须有指定续跑阶段之前所需的 artifact。该目录仍会经过输入 hash、compatibility versions 和 artifact validation 校验。
+
 `plan` 也支持在指定阶段完成后正常停止：
 
 ```bash
@@ -630,6 +642,8 @@ python3 -m agent planning plan \
 ```
 
 `--resume-from-stage` 会自动从当前 facts/target 对应的默认输出根中选择最近一次 run 作为继承来源；`--output-dir` 只表示本次新 run 的写入位置，不表示 source run。
+
+如果不想使用自动选择的最近一次 run，可以用 `--resume-source-dir <previous_run_dir>` 明确指定继承来源；该目录必须包含 `_step_logs/`，并通过当前 facts/target 的 hash 和 compatibility 校验。
 
 运行需要环境变量 `ALI_API`。Protocol Profile 和 Architecture 属于 mandatory LLM 阶段，无法获得合法输出会失败退出；Implementation Plan Synthesis 属于 staged hybrid 阶段，子步骤 LLM 输出不合法时使用 deterministic fallback 继续推进。
 

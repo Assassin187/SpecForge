@@ -262,6 +262,10 @@ def validate_coder_semantics(bundle: Any) -> list[PlanningDiagnostic]:
         decision = item.get("decision", {})
         policy = decision.get("public_api_policy", {}) if isinstance(decision.get("public_api_policy"), dict) else {}
         exposes = bool(policy.get("exposes_public_api"))
+        declared_artifacts = [artifact for artifact in module_artifacts_by_name.get(module_id, []) if isinstance(artifact, dict)]
+        if not policy and declared_artifacts:
+            modules_exposing_public_api += 1
+            continue
         if exposes:
             modules_exposing_public_api += 1
             expected_function_roles = [str(role) for role in policy.get("expected_public_function_roles", []) if str(role).strip()]
