@@ -44,7 +44,7 @@ STAGE_SEMANTIC_RULES = {
         "modules[].module_id values must come from selected modules, and every selected architecture module must have exactly one module artifact entry.",
         "Every non-support module must declare at least one artifact. Artifacts are the module's concrete C-facing TYPE/FUNC seed inventory, not reasoning notes.",
         "artifacts[] may contain only name, kind, and role. Do not output public_api_policy, capability ownership claims, state ownership claims, constraint bindings, or nested reasoning structures.",
-        "artifact kind must be TYPE or FUNC. artifact name must be a C-friendly symbol; prefer a protocol prefix such as mqtt_ and avoid bare names such as connect, read, write, close, send, publish, or subscribe.",
+        "artifact kind must be TYPE or FUNC. artifact name must be a C-friendly symbol (such as mqtt_connect_t, ftp_connect_t, etc.); prefer a protocol prefix (such as mqtt_**, ftp_**, etc.) and avoid bare names such as connect, read, write, close, send, publish, or subscribe.",
         "For broker/server/client role-composition modules, include lifecycle or app boundary FUNC artifacts such as protocol-prefixed create/run/destroy functions or main.",
         "For network/runtime modules, expose connection/server/callback TYPE artifacts and read/send/flush/close-style FUNC artifacts when applicable.",
         "For codec modules, expose packet/container/buffer TYPE artifacts plus decoder and encoder FUNC artifacts when applicable.",
