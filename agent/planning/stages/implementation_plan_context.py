@@ -127,7 +127,7 @@ def _field_summaries(planning_ir: dict[str, Any]) -> list[dict[str, Any]]:
 def _legal_ids_from_draft(draft: dict[str, Any]) -> dict[str, Any]:
     files = draft.get("file_layout", {}).get("files", [])
     return {
-        "module_ids": [str(item.get("module_id", "")) for item in draft.get("module_contracts", []) if isinstance(item, dict)],
+        "module_ids": [str(item.get("module_id", "")) for item in draft.get("module_artifacts", []) if isinstance(item, dict)],
         "capability_ids": list(draft.get("traceability", {}).get("required_capabilities", [])),
         "constraint_ids": list(draft.get("traceability", {}).get("constraint_ids", [])),
         "state_ids": [str(item.get("state_id", "")) for item in draft.get("state_design", []) if isinstance(item, dict)],
@@ -160,7 +160,7 @@ def _compressed_trace_refs(profile: dict[str, Any]) -> dict[str, Any]:
 
 def _accepted_summary(draft: dict[str, Any]) -> dict[str, Any]:
     return {
-        "module_contracts": draft.get("module_contracts", []),
+        "module_artifacts": draft.get("module_artifacts", []),
         "canonical_types": draft.get("canonical_types", []),
         "state_design": draft.get("state_design", []),
         "handler_matrix": draft.get("handler_matrix", []),
@@ -276,7 +276,7 @@ def build_core_design_context(
     }
 
 
-def build_module_contract_context(draft: dict[str, Any], profile: dict[str, Any], constraints: dict[str, Any], selected_architecture: dict[str, Any]) -> dict[str, Any]:
+def build_module_artifact_context(draft: dict[str, Any], profile: dict[str, Any], constraints: dict[str, Any], selected_architecture: dict[str, Any]) -> dict[str, Any]:
     return {
         "schema_version": "module_artifacts_context/v1",
         "protocol": {
@@ -298,10 +298,10 @@ def build_module_contract_context(draft: dict[str, Any], profile: dict[str, Any]
     }
 
 
-def build_function_inventory_context(draft: dict[str, Any], module_contract: dict[str, Any]) -> dict[str, Any]:
-    module_id = str(module_contract.get("module_id", ""))
-    modules = [item for item in draft.get("module_contracts", []) if isinstance(item, dict)]
-    providers = {str(dep) for dep in module_contract.get("dependencies", []) if str(dep).strip()}
+def build_function_inventory_context(draft: dict[str, Any], module_artifact: dict[str, Any]) -> dict[str, Any]:
+    module_id = str(module_artifact.get("module_id", ""))
+    modules = [item for item in draft.get("module_artifacts", []) if isinstance(item, dict)]
+    providers = {str(dep) for dep in module_artifact.get("dependencies", []) if str(dep).strip()}
     provider_modules = [item for item in modules if str(item.get("module_id", "")) in providers]
     consumers = [
         item
@@ -310,9 +310,9 @@ def build_function_inventory_context(draft: dict[str, Any], module_contract: dic
     ]
     return {
         "schema_version": "function_inventory_context/v1",
-        "module_contract": module_contract,
-        "current_module_artifacts": module_contract.get("artifacts", []),
-        "current_module_dependencies": module_contract.get("dependencies", []),
+        "module_artifact": module_artifact,
+        "current_module_artifacts": module_artifact.get("artifacts", []),
+        "current_module_dependencies": module_artifact.get("dependencies", []),
         "provider_module_artifacts": [
             {
                 "module_id": item.get("module_id"),
@@ -340,7 +340,7 @@ def build_function_signature_context(draft: dict[str, Any], module_id: str, func
         "batch": {"index": batch_index, "size": batch_size},
         "functions": functions,
         "required_update_skeleton": _signature_update_skeleton(functions),
-        "module_contracts": draft.get("module_contracts", []),
+        "module_artifacts": draft.get("module_artifacts", []),
         "core_design_summary": _accepted_summary(draft),
         "legal_id_universe": _legal_ids_from_draft(draft),
     }
@@ -358,7 +358,7 @@ def build_function_behavior_context(draft: dict[str, Any], module_id: str, funct
             "cross_module_only": True,
             "provider_own_responsibility": "do_not_emit_service_requirement",
         },
-        "module_contracts": draft.get("module_contracts", []),
+        "module_artifacts": draft.get("module_artifacts", []),
         "core_design_summary": _accepted_summary(draft),
         "engineering_constraints": _constraints(constraints),
         "legal_id_universe": _legal_ids_from_draft(draft) | {"constraint_ids": [item["constraint_id"] for item in _constraints(constraints)]},
@@ -408,7 +408,7 @@ def build_calls_allowed_context(
         ],
         "callable_functions": _callable_functions(draft, current_module) if current_module else [],
         "required_call_update_caller_ids": sorted(scoped_ids),
-        "module_contracts": draft.get("module_contracts", []),
+        "module_artifacts": draft.get("module_artifacts", []),
         "architecture_policy": {"selected_modules": _selected_modules(selected_architecture), "forbidden_cycles": True},
         "legal_id_universe": _legal_ids_from_draft(draft),
     }
@@ -417,7 +417,7 @@ def build_calls_allowed_context(
 def build_file_layout_context(draft: dict[str, Any], planning_ir: dict[str, Any], constraints: dict[str, Any]) -> dict[str, Any]:
     return {
         "schema_version": "file_layout_context/v1",
-        "module_contracts": draft.get("module_contracts", []),
+        "module_artifacts": draft.get("module_artifacts", []),
         "function_summary": _accepted_summary(draft)["function_contracts"],
         "target_language": str(_target_directives(planning_ir).get("language", "C")),
         "layout_policy": "source_header_pair",
@@ -427,7 +427,7 @@ def build_file_layout_context(draft: dict[str, Any], planning_ir: dict[str, Any]
 
 
 def _key_flow_module_candidates(draft: dict[str, Any]) -> list[dict[str, Any]]:
-    modules = [item for item in draft.get("module_contracts", []) if isinstance(item, dict)]
+    modules = [item for item in draft.get("module_artifacts", []) if isinstance(item, dict)]
     functions = [item for item in draft.get("function_contracts", []) if isinstance(item, dict)]
     scored: list[tuple[int, dict[str, Any]]] = []
     for index, module in enumerate(modules):
@@ -494,7 +494,7 @@ def build_runtime_entrypoint_context(draft: dict[str, Any], planning_ir: dict[st
         "schema_version": "runtime_entrypoint_context/v1",
         "protocol": _protocol_summary(planning_ir, {}),
         "selected_modules": _selected_modules(selected_architecture),
-        "module_contracts": draft.get("module_contracts", []),
+        "module_artifacts": draft.get("module_artifacts", []),
         "key_flow_module_candidates": _key_flow_module_candidates(draft),
         "existing_lifecycle_candidates": lifecycle_candidates,
         "file_layout": draft.get("file_layout", {}),

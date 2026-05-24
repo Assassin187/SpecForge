@@ -6,7 +6,7 @@ from ..schemas.spec_blueprint import SCHEMA_VERSION
 
 
 def build_spec_blueprint(implementation_plan: dict[str, Any]) -> dict[str, Any]:
-    modules = implementation_plan.get("module_contracts", [])
+    modules = implementation_plan.get("module_artifacts", [])
     files = implementation_plan.get("file_layout", {}).get("files", [])
     functions = implementation_plan.get("function_contracts", [])
     target_role = implementation_plan.get("target_directives_ref", {}).get("directives", {}).get("target_role", "target")
@@ -27,7 +27,6 @@ def build_spec_blueprint(implementation_plan: dict[str, Any]) -> dict[str, Any]:
                 "module_id": item.get("module_id"),
                 "name": item.get("name", item.get("module_id")),
                 "role": item.get("purpose", ""),
-                "public_api_policy": item.get("public_api_policy", {}),
                 "owned_capabilities": item.get("owned_capabilities", []),
                 "dependencies": item.get("dependencies", []),
                 "artifacts": item.get("artifacts", []),

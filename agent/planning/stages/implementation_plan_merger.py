@@ -54,14 +54,6 @@ def _error_behavior_text(value: Any) -> str:
 LIFECYCLE_ROLES = ("runtime_create", "runtime_start", "runtime_run", "runtime_destroy")
 
 
-def _is_key_flow_capability_set(capabilities: list[str]) -> bool:
-    caps = {str(cap) for cap in capabilities if str(cap).strip()}
-    return "role_composition" in caps or (
-        {"semantic_dispatch", "state_machine"}.issubset(caps)
-        and bool(caps & {"connection_termination", "timeout_handling", "protocol_error_policy"})
-    )
-
-
 def _lifecycle_name_matches(action: str, name: str) -> bool:
     if action == "run":
         return name.endswith("_run") or name.endswith("_serve")
@@ -146,7 +138,7 @@ def build_plan_skeleton(
             "dependency_derivation_only": True,
             "blueprint_no_new_engineering_semantics": True,
         },
-        "module_contracts": [],
+        "module_artifacts": [],
         "canonical_types": [],
         "state_design": [],
         "handler_matrix": [],
@@ -429,13 +421,13 @@ def fallback_module_artifacts(draft: dict[str, Any], profile: dict[str, Any], co
 def merge_module_artifacts(draft: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any]:
     result = deepcopy(draft)
     arch_index = result.get("deterministic_indexes", {}).get("module_index", {})
-    result["module_contracts"] = []
+    result["module_artifacts"] = []
     for item in candidate.get("modules", []):
         if not isinstance(item, dict):
             continue
         module_id = str(item.get("module_id", ""))
         arch_module = arch_index.get(module_id, {}) if isinstance(arch_index, dict) else {}
-        result["module_contracts"].append(
+        result["module_artifacts"].append(
             {
                 "module_id": module_id,
                 "name": item.get("name", module_id),
@@ -460,120 +452,6 @@ def merge_module_artifacts(draft: dict[str, Any], candidate: dict[str, Any]) -> 
     result["forbidden_symbols"] = deepcopy(candidate.get("forbidden_symbols", []))
     result.setdefault("unresolved_questions", []).extend(candidate.get("unresolved_questions", []))
     result.setdefault("accepted_stage_artifacts", []).append("5.3_module_artifacts")
-    return result
-
-
-def fallback_module_contracts(draft: dict[str, Any], profile: dict[str, Any], constraints: dict[str, Any], selected_architecture: dict[str, Any]) -> dict[str, Any]:
-    capability_refs = _capability_refs(profile)
-    modules = selected_architecture.get("architecture", {}).get("modules", [])
-    contracts = []
-    for module in modules:
-        if not isinstance(module, dict):
-            continue
-        module_id = _safe_id(str(module.get("module_id", module.get("name", "module"))))
-        owned = [str(cap) for cap in module.get("owned_capabilities", []) if str(cap).strip()]
-        source_fact_ids = sorted(
-            {
-                str(ref)
-                for cap in owned
-                for ref in capability_refs.get(cap, {}).get("source_fact_ids", [])
-                if str(ref).strip()
-            }
-        )
-        contracts.append(
-            {
-                "module_id": module_id,
-                "purpose": "; ".join(str(item) for item in module.get("responsibilities", []) if str(item).strip()) or f"Own {module_id} responsibilities.",
-                "owned_capability_ids": owned,
-                "consumed_capability_ids": [str(cap) for cap in module.get("consumed_capabilities", [])],
-                "public_api_policy": {
-                    "exposes_public_api": True,
-                    "api_surface_kind": "public_module_api",
-                    "api_style": "opaque_handle",
-                    "exported_capability_ids": owned,
-                    "expected_public_function_roles": list(LIFECYCLE_ROLES) if _is_key_flow_capability_set(owned) else ["module_boundary_operation"],
-                    "expected_public_type_roles": [],
-                    "no_public_api_reason": "",
-                    "trace_ref_keys": source_fact_ids,
-                    "visibility_rules": ["Expose public functions in generated headers.", "Keep module-owned state opaque."],
-                    "notes": "Deterministic fallback public API policy.",
-                },
-                "owned_state_ids": [
-                    f"state:{_safe_id(str(item))}"
-                    for item in module.get("state_owned", [])
-                    if str(item).strip()
-                ],
-                "read_state_ids": [],
-                "mutated_state_ids": [
-                    f"state:{_safe_id(str(item))}"
-                    for item in module.get("state_owned", [])
-                    if str(item).strip()
-                ],
-                "error_responsibility_ids": ["error:protocol_error"],
-                "constraint_ids": _constraint_ids(constraints),
-                "dependency_policy": "No module dependency graph is emitted by this candidate.",
-                "trace_ref_keys": source_fact_ids,
-                "status": "inferred",
-            }
-        )
-    return {
-        "schema_version": "module_contracts_candidate/v1",
-        "candidate_id": "candidate:module_contracts:deterministic",
-        "producer": _producer("5.3_module_contracts", "module_contracts_candidate_prompt"),
-        "module_contracts": contracts,
-        "capability_ownership_claims": [
-            {
-                "capability_id": cap,
-                "primary_owner_module_id": contract["module_id"],
-                "shared_owner_module_ids": [],
-                "ownership_kind": "primary",
-                "reason": "Derived from selected architecture owned_capabilities.",
-            }
-            for contract in contracts
-            for cap in contract["owned_capability_ids"]
-        ],
-        "state_ownership_claims": [
-            {
-                "state_id": state_id,
-                "owner_module_id": contract["module_id"],
-                "read_by_module_ids": [contract["module_id"]],
-                "mutated_by_module_ids": [contract["module_id"]],
-                "reason": "Derived from selected architecture state ownership.",
-            }
-            for contract in contracts
-            for state_id in contract["owned_state_ids"]
-        ],
-        "constraint_bindings": [
-            {"constraint_id": constraint_id, "module_ids": [contract["module_id"] for contract in contracts], "binding_reason": "Fallback applies global engineering constraints to every module."}
-            for constraint_id in _constraint_ids(constraints)
-        ],
-        "assumptions": [],
-        "unresolved_questions": [],
-    }
-
-
-def merge_module_contracts(draft: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any]:
-    result = deepcopy(draft)
-    result["module_contracts"] = [
-        {
-            "module_id": item["module_id"],
-            "name": item["module_id"],
-            "purpose": item["purpose"],
-            "owned_capabilities": item["owned_capability_ids"],
-            "consumed_capabilities": item["consumed_capability_ids"],
-            "support_module": False,
-            "public_api_policy": deepcopy(item["public_api_policy"]),
-            "state_owned": item["owned_state_ids"],
-            "errors_raised": item["error_responsibility_ids"],
-            "constraints": item["constraint_ids"],
-            "source_fact_ids": item["trace_ref_keys"],
-            "decision_ids": [f"decision:module:{item['module_id']}"],
-        }
-        for item in candidate.get("module_contracts", [])
-        if isinstance(item, dict)
-    ]
-    result.setdefault("unresolved_questions", []).extend(candidate.get("unresolved_questions", []))
-    result.setdefault("accepted_stage_artifacts", []).append("5.3_module_contracts")
     return result
 
 
@@ -627,14 +505,14 @@ def _artifact_function_kind(name: str) -> tuple[str, str, str]:
     return "public_api", "ALGORITHM", "module_boundary_operation"
 
 
-def fallback_function_inventory(draft: dict[str, Any], module_contract: dict[str, Any]) -> dict[str, Any]:
+def fallback_function_inventory(draft: dict[str, Any], module_artifact: dict[str, Any]) -> dict[str, Any]:
     protocol = str(draft.get("protocol_name", "protocol"))
-    module_id = str(module_contract.get("module_id", "module"))
+    module_id = str(module_artifact.get("module_id", "module"))
     prefix = f"{_safe_id(protocol)}_{_safe_id(module_id)}"
-    owned = [str(cap) for cap in module_contract.get("owned_capabilities", [])]
+    owned = [str(cap) for cap in module_artifact.get("owned_capabilities", [])]
     artifact_functions = [
         item
-        for item in module_contract.get("artifacts", [])
+        for item in module_artifact.get("artifacts", [])
         if isinstance(item, dict) and str(item.get("kind", "")).upper() == "FUNC" and str(item.get("name", "")).strip()
     ]
     if artifact_functions:
@@ -665,9 +543,8 @@ def fallback_function_inventory(draft: dict[str, Any], module_contract: dict[str
             "assumptions": [],
             "unresolved_questions": [],
         }
-    policy = module_contract.get("public_api_policy", {}) if isinstance(module_contract.get("public_api_policy"), dict) else {}
-    public_roles = [str(role) for role in policy.get("expected_public_function_roles", []) if str(role).strip()]
-    exported_caps = [str(cap) for cap in policy.get("exported_capability_ids", []) if str(cap).strip()] or owned
+    public_roles: list[str] = []
+    exported_caps = owned
     functions = [
         _contract_base(draft=draft, module_id=module_id, action="create", name=f"{prefix}_create", function_kind="resource_lifecycle", purpose=f"Allocate and initialize the {module_id} module context.", capability_ids=owned[:1], exported="runtime_create" in public_roles, public_api_role="runtime_create"),
         _contract_base(draft=draft, module_id=module_id, action="destroy", name=f"{prefix}_destroy", function_kind="resource_lifecycle", purpose=f"Release resources owned by the {module_id} module context.", capability_ids=owned[:1], exported="runtime_destroy" in public_roles, public_api_role="runtime_destroy"),
@@ -1209,7 +1086,7 @@ def fallback_file_layout(draft: dict[str, Any]) -> dict[str, Any]:
     protocol = str(draft.get("protocol_name", "protocol"))
     files = []
     assignments = []
-    for module in draft.get("module_contracts", []):
+    for module in draft.get("module_artifacts", []):
         if not isinstance(module, dict):
             continue
         module_id = str(module.get("module_id", "module"))
@@ -1298,7 +1175,7 @@ def merge_file_layout(draft: dict[str, Any], candidate: dict[str, Any]) -> dict[
 
 
 def _key_flow_module_id(draft: dict[str, Any]) -> str:
-    modules = [item for item in draft.get("module_contracts", []) if isinstance(item, dict)]
+    modules = [item for item in draft.get("module_artifacts", []) if isinstance(item, dict)]
     if not modules:
         return ""
     scored: list[tuple[int, str]] = []
@@ -1483,13 +1360,13 @@ def _runtime_function_base(
 def merge_runtime_entrypoint(draft: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any]:
     result = deepcopy(draft)
     protocol = str(result.get("protocol_name", "protocol"))
-    module_ids = {str(item.get("module_id", "")) for item in result.get("module_contracts", []) if isinstance(item, dict)}
+    module_ids = {str(item.get("module_id", "")) for item in result.get("module_artifacts", []) if isinstance(item, dict)}
     module_id = str(candidate.get("key_flow_module_id") or _key_flow_module_id(result))
     if module_id not in module_ids:
         module_id = _key_flow_module_id(result)
     key_file_id = _primary_file_id(result, module_id)
     lifecycle_ids = candidate.get("lifecycle_function_ids", {}) if isinstance(candidate.get("lifecycle_function_ids"), dict) else {}
-    module = next((item for item in result.get("module_contracts", []) if isinstance(item, dict) and str(item.get("module_id", "")) == module_id), {})
+    module = next((item for item in result.get("module_artifacts", []) if isinstance(item, dict) and str(item.get("module_id", "")) == module_id), {})
     capability_ids = [str(cap) for cap in module.get("owned_capabilities", []) if str(cap).strip()]
     functions_by_id = {str(item.get("function_id", "")): item for item in result.get("function_contracts", []) if isinstance(item, dict)}
     key_file = next((item for item in result.get("file_layout", {}).get("files", []) if isinstance(item, dict) and str(item.get("file_id", "")) == key_file_id), None)
@@ -1616,12 +1493,6 @@ def merge_runtime_entrypoint(draft: dict[str, Any], candidate: dict[str, Any]) -
     else:
         existing_entry_file.update(entry_file)
 
-    policy = module.get("public_api_policy", {}) if isinstance(module.get("public_api_policy"), dict) else {}
-    roles = policy.setdefault("expected_public_function_roles", [])
-    for role in ("runtime_create", "runtime_start", "runtime_run", "runtime_destroy"):
-        if role not in roles:
-            roles.append(role)
-    policy["exposes_public_api"] = True
     unresolved = [
         item
         for item in candidate.get("unresolved_questions", [])

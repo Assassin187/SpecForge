@@ -245,7 +245,6 @@ def _data_declarations(
     file_functions: list[dict[str, Any]],
     canonical_type_index: dict[str, dict[str, Any]],
     *,
-    include_module_public_roles: bool,
     unresolved: list[dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     handle_type = default_handle_type(protocol, module_id)
@@ -299,9 +298,6 @@ def _data_declarations(
             module_item.setdefault("resolved_public_type_roles", {})[role] = str(declaration["NAME"])
 
     expected_roles = []
-    if include_module_public_roles:
-        policy = module_item.get("public_api_policy", {}) if isinstance(module_item.get("public_api_policy"), dict) else {}
-        expected_roles.extend(str(role) for role in policy.get("expected_public_type_roles", []) if str(role).strip())
     expected_roles.extend(str(role) for role in file_item.get("exports_type_ids", []) if str(role).strip())
     for role in expected_roles:
         type_item = _resolve_canonical_type(role, canonical_type_index)
@@ -412,13 +408,6 @@ def compile_spec_bundle(spec_blueprint: dict[str, Any], output_dir: str | Path) 
     module_ids = [str(item.get("module_id", "")) for item in modules if str(item.get("module_id", "")).strip()]
     deps_by_module = _module_dependencies_from_graph(spec_blueprint, module_ids)
     generation_order = _topological_generation_order(module_ids, deps_by_module)
-    primary_file_by_module: dict[str, str] = {}
-    for item in files:
-        module_id = str(item.get("module_id", ""))
-        file_id = str(item.get("file_id", ""))
-        if module_id and file_id:
-            primary_file_by_module.setdefault(module_id, file_id)
-
     file_spec_paths: list[str] = []
     function_spec_paths: list[str] = []
     file_specs_by_file_id: dict[str, dict[str, Any]] = {}
@@ -445,7 +434,6 @@ def compile_spec_bundle(spec_blueprint: dict[str, Any], output_dir: str | Path) 
                 module_item,
                 file_functions,
                 canonical_type_index,
-                include_module_public_roles=primary_file_by_module.get(module_id) == file_id,
                 unresolved=unresolved_lowering,
             )
         source_interfaces: list[dict[str, Any]] = []

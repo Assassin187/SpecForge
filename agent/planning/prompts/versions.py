@@ -9,7 +9,6 @@ PROMPT_REGISTRY = {
     "architecture_candidate_prompt": PROMPT_VERSION,
     "architecture_ranking_prompt": PROMPT_VERSION,
     "core_design_candidate_prompt": PROMPT_VERSION,
-    "module_contracts_candidate_prompt": PROMPT_VERSION,
     "module_artifacts_candidate_prompt": PROMPT_VERSION,
     "function_inventory_candidate_prompt": PROMPT_VERSION,
     "function_signature_patch_prompt": PROMPT_VERSION,

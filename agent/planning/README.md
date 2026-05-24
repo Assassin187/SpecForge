@@ -47,7 +47,7 @@ python3 -m agent.planning plan \
 - `implementation_plan`
 - `implementation_plan_5_1`（别名：`5.1` / `implementation_plan_skeleton`）
 - `implementation_plan_5_2`（别名：`5.2` / `core_design`）
-- `implementation_plan_5_3`（别名：`5.3` / `module_contracts`）
+- `implementation_plan_5_3`（别名：`5.3` / `module_artifacts`）
 - `implementation_plan_5_4a`（别名：`5.4a` / `function_inventory`）
 - `implementation_plan_5_4b`（别名：`5.4b` / `function_signatures`）
 - `implementation_plan_5_4c`（别名：`5.4c` / `function_behavior`）
@@ -273,8 +273,8 @@ LLM 参与：
 - `_step_logs/007_5_1_plan_skeleton.json`
 - `_step_logs/007_5_2_core_design_candidate.json`
 - `_validation_reports/007_5_2_core_design_validation_report.json`
-- `_step_logs/007_5_3_module_contracts_candidate.json`
-- `_validation_reports/007_5_3_module_contracts_validation_report.json`
+- `_step_logs/007_5_3_module_artifacts_candidate.json`
+- `_validation_reports/007_5_3_module_artifacts_validation_report.json`
 - `_step_logs/007_5_4a_function_inventory_candidate.json`
 - `_validation_reports/007_5_4a_function_inventory_validation_report.json`
 - `_step_logs/007_5_4b_function_signature_patch.json`
@@ -296,7 +296,7 @@ LLM 参与：
   - 固定 `source_artifacts` / `source_artifact_refs`。
   - 建立 `id_namespace`，包括 module、capability、constraint、field、function/file id pattern。
   - 建立 `validation_targets`，明确 capability coverage、handler coverage、wire field coverage、dependency derivation only 和 blueprint no-new-semantics。
-  - 初始化空 `module_contracts`、core design、function contracts、file layout、wire/access mapping 和 `dependency_graph=null`。
+  - 初始化空 `module_artifacts`、core design、function contracts、file layout、wire/access mapping 和 `dependency_graph=null`。
   - 建立 `deterministic_indexes`，供后续子步骤 validator 和 fallback 使用。
 
 - 5.2 生成 core design candidate：
@@ -308,11 +308,11 @@ LLM 参与：
   - `test_plan_seed`
   - 若 LLM candidate 不合法，使用 `fallback_core_design`。
 
-- 5.3 生成 module contracts candidate：
-  - 从 selected architecture 的 module/capability ownership 派生 module contract。
-  - 绑定 capability ownership、state ownership 和 constraint bindings。
-  - 将合法 candidate merge 为最终 `module_contracts`。
-  - 若 LLM candidate 不合法，使用 `fallback_module_contracts`。
+- 5.3 生成 module artifacts candidate：
+  - 从 selected architecture 和 accepted core design 派生 module artifact seeds。
+  - 规划每个 module 的 C-facing `TYPE` / `FUNC` artifact inventory 和 generation order。
+  - 将合法 candidate merge 为最终 `module_artifacts`。
+  - 若 LLM candidate 不合法，使用 `fallback_module_artifacts`。
 
 **有多少模块就调用多少次llm，每次的重试上限是 3**
 - 5.4a 按 module 逐个生成 function inventory：
@@ -502,7 +502,7 @@ agent/planning/out/<protocol>/<target_slug>/<timestamp>/
 │   ├── 006_selected_architecture.json
 │   ├── 007_5_1_plan_skeleton.json
 │   ├── 007_5_2_core_design_candidate.json
-│   ├── 007_5_3_module_contracts_candidate.json
+│   ├── 007_5_3_module_artifacts_candidate.json
 │   ├── 007_5_4a_function_inventory_candidate.json
 │   ├── 007_5_4b_function_signature_patch.json
 │   ├── 007_5_4c_function_behavior_contract_patch.json
@@ -514,7 +514,7 @@ agent/planning/out/<protocol>/<target_slug>/<timestamp>/
 │   └── 013_token_usage_summary.json
 ├── _validation_reports/
 │   ├── 007_5_2_core_design_validation_report.json
-│   ├── 007_5_3_module_contracts_validation_report.json
+│   ├── 007_5_3_module_artifacts_validation_report.json
 │   ├── 007_5_4a_function_inventory_validation_report.json
 │   ├── 007_5_4b_function_signature_validation_report.json
 │   ├── 007_5_4c_function_behavior_validation_report.json
@@ -639,6 +639,15 @@ python3 -m agent planning plan \
   --target-profile agent/planning/planning_target_profile_mqtt.json \
   --resume-from-stage implementation_plan \
   --output-dir /tmp/specforge_planning_resume
+```
+
+只跑5.4a阶段：
+```bash
+python3 -m agent planning plan \
+  --facts agent/facts/gold_facts/mqtt_min/protocol_facts.json \
+  --target-profile agent/planning/planning_target_profile_mqtt.json \
+  --resume-from-stage 5.4a \
+  --stop-after-stage 5.4a
 ```
 
 `--resume-from-stage` 会自动从当前 facts/target 对应的默认输出根中选择最近一次 run 作为继承来源；`--output-dir` 只表示本次新 run 的写入位置，不表示 source run。

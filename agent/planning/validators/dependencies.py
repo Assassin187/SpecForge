@@ -13,7 +13,7 @@ def validate_dependency_graph(plan: dict[str, Any], *, path: str | None = None) 
         diagnostics.append(PlanningDiagnostic("error", "invalid_dependency_graph_schema", f"dependency_graph must use {DEPENDENCY_GRAPH_SCHEMA_VERSION}", path))
         return diagnostics
 
-    module_ids = {str(item.get("module_id", "")) for item in plan.get("module_contracts", []) if isinstance(item, dict)}
+    module_ids = {str(item.get("module_id", "")) for item in plan.get("module_artifacts", []) if isinstance(item, dict)}
     files = [item for item in plan.get("file_layout", {}).get("files", []) if isinstance(item, dict)]
     functions = [item for item in plan.get("function_contracts", []) if isinstance(item, dict)]
     file_ids = {str(item.get("file_id", "")) for item in files}

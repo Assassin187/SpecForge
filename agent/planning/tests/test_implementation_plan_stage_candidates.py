@@ -17,7 +17,6 @@ from agent.planning.prompts.templates import (
     function_inventory_candidate_messages,
     function_signature_patch_messages,
     module_artifacts_candidate_messages,
-    module_contracts_candidate_messages,
     runtime_entrypoint_candidate_messages,
     wire_access_binding_patch_messages,
 )
@@ -32,7 +31,7 @@ from agent.planning.stages.implementation_plan_context import (
     build_function_behavior_context,
     build_function_inventory_context,
     build_function_signature_context,
-    build_module_contract_context,
+    build_module_artifact_context,
     build_runtime_entrypoint_context,
     build_wire_access_binding_context,
 )
@@ -46,7 +45,6 @@ from agent.planning.stages.implementation_plan_merger import (
     fallback_function_inventory,
     fallback_function_signatures,
     fallback_module_artifacts,
-    fallback_module_contracts,
     fallback_runtime_entrypoint,
     fallback_wire_access_binding,
     merge_calls_allowed,
@@ -56,7 +54,6 @@ from agent.planning.stages.implementation_plan_merger import (
     merge_function_inventory,
     merge_function_signatures,
     merge_module_artifacts,
-    merge_module_contracts,
     merge_runtime_entrypoint,
     merge_wire_access_binding,
 )
@@ -70,7 +67,6 @@ from agent.planning.validators.implementation_plan_stages import (
     validate_function_inventory_candidate,
     validate_function_signature_patch,
     validate_module_artifacts_candidate,
-    validate_module_contracts_candidate,
     validate_runtime_entrypoint_candidate,
     validate_wire_access_binding_patch,
 )
@@ -146,20 +142,20 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
 
         core = fallback_core_design(draft, planning_ir, constraints, selected, profile)
         draft = merge_core_design(draft, core)
-        modules = fallback_module_contracts(draft, profile, constraints, selected)
-        draft = merge_module_contracts(draft, modules)
+        modules = fallback_module_artifacts(draft, profile, constraints, selected)
+        draft = merge_module_artifacts(draft, modules)
         inventories = []
-        for module in list(draft["module_contracts"]):
+        for module in list(draft["module_artifacts"]):
             inventory = fallback_function_inventory(draft, module)
             inventories.append(inventory)
             draft = merge_function_inventory(draft, inventory)
         signature_patches = []
-        for module in list(draft["module_contracts"]):
+        for module in list(draft["module_artifacts"]):
             patch = fallback_function_signatures(draft, str(module["module_id"]))
             signature_patches.append(patch)
             draft = merge_function_signatures(draft, patch)
         behavior_patches = []
-        for module in list(draft["module_contracts"]):
+        for module in list(draft["module_artifacts"]):
             patch = fallback_function_behavior(draft, str(module["module_id"]))
             behavior_patches.append(patch)
             draft = merge_function_behavior(draft, patch)
@@ -192,8 +188,8 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as raw_tmp:
             planning_ir, profile, constraints, selected, draft, _, items = self._fixtures(Path(raw_tmp))
             self.assertFalse(validate_core_design_candidate(items["core"], planning_ir, profile, selected, constraints))
-            self.assertFalse(validate_module_contracts_candidate(items["modules"], selected, profile, constraints, merge_core_design(build_plan_skeleton(planning_ir, profile, constraints, selected), items["core"])))
-            self.assertFalse(validate_function_inventory_candidate(items["inventory"], draft["module_contracts"], draft, profile, planning_ir))
+            self.assertFalse(validate_module_artifacts_candidate(items["modules"], selected, profile, constraints, merge_core_design(build_plan_skeleton(planning_ir, profile, constraints, selected), items["core"])))
+            self.assertFalse(validate_function_inventory_candidate(items["inventory"], draft["module_artifacts"], draft, profile, planning_ir))
             self.assertFalse(validate_function_signature_patch(items["signature"], draft))
             self.assertFalse(validate_function_behavior_contract_patch(items["behavior"], draft, constraints))
             self.assertFalse(validate_wire_access_binding_patch(items["wire"], draft, planning_ir))
@@ -207,8 +203,8 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             planning_ir, profile, constraints, selected, draft, _, items = self._fixtures(Path(raw_tmp))
             cases = [
                 (items["core"], lambda c: validate_core_design_candidate(c, planning_ir, profile, selected, constraints), lambda c: c["canonical_types"][0].__setitem__("kind", "bad")),
-                (items["modules"], lambda c: validate_module_contracts_candidate(c, selected, profile, constraints, draft), lambda c: c["module_contracts"][0].__setitem__("status", "bad")),
-                (items["inventory"], lambda c: validate_function_inventory_candidate(c, draft["module_contracts"], draft, profile, planning_ir), lambda c: c["functions"][0].__setitem__("function_kind", "bad")),
+                (items["modules"], lambda c: validate_module_artifacts_candidate(c, selected, profile, constraints, draft), lambda c: c["modules"][0]["artifacts"][0].__setitem__("kind", "bad")),
+                (items["inventory"], lambda c: validate_function_inventory_candidate(c, draft["module_artifacts"], draft, profile, planning_ir), lambda c: c["functions"][0].__setitem__("function_kind", "bad")),
                 (items["signature"], lambda c: validate_function_signature_patch(c, draft), lambda c: c["function_signature_updates"][0]["signature"].__setitem__("storage_class", "bad")),
                 (items["behavior"], lambda c: validate_function_behavior_contract_patch(c, draft, constraints), _break_first_state_access),
                 (items["wire"], lambda c: validate_wire_access_binding_patch(c, draft, planning_ir), lambda c: c["wire_mapping_entries"][0].__setitem__("direction", "bad")),
@@ -235,11 +231,11 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             core["state_design"][0]["owner_module_id"] = "missing"
             self.assertTrue(_has(validate_core_design_candidate(core, planning_ir, profile, selected, constraints), "unknown_state_owner"))
             modules = copy.deepcopy(items["modules"])
-            modules["module_contracts"][0]["module_id"] = "missing"
-            self.assertTrue(_has(validate_module_contracts_candidate(modules, selected, profile, constraints, draft), "unknown_module_contract_module"))
+            modules["modules"][0]["module_id"] = "missing"
+            self.assertTrue(_has(validate_module_artifacts_candidate(modules, selected, profile, constraints, draft), "unknown_module_artifacts_module"))
             inventory = copy.deepcopy(items["inventory"])
             inventory["functions"][0]["module_id"] = "missing"
-            self.assertTrue(_has(validate_function_inventory_candidate(inventory, draft["module_contracts"], draft, profile, planning_ir), "unknown_function_module"))
+            self.assertTrue(_has(validate_function_inventory_candidate(inventory, draft["module_artifacts"], draft, profile, planning_ir), "unknown_function_module"))
             signature = copy.deepcopy(items["signature"])
             signature["function_signature_updates"][0]["function_id"] = "fn:missing"
             self.assertTrue(_has(validate_function_signature_patch(signature, draft), "unknown_function_signature_target"))
@@ -279,25 +275,6 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             runtime["lifecycle_function_ids"]["create"] = f"fn:{key_module}:handle_proxy"
             self.assertTrue(_has(validate_runtime_entrypoint_candidate(runtime, draft), "runtime_entrypoint_lifecycle_not_api"))
 
-    def test_module_contract_public_api_policy_is_required(self) -> None:
-        with tempfile.TemporaryDirectory() as raw_tmp:
-            _, profile, constraints, selected, draft, _, items = self._fixtures(Path(raw_tmp))
-            modules = copy.deepcopy(items["modules"])
-            policy = modules["module_contracts"][0]["public_api_policy"]
-            policy["expected_public_function_roles"] = []
-            policy["expected_public_type_roles"] = []
-            self.assertTrue(_has(validate_module_contracts_candidate(modules, selected, profile, constraints, draft), "public_api_policy_without_expected_surface"))
-
-            modules = copy.deepcopy(items["modules"])
-            policy = modules["module_contracts"][0]["public_api_policy"]
-            policy["exposes_public_api"] = False
-            policy["no_public_api_reason"] = ""
-            self.assertTrue(_has(validate_module_contracts_candidate(modules, selected, profile, constraints, draft), "missing_no_public_api_reason"))
-
-            modules = copy.deepcopy(items["modules"])
-            modules["module_contracts"][0]["public_api_policy"]["exported_capability_ids"] = ["capability:missing"]
-            self.assertTrue(_has(validate_module_contracts_candidate(modules, selected, profile, constraints, draft), "unknown_public_api_policy_capability"))
-
     def test_module_artifacts_candidate_rules(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:
             planning_ir, profile, constraints, selected, _, _, items = self._fixtures(Path(raw_tmp))
@@ -328,7 +305,7 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             core_draft = merge_core_design(build_plan_skeleton(planning_ir, profile, constraints, selected), items["core"])
             artifact_candidate = fallback_module_artifacts(core_draft, profile, constraints, selected)
             draft = merge_module_artifacts(core_draft, artifact_candidate)
-            module = next(item for item in draft["module_contracts"] if item["artifacts"])
+            module = next(item for item in draft["module_artifacts"] if item["artifacts"])
             inventory = fallback_function_inventory(draft, module)
             func_artifacts = {item["name"] for item in module["artifacts"] if item["kind"] == "FUNC"}
             inventory_names = {item["name"] for item in inventory["functions"]}
@@ -336,105 +313,52 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
 
             missing = copy.deepcopy(inventory)
             missing["functions"] = [item for item in missing["functions"] if item["name"] != next(iter(func_artifacts))]
-            self.assertTrue(_has(validate_function_inventory_candidate(missing, draft["module_contracts"], draft, profile, planning_ir), "function_inventory_missing_artifact_function"))
+            self.assertTrue(_has(validate_function_inventory_candidate(missing, draft["module_artifacts"], draft, profile, planning_ir), "function_inventory_missing_artifact_function"))
 
-    def test_key_flow_module_requires_lifecycle_public_policy(self) -> None:
+    def test_key_flow_module_requires_lifecycle_artifact(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:
             _, profile, constraints, selected, draft, _, items = self._fixtures(Path(raw_tmp))
             modules = copy.deepcopy(items["modules"])
-            key_module = next(module for module in modules["module_contracts"] if "role_composition" in module["owned_capability_ids"])
-            key_module["public_api_policy"]["exposes_public_api"] = False
-            self.assertTrue(_has(validate_module_contracts_candidate(modules, selected, profile, constraints, draft), "key_flow_module_public_api_disabled"))
-
-            modules = copy.deepcopy(items["modules"])
-            key_module = next(module for module in modules["module_contracts"] if "role_composition" in module["owned_capability_ids"])
-            key_module["public_api_policy"]["expected_public_function_roles"] = ["runtime_create", "runtime_destroy"]
-            self.assertTrue(_has(validate_module_contracts_candidate(modules, selected, profile, constraints, draft), "key_flow_module_missing_lifecycle_roles"))
+            key_module = next(module for module in modules["modules"] if "broker" in module["module_id"] or "app" in module["module_id"])
+            key_module["artifacts"] = [artifact for artifact in key_module["artifacts"] if artifact["kind"] != "FUNC"]
+            self.assertTrue(_has(validate_module_artifacts_candidate(modules, selected, profile, constraints, draft), "broker_role_module_missing_lifecycle_artifact"))
 
     def test_function_inventory_public_api_visibility_rules(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:
             planning_ir, profile, _, _, draft, _, items = self._fixtures(Path(raw_tmp))
             inventory = copy.deepcopy(items["inventory"])
-            for function in inventory["functions"]:
-                function["exported"] = False
-                function["visibility"] = "internal"
-                function["api_surface"] = "module_internal"
-                function["export_reason"] = ""
-                function["public_api_role"] = ""
-            self.assertTrue(_has(validate_function_inventory_candidate(inventory, draft["module_contracts"], draft, profile, planning_ir), "module_public_api_without_public_function"))
-
-            inventory = copy.deepcopy(items["inventory"])
             public_function = next(function for function in inventory["functions"] if function["exported"])
             public_function["visibility"] = "internal"
-            self.assertTrue(_has(validate_function_inventory_candidate(inventory, draft["module_contracts"], draft, profile, planning_ir), "exported_function_not_public"))
+            self.assertTrue(_has(validate_function_inventory_candidate(inventory, draft["module_artifacts"], draft, profile, planning_ir), "exported_function_not_public"))
 
             inventory = copy.deepcopy(items["inventory"])
             public_function = next(function for function in inventory["functions"] if function["exported"])
             public_function["visibility"] = "static"
-            self.assertTrue(_has(validate_function_inventory_candidate(inventory, draft["module_contracts"], draft, profile, planning_ir), "static_function_exported"))
-
-            aggregate = {
-                "schema_version": "function_inventory_candidate/v2",
-                "candidate_id": "candidate:test:aggregate",
-                "producer": {"stage": "5.4a_function_inventory", "prompt_name": "function_inventory_candidate_prompt", "prompt_version": "test"},
-                "module_id": "all_modules",
-                "functions": [
-                    {
-                        "function_id": function["function_id"],
-                        "name": function["name"],
-                        "module_id": function["module_id"],
-                        "function_kind": function["function_kind"],
-                        "coder_function_type": function["coder_function_type"],
-                        "visibility": function["visibility"],
-                        "api_surface": function["api_surface"],
-                        "exported": function["exported"],
-                        "export_reason": function["export_reason"],
-                        "public_api_role": function["public_api_role"],
-                        "grouping_hint": function["grouping_hint"],
-                        "purpose": function["purpose"],
-                        "capability_ids": function["capability_ids"],
-                        "covers_handler_ids": function["covers_handler_ids"],
-                        "covers_message_ids": function["covers_message_ids"],
-                        "covers_field_ids": function["covers_field_ids"],
-                        "trace_ref_keys": function.get("traceability", {}).get("decision_ids", []),
-                        "status": "inferred",
-                    }
-                    for function in draft["function_contracts"]
-                ],
-                "assumptions": [],
-                "unresolved_questions": [],
-            }
-            for function in aggregate["functions"]:
-                function["exported"] = False
-                function["visibility"] = "internal"
-                function["api_surface"] = "module_internal"
-                function["export_reason"] = ""
-                function["public_api_role"] = ""
-            self.assertTrue(_has(validate_function_inventory_candidate(aggregate, draft["module_contracts"], draft, profile, planning_ir), "no_public_functions_for_public_modules"))
+            self.assertTrue(_has(validate_function_inventory_candidate(inventory, draft["module_artifacts"], draft, profile, planning_ir), "static_function_exported"))
 
     def test_key_flow_function_inventory_requires_lifecycle_functions(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:
             planning_ir, profile, _, _, draft, _, items = self._fixtures(Path(raw_tmp))
-            key_module = next(module for module in draft["module_contracts"] if "role_composition" in module["owned_capabilities"])
+            key_module = next(module for module in draft["module_artifacts"] if "role_composition" in module["owned_capabilities"])
             inventory = next(item for item in items["inventories"] if item["module_id"] == key_module["module_id"])
-            self.assertFalse(validate_function_inventory_candidate(inventory, draft["module_contracts"], draft, profile, planning_ir))
+            self.assertFalse(validate_function_inventory_candidate(inventory, draft["module_artifacts"], draft, profile, planning_ir))
 
             missing_run = copy.deepcopy(inventory)
             missing_run["functions"] = [function for function in missing_run["functions"] if function.get("public_api_role") != "runtime_run"]
-            self.assertTrue(_has(validate_function_inventory_candidate(missing_run, draft["module_contracts"], draft, profile, planning_ir), "key_flow_missing_lifecycle_functions"))
+            self.assertTrue(_has(validate_function_inventory_candidate(missing_run, draft["module_artifacts"], draft, profile, planning_ir), "function_inventory_missing_artifact_function"))
 
             handler_lifecycle = copy.deepcopy(inventory)
             lifecycle = next(function for function in handler_lifecycle["functions"] if function.get("public_api_role") == "runtime_create")
             lifecycle["function_kind"] = "handler"
             lifecycle["name"] = "handle_connect_message"
-            self.assertTrue(_has(validate_function_inventory_candidate(handler_lifecycle, draft["module_contracts"], draft, profile, planning_ir), "lifecycle_role_uses_handler"))
+            self.assertTrue(_has(validate_function_inventory_candidate(handler_lifecycle, draft["module_artifacts"], draft, profile, planning_ir), "lifecycle_role_uses_handler"))
 
             internal_lifecycle = copy.deepcopy(inventory)
-            lifecycle = next(function for function in internal_lifecycle["functions"] if function.get("public_api_role") == "runtime_start")
+            lifecycle = next(function for function in internal_lifecycle["functions"] if function.get("public_api_role") == "runtime_run")
             lifecycle["exported"] = False
             lifecycle["visibility"] = "internal"
             lifecycle["api_surface"] = "module_internal"
-            self.assertTrue(_has(validate_function_inventory_candidate(internal_lifecycle, draft["module_contracts"], draft, profile, planning_ir), "lifecycle_function_not_public"))
+            self.assertTrue(_has(validate_function_inventory_candidate(internal_lifecycle, draft["module_artifacts"], draft, profile, planning_ir), "lifecycle_function_not_public"))
 
     def test_public_function_signature_and_contract_are_complete(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:
@@ -447,7 +371,7 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
 
             signature = copy.deepcopy(items["signature"])
             update = next(item for item in signature["function_signature_updates"] if item["function_id"] == public_id)
-            update["interface_type_declarations"].append({"name": "zap_private_t", "kind": "type", "owner_module_id": draft["module_contracts"][0]["module_id"], "visibility": "internal", "reason": "bad"})
+            update["interface_type_declarations"].append({"name": "zap_private_t", "kind": "type", "owner_module_id": draft["module_artifacts"][0]["module_id"], "visibility": "internal", "reason": "bad"})
             self.assertTrue(_has(validate_function_signature_patch(signature, draft), "public_signature_uses_private_interface_type"))
 
             behavior = copy.deepcopy(items["behavior"])
@@ -469,8 +393,19 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             self.assertTrue(_has(diags, "public_function_header_export_count_mismatch"))
             self.assertTrue(_has(diags, "public_function_not_declared"))
 
-            private_id = next(function["function_id"] for function in draft["function_contracts"] if not function.get("exported"))
+            private_id = public_id
+            for function in draft["function_contracts"]:
+                if function["function_id"] == private_id:
+                    function["exported"] = False
+                    function["visibility"] = "internal"
+                    function["api_surface"] = "module_internal"
+                    function["public_api_role"] = ""
+                    function["function_kind"] = "internal_helper"
             layout = copy.deepcopy(items["layout"])
+            for assignment in layout["function_file_assignments"]:
+                if assignment["function_id"] == private_id:
+                    assignment["visibility"] = "internal"
+                    assignment["declaration_file_id"] = ""
             layout["files"][0]["exports_function_ids"].append(private_id)
             self.assertTrue(_has(validate_file_layout_candidate(layout, draft), "private_function_exported_in_header"))
 
@@ -483,8 +418,8 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             planning_ir, profile, constraints, selected, draft, plan, items = self._fixtures(Path(raw_tmp))
             validators = [
                 lambda c: validate_core_design_candidate(c, planning_ir, profile, selected, constraints),
-                lambda c: validate_module_contracts_candidate(c, selected, profile, constraints, draft),
-                lambda c: validate_function_inventory_candidate(c, draft["module_contracts"], draft, profile, planning_ir),
+                lambda c: validate_module_artifacts_candidate(c, selected, profile, constraints, draft),
+                lambda c: validate_function_inventory_candidate(c, draft["module_artifacts"], draft, profile, planning_ir),
                 lambda c: validate_function_signature_patch(c, draft),
                 lambda c: validate_function_behavior_contract_patch(c, draft, constraints),
                 lambda c: validate_wire_access_binding_patch(c, draft, planning_ir),
@@ -516,13 +451,12 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
     def test_stage_prompts_expose_semantic_validator_rules(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:
             planning_ir, profile, constraints, selected, draft, _, _ = self._fixtures(Path(raw_tmp))
-            first_module = draft["module_contracts"][0]
+            first_module = draft["module_artifacts"][0]
             first_module_id = str(first_module["module_id"])
             first_functions = [item for item in draft["function_contracts"] if item.get("module_id") == first_module_id][:4]
             prompt_payloads = [
                 json.loads(core_design_candidate_messages(build_core_design_context(planning_ir, profile, constraints, selected))[1]["content"]),
-                json.loads(module_artifacts_candidate_messages(build_module_contract_context(draft, profile, constraints, selected))[1]["content"]),
-                json.loads(module_contracts_candidate_messages(build_module_contract_context(draft, profile, constraints, selected))[1]["content"]),
+                json.loads(module_artifacts_candidate_messages(build_module_artifact_context(draft, profile, constraints, selected))[1]["content"]),
                 json.loads(function_inventory_candidate_messages(build_function_inventory_context(draft, first_module))[1]["content"]),
                 json.loads(function_signature_patch_messages(build_function_signature_context(draft, first_module_id, first_functions, batch_index=0, batch_size=8))[1]["content"]),
                 json.loads(function_behavior_contract_patch_messages(build_function_behavior_context(draft, first_module_id, first_functions, constraints, batch_index=0, batch_size=4))[1]["content"]),

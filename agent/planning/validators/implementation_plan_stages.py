@@ -13,7 +13,6 @@ from ..schemas.implementation_plan import (
     FUNCTION_INVENTORY_CANDIDATE_SCHEMA_VERSION,
     FUNCTION_SIGNATURE_PATCH_SCHEMA_VERSION,
     MODULE_ARTIFACTS_CANDIDATE_SCHEMA_VERSION,
-    MODULE_CONTRACTS_CANDIDATE_SCHEMA_VERSION,
     RUNTIME_ENTRYPOINT_CANDIDATE_SCHEMA_VERSION,
     SCHEMA_VERSION,
     VALIDATION_REPORT_SCHEMA_VERSION,
@@ -218,21 +217,16 @@ def _unresolved_targets(candidate: dict[str, Any]) -> set[str]:
     }
 
 
-def _module_contract_ids(module_contracts: list[dict[str, Any]]) -> set[str]:
-    return {str(item.get("module_id", "")) for item in module_contracts if isinstance(item, dict) and str(item.get("module_id", "")).strip()}
+def _module_artifact_ids(module_artifacts: list[dict[str, Any]]) -> set[str]:
+    return {str(item.get("module_id", "")) for item in module_artifacts if isinstance(item, dict) and str(item.get("module_id", "")).strip()}
 
 
 def _function_by_id(draft: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return {str(item.get("function_id", "")): item for item in draft.get("function_contracts", []) if isinstance(item, dict) and item.get("function_id")}
 
 
-def _module_by_id(module_contracts: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    return {str(item.get("module_id", "")): item for item in module_contracts if isinstance(item, dict) and str(item.get("module_id", "")).strip()}
-
-
-def _public_policy(module: dict[str, Any]) -> dict[str, Any]:
-    policy = module.get("public_api_policy", {})
-    return policy if isinstance(policy, dict) else {}
+def _module_by_id(module_artifacts: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    return {str(item.get("module_id", "")): item for item in module_artifacts if isinstance(item, dict) and str(item.get("module_id", "")).strip()}
 
 
 def _is_public_function(function: dict[str, Any]) -> bool:
@@ -250,7 +244,7 @@ def validate_plan_skeleton(draft: dict[str, Any], selected_architecture: dict[st
     for key in ("source_artifact_refs", "id_namespace", "validation_targets", "deterministic_indexes"):
         if key not in draft:
             diagnostics.append(PlanningDiagnostic("error", "missing_plan_skeleton_key", f"plan skeleton missing {key}", path))
-    if draft.get("module_contracts") != [] or draft.get("function_contracts") != []:
+    if draft.get("module_artifacts") != [] or draft.get("function_contracts") != []:
         diagnostics.append(PlanningDiagnostic("error", "nonempty_plan_skeleton_design", "plan skeleton must not include module/function design details", path))
     if draft.get("dependency_graph") is not None:
         diagnostics.append(PlanningDiagnostic("error", "nonempty_plan_skeleton_dependency_graph", "plan skeleton dependency_graph must be null", path))
@@ -432,89 +426,14 @@ def validate_module_artifacts_candidate(candidate: dict[str, Any], selected_arch
     return diagnostics
 
 
-def validate_module_contracts_candidate(candidate: dict[str, Any], selected_architecture: dict[str, Any], profile: dict[str, Any], constraints: dict[str, Any], core_design: dict[str, Any], *, path: str | None = None) -> list[PlanningDiagnostic]:
-    diagnostics = _shape(candidate, MODULE_CONTRACTS_CANDIDATE_SCHEMA_VERSION, path=path)
-    if has_errors(diagnostics):
-        return diagnostics
-    module_ids = _module_ids_from_arch(selected_architecture)
-    support_modules = _support_module_ids(selected_architecture)
-    capability_ids = _required_capabilities(profile)
-    constraint_ids = _constraint_ids(constraints)
-    state_ids = _state_ids(core_design)
-    error_ids = _error_ids(core_design)
-    canonical_type_keys = {
-        key
-        for item in core_design.get("canonical_types", [])
-        if isinstance(item, dict)
-        for key in (normalize_type_key(item.get("type_id", "")), normalize_type_key(item.get("name", "")))
-        if key
-    }
-    primary_owner: dict[str, str] = {}
-    for module in candidate["module_contracts"]:
-        module_id = module["module_id"]
-        if module_id not in module_ids:
-            diagnostics.append(PlanningDiagnostic("error", "unknown_module_contract_module", f"module_id '{module_id}' is not selected", path))
-        if module_id not in support_modules and not module["owned_capability_ids"]:
-            diagnostics.append(PlanningDiagnostic("error", "module_contract_without_capability", f"module '{module_id}' owns no capabilities", path))
-        for cap in module["owned_capability_ids"] + module["consumed_capability_ids"]:
-            if cap not in capability_ids:
-                diagnostics.append(PlanningDiagnostic("error", "unknown_module_contract_capability", f"module '{module_id}' references unknown capability '{cap}'", path))
-        policy = _public_policy(module)
-        exported_caps = [str(cap) for cap in policy.get("exported_capability_ids", []) if str(cap).strip()]
-        for cap in exported_caps:
-            if cap not in capability_ids:
-                diagnostics.append(PlanningDiagnostic("error", "unknown_public_api_policy_capability", f"module '{module_id}' public_api_policy references unknown capability '{cap}'", path))
-        for trace_ref in policy.get("trace_ref_keys", []) if isinstance(policy.get("trace_ref_keys"), list) else []:
-            if not str(trace_ref).strip():
-                diagnostics.append(PlanningDiagnostic("error", "empty_public_api_policy_trace_ref", f"module '{module_id}' public_api_policy has an empty trace ref", path))
-        exposes = bool(policy.get("exposes_public_api"))
-        function_roles = [str(role) for role in policy.get("expected_public_function_roles", []) if str(role).strip()]
-        type_roles = [str(role) for role in policy.get("expected_public_type_roles", []) if str(role).strip()]
-        if _is_key_flow_module(module):
-            missing_roles = sorted(LIFECYCLE_ROLES - set(function_roles))
-            if not exposes:
-                diagnostics.append(PlanningDiagnostic("error", "key_flow_module_public_api_disabled", f"key flow module '{module_id}' must expose lifecycle public API", path))
-            if missing_roles:
-                diagnostics.append(PlanningDiagnostic("error", "key_flow_module_missing_lifecycle_roles", f"key flow module '{module_id}' public_api_policy lacks lifecycle roles: {', '.join(missing_roles)}", path))
-        for role in type_roles:
-            if normalize_type_key(role) not in canonical_type_keys:
-                diagnostics.append(PlanningDiagnostic("error", "unknown_public_api_policy_type_role", f"module '{module_id}' public_api_policy expected type role '{role}' does not match canonical_types", path))
-        if exposes:
-            if not function_roles and not type_roles:
-                diagnostics.append(PlanningDiagnostic("error", "public_api_policy_without_expected_surface", f"module '{module_id}' exposes public API but declares no expected public function/type roles", path))
-            if not exported_caps and not str(policy.get("notes", "")).strip():
-                diagnostics.append(PlanningDiagnostic("error", "public_api_policy_without_exported_capability", f"module '{module_id}' exposes public API but lists no exported capabilities or reason", path))
-        elif not str(policy.get("no_public_api_reason", "")).strip():
-            diagnostics.append(PlanningDiagnostic("error", "missing_no_public_api_reason", f"module '{module_id}' does not expose public API but gives no reason", path))
-        for cap in module["owned_capability_ids"]:
-            previous = primary_owner.setdefault(cap, module_id)
-            if previous != module_id:
-                diagnostics.append(PlanningDiagnostic("error", "conflicting_capability_owner", f"capability '{cap}' has multiple primary owners", path))
-        for state_id in module["owned_state_ids"] + module["read_state_ids"] + module["mutated_state_ids"]:
-            if state_id not in state_ids:
-                diagnostics.append(PlanningDiagnostic("error", "unknown_module_state_ref", f"module '{module_id}' references unknown state '{state_id}'", path))
-        for error_id in module["error_responsibility_ids"]:
-            if error_id not in error_ids:
-                diagnostics.append(PlanningDiagnostic("error", "unknown_module_error_ref", f"module '{module_id}' references unknown error '{error_id}'", path))
-        for constraint_id in module["constraint_ids"]:
-            if constraint_id not in constraint_ids:
-                diagnostics.append(PlanningDiagnostic("error", "unknown_module_contract_constraint", f"module '{module_id}' references unknown constraint '{constraint_id}'", path))
-    for claim in candidate["capability_ownership_claims"]:
-        if claim["capability_id"] not in capability_ids:
-            diagnostics.append(PlanningDiagnostic("error", "unknown_capability_ownership_claim", f"ownership claim references unknown capability '{claim['capability_id']}'", path))
-        if claim["primary_owner_module_id"] not in module_ids:
-            diagnostics.append(PlanningDiagnostic("error", "unknown_capability_owner_module", f"ownership claim references unknown module '{claim['primary_owner_module_id']}'", path))
-    return diagnostics
-
-
-def validate_function_inventory_candidate(candidate: dict[str, Any], module_contracts: list[dict[str, Any]], core_design: dict[str, Any], profile: dict[str, Any], planning_ir: dict[str, Any] | None = None, *, path: str | None = None) -> list[PlanningDiagnostic]:
+def validate_function_inventory_candidate(candidate: dict[str, Any], module_artifacts: list[dict[str, Any]], core_design: dict[str, Any], profile: dict[str, Any], planning_ir: dict[str, Any] | None = None, *, path: str | None = None) -> list[PlanningDiagnostic]:
     diagnostics = _shape(candidate, FUNCTION_INVENTORY_CANDIDATE_SCHEMA_VERSION, path=path)
     if has_errors(diagnostics):
         return diagnostics
-    module_ids = _module_contract_ids(module_contracts)
+    module_ids = _module_artifact_ids(module_artifacts)
     if candidate.get("module_id") not in module_ids and candidate.get("module_id") != "all_modules":
         diagnostics.append(PlanningDiagnostic("error", "unknown_function_inventory_module", f"candidate module_id '{candidate.get('module_id')}' is not a module", path))
-    modules_by_id = _module_by_id(module_contracts)
+    modules_by_id = _module_by_id(module_artifacts)
     capability_ids = _required_capabilities(profile)
     handler_ids = _handler_ids(core_design)
     message_ids = _message_ids(planning_ir or {})
@@ -522,8 +441,6 @@ def validate_function_inventory_candidate(candidate: dict[str, Any], module_cont
     seen_ids: set[str] = set()
     seen_names: set[str] = set()
     kinds: set[str] = set()
-    public_by_module: dict[str, list[str]] = {module_id: [] for module_id in module_ids}
-    lifecycle_by_module: dict[str, dict[str, dict[str, Any]]] = {module_id: {} for module_id in module_ids}
     for function in candidate["functions"]:
         function_id = function["function_id"]
         name = function["name"]
@@ -550,12 +467,9 @@ def validate_function_inventory_candidate(candidate: dict[str, Any], module_cont
                 diagnostics.append(PlanningDiagnostic("error", "static_function_public_surface", f"static function '{function_id}' may not have public api_surface", path))
         if function.get("api_surface") in {"private_helper", "static_helper"} and function.get("visibility") == "public":
             diagnostics.append(PlanningDiagnostic("error", "private_helper_public_visibility", f"helper function '{function_id}' may not be public", path))
-        if _is_public_function(function):
-            public_by_module.setdefault(str(function["module_id"]), []).append(function_id)
         role = str(function.get("public_api_role", ""))
         if role in LIFECYCLE_ROLES:
             action = role.removeprefix("runtime_")
-            lifecycle_by_module.setdefault(str(function["module_id"]), {})[action] = function
             if function.get("function_kind") == "handler":
                 diagnostics.append(PlanningDiagnostic("error", "lifecycle_role_uses_handler", f"lifecycle role '{role}' may not be assigned to handler function '{function_id}'", path))
             if not _is_public_function(function):
@@ -603,22 +517,6 @@ def validate_function_inventory_candidate(candidate: dict[str, Any], module_cont
         }
         for missing_artifact in sorted(expected_artifact_funcs - inventory_names - blocking_unresolved):
             diagnostics.append(PlanningDiagnostic("error", "function_inventory_missing_artifact_function", f"module '{module_id}' FUNC artifact '{missing_artifact}' is missing from function inventory", path))
-        policy = _public_policy(modules_by_id.get(module_id, {}))
-        if bool(policy.get("exposes_public_api")) and policy.get("expected_public_function_roles") and not public_by_module.get(module_id):
-            diagnostics.append(PlanningDiagnostic("error", "module_public_api_without_public_function", f"module '{module_id}' exposes public function roles but inventory has no public/exported function", path))
-        if _is_key_flow_module(modules_by_id.get(module_id, {})) and not modules_by_id.get(module_id, {}).get("artifacts"):
-            missing = sorted({"create", "start", "run", "destroy"} - set(lifecycle_by_module.get(module_id, {})))
-            if missing:
-                diagnostics.append(PlanningDiagnostic("error", "key_flow_missing_lifecycle_functions", f"key flow module '{module_id}' inventory lacks lifecycle functions: {', '.join(missing)}", path))
-    if candidate.get("module_id") == "all_modules":
-        all_no_public = not any(public_by_module.values())
-        all_modules_internal = all(
-            not bool(_public_policy(module).get("exposes_public_api")) and bool(str(_public_policy(module).get("no_public_api_reason", "")).strip())
-            for module in module_contracts
-            if isinstance(module, dict)
-        )
-        if all_no_public and not all_modules_internal:
-            diagnostics.append(PlanningDiagnostic("error", "no_public_functions_for_public_modules", "function inventory has no public/exported functions but at least one module lacks an explicit no-public API policy", path))
     return diagnostics
 
 
@@ -652,7 +550,7 @@ def validate_function_signature_patch(patch: dict[str, Any], draft: dict[str, An
     type_ids = _type_ids(draft)
     system_type_ids = set(SYSTEM_TYPE_IDS)
     legal_type_refs = type_ids | system_type_ids
-    module_ids = _module_contract_ids(draft.get("module_contracts", []))
+    module_ids = _module_artifact_ids(draft.get("module_artifacts", []))
     target_ids = _batch_function_ids(patch, "function_signature_updates")
     if expected_function_ids is not None and target_ids != expected_function_ids:
         diagnostics.append(PlanningDiagnostic("error", "signature_batch_coverage_mismatch", "signature patch must update exactly the current batch functions", path))
@@ -824,7 +722,7 @@ def validate_runtime_entrypoint_candidate(candidate: dict[str, Any], draft: dict
     diagnostics = _shape(candidate, RUNTIME_ENTRYPOINT_CANDIDATE_SCHEMA_VERSION, path=path)
     if has_errors(diagnostics):
         return diagnostics
-    module_ids = _module_contract_ids(draft.get("module_contracts", []))
+    module_ids = _module_artifact_ids(draft.get("module_artifacts", []))
     functions = _function_by_id(draft)
     key_module = str(candidate.get("key_flow_module_id", "")).strip()
     if key_module not in module_ids:
@@ -869,7 +767,7 @@ def validate_calls_allowed_candidate(
     if has_errors(diagnostics):
         return diagnostics
     functions = _function_by_id(draft)
-    module_ids = _module_ids_from_arch(selected_architecture or {"architecture": {"modules": draft.get("module_contracts", [])}})
+    module_ids = _module_ids_from_arch(selected_architecture or {"architecture": {"modules": draft.get("module_artifacts", [])}})
     target_ids = {str(update.get("caller_function_id", "")) for update in candidate["call_updates"]}
     if expected_caller_ids is not None and target_ids != expected_caller_ids:
         diagnostics.append(PlanningDiagnostic("error", "calls_allowed_batch_coverage_mismatch", "calls_allowed candidate must update exactly the current batch callers", path))
@@ -918,7 +816,7 @@ def validate_file_layout_candidate(candidate: dict[str, Any], draft: dict[str, A
     diagnostics = _shape(candidate, FILE_LAYOUT_CANDIDATE_SCHEMA_VERSION, path=path)
     if has_errors(diagnostics):
         return diagnostics
-    module_ids = _module_contract_ids(draft.get("module_contracts", []))
+    module_ids = _module_artifact_ids(draft.get("module_artifacts", []))
     function_ids = _function_ids(draft)
     functions = _function_by_id(draft)
     type_ids = _type_ids(draft)
@@ -997,19 +895,6 @@ def validate_file_layout_candidate(candidate: dict[str, Any], draft: dict[str, A
                 diagnostics.append(PlanningDiagnostic("error", "private_function_exported_in_header", f"private/static function '{function_id}' must not appear in header exports", path))
         if assignment["visibility"] in {"private", "static"} and declaration_file_id:
             diagnostics.append(PlanningDiagnostic("error", "private_function_exposed_in_header", f"private/static function '{function_id}' must not be exposed in a FILE_SPEC header", path))
-    modules_with_public_functions = {str(function.get("module_id", "")) for function in functions.values() if _is_public_function(function)}
-    module_export_counts: dict[str, int] = {}
-    for item in candidate["files"]:
-        if isinstance(item, dict):
-            module_export_counts[str(item.get("module_id", ""))] = module_export_counts.get(str(item.get("module_id", "")), 0) + len(item.get("exports_function_ids", []))
-    for module in draft.get("module_contracts", []):
-        if not isinstance(module, dict):
-            continue
-        module_id = str(module.get("module_id", ""))
-        policy = _public_policy(module)
-        if bool(policy.get("exposes_public_api")) and module_id in modules_with_public_functions:
-            if module_export_counts.get(module_id, 0) == 0:
-                diagnostics.append(PlanningDiagnostic("error", "public_module_without_header_declarations", f"module '{module_id}' exposes public API but has no header declarations", path))
     return diagnostics
 
 
@@ -1119,7 +1004,6 @@ def _has_cycle(edges: list[tuple[str, str]]) -> bool:
 
 
 validate_core_design = validate_core_design_candidate
-validate_module_contracts = validate_module_contracts_candidate
 validate_module_artifacts = validate_module_artifacts_candidate
 validate_function_inventory = validate_function_inventory_candidate
 validate_function_signatures = validate_function_signature_patch

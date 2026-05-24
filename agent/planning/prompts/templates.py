@@ -40,18 +40,6 @@ STAGE_SEMANTIC_RULES = {
         "message_ids and source_message_ids must come from legal message IDs; source_field_ids must come from legal field IDs; related_constraint_ids must come from legal constraint IDs.",
         "Do not mention files, functions, calls, imports, dependency graphs, or code in this stage output.",
     ],
-    "module_contracts_candidate/v1": [
-        "module_id values must come from selected modules.",
-        "Every non-support module must own at least one capability; if ownership is unclear, add unresolved_questions instead of leaving ownership empty.",
-        "Each capability may have only one primary owner; shared ownership must use the schema's shared_owner_module_ids field.",
-        "state_id, error_id, and constraint_id references must come from the accepted core design and engineering constraints.",
-        "public_api_policy is module-boundary planning only. It must decide whether the module exposes a public API and why, but it must not name files, headers, functions, include graphs, dependency graphs, or code.",
-        "If public_api_policy.exposes_public_api is true, exported_capability_ids should identify the capability basis and expected_public_function_roles or expected_public_type_roles must describe the public surface roles.",
-        "If a module owns role_composition, or owns semantic_dispatch plus state_machine plus a runtime/error/connection capability, treat it as the protocol key-flow module: exposes_public_api must be true and expected_public_function_roles must include runtime_create, runtime_start, runtime_run, and runtime_destroy.",
-        "expected_public_type_roles must reference or be directly resolvable to accepted canonical_types; do not invent protocol-specific public type names outside the canonical type table.",
-        "If public_api_policy.exposes_public_api is false, no_public_api_reason must explain why the module is internal-only.",
-        "Do not generate files, functions, calls, access paths, imports, dependency graphs, or code.",
-    ],
     "module_artifacts_candidate/v1": [
         "modules[].module_id values must come from selected modules, and every selected architecture module must have exactly one module artifact entry.",
         "Every non-support module must declare at least one artifact. Artifacts are the module's concrete C-facing TYPE/FUNC seed inventory, not reasoning notes.",
@@ -68,14 +56,13 @@ STAGE_SEMANTIC_RULES = {
     "function_inventory_candidate/v2": [
         "Generate only a function inventory; do not include signatures, input/output contracts, state access, wire mappings, calls, file IDs, dependency graphs, or code.",
         "function_id values must be new and unique within this candidate; function names must be unique.",
-        "module_id must be the current module or another module explicitly present in module_contracts.",
+        "module_id must be the current module or another module explicitly present in module_artifacts.",
         "function_kind describes functional responsibility such as parser, serializer, handler, validator, lifecycle, resource, or helper. It is not the public/private visibility decision.",
         "api_surface, visibility, exported, export_reason, and public_api_role describe whether the function is externally visible beyond the module.",
         "For every current_module_artifacts item with kind=FUNC, generate a function with the same name or add a blocking unresolved_questions item naming that artifact.",
         "Do not generate functions for kind=TYPE artifacts; they are seeds for canonical type/header/data lowering.",
         "Cross-module service intent may reference only provider_module_artifacts FUNC names; do not call provider private helpers that are not declared as artifacts.",
-        "Public functions must be justified by module artifacts or legacy public_api_policy; do not create public functions from protocol names, role names, examples, or filename guesses.",
-        "If the current module exposes public function roles in public_api_policy, at least one function must have exported=true, api_surface=public, visibility=public, export_reason, and public_api_role unless the policy only expects public types.",
+        "Public functions must be justified by module FUNC artifacts; do not create public functions from protocol names, role names, examples, or filename guesses.",
         "For a protocol key-flow module, generate distinct public lifecycle functions for runtime_create, runtime_start, runtime_run, and runtime_destroy using names ending in _create, _start, _run or _serve, and _destroy; do not reuse message handlers as lifecycle functions.",
         "If the module owns decode, encode, dispatch, state-machine, lifecycle, or error-policy responsibilities, represent them with the matching function_kind values or add unresolved_questions.",
         "coder_function_type must be ALGORITHM, EVENT, or ENTRYPOINT; handlers are not automatically EVENT.",
@@ -554,10 +541,6 @@ def core_design_candidate_messages(context: dict[str, Any]) -> list[dict[str, st
         forbidden_fields=["file_id", "file path", "function_id", "function name", "calls_allowed", "imports_allowed", "dependency_graph", "code"],
         validator="validate_core_design_candidate",
     )
-
-
-def module_contracts_candidate_messages(context: dict[str, Any]) -> list[dict[str, str]]:
-    return module_artifacts_candidate_messages(context)
 
 
 def module_artifacts_candidate_messages(context: dict[str, Any]) -> list[dict[str, str]]:

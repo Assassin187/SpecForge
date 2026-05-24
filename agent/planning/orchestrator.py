@@ -39,7 +39,7 @@ from .stages.implementation_plan_context import (
     build_function_behavior_context,
     build_function_inventory_context,
     build_function_signature_context,
-    build_module_contract_context,
+    build_module_artifact_context,
     build_runtime_entrypoint_context,
     build_wire_access_binding_context,
 )
@@ -146,8 +146,6 @@ STEP_FILENAMES = {
     "core_design_validation_report": "007_5_2_core_design_validation_report.json",
     "module_artifacts_candidate": "007_5_3_module_artifacts_candidate.json",
     "module_artifacts_validation_report": "007_5_3_module_artifacts_validation_report.json",
-    "module_contracts_candidate": "007_5_3_module_contracts_candidate.json",
-    "module_contracts_validation_report": "007_5_3_module_contracts_validation_report.json",
     "function_inventory_candidate": "007_5_4a_function_inventory_candidate.json",
     "function_inventory_validation_report": "007_5_4a_function_inventory_validation_report.json",
     "function_signature_patch": "007_5_4b_function_signature_patch.json",
@@ -204,8 +202,6 @@ RESUME_STAGE_ALIASES = {
     "5.3": "implementation_plan_5_3",
     "5.3_module_artifacts": "implementation_plan_5_3",
     "module_artifacts": "implementation_plan_5_3",
-    "5.3_module_contracts": "implementation_plan_5_3",
-    "module_contracts": "implementation_plan_5_3",
     "5.4a": "implementation_plan_5_4a",
     "5.4a_function_inventory": "implementation_plan_5_4a",
     "function_inventory": "implementation_plan_5_4a",
@@ -1432,7 +1428,7 @@ class PlanningAgent:
                 return finish_early("implementation_plan_5_2")
 
             if _implementation_plan_substage_should_run("implementation_plan_5_3", resume_from_stage):
-                module_context = build_module_contract_context(draft, profile, constraints, selected_architecture)
+                module_context = build_module_artifact_context(draft, profile, constraints, selected_architecture)
                 module_candidate = stage_candidate(
                     stage_label="5.3_module_artifacts",
                     thinking_stage="implementation_plan_5_3",
@@ -1467,7 +1463,7 @@ class PlanningAgent:
                     "assumptions": [],
                     "unresolved_questions": [],
                 }
-                inventory_modules = [module for module in draft.get("module_contracts", []) if isinstance(module, dict)]
+                inventory_modules = [module for module in draft.get("module_artifacts", []) if isinstance(module, dict)]
                 inventory_draft = draft
 
                 def request_inventory_candidate(module_index: int, module: dict[str, Any]) -> dict[str, Any]:
@@ -1494,7 +1490,7 @@ class PlanningAgent:
                             attempt_record["rejection_reasons"] = previous_reasons
                             attempts.append(attempt_record)
                             continue
-                        candidate_diags = validate_function_inventory_candidate(candidate, inventory_draft.get("module_contracts", []), inventory_draft, profile, planning_ir)
+                        candidate_diags = validate_function_inventory_candidate(candidate, inventory_draft.get("module_artifacts", []), inventory_draft, profile, planning_ir)
                         if stage_passed(candidate_diags):
                             accepted = candidate
                             accepted_diags = candidate_diags
@@ -1507,7 +1503,7 @@ class PlanningAgent:
                     fallback_used = accepted is None
                     if accepted is None:
                         accepted = fallback
-                        accepted_diags = validate_function_inventory_candidate(accepted, inventory_draft.get("module_contracts", []), inventory_draft, profile, planning_ir)
+                        accepted_diags = validate_function_inventory_candidate(accepted, inventory_draft.get("module_artifacts", []), inventory_draft, profile, planning_ir)
                     return {
                         "module_index": module_index,
                         "module_id": module_id,
@@ -1564,7 +1560,7 @@ class PlanningAgent:
                     inventory_aggregate["assumptions"].extend(inventory_candidate.get("assumptions", []))
                     inventory_aggregate["unresolved_questions"].extend(inventory_candidate.get("unresolved_questions", []))
                     draft = merge_function_inventory(draft, inventory_candidate)
-                inventory_diags = validate_function_inventory_candidate(inventory_aggregate, draft.get("module_contracts", []), draft, profile, planning_ir)
+                inventory_diags = validate_function_inventory_candidate(inventory_aggregate, draft.get("module_artifacts", []), draft, profile, planning_ir)
                 inventory_path = store.write_step_json(STEP_FILENAMES["function_inventory_candidate"], inventory_aggregate)
                 artifact_paths["function_inventory_candidate"] = inventory_path
                 inventory_report_path = store.write_step_json(STEP_FILENAMES["function_inventory_validation_report"], validation_report("5.4a_function_inventory:all_modules", inventory_diags))
@@ -1575,7 +1571,7 @@ class PlanningAgent:
                 inventory_aggregate = inherited_stage_candidate(
                     stage_label="5.4a_function_inventory:all_modules",
                     candidate_key="function_inventory_candidate",
-                    validator=lambda candidate: validate_function_inventory_candidate(candidate, draft.get("module_contracts", []), draft, profile, planning_ir),
+                    validator=lambda candidate: validate_function_inventory_candidate(candidate, draft.get("module_artifacts", []), draft, profile, planning_ir),
                 )
                 draft = merge_function_inventory(draft, inventory_aggregate)
             if _should_stop_after("implementation_plan_5_4a", stop_after_stage):
@@ -1596,7 +1592,7 @@ class PlanningAgent:
                     "assumptions": [],
                     "unresolved_questions": [],
                 }
-                for module in list(draft.get("module_contracts", [])):
+                for module in list(draft.get("module_artifacts", [])):
                     module_id = str(module.get("module_id", ""))
                     module_functions = [item for item in draft.get("function_contracts", []) if isinstance(item, dict) and str(item.get("module_id")) == module_id]
                     batches = [module_functions[index:index + 8] for index in range(0, len(module_functions), 8)] or [[]]
@@ -1651,7 +1647,7 @@ class PlanningAgent:
                     "assumptions": [],
                     "unresolved_questions": [],
                 }
-                for module in list(draft.get("module_contracts", [])):
+                for module in list(draft.get("module_artifacts", [])):
                     module_id = str(module.get("module_id", ""))
                     module_functions = [item for item in draft.get("function_contracts", []) if isinstance(item, dict) and str(item.get("module_id")) == module_id]
                     batches = [module_functions[index:index + 4] for index in range(0, len(module_functions), 4)] or [[]]
@@ -1727,7 +1723,7 @@ class PlanningAgent:
                     "assumptions": [],
                     "unresolved_questions": [],
                 }
-                for module in list(draft.get("module_contracts", [])):
+                for module in list(draft.get("module_artifacts", [])):
                     module_id = str(module.get("module_id", ""))
                     module_functions = [item for item in draft.get("function_contracts", []) if isinstance(item, dict) and str(item.get("module_id")) == module_id]
                     batches = [module_functions[index:index + 4] for index in range(0, len(module_functions), 4)] or [[]]

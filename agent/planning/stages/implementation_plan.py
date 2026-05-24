@@ -177,12 +177,12 @@ def build_implementation_plan(
     draft = build_plan_skeleton(planning_ir, profile, constraints, selected_architecture)
     draft = merge_core_design(draft, fallback_core_design(draft, planning_ir, constraints, selected_architecture, profile))
     draft = merge_module_artifacts(draft, fallback_module_artifacts(draft, profile, constraints, selected_architecture))
-    for module in list(draft.get("module_contracts", [])):
+    for module in list(draft.get("module_artifacts", [])):
         draft = merge_function_inventory(draft, fallback_function_inventory(draft, module))
-    for module in list(draft.get("module_contracts", [])):
+    for module in list(draft.get("module_artifacts", [])):
         module_id = str(module.get("module_id", ""))
         draft = merge_function_signatures(draft, fallback_function_signatures(draft, module_id))
-    for module in list(draft.get("module_contracts", [])):
+    for module in list(draft.get("module_artifacts", [])):
         draft = merge_function_behavior(draft, fallback_function_behavior(draft, str(module.get("module_id", ""))))
     draft = merge_wire_access_binding(draft, fallback_wire_access_binding(draft, planning_ir))
     draft = merge_calls_allowed(draft, fallback_calls_allowed(draft))

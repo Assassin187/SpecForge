@@ -256,51 +256,10 @@ def validate_coder_semantics(bundle: Any) -> list[PlanningDiagnostic]:
             )
         )
 
-    modules_exposing_public_api = 0
-    modules_explicitly_internal = 0
     for module_id, item in module_intent.items():
-        decision = item.get("decision", {})
-        policy = decision.get("public_api_policy", {}) if isinstance(decision.get("public_api_policy"), dict) else {}
-        exposes = bool(policy.get("exposes_public_api"))
         declared_artifacts = [artifact for artifact in module_artifacts_by_name.get(module_id, []) if isinstance(artifact, dict)]
-        if not policy and declared_artifacts:
-            modules_exposing_public_api += 1
-            continue
-        if exposes:
-            modules_exposing_public_api += 1
-            expected_function_roles = [str(role) for role in policy.get("expected_public_function_roles", []) if str(role).strip()]
-            expected_type_roles = [str(role) for role in policy.get("expected_public_type_roles", []) if str(role).strip()]
-            resolved_type_roles = decision.get("resolved_public_type_roles", {}) if isinstance(decision.get("resolved_public_type_roles"), dict) else {}
-            header_names = header_names_by_module.get(module_id, set())
-            public_data = public_data_by_module.get(module_id, set())
-            artifacts = module_artifacts_by_name.get(module_id, [])
-            artifact_keys = {_artifact_key(artifact) for artifact in artifacts if isinstance(artifact, dict)}
-            has_public_func = bool(header_names)
-            has_public_data = bool(public_data)
-            if not has_public_func and not has_public_data:
-                diagnostics.append(PlanningDiagnostic("error", "coder_public_api_policy_has_no_public_surface", f"module '{module_id}' exposes public API but has no public function or data surface", str(bundle.module_spec_path)))
-            if expected_function_roles and not has_public_func:
-                diagnostics.append(PlanningDiagnostic("error", "coder_public_api_policy_missing_function_surface", f"module '{module_id}' expects public function roles but HEADER.INTERFACE is empty", str(bundle.module_spec_path)))
-            if expected_type_roles and not any(kind == "TYPE" for _name, kind in public_data | artifact_keys):
-                diagnostics.append(PlanningDiagnostic("error", "coder_public_api_policy_missing_type_surface", f"module '{module_id}' expects public type roles but has no public TYPE artifact or HEADER.DATA", str(bundle.module_spec_path)))
-            module_type_keys = public_type_keys_by_module.get(module_id, set())
-            for role in expected_type_roles:
-                role_keys = {normalize_type_key(role), normalize_type_key(resolved_type_roles.get(role, ""))}
-                if not (role_keys - {""}) & (module_type_keys | all_public_type_keys):
-                    diagnostics.append(
-                        PlanningDiagnostic(
-                            "error",
-                            "coder_public_api_policy_missing_expected_type_role",
-                            f"module '{module_id}' expected public type role '{role}' is not represented by public HEADER.DATA or ARTIFACTS",
-                            str(bundle.module_spec_path),
-                        )
-                    )
-        else:
-            modules_explicitly_internal += 1
-            if not str(policy.get("no_public_api_reason", "")).strip():
-                diagnostics.append(PlanningDiagnostic("error", "coder_internal_module_missing_reason", f"module '{module_id}' declares no public API without no_public_api_reason", str(bundle.module_spec_path)))
-    if module_intent and modules_exposing_public_api == 0 and modules_explicitly_internal == len(module_intent):
-        diagnostics.append(PlanningDiagnostic("warning", "coder_all_modules_internal", "All planning modules declare no public API; verify target profile does not require a library/application surface", str(bundle.module_spec_path)))
+        if not declared_artifacts:
+            diagnostics.append(PlanningDiagnostic("warning", "coder_module_without_artifacts", f"module '{module_id}' has no module artifacts", str(bundle.module_spec_path)))
 
     function_symbol_by_id: dict[str, str] = {}
     for item in function_intent.values():

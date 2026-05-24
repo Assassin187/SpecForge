@@ -48,7 +48,7 @@ def validate_implementation_plan(
     diagnostics: list[PlanningDiagnostic] = []
     if plan.get("schema_version") != SCHEMA_VERSION:
         diagnostics.append(PlanningDiagnostic("error", "invalid_implementation_plan_schema", f"implementation_plan must use {SCHEMA_VERSION}", path))
-    modules = plan.get("module_contracts", [])
+    modules = plan.get("module_artifacts", [])
     files = plan.get("file_layout", {}).get("files", [])
     functions = plan.get("function_contracts", [])
     required_caps = _required_capabilities(profile)
@@ -61,7 +61,7 @@ def validate_implementation_plan(
     functions_by_module: dict[str, list[dict[str, Any]]] = {}
     for module in modules:
         if not isinstance(module, dict):
-            diagnostics.append(PlanningDiagnostic("error", "invalid_module_contract", "module_contracts item must be object", path))
+            diagnostics.append(PlanningDiagnostic("error", "invalid_module_artifact", "module_artifacts item must be object", path))
             continue
         module_id = str(module.get("module_id", "")).strip()
         if not module_id:

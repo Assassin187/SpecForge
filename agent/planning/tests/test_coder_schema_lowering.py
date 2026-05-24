@@ -73,15 +73,12 @@ def _zap_blueprint() -> dict:
             {
                 "module_id": "framing",
                 "role": "Encode and inspect ZapLine frames.",
-                "public_api_policy": {
-                    "exposes_public_api": True,
-                    "api_surface_kind": "public_module_api",
-                    "exported_capability_ids": ["frame_encoding"],
-                    "expected_public_function_roles": ["frame_encoder"],
-                    "expected_public_type_roles": ["zapline_frame_t"],
-                    "no_public_api_reason": "",
-                },
                 "dependencies": [],
+                "artifacts": [
+                    {"name": "zapline_framing_t", "kind": "TYPE", "role": "Opaque framing context."},
+                    {"name": "zapline_frame_t", "kind": "TYPE", "role": "Public frame data."},
+                    {"name": "zapline_frame_encode", "kind": "FUNC", "role": "Frame encoder public API."},
+                ],
             }
         ],
         "files": [
@@ -92,7 +89,7 @@ def _zap_blueprint() -> dict:
                 "header_path": "zapline/framing/framing.h",
                 "responsibility": "Frame codec unit.",
                 "exports": ["func:framing:encode"],
-                "exports_type_ids": [],
+                "exports_type_ids": ["type:zapline_frame"],
                 "imports_allowed": [],
             }
         ],
@@ -249,15 +246,8 @@ class CoderSchemaLoweringTests(unittest.TestCase):
             {
                 "module_id": "relay",
                 "role": "Run relay flow using framing.",
-                "public_api_policy": {
-                    "exposes_public_api": True,
-                    "api_surface_kind": "public_module_api",
-                    "exported_capability_ids": ["relay"],
-                    "expected_public_function_roles": ["relay_run"],
-                    "expected_public_type_roles": [],
-                    "no_public_api_reason": "",
-                },
                 "dependencies": [],
+                "artifacts": [{"name": "zapline_relay_run", "kind": "FUNC", "role": "Run relay flow."}],
             }
         )
         blueprint["files"].append(
@@ -390,19 +380,7 @@ class CoderSchemaLoweringTests(unittest.TestCase):
             diagnostics = validate_coder_compatibility(manifest["spec_root"])
             self.assertIn("coder_artifact_invalid_name", {diag.code for diag in diagnostics if diag.level == "error"})
 
-    def test_coder_semantics_reject_public_api_intent_gaps(self) -> None:
-        with tempfile.TemporaryDirectory() as raw_tmp:
-            blueprint = _zap_blueprint()
-            for function in blueprint["functions"]:
-                function["visibility"] = "internal"
-                function["api_surface"] = "module_internal"
-                function["exported"] = False
-                function["export_reason"] = ""
-                function["public_api_role"] = ""
-            manifest, _ = compile_spec_bundle(blueprint, Path(raw_tmp))
-            diagnostics = validate_coder_compatibility(manifest["spec_root"])
-            self.assertIn("coder_public_api_policy_missing_function_surface", {diag.code for diag in diagnostics if diag.level == "error"})
-
+    def test_coder_semantics_reject_public_lowering_gaps(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:
             blueprint = _zap_blueprint()
             blueprint["functions"][0]["signature"] = {"raw": "", "name": "", "return_type": "", "params": []}
@@ -445,7 +423,7 @@ class CoderSchemaLoweringTests(unittest.TestCase):
                 "status": "supported",
             }
         ]
-        blueprint["modules"][0]["public_api_policy"]["expected_public_type_roles"] = ["zapline_cursor_t"]
+        blueprint["files"][0]["exports_type_ids"] = ["type:zapline_cursor"]
         blueprint["functions"][0]["signature"]["raw"] = "int zapline_frame_encode(zapline_framing_t* ctx, zapline_cursor_t* cursor)"
         blueprint["functions"][0]["signature"]["params"] = [
             {"type": "zapline_framing_t*", "name": "ctx", "nullable": False, "ownership": "borrowed"},
@@ -478,13 +456,6 @@ class CoderSchemaLoweringTests(unittest.TestCase):
             manifest, _ = compile_spec_bundle(blueprint, Path(raw_tmp))
             diagnostics = validate_coder_compatibility(manifest["spec_root"])
             self.assertIn("coder_public_signature_unknown_type", {diag.code for diag in diagnostics if diag.level == "error"})
-
-        with tempfile.TemporaryDirectory() as raw_tmp:
-            blueprint = _zap_blueprint()
-            blueprint["modules"][0]["public_api_policy"]["expected_public_type_roles"] = ["missing_public_type"]
-            manifest, _ = compile_spec_bundle(blueprint, Path(raw_tmp))
-            diagnostics = validate_coder_compatibility(manifest["spec_root"])
-            self.assertIn("coder_public_api_policy_missing_expected_type_role", {diag.code for diag in diagnostics if diag.level == "error"})
 
     def test_specs_compiler_has_no_protocol_role_special_cases(self) -> None:
         texts = [

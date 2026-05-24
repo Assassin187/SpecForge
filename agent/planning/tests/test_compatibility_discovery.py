@@ -383,7 +383,6 @@ class PlanningCompatibilityDiscoveryTests(unittest.TestCase):
                 "architecture_ranking_prompt",
                 "core_design_candidate_prompt",
                 "module_artifacts_candidate_prompt",
-                "module_contracts_candidate_prompt",
                 "function_inventory_candidate_prompt",
                 "function_signature_patch_prompt",
                 "function_behavior_contract_patch_prompt",

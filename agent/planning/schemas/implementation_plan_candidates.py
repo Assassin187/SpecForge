@@ -14,7 +14,6 @@ VISIBILITY_VALUES = {"public", "internal", "private", "static"}
 FUNCTION_KIND_VALUES = {"public_api", "handler", "parser", "serializer", "validator", "state_machine", "resource_lifecycle", "error_helper", "internal_helper"}
 CODER_FUNCTION_TYPE_VALUES = {"ALGORITHM", "EVENT", "ENTRYPOINT"}
 API_SURFACE_VALUES = {"public", "module_internal", "private_helper", "static_helper"}
-API_SURFACE_KIND_VALUES = {"public_module_api", "internal_module", "facade_or_coordinator", "data_model_provider", "runtime_adapter", "test_support"}
 
 
 def _scalar(name: str, *, enum: set[str] | None = None) -> SchemaSpec:
@@ -178,39 +177,6 @@ TEST_PLAN_SEED_SCHEMA = _object(
     }
 )
 
-PUBLIC_API_POLICY_SCHEMA = _object(
-    {
-        "exposes_public_api": BOOL,
-        "api_surface_kind": _scalar("string", enum=API_SURFACE_KIND_VALUES),
-        "api_style": _scalar("string", enum={"opaque_handle", "callback", "procedural", "none", "unknown"}),
-        "exported_capability_ids": STRING_LIST,
-        "expected_public_function_roles": STRING_LIST,
-        "expected_public_type_roles": STRING_LIST,
-        "no_public_api_reason": STRING,
-        "trace_ref_keys": STRING_LIST,
-        "visibility_rules": STRING_LIST,
-        "notes": STRING,
-    }
-)
-
-MODULE_CONTRACT_SCHEMA = _object(
-    {
-        "module_id": STRING,
-        "purpose": STRING,
-        "owned_capability_ids": STRING_LIST,
-        "consumed_capability_ids": STRING_LIST,
-        "public_api_policy": PUBLIC_API_POLICY_SCHEMA,
-        "owned_state_ids": STRING_LIST,
-        "read_state_ids": STRING_LIST,
-        "mutated_state_ids": STRING_LIST,
-        "error_responsibility_ids": STRING_LIST,
-        "constraint_ids": STRING_LIST,
-        "dependency_policy": STRING,
-        "trace_ref_keys": STRING_LIST,
-        "status": STATUS,
-    }
-)
-
 MODULE_ARTIFACT_SCHEMA = _object(
     {
         "name": STRING,
@@ -244,34 +210,6 @@ MODULE_ARTIFACT_FORBIDDEN_SYMBOL_SCHEMA = _object(
         "name": STRING,
         "kind": _scalar("string", enum={"TYPE", "FUNC", "FIELD", "ENUM", "MACRO"}),
         "reason": STRING,
-    }
-)
-
-CAPABILITY_OWNERSHIP_SCHEMA = _object(
-    {
-        "capability_id": STRING,
-        "primary_owner_module_id": STRING,
-        "shared_owner_module_ids": STRING_LIST,
-        "ownership_kind": _scalar("string", enum={"primary", "shared"}),
-        "reason": STRING,
-    }
-)
-
-STATE_OWNERSHIP_SCHEMA = _object(
-    {
-        "state_id": STRING,
-        "owner_module_id": STRING,
-        "read_by_module_ids": STRING_LIST,
-        "mutated_by_module_ids": STRING_LIST,
-        "reason": STRING,
-    }
-)
-
-CONSTRAINT_BINDING_SCHEMA = _object(
-    {
-        "constraint_id": STRING,
-        "module_ids": STRING_LIST,
-        "binding_reason": STRING,
     }
 )
 
@@ -613,19 +551,6 @@ SCHEMA_SPECS: dict[str, SchemaSpec] = {
             "error_strategy": _array(ERROR_STRATEGY_SCHEMA),
             "test_plan_seed": _array(TEST_PLAN_SEED_SCHEMA),
             "traceability": TRACEABILITY_SCHEMA,
-            "assumptions": _array(ASSUMPTION_SCHEMA),
-            "unresolved_questions": _array(UNRESOLVED_QUESTION_SCHEMA),
-        }
-    ),
-    "module_contracts_candidate/v1": _object(
-        {
-            "schema_version": _scalar("string", enum={"module_contracts_candidate/v1"}),
-            "candidate_id": STRING,
-            "producer": PRODUCER_SCHEMA,
-            "module_contracts": _array(MODULE_CONTRACT_SCHEMA),
-            "capability_ownership_claims": _array(CAPABILITY_OWNERSHIP_SCHEMA),
-            "state_ownership_claims": _array(STATE_OWNERSHIP_SCHEMA),
-            "constraint_bindings": _array(CONSTRAINT_BINDING_SCHEMA),
             "assumptions": _array(ASSUMPTION_SCHEMA),
             "unresolved_questions": _array(UNRESOLVED_QUESTION_SCHEMA),
         }

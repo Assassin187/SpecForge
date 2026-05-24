@@ -589,7 +589,6 @@ def sidecar_payload(spec_blueprint: dict[str, Any], unresolved_lowering: list[di
                 continue
             traceability["items"][key] = item.get("traceability", {})
             decisions["items"][key] = {
-                "public_api_policy": item.get("public_api_policy", {}),
                 "capability_ids": item.get("capability_ids", []),
                 "visibility": item.get("visibility", ""),
                 "api_surface": item.get("api_surface", ""),

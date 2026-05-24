@@ -11,7 +11,7 @@ def validate_spec_blueprint(blueprint: dict[str, Any], implementation_plan: dict
     diagnostics: list[PlanningDiagnostic] = []
     if blueprint.get("schema_version") != SCHEMA_VERSION:
         diagnostics.append(PlanningDiagnostic("error", "invalid_spec_blueprint_schema", f"spec_blueprint must use {SCHEMA_VERSION}", path))
-    plan_modules = {str(item.get("module_id", "")) for item in implementation_plan.get("module_contracts", []) if isinstance(item, dict)}
+    plan_modules = {str(item.get("module_id", "")) for item in implementation_plan.get("module_artifacts", []) if isinstance(item, dict)}
     plan_files = {str(item.get("file_id", "")) for item in implementation_plan.get("file_layout", {}).get("files", []) if isinstance(item, dict)}
     plan_functions = {str(item.get("function_id", "")) for item in implementation_plan.get("function_contracts", []) if isinstance(item, dict)}
     blueprint_modules = {str(item.get("module_id", "")) for item in blueprint.get("modules", []) if isinstance(item, dict)}
