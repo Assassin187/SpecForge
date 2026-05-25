@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from .implementation_plan import _capability_refs, _compressed_refs, _field_value, _handler_surfaces, _surface_units, _target_directives, _wire_fields
+from .function_inventory_decomposition import select_top_decomposition_hints
 
 
 PROFILE_FIELDS = (
@@ -308,7 +309,7 @@ def build_function_inventory_context(draft: dict[str, Any], module_artifact: dic
         for item in modules
         if module_id in {str(dep) for dep in item.get("dependencies", []) if str(dep).strip()}
     ]
-    return {
+    context = {
         "schema_version": "function_inventory_context/v1",
         "module_artifact": module_artifact,
         "current_module_artifacts": module_artifact.get("artifacts", []),
@@ -331,6 +332,8 @@ def build_function_inventory_context(draft: dict[str, Any], module_artifact: dic
         "core_design_summary": _accepted_summary(draft),
         "legal_id_universe": _legal_ids_from_draft(draft),
     }
+    context["decomposition_context"] = select_top_decomposition_hints(module_artifact, context, max_hints=2)
+    return context
 
 
 def build_function_signature_context(draft: dict[str, Any], module_id: str, functions: list[dict[str, Any]], *, batch_index: int, batch_size: int) -> dict[str, Any]:

@@ -35,6 +35,7 @@ from agent.planning.stages.implementation_plan_context import (
     build_runtime_entrypoint_context,
     build_wire_access_binding_context,
 )
+from agent.planning.stages.function_inventory_decomposition import DECOMPOSITION_RULES, select_top_decomposition_hints
 from agent.planning.stages.implementation_plan_merger import (
     build_plan_skeleton,
     fallback_calls_allowed,
@@ -69,6 +70,7 @@ from agent.planning.validators.implementation_plan_stages import (
     validate_module_artifacts_candidate,
     validate_runtime_entrypoint_candidate,
     validate_wire_access_binding_patch,
+    validation_report,
 )
 
 
@@ -94,6 +96,10 @@ def _target_profile(root: Path) -> Path:
 
 def _has(diags, code: str) -> bool:
     return any(diag.code == code for diag in diags)
+
+
+def _has_error(diags) -> bool:
+    return any(diag.level == "error" for diag in diags)
 
 
 def _break_first_state_access(candidate: dict) -> None:
@@ -122,6 +128,29 @@ def _call_edge(callee: str, service_ids: list[str]) -> dict:
         "param_bindings": [],
         "return_binding": {"policy": "ignore", "target_ref": "", "cleanup_function_id": ""},
         "failure_behavior": "return_error",
+        "trace_ref_keys": [],
+        "status": "inferred",
+    }
+
+
+def _inventory_function(name: str, module_id: str, *, function_id: str | None = None, kind: str = "public_api", public: bool = True, purpose: str = "test function") -> dict:
+    return {
+        "function_id": function_id or f"fn:{module_id}:{name}",
+        "name": name,
+        "module_id": module_id,
+        "function_kind": kind,
+        "coder_function_type": "ALGORITHM",
+        "visibility": "public" if public else "internal",
+        "api_surface": "public" if public else "module_internal",
+        "exported": public,
+        "export_reason": "test public boundary" if public else "",
+        "public_api_role": "module_boundary_operation" if public else "",
+        "grouping_hint": module_id,
+        "purpose": purpose,
+        "capability_ids": [],
+        "covers_handler_ids": [],
+        "covers_message_ids": [],
+        "covers_field_ids": [],
         "trace_ref_keys": [],
         "status": "inferred",
     }
@@ -189,7 +218,7 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             planning_ir, profile, constraints, selected, draft, _, items = self._fixtures(Path(raw_tmp))
             self.assertFalse(validate_core_design_candidate(items["core"], planning_ir, profile, selected, constraints))
             self.assertFalse(validate_module_artifacts_candidate(items["modules"], selected, profile, constraints, merge_core_design(build_plan_skeleton(planning_ir, profile, constraints, selected), items["core"])))
-            self.assertFalse(validate_function_inventory_candidate(items["inventory"], draft["module_artifacts"], draft, profile, planning_ir))
+            self.assertFalse(_has_error(validate_function_inventory_candidate(items["inventory"], draft["module_artifacts"], draft, profile, planning_ir)))
             self.assertFalse(validate_function_signature_patch(items["signature"], draft))
             self.assertFalse(validate_function_behavior_contract_patch(items["behavior"], draft, constraints))
             self.assertFalse(validate_wire_access_binding_patch(items["wire"], draft, planning_ir))
@@ -336,12 +365,90 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             public_function["visibility"] = "static"
             self.assertTrue(_has(validate_function_inventory_candidate(inventory, draft["module_artifacts"], draft, profile, planning_ir), "static_function_exported"))
 
+    def test_function_inventory_decomposition_warnings_are_nonblocking(self) -> None:
+        module = {
+            "module_id": "generic_framing_unit",
+            "name": "generic_framing_unit",
+            "role": "incremental byte stream framing, command decoding, and response serialization",
+            "dependencies": [],
+            "artifacts": [{"name": "proto_decode", "kind": "FUNC", "role": "Decode command stream"}],
+            "files": [],
+            "doc_ref": ["decoder_commands"],
+        }
+        candidate = {
+            "schema_version": "function_inventory_candidate/v2",
+            "candidate_id": "candidate:test:inventory",
+            "producer": {"stage": "5.4a_function_inventory", "prompt_name": "function_inventory_candidate_prompt", "prompt_version": "test"},
+            "module_id": module["module_id"],
+            "functions": [_inventory_function("proto_decode", module["module_id"], kind="parser", purpose="Parse, validate, dispatch, update state, encode response, send reply, and cleanup resources.")],
+            "assumptions": [],
+            "unresolved_questions": [],
+        }
+        diags = validate_function_inventory_candidate(candidate, [module], {}, {}, {})
+        self.assertFalse(_has_error(diags))
+        self.assertTrue(_has(diags, "under_decomposed_inventory"))
+        self.assertTrue(_has(diags, "coarse_function_should_split"))
+        self.assertTrue(_has(diags, "missing_parser_or_serializer_helpers"))
+        report = validation_report("5.4a_function_inventory:test", diags)
+        self.assertTrue(report["passed"])
+        self.assertTrue(any("mirrors mandatory FUNC artifacts" in hint for hint in report["repair_hints"]))
+
+    def test_derived_public_api_requires_justification_warning(self) -> None:
+        module = {
+            "module_id": "generic_runtime_boundary",
+            "name": "generic_runtime_boundary",
+            "role": "application boundary lifecycle and callback registration",
+            "dependencies": [],
+            "artifacts": [{"name": "proto_run", "kind": "FUNC", "role": "Run application boundary"}],
+            "files": [],
+            "doc_ref": [],
+        }
+        derived = _inventory_function("proto_register_callback", module["module_id"], public=False, purpose="Register a callback boundary for integration.")
+        derived["visibility"] = "public"
+        derived["api_surface"] = "public"
+        candidate = {
+            "schema_version": "function_inventory_candidate/v2",
+            "candidate_id": "candidate:test:derived_public",
+            "producer": {"stage": "5.4a_function_inventory", "prompt_name": "function_inventory_candidate_prompt", "prompt_version": "test"},
+            "module_id": module["module_id"],
+            "functions": [_inventory_function("proto_run", module["module_id"], public=True), derived],
+            "assumptions": [],
+            "unresolved_questions": [],
+        }
+        diags = validate_function_inventory_candidate(candidate, [module], {}, {}, {})
+        self.assertFalse(_has_error(diags))
+        self.assertTrue(_has(diags, "derived_public_api_without_justification"))
+
+    def test_function_family_warnings_cover_resource_dispatch_and_codec_helpers(self) -> None:
+        module = {
+            "module_id": "generic_command_state_transfer",
+            "name": "generic_command_state_transfer",
+            "role": "line-oriented command dispatch, login state, and data transfer orchestration",
+            "dependencies": [],
+            "artifacts": [{"name": "proto_handle", "kind": "FUNC", "role": "Handle command state transfer"}],
+            "files": [],
+            "doc_ref": ["login_state", "data_transfer"],
+        }
+        candidate = {
+            "schema_version": "function_inventory_candidate/v2",
+            "candidate_id": "candidate:test:families",
+            "producer": {"stage": "5.4a_function_inventory", "prompt_name": "function_inventory_candidate_prompt", "prompt_version": "test"},
+            "module_id": module["module_id"],
+            "functions": [_inventory_function("proto_handle", module["module_id"], kind="public_api", purpose="Handle command state transfer.")],
+            "assumptions": [],
+            "unresolved_questions": [],
+        }
+        diags = validate_function_inventory_candidate(candidate, [module], {}, {}, {})
+        self.assertFalse(_has_error(diags))
+        self.assertTrue(_has(diags, "missing_dispatch_boundary"))
+        self.assertTrue(_has(diags, "missing_cleanup_for_resource_owner"))
+
     def test_key_flow_function_inventory_requires_lifecycle_functions(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:
             planning_ir, profile, _, _, draft, _, items = self._fixtures(Path(raw_tmp))
             key_module = next(module for module in draft["module_artifacts"] if "role_composition" in module["owned_capabilities"])
             inventory = next(item for item in items["inventories"] if item["module_id"] == key_module["module_id"])
-            self.assertFalse(validate_function_inventory_candidate(inventory, draft["module_artifacts"], draft, profile, planning_ir))
+            self.assertFalse(_has_error(validate_function_inventory_candidate(inventory, draft["module_artifacts"], draft, profile, planning_ir)))
 
             missing_run = copy.deepcopy(inventory)
             missing_run["functions"] = [function for function in missing_run["functions"] if function.get("public_api_role") != "runtime_run"]
@@ -447,6 +554,67 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             self.assertIn("semantic_validation_rules", payload)
             self.assertIn("id_reference_rules", payload)
             self.assertIn("enum_usage_rules", payload)
+
+    def test_function_inventory_classifier_uses_semantic_top_two_hints(self) -> None:
+        cases = [
+            (
+                "incremental byte stream framing, command decoding, and response serialization",
+                {"framing_and_parsing"},
+                {"encoding_and_response", "dispatch_and_handlers"},
+            ),
+            (
+                "UDP endpoint runtime, request transaction state, retransmission timer management",
+                {"transport_runtime_io", "session_transaction_state"},
+                set(),
+            ),
+            (
+                "line-oriented command dispatch, login state, and data transfer orchestration",
+                {"dispatch_and_handlers"},
+                {"session_transaction_state", "payload_data_transfer"},
+            ),
+            (
+                "resource registry, path matching, and payload delivery",
+                {"registry_routing_namespace", "payload_data_transfer"},
+                set(),
+            ),
+        ]
+        for role, required, alternatives in cases:
+            module = {
+                "module_id": "generic_unit",
+                "name": "generic_unit",
+                "role": role,
+                "dependencies": [],
+                "artifacts": [{"name": "proto_seed", "kind": "FUNC", "role": role}],
+                "files": [],
+                "doc_ref": [],
+            }
+            selected = select_top_decomposition_hints(module, {"core_design_summary": {}}, max_hints=2)
+            ids = selected["detected_rule_ids"]
+            self.assertEqual(len(ids), 2)
+            self.assertTrue(required.issubset(set(ids)))
+            if alternatives:
+                self.assertTrue(set(ids) & alternatives)
+            renamed = copy.deepcopy(module)
+            renamed["module_id"] = "mqtt_codec_network_router_session_store_broker_app"
+            self.assertEqual(ids, select_top_decomposition_hints(renamed, {"core_design_summary": {}}, max_hints=2)["detected_rule_ids"])
+
+    def test_function_inventory_prompt_documents_seed_semantics_and_selected_hints_only(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            planning_ir, profile, constraints, selected, draft, _, _ = self._fixtures(Path(raw_tmp))
+            module = copy.deepcopy(draft["module_artifacts"][0])
+            module["role"] = "incremental byte stream framing, command decoding, and response serialization"
+            payload = json.loads(function_inventory_candidate_messages(build_function_inventory_context(draft, module))[1]["content"])
+            rules_text = "\n".join(payload["semantic_validation_rules"])
+            self.assertIn("mandatory public/API seeds", rules_text)
+            self.assertIn("not the complete function list", rules_text)
+            self.assertIn("one-to-one artifact mirroring", rules_text)
+            decomposition = payload["function_inventory_context"]["decomposition_context"]
+            self.assertEqual(len(decomposition["selected_decomposition_hints"]), 2)
+            prompt_text = json.dumps(payload, ensure_ascii=False)
+            selected_hints = set(decomposition["selected_decomposition_hints"])
+            for rule in DECOMPOSITION_RULES:
+                count = prompt_text.count(rule.hint)
+                self.assertEqual(count, 1 if rule.hint in selected_hints else 0)
 
     def test_stage_prompts_expose_semantic_validator_rules(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:

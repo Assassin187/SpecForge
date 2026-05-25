@@ -80,7 +80,7 @@ def validation_report(stage: str, diagnostics: list[PlanningDiagnostic]) -> dict
             {"code": item.code, "path": item.path, "message": item.message, "severity": item.level, "repairable": False}
             for item in warnings
         ],
-        "repair_hints": [item.message for item in errors[:8]],
+        "repair_hints": [item.message for item in (errors + warnings)[:8]],
     }
 
 
@@ -231,6 +231,40 @@ def _module_by_id(module_artifacts: list[dict[str, Any]]) -> dict[str, dict[str,
 
 def _is_public_function(function: dict[str, Any]) -> bool:
     return bool(function.get("exported")) or str(function.get("api_surface", "")).lower() == "public" or str(function.get("visibility", "")).lower() == "public"
+
+
+def _function_text(function: dict[str, Any]) -> str:
+    return " ".join(
+        [
+            str(function.get("name", "")),
+            str(function.get("function_kind", "")),
+            str(function.get("public_api_role", "")),
+            str(function.get("grouping_hint", "")),
+            str(function.get("purpose", "")),
+            " ".join(str(item) for item in function.get("capability_ids", [])),
+        ]
+    ).lower()
+
+
+def _artifact_semantic_text(module: dict[str, Any]) -> str:
+    artifacts = module.get("artifacts", [])
+    return " ".join(
+        [
+            str(module.get("role", "")),
+            " ".join(str(cap) for cap in module.get("owned_capabilities", [])),
+            " ".join(str(cap) for cap in module.get("owned_capability_ids", [])),
+            " ".join(str(ref) for ref in module.get("doc_ref", [])),
+            " ".join(
+                f"{artifact.get('name', '')} {artifact.get('role', '')}"
+                for artifact in artifacts
+                if isinstance(artifact, dict)
+            ),
+        ]
+    ).lower()
+
+
+def _has_any(text: str, terms: set[str]) -> bool:
+    return any(term in text for term in terms)
 
 
 def _file_ids(draft: dict[str, Any]) -> set[str]:
@@ -517,6 +551,91 @@ def validate_function_inventory_candidate(candidate: dict[str, Any], module_arti
         }
         for missing_artifact in sorted(expected_artifact_funcs - inventory_names - blocking_unresolved):
             diagnostics.append(PlanningDiagnostic("error", "function_inventory_missing_artifact_function", f"module '{module_id}' FUNC artifact '{missing_artifact}' is missing from function inventory", path))
+        module_functions = [
+            function
+            for function in candidate.get("functions", [])
+            if isinstance(function, dict) and str(function.get("module_id", "")) == module_id
+        ]
+        internal_functions = [function for function in module_functions if not _is_public_function(function)]
+        module_text = _artifact_semantic_text(modules_by_id.get(module_id, {}))
+        if expected_artifact_funcs and not internal_functions and inventory_names and inventory_names.issubset(expected_artifact_funcs):
+            diagnostics.append(
+                PlanningDiagnostic(
+                    "warning",
+                    "under_decomposed_inventory",
+                    f"module '{module_id}' function inventory mirrors mandatory FUNC artifacts and lacks internal implementation helpers",
+                    path,
+                )
+            )
+        for function in module_functions:
+            is_derived_public = _is_public_function(function) and str(function.get("name", "")).strip() not in expected_artifact_funcs
+            if is_derived_public and (
+                not str(function.get("export_reason", "")).strip()
+                or not str(function.get("public_api_role", "")).strip()
+            ):
+                diagnostics.append(
+                    PlanningDiagnostic(
+                        "warning",
+                        "derived_public_api_without_justification",
+                        f"derived public function '{function.get('function_id')}' needs export_reason and public_api_role justification or should be internal",
+                        path,
+                    )
+                )
+            purpose = str(function.get("purpose", "")).lower()
+            stage_hits = sum(
+                1
+                for terms in (
+                    {"parse", "decode", "read bytes", "frame"},
+                    {"validate", "check", "malformed"},
+                    {"dispatch", "route", "handler", "classify"},
+                    {"state", "session", "transaction", "update"},
+                    {"encode", "serialize", "response", "reply"},
+                    {"send", "write", "flush"},
+                    {"cleanup", "destroy", "free", "close", "rollback", "abort"},
+                )
+                if _has_any(purpose, terms)
+            )
+            if stage_hits >= 4:
+                diagnostics.append(
+                    PlanningDiagnostic(
+                        "warning",
+                        "coarse_function_should_split",
+                        f"function '{function.get('function_id')}' purpose combines too many implementation stages and should be split into clearer function families",
+                        path,
+                    )
+                )
+        function_text = " ".join(_function_text(function) for function in module_functions)
+        module_or_function_text = f"{module_text} {function_text}"
+        owns_parser = _has_any(module_text, {"decode", "decoder", "parse", "parser", "framing", "wire format", "delimiter", "length", "field", "header", "option"})
+        owns_serializer = _has_any(module_text, {"encode", "encoder", "serialize", "serializer", "response", "reply", "writer", "ack", "status code"})
+        owns_dispatch = _has_any(module_text, {"dispatch", "handler", "state machine", "semantic", "protocol event", "callback", "orchestration"})
+        owns_resource = _has_any(module_text, {"resource", "session", "transaction", "connection", "state", "lifecycle", "runtime", "registry", "payload", "buffer", "endpoint"})
+        if owns_parser and not any(str(function.get("function_kind", "")) == "parser" for function in module_functions):
+            diagnostics.append(PlanningDiagnostic("warning", "missing_function_family", f"module '{module_id}' appears to own parsing/framing but has no parser function family", path))
+        if owns_serializer and not any(str(function.get("function_kind", "")) == "serializer" for function in module_functions):
+            diagnostics.append(PlanningDiagnostic("warning", "missing_function_family", f"module '{module_id}' appears to own encoding/response generation but has no serializer function family", path))
+        if owns_dispatch and not any(str(function.get("function_kind", "")) == "handler" or _has_any(_function_text(function), {"dispatch", "callback", "adapter"}) for function in module_functions):
+            diagnostics.append(PlanningDiagnostic("warning", "missing_dispatch_boundary", f"module '{module_id}' appears to own handlers, state-machine, or orchestration but lacks a dispatcher/callback boundary", path))
+        if owns_resource and not _has_any(module_or_function_text, {"cleanup", "destroy", "free", "close", "abort", "rollback", "teardown", "release", "failure"}):
+            diagnostics.append(PlanningDiagnostic("warning", "missing_cleanup_for_resource_owner", f"module '{module_id}' appears to own resources or state but lacks cleanup/destroy/free/error-path functions", path))
+        if owns_parser:
+            parser_helpers = [
+                function
+                for function in module_functions
+                if not _is_public_function(function)
+                and _has_any(_function_text(function), {"field", "token", "primitive", "incremental", "boundary", "delimiter", "length", "malformed", "incomplete", "partial"})
+            ]
+            if sum(1 for function in module_functions if str(function.get("function_kind", "")) == "parser") <= 1 and not parser_helpers:
+                diagnostics.append(PlanningDiagnostic("warning", "missing_parser_or_serializer_helpers", f"module '{module_id}' appears to own parsing/framing but only has a coarse parser entry without internal helpers", path))
+        if owns_serializer:
+            serializer_helpers = [
+                function
+                for function in module_functions
+                if not _is_public_function(function)
+                and _has_any(_function_text(function), {"field", "token", "primitive", "writer", "buffer", "payload", "status", "reason", "size", "growth"})
+            ]
+            if sum(1 for function in module_functions if str(function.get("function_kind", "")) == "serializer") <= 1 and not serializer_helpers:
+                diagnostics.append(PlanningDiagnostic("warning", "missing_parser_or_serializer_helpers", f"module '{module_id}' appears to own encoding/response generation but only has a coarse serializer entry without internal helpers", path))
     return diagnostics
 
 

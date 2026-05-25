@@ -27,6 +27,8 @@ Planning Agent 运行时强制使用 LLM。LLM 不是可选增强，而是对应
 - Architecture Search 每轮并发请求 3 个候选策略；高温轮失败后进入低温轮，仍无合法候选则报错退出。
 - Implementation Plan Synthesis 使用 staged hybrid 模式：LLM 只生成当前子步骤 candidate/patch；不合法时使用该子步骤的 deterministic fallback，并继续由 validator/merger 审核。
 
+每个 LLM stage 的 temperature、top_p、max_completion_tokens、max_retries 和 enable_thinking 可以在 `agent/planning/config.py` 的 `default_llm_stage_configs()` 中集中调整。可用 stage key 包括 `protocol_profile`、`architecture_candidate_high_variance`、`architecture_candidate_low_variance`、`architecture_ranking`、`implementation_plan_5_1` 到 `implementation_plan_5_6`（含 `implementation_plan_5_4a` 到 `implementation_plan_5_4f`）。
+
 ## 中间阶段续跑
 
 `plan` 支持从顶层阶段续跑：

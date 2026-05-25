@@ -10,7 +10,7 @@ from unittest.mock import patch
 from agent.coder.specs import load_spec_bundle_from_root
 from agent.planning.adapters.facts_input import build_planning_ir
 from agent.planning.adapters.target_profile import load_target_profile
-from agent.planning.config import PlanningConfig
+from agent.planning.config import LLMStageConfig, PlanningConfig
 from agent.planning.orchestrator import PlanningAgent, compare_output_to_reference, find_latest_resume_source, validate_resume_prefix, validate_resume_source_dir
 from agent.planning.stages.architecture import build_architecture_candidates, select_architecture
 from agent.planning.stages.constraints import activate_constraints
@@ -343,16 +343,55 @@ class PlanningCompatibilityDiscoveryTests(unittest.TestCase):
                     return _ranking_candidate(messages), [], {"mocked": True, "enable_thinking": enable_thinking}
                 return None, [], {"mocked": True, "enable_thinking": enable_thinking}
 
-            with patch.dict(
-                "agent.planning.orchestrator.IMPLEMENTATION_PLAN_THINKING_BY_STAGE",
-                {"implementation_plan_5_2": True, "implementation_plan_5_3": False},
-            ):
-                with patch("agent.planning.orchestrator.request_json_candidate", side_effect=fake_request):
-                    result = PlanningAgent(facts, target, output_dir=tmp / "run").plan(stop_after_stage="5.3")
+            config = PlanningConfig(
+                llm_stage_configs={
+                    "implementation_plan_5_2": LLMStageConfig(enable_thinking=True),
+                    "implementation_plan_5_3": LLMStageConfig(enable_thinking=False),
+                }
+            )
+            with patch("agent.planning.orchestrator.request_json_candidate", side_effect=fake_request):
+                result = PlanningAgent(facts, target, output_dir=tmp / "run", config=config).plan(stop_after_stage="5.3")
 
             self.assertTrue(result.success, [diag.__dict__ for diag in result.diagnostics])
             self.assertTrue(all(thinking_by_prompt["core_design_candidate_prompt"]))
             self.assertFalse(any(thinking_by_prompt["module_artifacts_candidate_prompt"]))
+
+    def test_implementation_plan_temperature_can_be_set_per_substage(self) -> None:
+        facts = ROOT / "agent" / "facts" / "gold_facts" / "mqtt_min" / "protocol_facts.json"
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            tmp = Path(raw_tmp)
+            target = _write_target_profile(tmp, role="broker")
+            target_profile, target_diags = load_target_profile(target)
+            self.assertIsNotNone(target_profile, [diag.__dict__ for diag in target_diags])
+            planning_ir, ir_diags = build_planning_ir(facts, target_profile)
+            self.assertIsNotNone(planning_ir, [diag.__dict__ for diag in ir_diags])
+            profile = build_protocol_profile(planning_ir)
+            constraints = activate_constraints(profile)
+            architecture_candidates = build_architecture_candidates(planning_ir, profile, constraints)
+            temperature_by_prompt: dict[str, list[float]] = {}
+
+            def fake_request(*, prompt_name, messages, config, temperature=None, enable_thinking=False):
+                temperature_by_prompt.setdefault(prompt_name, []).append(config.llm_temperature if temperature is None else temperature)
+                if prompt_name == "protocol_profile_patch_prompt":
+                    return _noop_profile_patch_candidate(), [], {"mocked": True}
+                if prompt_name == "architecture_candidate_prompt":
+                    return architecture_candidates, [], {"mocked": True}
+                if prompt_name == "architecture_ranking_prompt":
+                    return _ranking_candidate(messages), [], {"mocked": True}
+                return None, [], {"mocked": True}
+
+            config = PlanningConfig(
+                llm_stage_configs={
+                    "implementation_plan_5_2": LLMStageConfig(temperature=0.61),
+                    "implementation_plan_5_3": LLMStageConfig(temperature=0.19),
+                }
+            )
+            with patch("agent.planning.orchestrator.request_json_candidate", side_effect=fake_request):
+                result = PlanningAgent(facts, target, output_dir=tmp / "run", config=config).plan(stop_after_stage="5.3")
+
+            self.assertTrue(result.success, [diag.__dict__ for diag in result.diagnostics])
+            self.assertEqual(set(temperature_by_prompt["core_design_candidate_prompt"]), {0.61})
+            self.assertEqual(set(temperature_by_prompt["module_artifacts_candidate_prompt"]), {0.19})
 
     def test_resume_from_implementation_plan_substage_inherits_prior_substage_artifacts(self) -> None:
         facts = ROOT / "agent" / "facts" / "gold_facts" / "mqtt_min" / "protocol_facts.json"

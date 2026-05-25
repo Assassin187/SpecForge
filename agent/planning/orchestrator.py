@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -105,29 +106,6 @@ ARCHITECTURE_DESIGN_STRATEGIES = (
     "layered_runtime_codec_semantic",
     "minimal_scope",
 )
-ARCHITECTURE_HIGH_TEMPERATURE = 0.7
-ARCHITECTURE_LOW_TEMPERATURE = 0.2
-ARCHITECTURE_JSON_RETRY_ATTEMPTS = 3
-
-
-# LLM thinking-mode toggles (module-level for easy centralized control)
-PROTOCOL_PROFILE_ENABLE_THINKING = False
-ARCHITECTURE_CANDIDATE_ENABLE_THINKING = True
-ARCHITECTURE_RANKING_ENABLE_THINKING = True
-IMPLEMENTATION_PLAN_ENABLE_THINKING = False
-IMPLEMENTATION_PLAN_THINKING_BY_STAGE = {
-    "implementation_plan_5_1": IMPLEMENTATION_PLAN_ENABLE_THINKING,
-    "implementation_plan_5_2": IMPLEMENTATION_PLAN_ENABLE_THINKING,
-    "implementation_plan_5_3": True,
-    "implementation_plan_5_4a": IMPLEMENTATION_PLAN_ENABLE_THINKING,
-    "implementation_plan_5_4b": IMPLEMENTATION_PLAN_ENABLE_THINKING,
-    "implementation_plan_5_4c": IMPLEMENTATION_PLAN_ENABLE_THINKING,
-    "implementation_plan_5_4d": IMPLEMENTATION_PLAN_ENABLE_THINKING,
-    "implementation_plan_5_4e": IMPLEMENTATION_PLAN_ENABLE_THINKING,
-    "implementation_plan_5_5": IMPLEMENTATION_PLAN_ENABLE_THINKING,
-    "implementation_plan_5_4f": IMPLEMENTATION_PLAN_ENABLE_THINKING,
-    "implementation_plan_5_6": IMPLEMENTATION_PLAN_ENABLE_THINKING,
-}
 
 
 STEP_FILENAMES = {
@@ -343,8 +321,14 @@ def normalize_stop_after_stage(stage: str | None) -> str | None:
     return normalize_resume_stage(stage)
 
 
-def implementation_plan_enable_thinking(stage: str) -> bool:
-    return IMPLEMENTATION_PLAN_THINKING_BY_STAGE.get(stage, IMPLEMENTATION_PLAN_ENABLE_THINKING)
+def _llm_config_for_stage(config: PlanningConfig, stage: str) -> PlanningConfig:
+    return replace(
+        config,
+        llm_temperature=config.llm_temperature_for(stage),
+        llm_top_p=config.llm_top_p_for(stage),
+        llm_max_completion_tokens=config.llm_max_completion_tokens_for(stage),
+        llm_max_retries=config.llm_max_retries_for(stage),
+    )
 
 
 def _diagnostic_reasons(diagnostics: list[PlanningDiagnostic]) -> list[str]:
@@ -440,7 +424,7 @@ def request_architecture_json_candidate(
     previous_reasons: list[str] = []
     metas: list[dict[str, Any]] = []
     diagnostics: list[PlanningDiagnostic] = []
-    for attempt in range(1, ARCHITECTURE_JSON_RETRY_ATTEMPTS + 1):
+    for attempt in range(1, config.llm_max_retries + 1):
         candidate, diagnostics, meta = request_json_candidate(
             prompt_name="architecture_candidate_prompt",
             messages=_architecture_json_retry_messages(messages, previous_reasons, attempt),
@@ -1026,15 +1010,17 @@ class PlanningAgent:
             accepted_profile = None
             previous_reasons: list[str] = []
             base_messages = protocol_profile_patch_messages(planning_ir, profile)
-            for attempt in range(1, self.config.llm_max_retries + 1):
+            protocol_profile_config = _llm_config_for_stage(self.config, "protocol_profile")
+            protocol_profile_thinking = self.config.llm_enable_thinking_for("protocol_profile")
+            for attempt in range(1, self.config.llm_max_retries_for("protocol_profile") + 1):
                 store.log_event(
-                    f"stage=protocol_profile llm_attempt={attempt} prompt=protocol_profile_patch_prompt thinking={str(PROTOCOL_PROFILE_ENABLE_THINKING).lower()} start"
+                    f"stage=protocol_profile llm_attempt={attempt} prompt=protocol_profile_patch_prompt thinking={str(protocol_profile_thinking).lower()} start"
                 )
                 candidate, candidate_diags, meta = request_json_candidate(
                     prompt_name="protocol_profile_patch_prompt",
                     messages=_retry_messages(base_messages, previous_reasons, attempt),
-                    config=self.config,
-                    enable_thinking=PROTOCOL_PROFILE_ENABLE_THINKING,
+                    config=protocol_profile_config,
+                    enable_thinking=protocol_profile_thinking,
                 )
                 store.write_agent_log(f"004_protocol_profile_patch_llm_attempt_{attempt}_meta", str(meta))
                 token_tracker.add_attempt(stage="protocol_profile", prompt_name="protocol_profile_patch_prompt", attempt=attempt, meta=meta)
@@ -1136,17 +1122,23 @@ class PlanningAgent:
             architecture_warnings: list[str] = []
             request_counter = 0
             rejection_reasons: list[str] = []
-            generation_rounds = (("high_variance", ARCHITECTURE_HIGH_TEMPERATURE), ("low_variance_retry", ARCHITECTURE_LOW_TEMPERATURE))
-            for round_name, temperature in generation_rounds:
+            generation_rounds = (
+                ("high_variance", "architecture_candidate_high_variance"),
+                ("low_variance_retry", "architecture_candidate_low_variance"),
+            )
+            for round_name, stage_config_key in generation_rounds:
                 if accepted_candidates:
                     break
+                round_config = _llm_config_for_stage(self.config, stage_config_key)
+                temperature = self.config.llm_temperature_for(stage_config_key)
+                enable_thinking = self.config.llm_enable_thinking_for(stage_config_key)
                 round_requests: list[dict[str, Any]] = []
                 for strategy in ARCHITECTURE_DESIGN_STRATEGIES:
                     request_counter += 1
                     request_id = _architecture_generation_id(round_name, strategy)
                     messages = architecture_candidate_messages(architecture_context, strategy)
                     store.log_event(
-                        f"stage=architecture generation_request={request_counter} strategy={strategy} temperature={temperature} thinking={str(ARCHITECTURE_CANDIDATE_ENABLE_THINKING).lower()} start"
+                        f"stage=architecture generation_request={request_counter} strategy={strategy} temperature={temperature} thinking={str(enable_thinking).lower()} start"
                     )
                     round_requests.append(
                         {
@@ -1162,9 +1154,9 @@ class PlanningAgent:
                         executor.submit(
                             request_architecture_json_candidate,
                             messages=request["messages"],
-                            config=self.config,
+                            config=round_config,
                             temperature=temperature,
-                            enable_thinking=ARCHITECTURE_CANDIDATE_ENABLE_THINKING,
+                            enable_thinking=enable_thinking,
                         ): request
                         for request in round_requests
                     }
@@ -1185,7 +1177,7 @@ class PlanningAgent:
                                 "enabled": True,
                                 "prompt_name": "architecture_candidate_prompt",
                                 "temperature": temperature,
-                                "enable_thinking": ARCHITECTURE_CANDIDATE_ENABLE_THINKING,
+                                "enable_thinking": enable_thinking,
                                 "failed": True,
                             }
                         round_results.append((request, llm_candidates, llm_diags, meta))
@@ -1246,12 +1238,13 @@ class PlanningAgent:
             artifact_paths["architecture_candidates"] = candidates_path
             diagnostics.extend(validate_architecture_candidates(architecture_candidates, profile, constraints, path=str(candidates_path)))
             ranking_messages = architecture_ranking_messages(architecture_context, architecture_candidates)
+            ranking_config = _llm_config_for_stage(self.config, "architecture_ranking")
+            ranking_thinking = self.config.llm_enable_thinking_for("architecture_ranking")
             ranking_candidate, ranking_llm_diags, ranking_meta = request_json_candidate(
                 prompt_name="architecture_ranking_prompt",
                 messages=ranking_messages,
-                config=self.config,
-                temperature=ARCHITECTURE_LOW_TEMPERATURE,
-                enable_thinking=ARCHITECTURE_RANKING_ENABLE_THINKING,
+                config=ranking_config,
+                enable_thinking=ranking_thinking,
             )
             token_tracker.add_attempt(stage="architecture", prompt_name="architecture_ranking_prompt", attempt=1, meta=ranking_meta)
             store.write_agent_log("006_architecture_ranking_llm_attempt_1_meta", str(ranking_meta))
@@ -1350,9 +1343,10 @@ class PlanningAgent:
                 previous_reasons: list[str] = []
                 accepted: dict[str, Any] | None = None
                 accepted_diags: list[PlanningDiagnostic] = []
-                attempts = max_attempts if max_attempts is not None else self.config.llm_max_retries
+                attempts = max_attempts if max_attempts is not None else self.config.llm_max_retries_for(thinking_stage)
                 artifact_suffix = safe_slug(step_log_suffix) if step_log_suffix else ""
-                enable_thinking = implementation_plan_enable_thinking(thinking_stage)
+                enable_thinking = self.config.llm_enable_thinking_for(thinking_stage)
+                request_config = _llm_config_for_stage(self.config, thinking_stage)
                 for attempt in range(1, attempts + 1):
                     store.log_event(
                         f"stage=implementation_plan substage={stage_label} llm_attempt={attempt} prompt={prompt_name} thinking={str(enable_thinking).lower()} start"
@@ -1360,7 +1354,7 @@ class PlanningAgent:
                     candidate, llm_diags, meta = request_json_candidate(
                         prompt_name=prompt_name,
                         messages=_retry_messages(messages, previous_reasons, attempt),
-                        config=self.config,
+                        config=request_config,
                         enable_thinking=enable_thinking,
                     )
                     log_key = f"{candidate_key}_{artifact_suffix}" if artifact_suffix else candidate_key
@@ -1476,12 +1470,13 @@ class PlanningAgent:
                     accepted: dict[str, Any] | None = None
                     accepted_diags: list[PlanningDiagnostic] = []
                     attempts: list[dict[str, Any]] = []
-                    enable_thinking = implementation_plan_enable_thinking("implementation_plan_5_4a")
-                    for attempt in range(1, self.config.llm_max_retries + 1):
+                    enable_thinking = self.config.llm_enable_thinking_for("implementation_plan_5_4a")
+                    request_config = _llm_config_for_stage(self.config, "implementation_plan_5_4a")
+                    for attempt in range(1, self.config.llm_max_retries_for("implementation_plan_5_4a") + 1):
                         candidate, llm_diags, meta = request_json_candidate(
                             prompt_name=prompt_name,
                             messages=_retry_messages(messages, previous_reasons, attempt),
-                            config=self.config,
+                            config=request_config,
                             enable_thinking=enable_thinking,
                         )
                         attempt_record: dict[str, Any] = {"attempt": attempt, "meta": meta, "accepted": False, "rejection_reasons": []}
@@ -1812,7 +1807,6 @@ class PlanningAgent:
                     report_key="runtime_entrypoint_validation_report",
                     fallback=fallback_runtime_entrypoint(draft),
                     validator=lambda candidate: validate_runtime_entrypoint_candidate(candidate, draft),
-                    max_attempts=1,
                 )
             else:
                 runtime_candidate = inherited_stage_candidate(
@@ -1837,7 +1831,6 @@ class PlanningAgent:
                     report_key="dependency_repair_validation_report",
                     fallback=fallback_dependency_repair_patch(draft, _diagnostics_as_dependency_errors(dependency_diags)),
                     validator=lambda candidate: validate_dependency_repair_patch(candidate, draft),
-                    max_attempts=1,
                 )
                 draft = apply_dependency_repair_patch(draft, repair_patch)
                 implementation_plan = finalize_dependency_graph(draft)
