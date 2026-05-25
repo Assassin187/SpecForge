@@ -19,6 +19,8 @@ from agent.planning.prompts.templates import (
     function_signature_patch_messages,
     module_artifacts_candidate_messages,
     runtime_entrypoint_candidate_messages,
+    type_inventory_candidate_messages,
+    type_inventory_repair_patch_messages,
     wire_access_binding_patch_messages,
 )
 from agent.planning.stages.architecture import build_architecture_candidates, select_architecture
@@ -35,6 +37,8 @@ from agent.planning.stages.implementation_plan_context import (
     build_function_signature_context,
     build_module_artifact_context,
     build_runtime_entrypoint_context,
+    build_type_inventory_context,
+    build_type_inventory_repair_context,
     build_wire_access_binding_context,
 )
 from agent.planning.stages.function_inventory_decomposition import DECOMPOSITION_RULES, select_top_decomposition_hints
@@ -49,8 +53,10 @@ from agent.planning.stages.implementation_plan_merger import (
     fallback_function_signatures,
     fallback_module_artifacts,
     fallback_runtime_entrypoint,
+    fallback_type_inventory,
     fallback_wire_access_binding,
     apply_function_inventory_repair_patch,
+    apply_type_inventory_repair_patch,
     merge_calls_allowed,
     merge_core_design,
     merge_file_layout,
@@ -59,6 +65,7 @@ from agent.planning.stages.implementation_plan_merger import (
     merge_function_signatures,
     merge_module_artifacts,
     merge_runtime_entrypoint,
+    merge_type_inventory,
     merge_wire_access_binding,
 )
 from agent.planning.stages.protocol_profile import build_protocol_profile
@@ -73,6 +80,8 @@ from agent.planning.validators.implementation_plan_stages import (
     validate_function_signature_patch,
     validate_module_artifacts_candidate,
     validate_runtime_entrypoint_candidate,
+    validate_type_inventory_candidate,
+    validate_type_inventory_repair_patch,
     validate_wire_access_binding_patch,
     validation_report,
     function_inventory_decomposition_report,
@@ -178,6 +187,11 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
         draft = merge_core_design(draft, core)
         modules = fallback_module_artifacts(draft, profile, constraints, selected)
         draft = merge_module_artifacts(draft, modules)
+        type_inventories = []
+        for module in list(draft["module_artifacts"]):
+            type_inventory = fallback_type_inventory(draft, module)
+            type_inventories.append(type_inventory)
+            draft = merge_type_inventory(draft, type_inventory)
         inventories = []
         for module in list(draft["module_artifacts"]):
             inventory = fallback_function_inventory(draft, module)
@@ -206,6 +220,8 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
         return planning_ir, profile, constraints, selected, draft, plan, {
             "core": core,
             "modules": modules,
+            "type_inventory": type_inventories[0],
+            "type_inventories": type_inventories,
             "inventory": inventories[0],
             "inventories": inventories,
             "signature": signature_patches[0],
@@ -223,6 +239,7 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             planning_ir, profile, constraints, selected, draft, _, items = self._fixtures(Path(raw_tmp))
             self.assertFalse(validate_core_design_candidate(items["core"], planning_ir, profile, selected, constraints))
             self.assertFalse(validate_module_artifacts_candidate(items["modules"], selected, profile, constraints, merge_core_design(build_plan_skeleton(planning_ir, profile, constraints, selected), items["core"])))
+            self.assertFalse(_has_error(validate_type_inventory_candidate(items["type_inventory"], draft["module_artifacts"], draft, profile, planning_ir)))
             self.assertFalse(_has_error(validate_function_inventory_candidate(items["inventory"], draft["module_artifacts"], draft, profile, planning_ir)))
             self.assertFalse(validate_function_signature_patch(items["signature"], draft))
             self.assertFalse(validate_function_behavior_contract_patch(items["behavior"], draft, constraints))
@@ -238,6 +255,7 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             cases = [
                 (items["core"], lambda c: validate_core_design_candidate(c, planning_ir, profile, selected, constraints), lambda c: c["canonical_types"][0].__setitem__("kind", "bad")),
                 (items["modules"], lambda c: validate_module_artifacts_candidate(c, selected, profile, constraints, draft), lambda c: c["modules"][0]["artifacts"][0].__setitem__("kind", "bad")),
+                (items["type_inventory"], lambda c: validate_type_inventory_candidate(c, draft["module_artifacts"], draft, profile, planning_ir), lambda c: c["types"][0].__setitem__("kind", "bad")),
                 (items["inventory"], lambda c: validate_function_inventory_candidate(c, draft["module_artifacts"], draft, profile, planning_ir), lambda c: c["functions"][0].__setitem__("function_kind", "bad")),
                 (items["signature"], lambda c: validate_function_signature_patch(c, draft), lambda c: c["function_signature_updates"][0]["signature"].__setitem__("storage_class", "bad")),
                 (items["behavior"], lambda c: validate_function_behavior_contract_patch(c, draft, constraints), _break_first_state_access),
@@ -267,6 +285,9 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             modules = copy.deepcopy(items["modules"])
             modules["modules"][0]["module_id"] = "missing"
             self.assertTrue(_has(validate_module_artifacts_candidate(modules, selected, profile, constraints, draft), "unknown_module_artifacts_module"))
+            type_inventory = copy.deepcopy(items["type_inventory"])
+            type_inventory["types"][0]["module_id"] = "missing"
+            self.assertTrue(_has(validate_type_inventory_candidate(type_inventory, draft["module_artifacts"], draft, profile, planning_ir), "unknown_type_inventory_owner"))
             inventory = copy.deepcopy(items["inventory"])
             inventory["functions"][0]["module_id"] = "missing"
             self.assertTrue(_has(validate_function_inventory_candidate(inventory, draft["module_artifacts"], draft, profile, planning_ir), "unknown_function_module"))
@@ -349,6 +370,137 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             missing["functions"] = [item for item in missing["functions"] if item["name"] != next(iter(func_artifacts))]
             self.assertTrue(_has(validate_function_inventory_candidate(missing, draft["module_artifacts"], draft, profile, planning_ir), "function_inventory_missing_artifact_function"))
 
+    def test_type_inventory_is_seeded_by_module_artifacts(self) -> None:
+        module = {
+            "module_id": "mqtt_codec",
+            "name": "mqtt_codec",
+            "role": "MQTT codec and packet framing",
+            "dependencies": [],
+            "artifacts": [
+                {"name": "mqtt_packet", "kind": "TYPE", "role": "Decoded packet container"},
+                {"name": "mqtt_packet_free", "kind": "FUNC", "role": "Free decoded packet"},
+            ],
+            "state_owned": [],
+            "owned_capabilities": [],
+            "files": [],
+            "doc_ref": [],
+        }
+        draft = {"protocol_name": "mqtt", "module_artifacts": [module], "canonical_types": [], "resource_lifecycle": []}
+        candidate = fallback_type_inventory(draft, module)
+        type_names = {item["name"] for item in candidate["types"]}
+        self.assertIn("mqtt_packet", type_names)
+        self.assertFalse(_has_error(validate_type_inventory_candidate(candidate, [module], draft)))
+
+        missing = copy.deepcopy(candidate)
+        missing["types"] = [item for item in missing["types"] if item["name"] != "mqtt_packet"]
+        self.assertTrue(_has(validate_type_inventory_candidate(missing, [module], draft), "type_inventory_missing_artifact_type"))
+
+    def test_type_inventory_validator_missing_private_leak_and_ownership(self) -> None:
+        module = {
+            "module_id": "mqtt_codec",
+            "name": "mqtt_codec",
+            "role": "MQTT codec with buffer ownership",
+            "dependencies": [],
+            "artifacts": [{"name": "mqtt_packet", "kind": "TYPE", "role": "Decoded packet"}],
+            "state_owned": [],
+            "owned_capabilities": [],
+            "files": [],
+            "doc_ref": [],
+        }
+        candidate = fallback_type_inventory({"protocol_name": "mqtt", "module_artifacts": [module]}, module)
+        public_packet = next(item for item in candidate["types"] if item["name"] == "mqtt_packet")
+        private_state = copy.deepcopy(public_packet)
+        private_state.update(
+            {
+                "type_id": "type:mqtt_codec:mqtt_codec_state",
+                "name": "struct mqtt_codec_state",
+                "kind": "internal_state",
+                "visibility": "private",
+                "defined_in": "source_file",
+            }
+        )
+        public_packet["fields"].append(
+            {
+                "field_name": "state",
+                "field_type": "struct mqtt_codec_state *",
+                "type_ref": private_state["type_id"],
+                "required": True,
+                "ownership": "BORROWED",
+                "lifetime": "valid during call",
+                "length_field": "",
+                "capacity_field": "",
+                "validation_notes": "",
+            }
+        )
+        public_packet["fields"].append(
+            {
+                "field_name": "payload",
+                "field_type": "uint8_t*",
+                "type_ref": "uint8_t",
+                "required": False,
+                "ownership": "UNKNOWN",
+                "lifetime": "",
+                "length_field": "",
+                "capacity_field": "",
+                "validation_notes": "",
+            }
+        )
+        owned_buffer = copy.deepcopy(public_packet)
+        owned_buffer.update(
+            {
+                "type_id": "type:mqtt_codec:mqtt_payload_buffer",
+                "name": "mqtt_payload_buffer",
+                "kind": "owned_buffer",
+                "visibility": "private",
+                "defined_in": "source_file",
+                "fields": [],
+            }
+        )
+        candidate["types"].extend([private_state, owned_buffer])
+        diags = validate_type_inventory_candidate(candidate, [module], {"module_artifacts": [module]})
+        self.assertTrue(_has(diags, "public_type_field_uses_private_type"))
+        self.assertTrue(_has(diags, "pointer_field_missing_ownership"))
+        self.assertTrue(_has(diags, "buffer_type_missing_size_fields"))
+
+    def test_type_inventory_repair_patch_and_merge(self) -> None:
+        module = {
+            "module_id": "mqtt_codec",
+            "name": "mqtt_codec",
+            "role": "MQTT codec",
+            "dependencies": [],
+            "artifacts": [{"name": "mqtt_packet", "kind": "TYPE", "role": "Decoded packet"}],
+            "state_owned": [],
+            "owned_capabilities": [],
+            "files": [],
+            "doc_ref": [],
+        }
+        candidate = fallback_type_inventory({"protocol_name": "mqtt", "module_artifacts": [module]}, module)
+        base_type = candidate["types"][0]
+        added = copy.deepcopy(base_type)
+        added.update({"type_id": "type:mqtt_codec:mqtt_reason_code", "name": "mqtt_reason_code", "kind": "enum"})
+        patch = {
+            "schema_version": "type_inventory_repair_patch/v1",
+            "patch_id": "patch:test:type_inventory",
+            "producer": {"stage": "5.4a_type_inventory", "prompt_name": "type_inventory_repair_patch_prompt", "prompt_version": "test"},
+            "module_id": module["module_id"],
+            "added_types": [added],
+            "updated_types": [{"type_id": base_type["type_id"], "ownership_lifetime": "Caller owns until mqtt_packet_free.", "related_functions": ["mqtt_packet_free"]}],
+            "added_assumptions": [],
+            "added_unresolved_questions": [],
+        }
+        context = build_type_inventory_repair_context({"module_artifacts": [module]}, module, candidate, [{"code": "type_inventory_missing_artifact_type", "message": "missing"}])
+        payload = json.loads(type_inventory_repair_patch_messages(context)[1]["content"])
+        self.assertEqual(payload["output_schema"], "type_inventory_repair_patch/v1")
+        self.assertIn("added_types", payload["output_shape"]["properties"])
+        self.assertFalse(validate_type_inventory_repair_patch(patch, candidate, [module]))
+        merged = apply_type_inventory_repair_patch(candidate, patch)
+        self.assertEqual(len(merged["types"]), len(candidate["types"]) + 1)
+        self.assertEqual(merged["types"][0]["ownership_lifetime"], "Caller owns until mqtt_packet_free.")
+
+        duplicate = copy.deepcopy(patch)
+        duplicate["added_types"][0]["type_id"] = base_type["type_id"]
+        self.assertTrue(_has(validate_type_inventory_repair_patch(duplicate, candidate, [module]), "repair_duplicate_added_type_id"))
+
     def test_key_flow_module_requires_lifecycle_artifact(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:
             _, profile, constraints, selected, draft, _, items = self._fixtures(Path(raw_tmp))
@@ -383,7 +535,7 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
         candidate = {
             "schema_version": "function_inventory_candidate/v2",
             "candidate_id": "candidate:test:inventory",
-            "producer": {"stage": "5.4a_function_inventory", "prompt_name": "function_inventory_candidate_prompt", "prompt_version": "test"},
+            "producer": {"stage": "5.4b_function_inventory", "prompt_name": "function_inventory_candidate_prompt", "prompt_version": "test"},
             "module_id": module["module_id"],
             "functions": [_inventory_function("proto_decode", module["module_id"], kind="parser", purpose="Parse, validate, dispatch, update state, encode response, send reply, and cleanup resources.")],
             "assumptions": [],
@@ -394,7 +546,7 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
         self.assertTrue(_has(diags, "under_decomposed_inventory"))
         self.assertTrue(_has(diags, "coarse_function_should_split"))
         self.assertTrue(_has(diags, "missing_parser_or_serializer_helpers"))
-        report = validation_report("5.4a_function_inventory:test", diags)
+        report = validation_report("5.4b_function_inventory:test", diags)
         self.assertTrue(report["passed"])
         self.assertTrue(any("mirrors mandatory FUNC artifacts" in hint for hint in report["repair_hints"]))
 
@@ -414,7 +566,7 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
         candidate = {
             "schema_version": "function_inventory_candidate/v2",
             "candidate_id": "candidate:test:derived_public",
-            "producer": {"stage": "5.4a_function_inventory", "prompt_name": "function_inventory_candidate_prompt", "prompt_version": "test"},
+            "producer": {"stage": "5.4b_function_inventory", "prompt_name": "function_inventory_candidate_prompt", "prompt_version": "test"},
             "module_id": module["module_id"],
             "functions": [_inventory_function("proto_run", module["module_id"], public=True), derived],
             "assumptions": [],
@@ -437,7 +589,7 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
         candidate = {
             "schema_version": "function_inventory_candidate/v2",
             "candidate_id": "candidate:test:families",
-            "producer": {"stage": "5.4a_function_inventory", "prompt_name": "function_inventory_candidate_prompt", "prompt_version": "test"},
+            "producer": {"stage": "5.4b_function_inventory", "prompt_name": "function_inventory_candidate_prompt", "prompt_version": "test"},
             "module_id": module["module_id"],
             "functions": [_inventory_function("proto_handle", module["module_id"], kind="public_api", purpose="Handle command state transfer.")],
             "assumptions": [],
@@ -531,6 +683,7 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             validators = [
                 lambda c: validate_core_design_candidate(c, planning_ir, profile, selected, constraints),
                 lambda c: validate_module_artifacts_candidate(c, selected, profile, constraints, draft),
+                lambda c: validate_type_inventory_candidate(c, draft["module_artifacts"], draft, profile, planning_ir),
                 lambda c: validate_function_inventory_candidate(c, draft["module_artifacts"], draft, profile, planning_ir),
                 lambda c: validate_function_signature_patch(c, draft),
                 lambda c: validate_function_behavior_contract_patch(c, draft, constraints),
@@ -542,10 +695,10 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             ]
             for validator in validators:
                 self.assertTrue(_has(validator(plan), "invalid_schema_version"))
-            for key in ("core", "modules", "inventory", "signature", "behavior", "wire", "calls", "layout", "runtime", "repair"):
+            for key in ("core", "modules", "type_inventory", "inventory", "signature", "behavior", "wire", "calls", "layout", "runtime", "repair"):
                 candidate = copy.deepcopy(items[key])
                 candidate["dependency_graph"] = {}
-                validator = validators[["core", "modules", "inventory", "signature", "behavior", "wire", "calls", "layout", "runtime", "repair"].index(key)]
+                validator = validators[["core", "modules", "type_inventory", "inventory", "signature", "behavior", "wire", "calls", "layout", "runtime", "repair"].index(key)]
                 self.assertTrue(_has(validator(candidate), "forbidden_extra_field"))
 
     def test_prompt_uses_output_shape_not_allowed_fields(self) -> None:
@@ -659,7 +812,7 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             return {
                 "schema_version": "function_inventory_candidate/v2",
                 "candidate_id": "candidate:test:coverage",
-                "producer": {"stage": "5.4a_function_inventory", "prompt_name": "function_inventory_candidate_prompt", "prompt_version": "test"},
+                "producer": {"stage": "5.4b_function_inventory", "prompt_name": "function_inventory_candidate_prompt", "prompt_version": "test"},
                 "module_id": module["module_id"],
                 "functions": functions,
                 "assumptions": [],
@@ -699,7 +852,7 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
         candidate = {
             "schema_version": "function_inventory_candidate/v2",
             "candidate_id": "candidate:test:repair",
-            "producer": {"stage": "5.4a_function_inventory", "prompt_name": "function_inventory_candidate_prompt", "prompt_version": "test"},
+            "producer": {"stage": "5.4b_function_inventory", "prompt_name": "function_inventory_candidate_prompt", "prompt_version": "test"},
             "module_id": module["module_id"],
             "functions": [_inventory_function("proto_decode", module["module_id"], kind="parser", purpose="Parse, validate, dispatch, update state, encode response, send reply, and cleanup resources.")],
             "assumptions": [],
@@ -719,7 +872,7 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
         patch = {
             "schema_version": "function_inventory_repair_patch/v1",
             "patch_id": "patch:test:repair",
-            "producer": {"stage": "5.4a_function_inventory", "prompt_name": "function_inventory_repair_patch_prompt", "prompt_version": "test"},
+            "producer": {"stage": "5.4b_function_inventory", "prompt_name": "function_inventory_repair_patch_prompt", "prompt_version": "test"},
             "module_id": module["module_id"],
             "added_functions": [
                 _inventory_function("proto_read_primitive_field", module["module_id"], kind="internal_helper", public=False, purpose="Read primitive fields for parser helper coverage."),
@@ -752,6 +905,7 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             prompt_payloads = [
                 json.loads(core_design_candidate_messages(build_core_design_context(planning_ir, profile, constraints, selected))[1]["content"]),
                 json.loads(module_artifacts_candidate_messages(build_module_artifact_context(draft, profile, constraints, selected))[1]["content"]),
+                json.loads(type_inventory_candidate_messages(build_type_inventory_context(draft, first_module))[1]["content"]),
                 json.loads(function_inventory_candidate_messages(build_function_inventory_context(draft, first_module))[1]["content"]),
                 json.loads(function_signature_patch_messages(build_function_signature_context(draft, first_module_id, first_functions, batch_index=0, batch_size=8))[1]["content"]),
                 json.loads(function_behavior_contract_patch_messages(build_function_behavior_context(draft, first_module_id, first_functions, constraints, batch_index=0, batch_size=4))[1]["content"]),
@@ -772,6 +926,7 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
                 for rule in payload["semantic_validation_rules"] + payload["enum_usage_rules"] + payload["id_reference_rules"]
             )
             self.assertIn("handler_matrix[].trigger must exactly equal that surface", joined_rules)
+            self.assertIn("mandatory seeds", joined_rules)
             self.assertIn("signature.name must match the existing function name", joined_rules)
             self.assertIn("service_requirements may describe needed operations", joined_rules)
             self.assertIn("Parser and serializer functions must not write state", joined_rules)
@@ -822,6 +977,32 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             update["signature"]["params"][0]["type_ref"] = "made_up_type"
             self.assertTrue(_has(validate_function_signature_patch(signature, draft), "unknown_signature_param_type_ref"))
 
+    def test_signature_validator_uses_type_inventory_boundary(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            _, _, _, _, draft, _, items = self._fixtures(Path(raw_tmp))
+            signature = copy.deepcopy(items["signature"])
+            update = next(item for item in signature["function_signature_updates"] if item["signature"]["params"])
+            module_id = str(signature["module_id"])
+            public_handle = next(item for item in draft["type_inventory"] if item["module_id"] == module_id and item["kind"] == "opaque_handle")
+            private_state = copy.deepcopy(public_handle)
+            private_state.update(
+                {
+                    "type_id": f"type:{module_id}:private_state_for_signature",
+                    "name": "struct private_state_for_signature",
+                    "kind": "internal_state",
+                    "visibility": "private",
+                    "defined_in": "source_file",
+                }
+            )
+            draft["type_inventory"].append(private_state)
+            param = update["signature"]["params"][0]
+            param["type"] = "struct private_state_for_signature *"
+            param["type_ref"] = private_state["type_id"]
+            self.assertTrue(_has(validate_function_signature_patch(signature, draft), "public_signature_uses_private_type"))
+            param["type"] = f"{public_handle['name']} *"
+            param["type_ref"] = public_handle["type_id"]
+            self.assertFalse(_has(validate_function_signature_patch(signature, draft), "public_signature_uses_private_type"))
+
     def test_behavior_service_requirements_are_classified(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:
             _, _, constraints, _, draft, _, items = self._fixtures(Path(raw_tmp))
@@ -871,7 +1052,7 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             candidate = {
                 "schema_version": "calls_allowed_candidate/v2",
                 "candidate_id": "candidate:test:scoped",
-                "producer": {"stage": "5.4e_call_planning", "prompt_name": "calls_allowed_candidate_prompt", "prompt_version": "test"},
+                "producer": {"stage": "5.4f_call_planning", "prompt_name": "calls_allowed_candidate_prompt", "prompt_version": "test"},
                 "call_updates": [{"caller_function_id": caller["function_id"], "calls_allowed": [_call_edge(same_module_callee["function_id"], ["srv:test_cross"])]}],
                 "unresolved_service_requirements": [],
                 "assumptions": [],

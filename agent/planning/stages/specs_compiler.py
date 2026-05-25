@@ -244,6 +244,7 @@ def _data_declarations(
     module_item: dict[str, Any],
     file_functions: list[dict[str, Any]],
     canonical_type_index: dict[str, dict[str, Any]],
+    module_type_inventory: list[dict[str, Any]],
     *,
     unresolved: list[dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -269,6 +270,61 @@ def _data_declarations(
     seen_header_keys = {normalize_type_key(handle_type)}
     header_type_specs_by_key: dict[str, dict[str, Any]] = {normalize_type_key(handle_type): {"TYPE_KIND": "OPAQUE"}}
     seen_source = {f"struct {handle_type[:-2]}"}
+
+    def add_inventory_type(type_item: dict[str, Any]) -> None:
+        name = str(type_item.get("name", "")).strip()
+        if not name:
+            return
+        target_public = str(type_item.get("visibility", "")) == "public" and str(type_item.get("defined_in", "")) == "public_header"
+        target = header_data if target_public else source_data
+        seen = seen_header if target_public else seen_source
+        seen_keys = seen_header_keys if target_public else {normalize_type_key(item) for item in seen_source}
+        key = normalize_type_key(name)
+        if name in seen or key in seen_keys:
+            return
+        declaration = {
+            "NAME": name,
+            "KIND": "TYPE",
+            "VISIBILITY": normalize_data_visibility_for_coder(type_item.get("visibility")),
+            "ROLE": str(type_item.get("purpose", "")) or "Planned module type.",
+        }
+        kind = str(type_item.get("kind", "opaque_handle"))
+        fields = [field for field in type_item.get("fields", []) if isinstance(field, dict)]
+        enum_values = [item for item in type_item.get("enum_values", []) if isinstance(item, dict)]
+        if kind in {"struct", "config_struct", "event_struct", "view_struct", "result_struct", "owned_buffer", "internal_state"} and fields:
+            declaration["TYPE_SPEC"] = {
+                "TYPE_KIND": "STRUCT",
+                "FIELDS": [
+                    {
+                        "NAME": str(field.get("field_name", "")),
+                        "TYPE": _canonical_field_type(field.get("field_type", "")),
+                        "ROLE": str(field.get("validation_notes") or field.get("lifetime") or "Planned type field."),
+                    }
+                    for field in fields
+                    if str(field.get("field_name", "")).strip()
+                ],
+            }
+        elif kind in {"enum", "bitflag"}:
+            declaration["TYPE_SPEC"] = {
+                "TYPE_KIND": "ENUM",
+                "ENUM_VALUES": [
+                    {"NAME": str(item.get("name", "")), "VALUE": str(item.get("value", "")), "ROLE": str(item.get("role", ""))}
+                    for item in enum_values
+                    if str(item.get("name", "")).strip()
+                ],
+            }
+        elif kind == "alias":
+            declaration["TYPE_SPEC"] = {"TYPE_KIND": "ALIAS", "ALIAS_OF": str(type_item.get("ownership_lifetime") or "uint8_t")}
+        elif target_public:
+            declaration["TYPE_SPEC"] = {"TYPE_KIND": "OPAQUE"}
+        target.append(declaration)
+        seen.add(name)
+        if target_public:
+            seen_header_keys.add(key)
+            header_type_specs_by_key[key] = declaration.get("TYPE_SPEC", {"TYPE_KIND": "OPAQUE"})
+
+    for type_item in module_type_inventory:
+        add_inventory_type(type_item)
 
     def add_public_type(type_item: dict[str, Any], *, role: str = "", ref: dict[str, Any] | None = None) -> None:
         symbol = canonical_type_symbol(type_item)
@@ -397,6 +453,7 @@ def compile_spec_bundle(spec_blueprint: dict[str, Any], output_dir: str | Path) 
     functions = [item for item in spec_blueprint.get("functions", []) if isinstance(item, dict)]
     access_path_table = [item for item in spec_blueprint.get("access_path_table", []) if isinstance(item, dict)]
     canonical_types = [item for item in spec_blueprint.get("canonical_types", []) if isinstance(item, dict)]
+    type_inventory = [item for item in spec_blueprint.get("type_inventory", []) if isinstance(item, dict)]
     canonical_type_index = _canonical_type_index(canonical_types)
     access_by_id = {str(item.get("access_path_id", "")): item for item in access_path_table if str(item.get("access_path_id", "")).strip()}
     functions_by_file: dict[str, list[dict[str, Any]]] = {}
@@ -434,6 +491,7 @@ def compile_spec_bundle(spec_blueprint: dict[str, Any], output_dir: str | Path) 
                 module_item,
                 file_functions,
                 canonical_type_index,
+                [item for item in type_inventory if str(item.get("module_id", "")) == module_id],
                 unresolved=unresolved_lowering,
             )
         source_interfaces: list[dict[str, Any]] = []

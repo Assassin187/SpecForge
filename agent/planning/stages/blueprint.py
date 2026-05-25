@@ -22,6 +22,7 @@ def build_spec_blueprint(implementation_plan: dict[str, Any]) -> dict[str, Any]:
         "roles": [str(target_role).upper()],
         "source_artifact": "007_implementation_plan.json",
         "canonical_types": implementation_plan.get("canonical_types", []),
+        "type_inventory": implementation_plan.get("type_inventory", []),
         "modules": [
             {
                 "module_id": item.get("module_id"),

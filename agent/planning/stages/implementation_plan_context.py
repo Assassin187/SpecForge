@@ -133,7 +133,14 @@ def _legal_ids_from_draft(draft: dict[str, Any]) -> dict[str, Any]:
         "constraint_ids": list(draft.get("traceability", {}).get("constraint_ids", [])),
         "state_ids": [str(item.get("state_id", "")) for item in draft.get("state_design", []) if isinstance(item, dict)],
         "error_ids": [str(item.get("error_id", "")) for item in draft.get("error_strategy", []) if isinstance(item, dict)],
-        "type_ids": [str(item.get("type_id", "")) for item in draft.get("canonical_types", []) if isinstance(item, dict)],
+        "type_ids": sorted(
+            {
+                str(item.get("type_id", ""))
+                for key in ("canonical_types", "type_inventory")
+                for item in draft.get(key, [])
+                if isinstance(item, dict) and str(item.get("type_id", "")).strip()
+            }
+        ),
         "system_type_ids": SYSTEM_TYPE_IDS,
         "handler_ids": [str(item.get("handler_id", "")) for item in draft.get("handler_matrix", []) if isinstance(item, dict)],
         "function_ids": [str(item.get("function_id", "")) for item in draft.get("function_contracts", []) if isinstance(item, dict)],
@@ -299,7 +306,15 @@ def build_module_artifact_context(draft: dict[str, Any], profile: dict[str, Any]
     }
 
 
-def build_function_inventory_context(draft: dict[str, Any], module_artifact: dict[str, Any]) -> dict[str, Any]:
+def _module_type_inventory(draft: dict[str, Any], module_id: str) -> list[dict[str, Any]]:
+    return [
+        item
+        for item in draft.get("type_inventory", [])
+        if isinstance(item, dict) and str(item.get("module_id", "")) == module_id
+    ]
+
+
+def _provider_consumer_modules(draft: dict[str, Any], module_artifact: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     module_id = str(module_artifact.get("module_id", ""))
     modules = [item for item in draft.get("module_artifacts", []) if isinstance(item, dict)]
     providers = {str(dep) for dep in module_artifact.get("dependencies", []) if str(dep).strip()}
@@ -309,15 +324,100 @@ def build_function_inventory_context(draft: dict[str, Any], module_artifact: dic
         for item in modules
         if module_id in {str(dep) for dep in item.get("dependencies", []) if str(dep).strip()}
     ]
+    return provider_modules, consumers
+
+
+def build_type_inventory_context(draft: dict[str, Any], module_artifact: dict[str, Any]) -> dict[str, Any]:
+    module_id = str(module_artifact.get("module_id", ""))
+    provider_modules, consumers = _provider_consumer_modules(draft, module_artifact)
+    return {
+        "schema_version": "type_inventory_context/v1",
+        "module_artifact": module_artifact,
+        "current_module_artifacts": module_artifact.get("artifacts", []),
+        "current_module_dependencies": module_artifact.get("dependencies", []),
+        "provider_module_artifacts": [
+            {"module_id": item.get("module_id"), "artifacts": item.get("artifacts", [])}
+            for item in provider_modules
+        ],
+        "provider_public_types": [
+            {
+                "module_id": item.get("module_id"),
+                "types": [
+                    type_item
+                    for type_item in _module_type_inventory(draft, str(item.get("module_id", "")))
+                    if str(type_item.get("visibility", "")) == "public"
+                ],
+            }
+            for item in provider_modules
+        ],
+        "consumer_module_artifact_dependencies": [
+            {"module_id": item.get("module_id"), "artifacts": item.get("artifacts", [])}
+            for item in consumers
+        ],
+        "canonical_types": [
+            item
+            for item in draft.get("canonical_types", [])
+            if isinstance(item, dict) and str(item.get("owner_module_id", "")) in {module_id, *[str(m.get("module_id", "")) for m in provider_modules]}
+        ],
+        "state_design": [
+            item for item in draft.get("state_design", []) if isinstance(item, dict) and str(item.get("owner_module_id", "")) == module_id
+        ],
+        "resource_lifecycle": [
+            item for item in draft.get("resource_lifecycle", []) if isinstance(item, dict) and str(item.get("owner_module_id", "")) == module_id
+        ],
+        "error_strategy": [
+            item for item in draft.get("error_strategy", []) if isinstance(item, dict) and str(item.get("owner_module_id", "")) == module_id
+        ],
+        "handler_matrix": [
+            item for item in draft.get("handler_matrix", []) if isinstance(item, dict) and str(item.get("owner_module_id", "")) == module_id
+        ],
+        "core_design_summary": _accepted_summary(draft),
+        "legal_id_universe": _legal_ids_from_draft(draft),
+    }
+
+
+def build_type_inventory_repair_context(
+    draft: dict[str, Any],
+    module_artifact: dict[str, Any],
+    candidate: dict[str, Any],
+    diagnostics: list[dict[str, Any]],
+) -> dict[str, Any]:
+    context = build_type_inventory_context(draft, module_artifact)
+    context.update(
+        {
+            "schema_version": "type_inventory_repair_context/v1",
+            "current_candidate": candidate,
+            "triggering_diagnostics": diagnostics,
+            "patch_merge_rules": [
+                "added_types are appended to current_candidate.types for this module only.",
+                "type_id and name must not duplicate any existing or newly added type.",
+                "updated_types may not rename a type or change its module_id/kind.",
+                "Prefer patch repair over regenerating the whole candidate.",
+                "After merge, the result must validate as type_inventory_candidate/v1.",
+            ],
+        }
+    )
+    return context
+
+
+def build_function_inventory_context(draft: dict[str, Any], module_artifact: dict[str, Any]) -> dict[str, Any]:
+    module_id = str(module_artifact.get("module_id", ""))
+    provider_modules, consumers = _provider_consumer_modules(draft, module_artifact)
     context = {
         "schema_version": "function_inventory_context/v1",
         "module_artifact": module_artifact,
         "current_module_artifacts": module_artifact.get("artifacts", []),
+        "current_module_type_inventory": _module_type_inventory(draft, module_id),
         "current_module_dependencies": module_artifact.get("dependencies", []),
         "provider_module_artifacts": [
             {
                 "module_id": item.get("module_id"),
                 "artifacts": item.get("artifacts", []),
+                "public_types": [
+                    type_item
+                    for type_item in _module_type_inventory(draft, str(item.get("module_id", "")))
+                    if str(type_item.get("visibility", "")) == "public"
+                ],
             }
             for item in provider_modules
         ],
@@ -390,6 +490,7 @@ def build_function_signature_context(draft: dict[str, Any], module_id: str, func
         "batch": {"index": batch_index, "size": batch_size},
         "functions": functions,
         "required_update_skeleton": _signature_update_skeleton(functions),
+        "current_module_type_inventory": _module_type_inventory(draft, module_id),
         "module_artifacts": draft.get("module_artifacts", []),
         "core_design_summary": _accepted_summary(draft),
         "legal_id_universe": _legal_ids_from_draft(draft),

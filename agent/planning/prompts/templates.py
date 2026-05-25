@@ -53,8 +53,32 @@ STAGE_SEMANTIC_RULES = {
         "FUNC artifacts seed the next function inventory stage. TYPE artifacts seed canonical type/header/data lowering.",
         "If facts are insufficient, generate a reasonable minimum_v1 artifact and record the assumption; only blocking issues belong in unresolved_questions.",
     ],
+    "type_inventory_candidate/v1": [
+        "Task definition: given one module and its module_artifacts TYPE/FUNC seeds, plan the implementation-oriented type inventory for that module only.",
+        "Generate only type inventory; do not include function signatures, input/output contracts, state access, wire mappings, calls, file layout, dependency graph, or code.",
+        "Every current_module_artifacts item with kind=TYPE must be represented by types[] unless a blocking unresolved_questions item names that artifact.",
+        "TYPE artifacts are mandatory seeds but not a closed set; add internal state, config, callback, event, view, owned buffer, result, enum, bitflag, or alias types when needed for API clarity, lifecycle closure, or module boundaries.",
+        "Align the meaning with coder specs: public_header types lower to HEADER.DATA; source_file private/module_internal types lower to SOURCE.DATA; public module type artifacts become PROTOCOL_MODULE_SPEC ARTIFACTS.",
+        "Use public opaque handles for public APIs that need module-owned state without exposing private struct fields.",
+        "Do not expose internal_state fields in public_header. Public/header types may not depend on private or module_internal types.",
+        "dependencies may reference only public types from provider modules or local types; never depend on another module's private/module_internal type.",
+        "Pointer, string, and buffer fields must include ownership and lifetime. Owned buffers must identify length_field and capacity_field or explain the equivalent in ownership_lifetime.",
+        "Owned types must identify freed_by or destroyed_by lifecycle functions, or add an unresolved question if no release path can be planned.",
+        "related_functions should name the function artifacts or expected function inventory usage that creates, initializes, consumes, destroys, or frees the type.",
+        "If a callback or event responsibility is present in the module role/artifacts/core design, represent callback_type or event_struct where it is needed for a stable boundary.",
+    ],
+    "type_inventory_repair_patch/v1": [
+        "Return a minimal patch for the current module's existing type_inventory_candidate; do not return or rewrite a complete type_inventory_candidate.",
+        "Use added_types for missing artifact types, missing opaque handles, missing internal state, missing config, missing callback/event types, or genuinely needed unknown types.",
+        "Use updated_types to repair visibility, defined_in, fields, enum_values, callback_signature, ownership_lifetime, lifecycle, related_functions, dependencies, or status.",
+        "For unknown type references, prefer binding to an existing type before adding a new type.",
+        "For private leaks, repair the boundary by changing visibility/defined_in only when that is semantically valid; otherwise leave an unresolved question for the later signature stage to use a public opaque handle.",
+        "For ownership diagnostics, add only the missing ownership, lifetime, length_field, capacity_field, freed_by, or destroyed_by information.",
+        "Do not delete, rename, or change type_id/name/module_id/kind of existing types.",
+        "Do not include functions, signatures, state access, wire mappings, calls, files, dependency graphs, or code.",
+    ],
     "function_inventory_candidate/v2": [
-        "Task definition: given one module and its mandatory module_artifacts, plan an implementation-oriented function inventory for that module. module_artifacts FUNC entries are mandatory public/API seeds, not the complete function list and not a function-count ceiling.",
+        "Task definition: given one module, its mandatory module_artifacts, and the accepted type_inventory, plan an implementation-oriented function inventory for that module. module_artifacts FUNC entries are mandatory public/API seeds, not the complete function list and not a function-count ceiling.",
         "Generate only a function inventory; do not include signatures, input/output contracts, state access, wire mappings, access paths, calls, file IDs, dependency graphs, or code.",
         "function_id values must be new and unique within this candidate; function names must be unique.",
         "module_id must be the current module or another module explicitly present in module_artifacts.",
@@ -63,6 +87,7 @@ STAGE_SEMANTIC_RULES = {
         "Do not treat module_artifacts as the complete function list. Do not produce only one-to-one artifact mirroring for non-trivial modules; add internal helpers needed for realistic implementation decomposition.",
         "Use module role, artifact roles, dependencies, provider/consumer boundaries, doc_ref, capability_ids, and handler/message/field coverage to add internal functions that support later signature, behavior, wire/access, and call-contract lowering.",
         "Do not generate functions for kind=TYPE artifacts; TYPE artifacts seed canonical type/header/data lowering.",
+        "Reuse accepted type_inventory when describing related usage; do not invent parallel context/config/result/buffer types in function purpose text.",
         "Public/exported functions have two allowed sources: artifact_required_public_api from current module FUNC artifacts, or derived_public_api required by lifecycle completeness, consumer dependency, callback/runtime integration, file/header boundary, or cross-module service boundary.",
         "For derived_public_api functions, export_reason must explain the stable boundary, public_api_role must describe the API role, and purpose must explain why the function cannot remain an internal helper. If that basis is weak, make it internal or add unresolved_questions.",
         "Do not create public APIs from examples, guessed names, naming preference, or protocol terms that merely sound important. Internal helpers do not need module_artifacts support.",
@@ -573,6 +598,30 @@ def module_artifacts_candidate_messages(context: dict[str, Any]) -> list[dict[st
         expected_schema="module_artifacts_candidate/v1",
         forbidden_fields=["public_api_policy", "capability_ownership_claims", "state_ownership_claims", "constraint_bindings", "function_id", "function list", "calls_allowed", "imports_allowed", "code"],
         validator="validate_module_artifacts_candidate",
+    )
+
+
+def type_inventory_candidate_messages(context: dict[str, Any]) -> list[dict[str, str]]:
+    return _stage_messages(
+        prompt_name="type_inventory_candidate_prompt",
+        task="Given one module, its module_artifacts TYPE/FUNC seeds, and accepted core design context, plan the module type inventory. TYPE artifacts are mandatory seeds but not the complete type set.",
+        context_key="type_inventory_context",
+        context=context,
+        expected_schema="type_inventory_candidate/v1",
+        forbidden_fields=["function_id", "signature", "input_contract", "output_contract", "state_access", "wire_mapping", "access_paths", "calls_allowed", "file_id", "dependency_graph", "code"],
+        validator="validate_type_inventory_candidate",
+    )
+
+
+def type_inventory_repair_patch_messages(context: dict[str, Any]) -> list[dict[str, str]]:
+    return _stage_messages(
+        prompt_name="type_inventory_repair_patch_prompt",
+        task="Patch one module's accepted type inventory by adding missing types or repairing boundaries, references, ownership, and lifecycle. Return only a type_inventory_repair_patch/v1 object.",
+        context_key="type_inventory_repair_context",
+        context=context,
+        expected_schema="type_inventory_repair_patch/v1",
+        forbidden_fields=["candidate_id", "types", "functions", "signature", "input_contract", "output_contract", "state_access", "wire_mapping", "access_paths", "calls_allowed", "file_id", "dependency_graph", "code"],
+        validator="validate_type_inventory_repair_patch",
     )
 
 

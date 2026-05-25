@@ -455,6 +455,224 @@ def merge_module_artifacts(draft: dict[str, Any], candidate: dict[str, Any]) -> 
     return result
 
 
+def _empty_callback_signature() -> dict[str, Any]:
+    return {"return_type": "", "params": []}
+
+
+def _empty_type_lifecycle() -> dict[str, list[str]]:
+    return {"created_by": [], "initialized_by": [], "destroyed_by": [], "freed_by": []}
+
+
+def _type_inventory_item(
+    *,
+    module_id: str,
+    name: str,
+    kind: str,
+    visibility: str,
+    defined_in: str,
+    purpose: str,
+    related_functions: list[str] | None = None,
+    lifecycle: dict[str, list[str]] | None = None,
+    trace_ref_keys: list[str] | None = None,
+) -> dict[str, Any]:
+    return {
+        "type_id": f"type:{module_id}:{_safe_id(name)}",
+        "name": name,
+        "module_id": module_id,
+        "kind": kind,
+        "visibility": visibility,
+        "defined_in": defined_in,
+        "purpose": purpose,
+        "fields": [],
+        "enum_values": [],
+        "callback_signature": _empty_callback_signature(),
+        "ownership_lifetime": "",
+        "lifecycle": lifecycle or _empty_type_lifecycle(),
+        "related_functions": related_functions or [],
+        "dependencies": [],
+        "trace_ref_keys": trace_ref_keys or [],
+        "status": "inferred",
+    }
+
+
+def _type_artifact_kind(name: str, role: str) -> tuple[str, str, str]:
+    text = f"{name} {role}".lower()
+    if name.endswith("_t") or any(word in text for word in ("opaque", "handle", "context")):
+        return "opaque_handle", "public", "public_header"
+    if any(word in text for word in ("buffer", "payload", "bytes")):
+        return "owned_buffer", "public", "public_header"
+    if any(word in text for word in ("callback", "cb", "hook")):
+        return "callback_type", "public", "public_header"
+    if any(word in text for word in ("enum", "flags", "bitflag")):
+        return "enum", "public", "public_header"
+    return "struct", "public", "public_header"
+
+
+def fallback_type_inventory(draft: dict[str, Any], module_artifact: dict[str, Any]) -> dict[str, Any]:
+    module_id = str(module_artifact.get("module_id", "module"))
+    protocol = _safe_id(str(draft.get("protocol_name", "protocol")))
+    artifact_funcs = [
+        str(item.get("name", "")).strip()
+        for item in module_artifact.get("artifacts", [])
+        if isinstance(item, dict) and str(item.get("kind", "")).upper() == "FUNC" and str(item.get("name", "")).strip()
+    ]
+    lifecycle = _empty_type_lifecycle()
+    lifecycle["created_by"] = [name for name in artifact_funcs if name.endswith(("_create", "_init", "_open"))]
+    lifecycle["initialized_by"] = [name for name in artifact_funcs if name.endswith(("_init", "_create", "_start"))]
+    lifecycle["destroyed_by"] = [name for name in artifact_funcs if name.endswith(("_destroy", "_close", "_deinit", "_cleanup"))]
+    lifecycle["freed_by"] = [name for name in artifact_funcs if name.endswith(("_free", "_destroy", "_close", "_cleanup"))]
+    types: list[dict[str, Any]] = []
+    for artifact in module_artifact.get("artifacts", []):
+        if not isinstance(artifact, dict) or str(artifact.get("kind", "")).upper() != "TYPE":
+            continue
+        name = str(artifact.get("name", "")).strip()
+        if not name:
+            continue
+        kind, visibility, defined_in = _type_artifact_kind(name, str(artifact.get("role", "")))
+        item = _type_inventory_item(
+            module_id=module_id,
+            name=name,
+            kind=kind,
+            visibility=visibility,
+            defined_in=defined_in,
+            purpose=str(artifact.get("role", "")) or f"Type artifact {name}.",
+            related_functions=artifact_funcs,
+            lifecycle=deepcopy(lifecycle),
+            trace_ref_keys=module_artifact.get("source_fact_ids", []),
+        )
+        if kind in {"owned_buffer", "struct"} and any(word in item["purpose"].lower() for word in ("owned", "allocated", "heap", "payload", "buffer")):
+            item["ownership_lifetime"] = "Owned data must be released by the module cleanup/free path."
+        types.append(item)
+    if not any(item["kind"] == "opaque_handle" for item in types):
+        handle = f"{protocol}_{_safe_id(module_id)}_t"
+        types.append(
+            _type_inventory_item(
+                module_id=module_id,
+                name=handle,
+                kind="opaque_handle",
+                visibility="public",
+                defined_in="public_header",
+                purpose="Opaque module context handle.",
+                related_functions=artifact_funcs,
+                lifecycle=deepcopy(lifecycle),
+                trace_ref_keys=module_artifact.get("source_fact_ids", []),
+            )
+        )
+    if module_artifact.get("state_owned") or module_artifact.get("owned_capabilities"):
+        state_name = f"struct {protocol}_{_safe_id(module_id)}"
+        state_key = _safe_id(state_name.removeprefix("struct "))
+        if not any(_safe_id(str(item["name"]).removeprefix("struct ").removesuffix("_t")) == state_key for item in types):
+            types.append(
+                _type_inventory_item(
+                    module_id=module_id,
+                    name=state_name,
+                    kind="internal_state",
+                    visibility="private",
+                    defined_in="source_file",
+                    purpose="Private module context storage.",
+                    related_functions=artifact_funcs,
+                    lifecycle=deepcopy(lifecycle),
+                    trace_ref_keys=module_artifact.get("source_fact_ids", []),
+                )
+            )
+    return {
+        "schema_version": "type_inventory_candidate/v1",
+        "candidate_id": f"candidate:type_inventory:{module_id}",
+        "producer": _producer("5.4a_type_inventory", "type_inventory_candidate_prompt"),
+        "module_id": module_id,
+        "types": types,
+        "assumptions": [],
+        "unresolved_questions": [],
+    }
+
+
+def _canonical_kind_for_type_inventory(kind: str) -> str:
+    if kind in {"enum", "bitflag"}:
+        return "enum"
+    if kind in {"opaque_handle", "internal_state"}:
+        return "opaque"
+    if kind in {"owned_buffer"}:
+        return "buffer"
+    if kind == "alias":
+        return "alias"
+    return "struct"
+
+
+def _canonical_fields(fields: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {
+            "field_name": str(field.get("field_name", "")),
+            "field_type": str(field.get("field_type", "")),
+            "required": bool(field.get("required", False)),
+            "source_field_id": "",
+            "validation_notes": str(field.get("validation_notes") or field.get("lifetime") or ""),
+        }
+        for field in fields
+        if isinstance(field, dict) and str(field.get("field_name", "")).strip()
+    ]
+
+
+def merge_type_inventory(draft: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any]:
+    result = deepcopy(draft)
+    existing_type_ids = {str(item.get("type_id", "")) for item in result.get("type_inventory", []) if isinstance(item, dict)}
+    existing_canonical_ids = {str(item.get("type_id", "")) for item in result.get("canonical_types", []) if isinstance(item, dict)}
+    for type_item in candidate.get("types", []):
+        if not isinstance(type_item, dict):
+            continue
+        type_id = str(type_item.get("type_id", ""))
+        if type_id not in existing_type_ids:
+            result.setdefault("type_inventory", []).append(deepcopy(type_item))
+            existing_type_ids.add(type_id)
+        if (
+            type_id
+            and type_id not in existing_canonical_ids
+            and str(type_item.get("visibility", "")) == "public"
+            and str(type_item.get("defined_in", "")) == "public_header"
+        ):
+            result.setdefault("canonical_types", []).append(
+                {
+                    "type_id": type_id,
+                    "name": type_item.get("name", ""),
+                    "kind": _canonical_kind_for_type_inventory(str(type_item.get("kind", ""))),
+                    "owner_module_id": type_item.get("module_id", ""),
+                    "source_message_ids": [],
+                    "source_field_ids": [],
+                    "fields": _canonical_fields(type_item.get("fields", [])),
+                    "enum_values": [
+                        {"name": item.get("name", ""), "value": item.get("value", ""), "source_field_id": ""}
+                        for item in type_item.get("enum_values", [])
+                        if isinstance(item, dict)
+                    ],
+                    "trace_ref_keys": type_item.get("trace_ref_keys", []),
+                    "status": type_item.get("status", "inferred"),
+                }
+            )
+            existing_canonical_ids.add(type_id)
+    result.setdefault("unresolved_questions", []).extend(candidate.get("unresolved_questions", []))
+    result.setdefault("accepted_stage_artifacts", []).append("5.4a_type_inventory")
+    return result
+
+
+def apply_type_inventory_repair_patch(candidate: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
+    result = deepcopy(candidate)
+    by_id = {
+        str(type_item.get("type_id", "")): type_item
+        for type_item in result.get("types", [])
+        if isinstance(type_item, dict)
+    }
+    for update in patch.get("updated_types", []):
+        type_item = by_id.get(str(update.get("type_id", "")))
+        if not type_item:
+            continue
+        for key in ("visibility", "defined_in", "purpose", "fields", "enum_values", "callback_signature", "ownership_lifetime", "lifecycle", "related_functions", "dependencies", "status"):
+            if key in update:
+                type_item[key] = deepcopy(update[key])
+    result.setdefault("types", []).extend(deepcopy(patch.get("added_types", [])))
+    result.setdefault("assumptions", []).extend(deepcopy(patch.get("added_assumptions", [])))
+    result.setdefault("unresolved_questions", []).extend(deepcopy(patch.get("added_unresolved_questions", [])))
+    return result
+
+
 def _contract_base(
     *,
     draft: dict[str, Any],
@@ -537,7 +755,7 @@ def fallback_function_inventory(draft: dict[str, Any], module_artifact: dict[str
         return {
             "schema_version": "function_inventory_candidate/v2",
             "candidate_id": f"candidate:function_inventory:{module_id}",
-            "producer": _producer("5.4a_function_inventory", "function_inventory_candidate_prompt"),
+            "producer": _producer("5.4b_function_inventory", "function_inventory_candidate_prompt"),
             "module_id": module_id,
             "functions": functions,
             "assumptions": [],
@@ -599,7 +817,7 @@ def fallback_function_inventory(draft: dict[str, Any], module_artifact: dict[str
     return {
         "schema_version": "function_inventory_candidate/v2",
         "candidate_id": f"candidate:function_inventory:{module_id}",
-        "producer": _producer("5.4a_function_inventory", "function_inventory_candidate_prompt"),
+        "producer": _producer("5.4b_function_inventory", "function_inventory_candidate_prompt"),
         "module_id": module_id,
         "functions": functions,
         "assumptions": [],
@@ -641,7 +859,7 @@ def merge_function_inventory(draft: dict[str, Any], candidate: dict[str, Any]) -
             result.setdefault("function_contracts", []).append(item)
             existing.add(str(function.get("function_id")))
     result.setdefault("unresolved_questions", []).extend(candidate.get("unresolved_questions", []))
-    result.setdefault("accepted_stage_artifacts", []).append("5.4a_function_inventory")
+    result.setdefault("accepted_stage_artifacts", []).append("5.4b_function_inventory")
     return result
 
 
@@ -735,7 +953,7 @@ def fallback_function_signatures(draft: dict[str, Any], module_id: str, function
     return {
         "schema_version": "function_signature_patch/v1",
         "patch_id": f"patch:function_signatures:{module_id}:{batch_index}",
-        "producer": _producer("5.4b_signature_planning", "function_signature_patch_prompt"),
+        "producer": _producer("5.4c_signature_planning", "function_signature_patch_prompt"),
         "module_id": module_id,
         "batch": {"index": batch_index, "size": batch_size or len(updates)},
         "function_signature_updates": updates,
@@ -779,7 +997,7 @@ def merge_function_signatures(draft: dict[str, Any], patch: dict[str, Any]) -> d
         function["input_contract"] = {"params": params}
         function["output_contract"] = {"return_type": signature.get("return_type", "")}
     result.setdefault("unresolved_questions", []).extend(patch.get("unresolved_questions", []))
-    result.setdefault("accepted_stage_artifacts", []).append("5.4b_signature_planning")
+    result.setdefault("accepted_stage_artifacts", []).append("5.4c_signature_planning")
     return result
 
 
@@ -831,7 +1049,7 @@ def fallback_function_behavior(draft: dict[str, Any], module_id: str, functions:
     return {
         "schema_version": "function_behavior_contract_patch/v1",
         "patch_id": f"patch:function_behavior:{module_id}:{batch_index}",
-        "producer": _producer("5.4c_behavior_contract", "function_behavior_contract_patch_prompt"),
+        "producer": _producer("5.4d_behavior_contract", "function_behavior_contract_patch_prompt"),
         "module_id": module_id,
         "batch": {"index": batch_index, "size": batch_size or len(updates)},
         "function_behavior_updates": updates,
@@ -862,7 +1080,7 @@ def merge_function_behavior(draft: dict[str, Any], patch: dict[str, Any]) -> dic
         function["logic_kind"] = "EVENT" if update["logic_kind"] == "EVENT" and event_complete else "LOGIC"
         function["forbidden_symbols"] = update["forbidden_symbols"]
     result.setdefault("unresolved_questions", []).extend(patch.get("unresolved_questions", []))
-    result.setdefault("accepted_stage_artifacts", []).append("5.4c_behavior_contract")
+    result.setdefault("accepted_stage_artifacts", []).append("5.4d_behavior_contract")
     return result
 
 
@@ -963,7 +1181,7 @@ def fallback_wire_access_binding(draft: dict[str, Any], planning_ir: dict[str, A
     return {
         "schema_version": "wire_access_binding_patch/v2",
         "patch_id": "patch:wire_access_binding:deterministic",
-        "producer": _producer("5.4d_wire_access_binding", "wire_access_binding_patch_prompt"),
+        "producer": _producer("5.4e_wire_access_binding", "wire_access_binding_patch_prompt"),
         "wire_mapping_entries": entries,
         "access_path_entries": access,
         "function_binding_updates": list(binding_by_function.values()),
@@ -1035,7 +1253,7 @@ def merge_wire_access_binding(draft: dict[str, Any], patch: dict[str, Any]) -> d
             ]
             function["access_paths"] = update.get("access_path_ids", [])
     result.setdefault("unresolved_questions", []).extend(patch.get("unresolved_questions", []))
-    result.setdefault("accepted_stage_artifacts", []).append("5.4d_wire_access_binding")
+    result.setdefault("accepted_stage_artifacts", []).append("5.4e_wire_access_binding")
     return result
 
 
@@ -1081,7 +1299,7 @@ def fallback_calls_allowed(draft: dict[str, Any], functions: list[dict[str, Any]
     return {
         "schema_version": "calls_allowed_candidate/v2",
         "candidate_id": "candidate:calls_allowed:deterministic",
-        "producer": _producer("5.4e_call_planning", "calls_allowed_candidate_prompt"),
+        "producer": _producer("5.4f_call_planning", "calls_allowed_candidate_prompt"),
         "call_updates": updates,
         "unresolved_service_requirements": _service_requirement_ids(functions),
         "assumptions": [],
@@ -1098,7 +1316,7 @@ def merge_calls_allowed(draft: dict[str, Any], candidate: dict[str, Any]) -> dic
             function["calls_allowed"] = [edge["callee_function_id"] for edge in update.get("calls_allowed", [])]
             function["call_contracts"] = update.get("calls_allowed", [])
     result.setdefault("unresolved_questions", []).extend(candidate.get("unresolved_questions", []))
-    result.setdefault("accepted_stage_artifacts", []).append("5.4e_call_planning")
+    result.setdefault("accepted_stage_artifacts", []).append("5.4f_call_planning")
     return result
 
 
@@ -1252,7 +1470,7 @@ def fallback_runtime_entrypoint(draft: dict[str, Any]) -> dict[str, Any]:
     return {
         "schema_version": "runtime_entrypoint_candidate/v1",
         "candidate_id": "candidate:runtime_entrypoint:deterministic",
-        "producer": _producer("5.4f_runtime_entrypoint_candidate", "runtime_entrypoint_candidate_prompt"),
+        "producer": _producer("5.4g_runtime_entrypoint_candidate", "runtime_entrypoint_candidate_prompt"),
         "key_flow_module_id": module_id,
         "lifecycle_function_ids": lifecycle,
         "source_path": "main.c",
@@ -1523,7 +1741,7 @@ def merge_runtime_entrypoint(draft: dict[str, Any], candidate: dict[str, Any]) -
         )
     ]
     result.setdefault("unresolved_questions", []).extend(unresolved)
-    result.setdefault("accepted_stage_artifacts", []).append("5.4f_runtime_entrypoint_candidate")
+    result.setdefault("accepted_stage_artifacts", []).append("5.4g_runtime_entrypoint_candidate")
     return result
 
 

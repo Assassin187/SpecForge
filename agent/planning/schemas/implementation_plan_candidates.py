@@ -14,6 +14,22 @@ VISIBILITY_VALUES = {"public", "internal", "private", "static"}
 FUNCTION_KIND_VALUES = {"public_api", "handler", "parser", "serializer", "validator", "state_machine", "resource_lifecycle", "error_helper", "internal_helper"}
 CODER_FUNCTION_TYPE_VALUES = {"ALGORITHM", "EVENT", "ENTRYPOINT"}
 API_SURFACE_VALUES = {"public", "module_internal", "private_helper", "static_helper"}
+TYPE_INVENTORY_KIND_VALUES = {
+    "opaque_handle",
+    "struct",
+    "config_struct",
+    "internal_state",
+    "enum",
+    "callback_type",
+    "event_struct",
+    "view_struct",
+    "owned_buffer",
+    "result_struct",
+    "bitflag",
+    "alias",
+}
+TYPE_INVENTORY_VISIBILITY_VALUES = {"public", "private", "module_internal"}
+TYPE_INVENTORY_DEFINED_IN_VALUES = {"public_header", "internal_header", "source_file"}
 
 
 def _scalar(name: str, *, enum: set[str] | None = None) -> SchemaSpec:
@@ -234,6 +250,92 @@ FUNCTION_INVENTORY_SCHEMA = _object(
         "trace_ref_keys": STRING_LIST,
         "status": STATUS,
     }
+)
+
+TYPE_INVENTORY_FIELD_SCHEMA = _object(
+    {
+        "field_name": STRING,
+        "field_type": STRING,
+        "type_ref": STRING,
+        "required": BOOL,
+        "ownership": _scalar("string", enum={"BORROWED", "OWNED", "OWNED_BY_CALLER", "TRANSFER", "SHARED", "UNKNOWN"}),
+        "lifetime": STRING,
+        "length_field": STRING,
+        "capacity_field": STRING,
+        "validation_notes": STRING,
+    }
+)
+
+TYPE_INVENTORY_ENUM_VALUE_SCHEMA = _object(
+    {
+        "name": STRING,
+        "value": STRING,
+        "role": STRING,
+    }
+)
+
+CALLBACK_PARAM_SCHEMA = _object(
+    {
+        "name": STRING,
+        "type": STRING,
+        "type_ref": STRING,
+        "ownership": _scalar("string", enum={"BORROWED", "OWNED", "OWNED_BY_CALLER", "TRANSFER", "SHARED", "UNKNOWN"}),
+    }
+)
+
+CALLBACK_SIGNATURE_SCHEMA = _object(
+    {
+        "return_type": STRING,
+        "params": _array(CALLBACK_PARAM_SCHEMA),
+    }
+)
+
+TYPE_LIFECYCLE_SCHEMA = _object(
+    {
+        "created_by": STRING_LIST,
+        "initialized_by": STRING_LIST,
+        "destroyed_by": STRING_LIST,
+        "freed_by": STRING_LIST,
+    }
+)
+
+TYPE_INVENTORY_SCHEMA = _object(
+    {
+        "type_id": STRING,
+        "name": STRING,
+        "module_id": STRING,
+        "kind": _scalar("string", enum=TYPE_INVENTORY_KIND_VALUES),
+        "visibility": _scalar("string", enum=TYPE_INVENTORY_VISIBILITY_VALUES),
+        "defined_in": _scalar("string", enum=TYPE_INVENTORY_DEFINED_IN_VALUES),
+        "purpose": STRING,
+        "fields": _array(TYPE_INVENTORY_FIELD_SCHEMA),
+        "enum_values": _array(TYPE_INVENTORY_ENUM_VALUE_SCHEMA),
+        "callback_signature": CALLBACK_SIGNATURE_SCHEMA,
+        "ownership_lifetime": STRING,
+        "lifecycle": TYPE_LIFECYCLE_SCHEMA,
+        "related_functions": STRING_LIST,
+        "dependencies": STRING_LIST,
+        "trace_ref_keys": STRING_LIST,
+        "status": STATUS,
+    }
+)
+
+TYPE_INVENTORY_UPDATE_SCHEMA = _object(
+    {
+        "type_id": STRING,
+        "visibility": _scalar("string", enum=TYPE_INVENTORY_VISIBILITY_VALUES),
+        "defined_in": _scalar("string", enum=TYPE_INVENTORY_DEFINED_IN_VALUES),
+        "purpose": STRING,
+        "fields": _array(TYPE_INVENTORY_FIELD_SCHEMA),
+        "enum_values": _array(TYPE_INVENTORY_ENUM_VALUE_SCHEMA),
+        "callback_signature": CALLBACK_SIGNATURE_SCHEMA,
+        "ownership_lifetime": STRING,
+        "lifecycle": TYPE_LIFECYCLE_SCHEMA,
+        "related_functions": STRING_LIST,
+        "dependencies": STRING_LIST,
+        "status": STATUS,
+    },
+    required=["type_id"],
 )
 
 FUNCTION_INVENTORY_UPDATE_SCHEMA = _object(
@@ -575,6 +677,29 @@ SCHEMA_SPECS: dict[str, SchemaSpec] = {
             "forbidden_symbols": _array(MODULE_ARTIFACT_FORBIDDEN_SYMBOL_SCHEMA),
             "assumptions": _array(ASSUMPTION_SCHEMA),
             "unresolved_questions": _array(UNRESOLVED_QUESTION_SCHEMA),
+        }
+    ),
+    "type_inventory_candidate/v1": _object(
+        {
+            "schema_version": _scalar("string", enum={"type_inventory_candidate/v1"}),
+            "candidate_id": STRING,
+            "producer": PRODUCER_SCHEMA,
+            "module_id": STRING,
+            "types": _array(TYPE_INVENTORY_SCHEMA),
+            "assumptions": _array(ASSUMPTION_SCHEMA),
+            "unresolved_questions": _array(UNRESOLVED_QUESTION_SCHEMA),
+        }
+    ),
+    "type_inventory_repair_patch/v1": _object(
+        {
+            "schema_version": _scalar("string", enum={"type_inventory_repair_patch/v1"}),
+            "patch_id": STRING,
+            "producer": PRODUCER_SCHEMA,
+            "module_id": STRING,
+            "added_types": _array(TYPE_INVENTORY_SCHEMA),
+            "updated_types": _array(TYPE_INVENTORY_UPDATE_SCHEMA),
+            "added_assumptions": _array(ASSUMPTION_SCHEMA),
+            "added_unresolved_questions": _array(UNRESOLVED_QUESTION_SCHEMA),
         }
     ),
     "function_inventory_candidate/v2": _object(
