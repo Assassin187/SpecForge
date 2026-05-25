@@ -332,7 +332,54 @@ def build_function_inventory_context(draft: dict[str, Any], module_artifact: dic
         "core_design_summary": _accepted_summary(draft),
         "legal_id_universe": _legal_ids_from_draft(draft),
     }
-    context["decomposition_context"] = select_top_decomposition_hints(module_artifact, context, max_hints=2)
+    context["decomposition_context"] = select_top_decomposition_hints(module_artifact, context, max_hints=3)
+    return context
+
+
+def build_function_inventory_repair_context(
+    draft: dict[str, Any],
+    module_artifact: dict[str, Any],
+    candidate: dict[str, Any],
+    coverage_report: dict[str, Any],
+    diagnostics: list[dict[str, Any]],
+    *,
+    repair_mode: str,
+) -> dict[str, Any]:
+    context = build_function_inventory_context(draft, module_artifact)
+    missing_families = [
+        {
+            "rule_id": rule.get("rule_id", ""),
+            "missing_families": rule.get("missing_families", []),
+            "coverage_score": rule.get("coverage_score", 0),
+        }
+        for module_report in coverage_report.get("modules", [])
+        if isinstance(module_report, dict)
+        for rule in module_report.get("rules", [])
+        if isinstance(rule, dict) and rule.get("missing_families")
+    ]
+    coarse_functions = [
+        item
+        for item in diagnostics
+        if isinstance(item, dict) and item.get("code") == "coarse_function_should_split"
+    ]
+    context.update(
+        {
+            "schema_version": "function_inventory_repair_context/v1",
+            "repair_mode": repair_mode,
+            "current_candidate": candidate,
+            "coverage_report": coverage_report,
+            "missing_function_families": missing_families,
+            "coarse_functions": coarse_functions,
+            "triggering_diagnostics": diagnostics,
+            "patch_merge_rules": [
+                "added_functions are appended to current_candidate.functions for this module only.",
+                "function_id and name must not duplicate any existing or newly added function.",
+                "updated_functions may only change purpose, grouping_hint, or status.",
+                "Do not delete, rename, or change identity/public API fields of existing functions.",
+                "After merge, the result must validate as function_inventory_candidate/v2.",
+            ],
+        }
+    )
     return context
 
 

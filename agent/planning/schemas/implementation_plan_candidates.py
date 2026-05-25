@@ -236,6 +236,15 @@ FUNCTION_INVENTORY_SCHEMA = _object(
     }
 )
 
+FUNCTION_INVENTORY_UPDATE_SCHEMA = _object(
+    {
+        "function_id": STRING,
+        "purpose": STRING,
+        "grouping_hint": STRING,
+        "status": STATUS,
+    }
+)
+
 BATCH_SCHEMA = _object({"index": _scalar("integer"), "size": _scalar("integer")})
 
 SIGNATURE_PARAM_SCHEMA = _object(
@@ -577,6 +586,18 @@ SCHEMA_SPECS: dict[str, SchemaSpec] = {
             "functions": _array(FUNCTION_INVENTORY_SCHEMA),
             "assumptions": _array(ASSUMPTION_SCHEMA),
             "unresolved_questions": _array(UNRESOLVED_QUESTION_SCHEMA),
+        }
+    ),
+    "function_inventory_repair_patch/v1": _object(
+        {
+            "schema_version": _scalar("string", enum={"function_inventory_repair_patch/v1"}),
+            "patch_id": STRING,
+            "producer": PRODUCER_SCHEMA,
+            "module_id": STRING,
+            "added_functions": _array(FUNCTION_INVENTORY_SCHEMA),
+            "updated_functions": _array(FUNCTION_INVENTORY_UPDATE_SCHEMA),
+            "added_assumptions": _array(ASSUMPTION_SCHEMA),
+            "added_unresolved_questions": _array(UNRESOLVED_QUESTION_SCHEMA),
         }
     ),
     "function_signature_patch/v1": _object(

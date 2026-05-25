@@ -645,6 +645,26 @@ def merge_function_inventory(draft: dict[str, Any], candidate: dict[str, Any]) -
     return result
 
 
+def apply_function_inventory_repair_patch(candidate: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
+    result = deepcopy(candidate)
+    by_id = {
+        str(function.get("function_id", "")): function
+        for function in result.get("functions", [])
+        if isinstance(function, dict)
+    }
+    for update in patch.get("updated_functions", []):
+        function = by_id.get(str(update.get("function_id", "")))
+        if not function:
+            continue
+        for key in ("purpose", "grouping_hint", "status"):
+            if key in update:
+                function[key] = update[key]
+    result.setdefault("functions", []).extend(deepcopy(patch.get("added_functions", [])))
+    result.setdefault("assumptions", []).extend(deepcopy(patch.get("added_assumptions", [])))
+    result.setdefault("unresolved_questions", []).extend(deepcopy(patch.get("added_unresolved_questions", [])))
+    return result
+
+
 def _module_functions(draft: dict[str, Any], module_id: str, functions: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
     source = functions if functions is not None else draft.get("function_contracts", [])
     return [item for item in source if isinstance(item, dict) and str(item.get("module_id")) == module_id]

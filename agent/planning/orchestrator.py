@@ -22,6 +22,7 @@ from .prompts.templates import (
     file_layout_candidate_messages,
     function_behavior_contract_patch_messages,
     function_inventory_candidate_messages,
+    function_inventory_repair_patch_messages,
     function_signature_patch_messages,
     module_artifacts_candidate_messages,
     protocol_profile_patch_messages,
@@ -39,6 +40,7 @@ from .stages.implementation_plan_context import (
     build_file_layout_context,
     build_function_behavior_context,
     build_function_inventory_context,
+    build_function_inventory_repair_context,
     build_function_signature_context,
     build_module_artifact_context,
     build_runtime_entrypoint_context,
@@ -46,6 +48,7 @@ from .stages.implementation_plan_context import (
 )
 from .stages.implementation_plan_merger import (
     apply_dependency_repair_patch,
+    apply_function_inventory_repair_patch,
     apply_deterministic_dependency_fallback,
     build_plan_skeleton,
     fallback_calls_allowed,
@@ -87,12 +90,14 @@ from .validators.implementation_plan_stages import (
     validate_full_implementation_plan,
     validate_function_behavior_contract_patch,
     validate_function_inventory_candidate,
+    validate_function_inventory_repair_patch,
     validate_function_signature_patch,
     validate_module_artifacts_candidate,
     validate_plan_skeleton,
     validate_runtime_entrypoint_candidate,
     validate_wire_access_binding_patch,
     validation_report,
+    function_inventory_decomposition_report,
 )
 from .validators.llm_outputs import validate_protocol_profile_patch_candidate
 from .validators.planning_ir import validate_planning_ir
@@ -126,6 +131,8 @@ STEP_FILENAMES = {
     "module_artifacts_validation_report": "007_5_3_module_artifacts_validation_report.json",
     "function_inventory_candidate": "007_5_4a_function_inventory_candidate.json",
     "function_inventory_validation_report": "007_5_4a_function_inventory_validation_report.json",
+    "function_inventory_repair_patch": "007_5_4a_function_inventory_repair_patch.json",
+    "function_inventory_repair_validation_report": "007_5_4a_function_inventory_repair_validation_report.json",
     "function_signature_patch": "007_5_4b_function_signature_patch.json",
     "function_signature_validation_report": "007_5_4b_function_signature_validation_report.json",
     "function_behavior_patch": "007_5_4c_function_behavior_contract_patch.json",
@@ -1499,6 +1506,62 @@ class PlanningAgent:
                     if accepted is None:
                         accepted = fallback
                         accepted_diags = validate_function_inventory_candidate(accepted, inventory_draft.get("module_artifacts", []), inventory_draft, profile, planning_ir)
+                    coverage_report = function_inventory_decomposition_report(accepted, inventory_draft.get("module_artifacts", []), inventory_draft)
+                    diag_dicts = diagnostics_to_dict(accepted_diags)
+                    diag_codes = {str(item.get("code", "")) for item in diag_dicts}
+                    repair_mode = ""
+                    if coverage_report.get("repair_required") or "under_decomposed_inventory" in diag_codes:
+                        repair_mode = "missing_function_family"
+                    if "coarse_function_should_split" in diag_codes:
+                        repair_mode = "coarse_function_split" if not repair_mode else f"{repair_mode}+coarse_function_split"
+                    repair_attempt: dict[str, Any] | None = None
+                    repair_patch: dict[str, Any] | None = None
+                    repair_diags: list[PlanningDiagnostic] = []
+                    if repair_mode and not has_errors(accepted_diags):
+                        repair_prompt_name = "function_inventory_repair_patch_prompt"
+                        repair_context = build_function_inventory_repair_context(
+                            inventory_draft,
+                            module,
+                            accepted,
+                            coverage_report,
+                            diag_dicts,
+                            repair_mode=repair_mode,
+                        )
+                        patch_candidate, patch_llm_diags, patch_meta = request_json_candidate(
+                            prompt_name=repair_prompt_name,
+                            messages=function_inventory_repair_patch_messages(repair_context),
+                            config=request_config,
+                            enable_thinking=enable_thinking,
+                        )
+                        repair_attempt = {
+                            "prompt_name": repair_prompt_name,
+                            "meta": patch_meta,
+                            "accepted": False,
+                            "rejection_reasons": [],
+                            "repair_mode": repair_mode,
+                        }
+                        if patch_candidate is None:
+                            repair_diags = patch_llm_diags
+                            repair_attempt["rejection_reasons"] = _diagnostic_reasons(patch_llm_diags) or ["LLM did not return a JSON object."]
+                        else:
+                            patch_diags = validate_function_inventory_repair_patch(patch_candidate, accepted, inventory_draft.get("module_artifacts", []))
+                            if has_errors(patch_diags):
+                                repair_diags = patch_diags
+                                repair_attempt["rejection_reasons"] = _diagnostic_reasons(patch_diags)
+                                repair_patch = patch_candidate
+                            else:
+                                merged = apply_function_inventory_repair_patch(accepted, patch_candidate)
+                                merged_diags = validate_function_inventory_candidate(merged, inventory_draft.get("module_artifacts", []), inventory_draft, profile, planning_ir)
+                                repair_patch = patch_candidate
+                                if has_errors(merged_diags):
+                                    repair_diags = merged_diags
+                                    repair_attempt["rejection_reasons"] = _diagnostic_reasons(merged_diags)
+                                else:
+                                    accepted = merged
+                                    accepted_diags = merged_diags
+                                    coverage_report = function_inventory_decomposition_report(accepted, inventory_draft.get("module_artifacts", []), inventory_draft)
+                                    repair_attempt["accepted"] = True
+                                    repair_diags = patch_diags
                     return {
                         "module_index": module_index,
                         "module_id": module_id,
@@ -1509,8 +1572,12 @@ class PlanningAgent:
                         "step_log_suffix": module_id,
                         "accepted": accepted,
                         "accepted_diags": accepted_diags,
+                        "coverage_report": coverage_report,
                         "attempts": attempts,
                         "fallback_used": fallback_used,
+                        "repair_attempt": repair_attempt,
+                        "repair_patch": repair_patch,
+                        "repair_diags": repair_diags,
                     }
 
                 inventory_results: list[dict[str, Any]] = []
@@ -1543,6 +1610,40 @@ class PlanningAgent:
                     inventory_candidate = result["accepted"]
                     if result["fallback_used"]:
                         store.log_event(f"stage=implementation_plan substage={stage_label} fallback=deterministic")
+                    store.write_agent_log(f"{log_key}_decomposition_coverage_report", str(result.get("coverage_report", {})))
+                    repair_attempt = result.get("repair_attempt")
+                    if repair_attempt:
+                        repair_prompt_name = str(repair_attempt.get("prompt_name", "function_inventory_repair_patch_prompt"))
+                        repair_log_key = f"function_inventory_repair_patch_{safe_slug(module_id)}"
+                        store.write_agent_log(f"{repair_log_key}_llm_attempt_1_meta", str(repair_attempt.get("meta", {})))
+                        token_tracker.add_attempt(
+                            stage="implementation_plan",
+                            prompt_name=repair_prompt_name,
+                            attempt=1,
+                            meta=repair_attempt.get("meta", {}),
+                            accepted=bool(repair_attempt.get("accepted")),
+                        )
+                        store.log_event(
+                            f"stage=implementation_plan substage={stage_label} repair_attempt=1 prompt={repair_prompt_name} {_llm_token_event(repair_attempt.get('meta', {}))}"
+                        )
+                        repair_reasons = [str(reason) for reason in repair_attempt.get("rejection_reasons", []) if str(reason)]
+                        if repair_reasons:
+                            store.write_agent_log(f"{repair_log_key}_llm_attempt_1_rejection", "\n".join(repair_reasons))
+                            store.log_event(f"stage=implementation_plan substage={stage_label} repair rejected reason={repair_reasons[0]}")
+                        else:
+                            store.log_event(f"stage=implementation_plan substage={stage_label} repair accepted")
+                        if result.get("repair_patch") is not None:
+                            repair_patch_path = store.write_step_json(
+                                _suffixed_step_filename(STEP_FILENAMES["function_inventory_repair_patch"], module_id),
+                                result["repair_patch"],
+                            )
+                            repair_report_path = store.write_step_json(
+                                _suffixed_step_filename(STEP_FILENAMES["function_inventory_repair_validation_report"], module_id),
+                                validation_report(f"{stage_label}:repair", result.get("repair_diags", [])),
+                            )
+                            artifact_suffix = safe_slug(module_id)
+                            artifact_paths[f"function_inventory_repair_patch_{artifact_suffix}"] = repair_patch_path
+                            artifact_paths[f"function_inventory_repair_validation_report_{artifact_suffix}"] = repair_report_path
                     candidate_path = store.write_step_json(_suffixed_step_filename(STEP_FILENAMES["function_inventory_candidate"], module_id), inventory_candidate)
                     report_path = store.write_step_json(
                         _suffixed_step_filename(STEP_FILENAMES["function_inventory_validation_report"], module_id),

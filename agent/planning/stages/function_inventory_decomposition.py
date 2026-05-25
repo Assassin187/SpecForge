@@ -13,6 +13,7 @@ class DecompositionRule:
     capability_terms: list[str]
     doc_ref_terms: list[str]
     hint: str
+    expected_function_families: list[str]
 
 
 DECOMPOSITION_RULES = [
@@ -23,6 +24,7 @@ DECOMPOSITION_RULES = [
         capability_terms=["transport", "connection", "timeout", "timer", "runtime", "io"],
         doc_ref_terms=["transport", "connection", "endpoint", "socket", "tcp", "udp", "event", "timer", "timeout", "backpressure"],
         hint="If this module owns transport/runtime I/O, do not collapse the runtime into a single init/run function. Consider function families for lifecycle control, endpoint or connection creation/destruction, accept or datagram receive paths, readable/writable/error/close/timeout event handling, input/output buffer operations, connection lookup/removal, polling interest updates, and cleanup on I/O failure. Keep low-level socket/buffer helpers internal unless consumers need a stable boundary.",
+        expected_function_families=["lifecycle_control", "accept_or_receive_path", "read_path", "write_or_flush_path", "event_callback_or_dispatch", "connection_or_endpoint_management", "timeout_or_error_cleanup"],
     ),
     DecompositionRule(
         rule_id="framing_and_parsing",
@@ -31,6 +33,7 @@ DECOMPOSITION_RULES = [
         capability_terms=["message_decode", "decode", "parse", "framing", "field", "wire"],
         doc_ref_terms=["decoder", "decode", "parse", "framing", "field", "header", "option", "delimiter", "length"],
         hint="If this module owns framing or parsing, split coarse decode logic into frame/message boundary detection, incremental parser state management, primitive field or token readers, line/delimiter or length-prefix parsing, message-specific or command-specific parsers, semantic validation helpers, malformed/incomplete input handling, decoded object construction, and cleanup of partially decoded objects. Avoid one function that simultaneously reads bytes, validates protocol semantics, dispatches handlers, and updates session state.",
+        expected_function_families=["parser_context_lifecycle", "feed_or_parse_entry", "frame_boundary_detection", "primitive_reader_or_tokenizer", "message_or_command_specific_parser", "validation_or_malformed_input_handling", "decoded_object_cleanup"],
     ),
     DecompositionRule(
         rule_id="encoding_and_response",
@@ -39,6 +42,7 @@ DECOMPOSITION_RULES = [
         capability_terms=["message_encode", "encode", "serialize", "response", "ack"],
         doc_ref_terms=["encoder", "encode", "serialize", "response", "reply", "status", "ack", "error_response"],
         hint="If this module owns encoding or response generation, split generic serialization into response/message-specific encoders, primitive writers for fields/tokens/headers/options, status or reason construction, payload/body writer helpers, buffer sizing/allocation/growth helpers, encoded buffer ownership cleanup, and protocol error response helpers. Keep common writer utilities internal, and expose only stable encode/send-response APIs required by consumers.",
+        expected_function_families=["encode_or_response_entry", "message_or_response_specific_encoder", "primitive_writer", "status_header_or_option_writer", "buffer_size_or_allocation_helper", "error_response_helper", "encoded_buffer_cleanup"],
     ),
     DecompositionRule(
         rule_id="dispatch_and_handlers",
@@ -47,6 +51,7 @@ DECOMPOSITION_RULES = [
         capability_terms=["semantic_dispatch", "state_machine", "protocol_error_policy", "handler"],
         doc_ref_terms=["handler", "dispatch", "command", "method", "unsupported", "malformed", "state_machine"],
         hint="If this module owns dispatch or protocol handlers, include a clear dispatch boundary between parsed messages and semantic actions. Consider function families for message/command classification, handler lookup, per-message or per-command handlers, unsupported or malformed request handling, shared precondition checks, common response helpers, protocol error handling, and state-machine integration. Avoid merging transport callbacks, parser logic, semantic dispatch, handler behavior, response encoding, and connection cleanup into one coarse handler.",
+        expected_function_families=["dispatch_boundary", "message_or_command_classification", "handler_lookup_or_switch", "per_message_or_command_handler", "unsupported_or_malformed_handler", "shared_precondition_check", "protocol_error_handling"],
     ),
     DecompositionRule(
         rule_id="session_transaction_state",
@@ -55,6 +60,7 @@ DECOMPOSITION_RULES = [
         capability_terms=["state_machine", "session", "transaction", "lifecycle", "timeout", "expiry"],
         doc_ref_terms=["session", "transaction", "state", "login", "lifecycle", "expiry", "timeout"],
         hint="If this module owns session or transaction state, include function families for state object lifecycle, lookup or get-or-create, binding/unbinding state to a connection or endpoint, legal state transition validation, transaction begin/update/commit/abort, reset after completion or failure, timeout/expiry cleanup, and per-client/session destruction. Separate protocol state changes from low-level transport I/O, and make cleanup/error paths explicit.",
+        expected_function_families=["state_object_lifecycle", "lookup_or_get_or_create", "bind_or_unbind_to_connection", "legal_state_transition_check", "transaction_update_or_commit_abort", "timeout_or_expiry_cleanup", "per_session_cleanup"],
     ),
     DecompositionRule(
         rule_id="registry_routing_namespace",
@@ -63,6 +69,7 @@ DECOMPOSITION_RULES = [
         capability_terms=["routing", "registry", "subscription", "resource", "lookup", "match"],
         doc_ref_terms=["registry", "routing", "subscription", "resource", "path", "topic", "mailbox", "recipient", "lookup", "match"],
         hint="If this module owns a registry, routing index, or namespace, include function families for registry lifecycle, entry add/remove/update, lookup/match, key/filter/path/resource validation, result collection or iteration, duplicate/conflict handling, owner/session removal cleanup, and result-list cleanup. Keep internal data-structure traversal helpers private, while exposing only the stable operations needed by routing, delivery, or handler modules.",
+        expected_function_families=["registry_lifecycle", "add_remove_update_entry", "lookup_or_match", "key_filter_path_validation", "result_collection_or_iteration", "duplicate_or_conflict_handling", "owner_removal_cleanup"],
     ),
     DecompositionRule(
         rule_id="payload_data_transfer",
@@ -71,6 +78,7 @@ DECOMPOSITION_RULES = [
         capability_terms=["payload", "data", "transfer", "body", "blockwise", "publish"],
         doc_ref_terms=["payload", "body", "data", "file", "block", "chunk", "transfer", "upload", "download"],
         hint="If this module owns payload or data transfer, include function families for transfer setup, receive/append/finalize, chunk or block handling, size/limit validation, payload ownership tracking, body-state management, delivery to the next subsystem, transfer abort/rollback, data-channel close, and payload cleanup. Avoid mixing payload accumulation, protocol command handling, storage/routing decisions, response generation, and resource cleanup in a single function.",
+        expected_function_families=["transfer_setup", "receive_append_finalize", "chunk_or_block_handling", "size_limit_validation", "payload_ownership_tracking", "delivery_helper", "abort_or_cleanup"],
     ),
     DecompositionRule(
         rule_id="application_orchestration_cleanup",
@@ -79,6 +87,7 @@ DECOMPOSITION_RULES = [
         capability_terms=["role_composition", "protocol_error_policy", "connection_termination", "lifecycle", "cleanup", "recovery"],
         doc_ref_terms=["runtime", "application", "orchestration", "lifecycle", "cleanup", "callback", "adapter", "error_policy"],
         hint="If this module owns application orchestration or cross-subsystem composition, include function families for create/configure/start/run/stop/destroy, subsystem initialization and teardown ordering, callback registration, transport-to-protocol event adapters, protocol-to-transport send helpers, graceful shutdown, fatal error handling, rollback of partially initialized resources, and centralized cleanup paths. Public APIs should describe lifecycle or stable integration boundaries; detailed subsystem glue should usually remain internal.",
+        expected_function_families=["create_configure_start_run_stop_destroy", "subsystem_init_teardown_order", "callback_registration_or_adapter", "protocol_to_transport_send_helper", "graceful_shutdown", "fatal_error_or_rollback", "centralized_cleanup"],
     ),
 ]
 
@@ -124,7 +133,7 @@ def _core_design_text(module_id: str, context: dict[str, Any]) -> str:
     return _join(values)
 
 
-def select_top_decomposition_hints(module_artifact: dict[str, Any], context: dict[str, Any] | None = None, max_hints: int = 2) -> dict[str, Any]:
+def select_top_decomposition_hints(module_artifact: dict[str, Any], context: dict[str, Any] | None = None, max_hints: int = 3) -> dict[str, Any]:
     context = context or {}
     module_id = str(module_artifact.get("module_id", ""))
     artifacts = [item for item in module_artifact.get("artifacts", []) if isinstance(item, dict)]
@@ -177,16 +186,21 @@ def select_top_decomposition_hints(module_artifact: dict[str, Any], context: dic
             evidence.append("core_design_owner_evidence")
         scored.append((score, index, rule, evidence))
 
-    positive = [item for item in scored if item[0] > 0]
-    selected = sorted(positive or [item for item in scored if item[2].rule_id == "application_orchestration_cleanup"], key=lambda item: (-item[0], item[1]))[: max(1, max_hints)]
+    selected = sorted(scored, key=lambda item: (-item[0], item[1]))[: max(1, max_hints)]
     if len(selected) < max_hints:
-        by_id = {item[2].rule_id: item for item in scored}
-        fallback = by_id["application_orchestration_cleanup"]
-        if fallback[2].rule_id not in {item[2].rule_id for item in selected}:
-            selected.append(fallback)
+        selected_ids = {item[2].rule_id for item in selected}
+        for item in sorted(scored, key=lambda scored_item: scored_item[1]):
+            if item[2].rule_id not in selected_ids:
+                selected.append(item)
+                selected_ids.add(item[2].rule_id)
+            if len(selected) >= max_hints:
+                break
     selected = selected[:max_hints]
+    selected_rule_ids = [item[2].rule_id for item in selected]
     return {
-        "detected_rule_ids": [item[2].rule_id for item in selected],
+        "selected_rule_ids": selected_rule_ids,
+        "detected_rule_ids": selected_rule_ids,
         "selected_decomposition_hints": [item[2].hint for item in selected],
+        "expected_function_families_by_rule": {item[2].rule_id: item[2].expected_function_families for item in selected},
         "evidence_summary": [f"{item[2].rule_id}: score={item[0]}; evidence={'; '.join(item[3]) or 'fallback'}" for item in selected],
     }

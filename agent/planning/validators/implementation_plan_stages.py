@@ -11,6 +11,7 @@ from ..schemas.implementation_plan import (
     FILE_LAYOUT_CANDIDATE_SCHEMA_VERSION,
     FUNCTION_BEHAVIOR_CONTRACT_PATCH_SCHEMA_VERSION,
     FUNCTION_INVENTORY_CANDIDATE_SCHEMA_VERSION,
+    FUNCTION_INVENTORY_REPAIR_PATCH_SCHEMA_VERSION,
     FUNCTION_SIGNATURE_PATCH_SCHEMA_VERSION,
     MODULE_ARTIFACTS_CANDIDATE_SCHEMA_VERSION,
     RUNTIME_ENTRYPOINT_CANDIDATE_SCHEMA_VERSION,
@@ -20,6 +21,7 @@ from ..schemas.implementation_plan import (
 )
 from ..schemas.implementation_plan_candidates import validate_shape
 from ..stages.coder_spec_lowering import normalize_type_key
+from ..stages.function_inventory_decomposition import select_top_decomposition_hints
 from ..stages.implementation_plan import _handler_surfaces, _safe_id, _surface_units, _wire_fields
 from ..stages.implementation_plan_context import SYSTEM_TYPE_IDS
 from .implementation_plan import validate_implementation_plan
@@ -29,6 +31,30 @@ ALLOWED_FUNCTION_KINDS = {"public_api", "handler", "parser", "serializer", "vali
 LIFECYCLE_ROLES = {"runtime_create", "runtime_start", "runtime_run", "runtime_destroy"}
 BARE_C_SYMBOL_DENYLIST = {"connect", "read", "write", "close", "send", "publish", "subscribe"}
 C_SYMBOL_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+FUNCTION_INVENTORY_COVERAGE_REPAIR_THRESHOLD = 0.45
+FUNCTION_INVENTORY_COVERAGE_WARNING_THRESHOLD = 0.65
+
+FUNCTION_FAMILY_EXTRA_TERMS = {
+    "lifecycle_control": {"init", "create", "start", "run", "stop", "destroy", "shutdown"},
+    "event_callback_or_dispatch": {"epoll", "poll", "readable", "writable"},
+    "connection_or_endpoint_management": {"socket", "client", "peer", "lookup"},
+    "timeout_or_error_cleanup": {"timer", "close", "destroy", "failure"},
+    "feed_or_parse_entry": {"decode", "input"},
+    "frame_boundary_detection": {"length", "delimiter", "remaining", "partial"},
+    "primitive_reader_or_tokenizer": {"field", "header", "option"},
+    "validation_or_malformed_input_handling": {"validate", "invalid", "incomplete", "reject"},
+    "encode_or_response_entry": {"serialize", "reply"},
+    "buffer_size_or_allocation_helper": {"allocate", "growth", "capacity"},
+    "handler_lookup_or_switch": {"table", "select"},
+    "shared_precondition_check": {"validate", "guard"},
+    "lookup_or_get_or_create": {"find", "resolve"},
+    "timeout_or_expiry_cleanup": {"timer", "expire"},
+    "lookup_or_match": {"find", "search", "resolve"},
+    "receive_append_finalize": {"complete"},
+    "abort_or_cleanup": {"rollback", "cancel", "free"},
+    "callback_registration_or_adapter": {"register", "hook"},
+    "centralized_cleanup": {"destroy", "teardown", "release"},
+}
 
 
 def _capability_values(module: dict[str, Any]) -> set[str]:
@@ -265,6 +291,115 @@ def _artifact_semantic_text(module: dict[str, Any]) -> str:
 
 def _has_any(text: str, terms: set[str]) -> bool:
     return any(term in text for term in terms)
+
+
+def _function_family_score(functions: list[dict[str, Any]], family: str) -> tuple[float, list[str]]:
+    terms = {item for item in family.split("_") if item and item != "or"} | FUNCTION_FAMILY_EXTRA_TERMS.get(family, set())
+    best = 0.0
+    matched: list[str] = []
+    for function in functions:
+        text = _function_text(function)
+        hits = {term for term in terms if term in text}
+        score = 1.0 if len(hits) >= 2 else 0.5 if hits else 0.0
+        if score > 0:
+            matched.append(str(function.get("function_id", "")))
+        best = max(best, score)
+    return best, matched
+
+
+def _decomposition_classifier_context(module_id: str, module_artifacts: list[dict[str, Any]], core_design: dict[str, Any]) -> dict[str, Any]:
+    modules = [item for item in module_artifacts if isinstance(item, dict)]
+    module = _module_by_id(modules).get(module_id, {})
+    providers = {str(dep) for dep in module.get("dependencies", []) if str(dep).strip()}
+    return {
+        "provider_module_artifacts": [
+            {"module_id": item.get("module_id"), "artifacts": item.get("artifacts", [])}
+            for item in modules
+            if str(item.get("module_id", "")) in providers
+        ],
+        "consumer_module_artifact_dependencies": [
+            {"module_id": item.get("module_id"), "artifacts": item.get("artifacts", [])}
+            for item in modules
+            if module_id in {str(dep) for dep in item.get("dependencies", []) if str(dep).strip()}
+        ],
+        "core_design_summary": core_design,
+    }
+
+
+def function_inventory_decomposition_report(candidate: dict[str, Any], module_artifacts: list[dict[str, Any]], core_design: dict[str, Any]) -> dict[str, Any]:
+    modules_by_id = _module_by_id(module_artifacts)
+    candidate_module_ids = (
+        _module_artifact_ids(module_artifacts)
+        if candidate.get("module_id") == "all_modules"
+        else {str(candidate.get("module_id", ""))}
+    )
+    module_reports: list[dict[str, Any]] = []
+    total_points = 0.0
+    total_expected = 0
+    for module_id in sorted(candidate_module_ids & set(modules_by_id)):
+        module_functions = [
+            function
+            for function in candidate.get("functions", [])
+            if isinstance(function, dict) and str(function.get("module_id", "")) == module_id
+        ]
+        decomposition = select_top_decomposition_hints(
+            modules_by_id[module_id],
+            _decomposition_classifier_context(module_id, module_artifacts, core_design),
+            max_hints=3,
+        )
+        rule_reports: list[dict[str, Any]] = []
+        module_points = 0.0
+        module_expected = 0
+        for rule_id in decomposition.get("selected_rule_ids", decomposition.get("detected_rule_ids", [])):
+            families = decomposition.get("expected_function_families_by_rule", {}).get(rule_id, [])
+            family_reports: list[dict[str, Any]] = []
+            rule_points = 0.0
+            for family in families:
+                score, matched_function_ids = _function_family_score(module_functions, str(family))
+                rule_points += score
+                family_reports.append(
+                    {
+                        "family": family,
+                        "score": score,
+                        "matched_function_ids": matched_function_ids[:5],
+                    }
+                )
+            expected_count = len(families)
+            module_points += rule_points
+            module_expected += expected_count
+            rule_reports.append(
+                {
+                    "rule_id": rule_id,
+                    "expected_families": families,
+                    "family_coverage": family_reports,
+                    "coverage_score": round(rule_points / expected_count, 3) if expected_count else 1.0,
+                    "missing_families": [item["family"] for item in family_reports if item["score"] == 0],
+                }
+            )
+        module_score = round(module_points / module_expected, 3) if module_expected else 1.0
+        total_points += module_points
+        total_expected += module_expected
+        module_reports.append(
+            {
+                "module_id": module_id,
+                "coverage_score": module_score,
+                "repair_required": module_score < FUNCTION_INVENTORY_COVERAGE_REPAIR_THRESHOLD,
+                "warning": module_score < FUNCTION_INVENTORY_COVERAGE_WARNING_THRESHOLD,
+                "selected_rule_ids": decomposition.get("selected_rule_ids", decomposition.get("detected_rule_ids", [])),
+                "evidence_summary": decomposition.get("evidence_summary", []),
+                "rules": rule_reports,
+            }
+        )
+    score = round(total_points / total_expected, 3) if total_expected else 1.0
+    return {
+        "schema_version": "function_inventory_decomposition_report/v1",
+        "coverage_score": score,
+        "repair_required": any(item["repair_required"] for item in module_reports),
+        "warning": any(item["warning"] for item in module_reports),
+        "repair_threshold": FUNCTION_INVENTORY_COVERAGE_REPAIR_THRESHOLD,
+        "warning_threshold": FUNCTION_INVENTORY_COVERAGE_WARNING_THRESHOLD,
+        "modules": module_reports,
+    }
 
 
 def _file_ids(draft: dict[str, Any]) -> set[str]:
@@ -636,6 +771,62 @@ def validate_function_inventory_candidate(candidate: dict[str, Any], module_arti
             ]
             if sum(1 for function in module_functions if str(function.get("function_kind", "")) == "serializer") <= 1 and not serializer_helpers:
                 diagnostics.append(PlanningDiagnostic("warning", "missing_parser_or_serializer_helpers", f"module '{module_id}' appears to own encoding/response generation but only has a coarse serializer entry without internal helpers", path))
+    coverage_report = function_inventory_decomposition_report(candidate, module_artifacts, core_design)
+    for module_report in coverage_report.get("modules", []):
+        if not isinstance(module_report, dict) or not module_report.get("warning"):
+            continue
+        missing_by_rule = [
+            f"{rule.get('rule_id')}: {', '.join(str(item) for item in rule.get('missing_families', [])[:4])}"
+            for rule in module_report.get("rules", [])
+            if isinstance(rule, dict) and rule.get("missing_families")
+        ]
+        diagnostics.append(
+            PlanningDiagnostic(
+                "warning",
+                "missing_function_family",
+                (
+                    f"module '{module_report.get('module_id')}' decomposition coverage score "
+                    f"{module_report.get('coverage_score')} is below {FUNCTION_INVENTORY_COVERAGE_WARNING_THRESHOLD}; "
+                    f"missing families: {'; '.join(missing_by_rule[:3])}"
+                ),
+                path,
+            )
+        )
+    return diagnostics
+
+
+def validate_function_inventory_repair_patch(patch: dict[str, Any], candidate: dict[str, Any], module_artifacts: list[dict[str, Any]], *, path: str | None = None) -> list[PlanningDiagnostic]:
+    diagnostics = _shape(patch, FUNCTION_INVENTORY_REPAIR_PATCH_SCHEMA_VERSION, path=path)
+    if has_errors(diagnostics):
+        return diagnostics
+    module_id = str(patch.get("module_id", ""))
+    if module_id not in _module_artifact_ids(module_artifacts):
+        diagnostics.append(PlanningDiagnostic("error", "repair_unknown_module", f"repair patch module_id '{module_id}' is not a module", path))
+    if module_id != str(candidate.get("module_id", "")):
+        diagnostics.append(PlanningDiagnostic("error", "repair_module_mismatch", "repair patch module_id must match the current candidate module_id", path))
+    existing_ids = {str(function.get("function_id", "")) for function in candidate.get("functions", []) if isinstance(function, dict)}
+    existing_names = {str(function.get("name", "")) for function in candidate.get("functions", []) if isinstance(function, dict)}
+    added_ids: set[str] = set()
+    added_names: set[str] = set()
+    for function in patch.get("added_functions", []):
+        function_id = str(function.get("function_id", ""))
+        name = str(function.get("name", ""))
+        if str(function.get("module_id", "")) != module_id:
+            diagnostics.append(PlanningDiagnostic("error", "repair_added_function_wrong_module", f"added function '{function_id}' is not in repaired module", path))
+        if function_id in existing_ids or function_id in added_ids:
+            diagnostics.append(PlanningDiagnostic("error", "repair_duplicate_added_function_id", f"added function_id '{function_id}' conflicts with existing or added function", path))
+        if name in existing_names or name in added_names:
+            diagnostics.append(PlanningDiagnostic("error", "repair_duplicate_added_function_name", f"added function name '{name}' conflicts with existing or added function", path))
+        added_ids.add(function_id)
+        added_names.add(name)
+    seen_updates: set[str] = set()
+    for update in patch.get("updated_functions", []):
+        function_id = str(update.get("function_id", ""))
+        if function_id not in existing_ids:
+            diagnostics.append(PlanningDiagnostic("error", "repair_unknown_update_function", f"updated function '{function_id}' is not in the current candidate", path))
+        if function_id in seen_updates:
+            diagnostics.append(PlanningDiagnostic("error", "repair_duplicate_update_function", f"duplicate update for function '{function_id}'", path))
+        seen_updates.add(function_id)
     return diagnostics
 
 
@@ -1125,6 +1316,7 @@ def _has_cycle(edges: list[tuple[str, str]]) -> bool:
 validate_core_design = validate_core_design_candidate
 validate_module_artifacts = validate_module_artifacts_candidate
 validate_function_inventory = validate_function_inventory_candidate
+validate_function_inventory_repair = validate_function_inventory_repair_patch
 validate_function_signatures = validate_function_signature_patch
 validate_function_behavior_contracts = validate_function_behavior_contract_patch
 validate_wire_access_binding = validate_wire_access_binding_patch

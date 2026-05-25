@@ -328,8 +328,10 @@ class PlanningValidatorTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as raw_tmp:
             target = _target_profile(Path(raw_tmp))
             _, _, _, architecture_candidates, _, _ = _build_artifacts(Path(raw_tmp))
+            calls: list[str] = []
 
             def fake_request(*, prompt_name, messages, config, temperature=None, enable_thinking=False):
+                calls.append(prompt_name)
                 if prompt_name == "protocol_profile_patch_prompt":
                     return _noop_profile_patch_candidate(), [], {"mocked": True}
                 if prompt_name == "architecture_candidate_prompt":
@@ -353,6 +355,7 @@ class PlanningValidatorTests(unittest.TestCase):
             self.assertEqual(module_count, len(inventory_files))
             self.assertGreaterEqual(len(signature_files), module_count)
             self.assertGreaterEqual(len(behavior_files), module_count)
+            self.assertLessEqual(calls.count("function_inventory_repair_patch_prompt"), module_count)
             inventory = json.loads((step_logs / STEP_FILENAMES["function_inventory_candidate"]).read_text(encoding="utf-8"))
             signature = json.loads((step_logs / STEP_FILENAMES["function_signature_patch"]).read_text(encoding="utf-8"))
             behavior = json.loads((step_logs / STEP_FILENAMES["function_behavior_patch"]).read_text(encoding="utf-8"))

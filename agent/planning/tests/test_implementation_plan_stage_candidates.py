@@ -15,6 +15,7 @@ from agent.planning.prompts.templates import (
     file_layout_candidate_messages,
     function_behavior_contract_patch_messages,
     function_inventory_candidate_messages,
+    function_inventory_repair_patch_messages,
     function_signature_patch_messages,
     module_artifacts_candidate_messages,
     runtime_entrypoint_candidate_messages,
@@ -30,6 +31,7 @@ from agent.planning.stages.implementation_plan_context import (
     build_file_layout_context,
     build_function_behavior_context,
     build_function_inventory_context,
+    build_function_inventory_repair_context,
     build_function_signature_context,
     build_module_artifact_context,
     build_runtime_entrypoint_context,
@@ -48,6 +50,7 @@ from agent.planning.stages.implementation_plan_merger import (
     fallback_module_artifacts,
     fallback_runtime_entrypoint,
     fallback_wire_access_binding,
+    apply_function_inventory_repair_patch,
     merge_calls_allowed,
     merge_core_design,
     merge_file_layout,
@@ -66,11 +69,13 @@ from agent.planning.validators.implementation_plan_stages import (
     validate_file_layout_candidate,
     validate_function_behavior_contract_patch,
     validate_function_inventory_candidate,
+    validate_function_inventory_repair_patch,
     validate_function_signature_patch,
     validate_module_artifacts_candidate,
     validate_runtime_entrypoint_candidate,
     validate_wire_access_binding_patch,
     validation_report,
+    function_inventory_decomposition_report,
 )
 
 
@@ -555,7 +560,8 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             self.assertIn("id_reference_rules", payload)
             self.assertIn("enum_usage_rules", payload)
 
-    def test_function_inventory_classifier_uses_semantic_top_two_hints(self) -> None:
+    def test_function_inventory_classifier_uses_semantic_top_three_hints(self) -> None:
+        self.assertTrue(all(rule.expected_function_families for rule in DECOMPOSITION_RULES))
         cases = [
             (
                 "incremental byte stream framing, command decoding, and response serialization",
@@ -588,15 +594,17 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
                 "files": [],
                 "doc_ref": [],
             }
-            selected = select_top_decomposition_hints(module, {"core_design_summary": {}}, max_hints=2)
+            selected = select_top_decomposition_hints(module, {"core_design_summary": {}}, max_hints=3)
             ids = selected["detected_rule_ids"]
-            self.assertEqual(len(ids), 2)
+            self.assertEqual(len(ids), 3)
+            self.assertEqual(ids, selected["selected_rule_ids"])
+            self.assertEqual(set(ids), set(selected["expected_function_families_by_rule"]))
             self.assertTrue(required.issubset(set(ids)))
             if alternatives:
                 self.assertTrue(set(ids) & alternatives)
             renamed = copy.deepcopy(module)
             renamed["module_id"] = "mqtt_codec_network_router_session_store_broker_app"
-            self.assertEqual(ids, select_top_decomposition_hints(renamed, {"core_design_summary": {}}, max_hints=2)["detected_rule_ids"])
+            self.assertEqual(ids, select_top_decomposition_hints(renamed, {"core_design_summary": {}}, max_hints=3)["detected_rule_ids"])
 
     def test_function_inventory_prompt_documents_seed_semantics_and_selected_hints_only(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:
@@ -609,12 +617,131 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             self.assertIn("not the complete function list", rules_text)
             self.assertIn("one-to-one artifact mirroring", rules_text)
             decomposition = payload["function_inventory_context"]["decomposition_context"]
-            self.assertEqual(len(decomposition["selected_decomposition_hints"]), 2)
+            self.assertEqual(len(decomposition["selected_decomposition_hints"]), 3)
             prompt_text = json.dumps(payload, ensure_ascii=False)
             selected_hints = set(decomposition["selected_decomposition_hints"])
+            self.assertEqual(len(decomposition["selected_rule_ids"]), 3)
+            self.assertEqual(set(decomposition["selected_rule_ids"]), set(decomposition["expected_function_families_by_rule"]))
             for rule in DECOMPOSITION_RULES:
                 count = prompt_text.count(rule.hint)
                 self.assertEqual(count, 1 if rule.hint in selected_hints else 0)
+
+    def test_function_inventory_coverage_scoring_thresholds(self) -> None:
+        module = {
+            "module_id": "generic_unit",
+            "name": "generic_unit",
+            "role": "incremental byte stream framing, command decoding, and response serialization",
+            "dependencies": [],
+            "artifacts": [{"name": "proto_decode", "kind": "FUNC", "role": "Decode command stream"}],
+            "files": [],
+            "doc_ref": [],
+        }
+        selected = select_top_decomposition_hints(module, {"core_design_summary": {}}, max_hints=3)
+        families = [
+            family
+            for rule_id in selected["selected_rule_ids"]
+            for family in selected["expected_function_families_by_rule"][rule_id]
+        ]
+
+        def candidate_with(count: int) -> dict:
+            functions = [_inventory_function("proto_decode", module["module_id"], kind="parser")]
+            functions.extend(
+                _inventory_function(
+                    f"proto_{family}",
+                    module["module_id"],
+                    function_id=f"fn:{module['module_id']}:{family}",
+                    kind="internal_helper",
+                    public=False,
+                    purpose=f"Cover {family} responsibility.",
+                )
+                for family in families[:count]
+            )
+            return {
+                "schema_version": "function_inventory_candidate/v2",
+                "candidate_id": "candidate:test:coverage",
+                "producer": {"stage": "5.4a_function_inventory", "prompt_name": "function_inventory_candidate_prompt", "prompt_version": "test"},
+                "module_id": module["module_id"],
+                "functions": functions,
+                "assumptions": [],
+                "unresolved_questions": [],
+            }
+
+        high = function_inventory_decomposition_report(candidate_with(len(families)), [module], {})
+        self.assertGreaterEqual(high["coverage_score"], 0.65)
+        self.assertFalse(high["repair_required"])
+
+        low = function_inventory_decomposition_report(candidate_with(0), [module], {})
+        self.assertLess(low["coverage_score"], 0.45)
+        self.assertTrue(low["repair_required"])
+
+        middle = next(
+            report
+            for count in range(1, len(families))
+            for report in [function_inventory_decomposition_report(candidate_with(count), [module], {})]
+            if 0.45 <= report["coverage_score"] < 0.65
+        )
+        self.assertGreaterEqual(middle["coverage_score"], 0.45)
+        self.assertLess(middle["coverage_score"], 0.65)
+        self.assertFalse(middle["repair_required"])
+        self.assertTrue(middle["warning"])
+
+    def test_function_inventory_repair_prompt_and_patch_merge(self) -> None:
+        module = {
+            "module_id": "generic_framing_unit",
+            "name": "generic_framing_unit",
+            "role": "incremental byte stream framing and command decoding",
+            "dependencies": [],
+            "artifacts": [{"name": "proto_decode", "kind": "FUNC", "role": "Decode command stream"}],
+            "files": [],
+            "doc_ref": [],
+        }
+        draft = {"module_artifacts": [module], "handler_matrix": [], "required_capabilities": []}
+        candidate = {
+            "schema_version": "function_inventory_candidate/v2",
+            "candidate_id": "candidate:test:repair",
+            "producer": {"stage": "5.4a_function_inventory", "prompt_name": "function_inventory_candidate_prompt", "prompt_version": "test"},
+            "module_id": module["module_id"],
+            "functions": [_inventory_function("proto_decode", module["module_id"], kind="parser", purpose="Parse, validate, dispatch, update state, encode response, send reply, and cleanup resources.")],
+            "assumptions": [],
+            "unresolved_questions": [],
+        }
+        diags = validate_function_inventory_candidate(candidate, [module], {}, {}, {})
+        coverage = function_inventory_decomposition_report(candidate, [module], {})
+        context = build_function_inventory_repair_context(draft, module, candidate, coverage, [{"code": diag.code, "message": diag.message} for diag in diags], repair_mode="coarse_function_split")
+        payload = json.loads(function_inventory_repair_patch_messages(context)[1]["content"])
+        self.assertEqual(payload["output_schema"], "function_inventory_repair_patch/v1")
+        self.assertIn("added_functions", payload["output_shape"]["properties"])
+        self.assertNotIn("functions", payload["output_shape"]["properties"])
+        rules_text = "\n".join(payload["semantic_validation_rules"])
+        self.assertIn("minimal patch", rules_text)
+        self.assertIn("facade", rules_text)
+
+        patch = {
+            "schema_version": "function_inventory_repair_patch/v1",
+            "patch_id": "patch:test:repair",
+            "producer": {"stage": "5.4a_function_inventory", "prompt_name": "function_inventory_repair_patch_prompt", "prompt_version": "test"},
+            "module_id": module["module_id"],
+            "added_functions": [
+                _inventory_function("proto_read_primitive_field", module["module_id"], kind="internal_helper", public=False, purpose="Read primitive fields for parser helper coverage."),
+                _inventory_function("proto_validate_malformed_input", module["module_id"], kind="validator", public=False, purpose="Validate malformed command input before dispatch."),
+            ],
+            "updated_functions": [{"function_id": f"fn:{module['module_id']}:proto_decode", "purpose": "Facade parser entry that delegates detailed parsing and validation helpers.", "grouping_hint": "parser_facade", "status": "inferred"}],
+            "added_assumptions": [],
+            "added_unresolved_questions": [],
+        }
+        self.assertFalse(validate_function_inventory_repair_patch(patch, candidate, [module]))
+        merged = apply_function_inventory_repair_patch(candidate, patch)
+        self.assertEqual(len(merged["functions"]), 3)
+        self.assertEqual(merged["functions"][0]["name"], "proto_decode")
+        self.assertEqual(merged["functions"][0]["function_id"], f"fn:{module['module_id']}:proto_decode")
+        self.assertFalse(_has_error(validate_function_inventory_candidate(merged, [module], {}, {}, {})))
+
+        duplicate = copy.deepcopy(patch)
+        duplicate["added_functions"][0]["name"] = "proto_decode"
+        self.assertTrue(_has(validate_function_inventory_repair_patch(duplicate, candidate, [module]), "repair_duplicate_added_function_name"))
+        identity_update = copy.deepcopy(patch)
+        identity_update["updated_functions"][0]["name"] = "proto_decode_renamed"
+        self.assertTrue(_has(validate_function_inventory_repair_patch(identity_update, candidate, [module]), "forbidden_extra_field"))
 
     def test_stage_prompts_expose_semantic_validator_rules(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:

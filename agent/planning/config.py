@@ -27,7 +27,7 @@ def default_llm_stage_configs() -> dict[str, LLMStageConfig]:
         "implementation_plan_5_1": LLMStageConfig(temperature=0.2, max_retries=3, enable_thinking=False),
         "implementation_plan_5_2": LLMStageConfig(temperature=0.2, max_retries=3, enable_thinking=False),
         "implementation_plan_5_3": LLMStageConfig(temperature=0.2, max_retries=3, enable_thinking=True),
-        "implementation_plan_5_4a": LLMStageConfig(temperature=0.7, max_retries=3, enable_thinking=True),
+        "implementation_plan_5_4a": LLMStageConfig(temperature=0.7, max_retries=3, enable_thinking=False),
         "implementation_plan_5_4b": LLMStageConfig(temperature=0.2, max_retries=3, enable_thinking=False),
         "implementation_plan_5_4c": LLMStageConfig(temperature=0.2, max_retries=3, enable_thinking=False),
         "implementation_plan_5_4d": LLMStageConfig(temperature=0.2, max_retries=3, enable_thinking=False),

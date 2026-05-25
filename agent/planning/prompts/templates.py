@@ -67,7 +67,11 @@ STAGE_SEMANTIC_RULES = {
         "For derived_public_api functions, export_reason must explain the stable boundary, public_api_role must describe the API role, and purpose must explain why the function cannot remain an internal helper. If that basis is weak, make it internal or add unresolved_questions.",
         "Do not create public APIs from examples, guessed names, naming preference, or protocol terms that merely sound important. Internal helpers do not need module_artifacts support.",
         "Selected decomposition hints in decomposition_context are heuristics for function families, not required function names; adapt them to the current module and do not copy them as prose.",
+        "selected_rule_ids, selected_decomposition_hints, expected_function_families_by_rule, and evidence_summary are the only decomposition rule context available to this prompt; do not assume access to the complete rule pool.",
+        "expected_function_families_by_rule lists responsibility families this module should try to cover with explainable public seeds or internal helpers.",
         "Coverage expectation: every mandatory FUNC seed must be covered; non-trivial parser, serializer, runtime, session, routing, orchestration, or resource-owning modules should include representative internal function families for their major responsibilities.",
+        "If an expected function family cannot be reliably represented from the current trace/capability/module evidence, add an assumptions or unresolved_questions item explaining why.",
+        "Do not mechanically generate helpers with no trace, capability, purpose, or module responsibility support; every added internal helper must have an explainable purpose.",
         "If one function purpose combines too many stages such as parse, validate, dispatch, state update, encode, send, and cleanup, split it into clearer inventory entries.",
         "Cross-module service intent may reference only provider_module_artifacts FUNC names; do not call provider private helpers that are not declared as artifacts.",
         "For a protocol key-flow module, generate distinct public lifecycle functions for runtime_create, runtime_start, runtime_run, and runtime_destroy using names ending in _create, _start, _run or _serve, and _destroy; do not reuse message handlers as lifecycle functions.",
@@ -75,6 +79,16 @@ STAGE_SEMANTIC_RULES = {
         "coder_function_type must be ALGORITHM, EVENT, or ENTRYPOINT; handlers are not automatically EVENT.",
         "Use EVENT only when the later behavior patch can provide trigger, precondition, input, action, state_change, response, and event_type; otherwise use ALGORITHM.",
         "covers_handler_ids, covers_message_ids, and covers_field_ids may reference only existing handler, message, and field IDs.",
+    ],
+    "function_inventory_repair_patch/v1": [
+        "Return a minimal patch for the current module's existing function_inventory_candidate; do not return or rewrite a complete function_inventory_candidate.",
+        "Preserve all existing functions. Do not delete, rename, or change function_id, name, module_id, visibility, api_surface, exported, export_reason, or public_api_role of existing functions.",
+        "Use added_functions to add only the functions needed to cover missing_function_families, under-decomposed responsibilities, or coarse-function split helpers.",
+        "Prefer internal helpers for added_functions unless the repair_context proves a derived_public_api is required and provides a stable export_reason and public_api_role.",
+        "For coarse function repair, keep the existing public API as a facade or entrypoint and add internal helpers for parser, validator, dispatcher, state transition, encoder/send, cleanup, or error handling responsibilities as applicable.",
+        "updated_functions may only narrow purpose, grouping_hint, or status for an existing coarse facade/orchestrator; it must not alter identity or public API fields.",
+        "If a missing expected family cannot be safely repaired from trace/capability evidence, add an added_assumptions or added_unresolved_questions item instead of inventing unsupported behavior.",
+        "Do not include signatures, input/output contracts, state access, wire mappings, access paths, calls, dependency graphs, files, or code.",
     ],
     "function_signature_patch/v1": [
         "Patch existing function_id values only; never add a new function.",
@@ -571,6 +585,18 @@ def function_inventory_candidate_messages(context: dict[str, Any]) -> list[dict[
         expected_schema="function_inventory_candidate/v2",
         forbidden_fields=["signature", "input_contract", "output_contract", "state_access", "wire_mapping", "access_paths", "calls_allowed", "dependency_graph", "code"],
         validator="validate_function_inventory_candidate",
+    )
+
+
+def function_inventory_repair_patch_messages(context: dict[str, Any]) -> list[dict[str, str]]:
+    return _stage_messages(
+        prompt_name="function_inventory_repair_patch_prompt",
+        task="Patch one module's accepted function inventory by adding missing internal helpers or splitting coarse responsibilities. Return only a function_inventory_repair_patch/v1 object; do not rewrite the full inventory.",
+        context_key="function_inventory_repair_context",
+        context=context,
+        expected_schema="function_inventory_repair_patch/v1",
+        forbidden_fields=["candidate_id", "functions", "signature", "input_contract", "output_contract", "state_access", "wire_mapping", "access_paths", "calls_allowed", "dependency_graph", "file_id", "code"],
+        validator="validate_function_inventory_repair_patch",
     )
 
 
