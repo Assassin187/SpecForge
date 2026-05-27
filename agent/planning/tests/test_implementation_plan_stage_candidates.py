@@ -40,6 +40,9 @@ from agent.planning.stages.implementation_plan_context import (
     build_type_inventory_context,
     build_type_inventory_repair_context,
     build_wire_access_binding_context,
+    derive_type_generation_targets,
+    derive_type_obligations,
+    normalize_type_inventory_candidate,
 )
 from agent.planning.stages.function_inventory_decomposition import DECOMPOSITION_RULES, select_top_decomposition_hints
 from agent.planning.stages.implementation_plan_merger import (
@@ -67,6 +70,7 @@ from agent.planning.stages.implementation_plan_merger import (
     merge_runtime_entrypoint,
     merge_type_inventory,
     merge_wire_access_binding,
+    reconcile_type_inventory_function_refs,
 )
 from agent.planning.stages.protocol_profile import build_protocol_profile
 from agent.planning.validators.implementation_plan_stages import (
@@ -234,6 +238,51 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             "repair": repair,
         }
 
+    def _provider_seed_draft(self) -> tuple[dict, dict, dict, dict]:
+        network = {
+            "module_id": "network",
+            "name": "network",
+            "role": "TCP network epoll server",
+            "dependencies": [],
+            "artifacts": [
+                {"name": "mqtt_server_t", "kind": "TYPE", "role": "Public server boundary handle"},
+                {"name": "mqtt_connection_t", "kind": "TYPE", "role": "Per-connection state with socket fd and recv buffer"},
+                {"name": "mqtt_network_run", "kind": "FUNC", "role": "Run epoll server"},
+            ],
+            "state_owned": ["listening socket"],
+            "owned_capabilities": ["transport_io"],
+            "files": [],
+            "doc_ref": [],
+        }
+        codec = {
+            "module_id": "codec",
+            "name": "codec",
+            "role": "MQTT codec parser and serializer",
+            "dependencies": [],
+            "artifacts": [
+                {"name": "mqtt_parser_t", "kind": "TYPE", "role": "Public parser boundary"},
+                {"name": "mqtt_packet_t", "kind": "TYPE", "role": "Decoded packet container"},
+                {"name": "mqtt_decode", "kind": "FUNC", "role": "Decode packet bytes"},
+                {"name": "mqtt_encode", "kind": "FUNC", "role": "Encode packet bytes"},
+            ],
+            "state_owned": [],
+            "owned_capabilities": ["message_decode", "message_encode"],
+            "files": [],
+            "doc_ref": [],
+        }
+        session = {
+            "module_id": "session",
+            "name": "session",
+            "role": "MQTT session state machine",
+            "dependencies": ["codec", "network"],
+            "artifacts": [{"name": "mqtt_session_t", "kind": "TYPE", "role": "Public session handle"}],
+            "state_owned": [],
+            "owned_capabilities": [],
+            "files": [],
+            "doc_ref": [],
+        }
+        return {"protocol_name": "mqtt", "module_artifacts": [network, codec, session], "canonical_types": [], "type_inventory": []}, network, codec, session
+
     def test_valid_stage_candidate_fixtures_pass(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:
             planning_ir, profile, constraints, selected, draft, _, items = self._fixtures(Path(raw_tmp))
@@ -248,6 +297,42 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             self.assertFalse(validate_file_layout_candidate(items["layout"], draft))
             self.assertFalse(validate_runtime_entrypoint_candidate(items["runtime"], draft))
             self.assertFalse(validate_dependency_repair_patch(items["repair"], draft))
+
+    def test_module_artifact_role_classification_ignores_cross_module_responsibility_text(self) -> None:
+        selected = {
+            "architecture": {
+                "modules": [
+                    {"module_id": "broker_app", "name": "broker_app", "owned_capabilities": ["role_composition"], "responsibilities": ["Dispatch decoded messages to session handlers", "Initiate publish routing via topic_router"]},
+                    {"module_id": "session", "name": "session", "owned_capabilities": ["session_state_ownership"], "responsibilities": ["Own parser state for incremental framing progress"]},
+                ]
+            }
+        }
+        candidate = {
+            "schema_version": "module_artifacts_candidate/v1",
+            "candidate_id": "candidate:test:module_artifact_roles",
+            "producer": {"stage": "5.3_module_artifacts", "prompt_name": "module_artifacts_candidate_prompt", "prompt_version": "test"},
+            "modules": [
+                {
+                    "module_id": "session", "name": "session", "role": "session state lifecycle", "dependencies": [],
+                    "artifacts": [{"name": "mqtt_session_t", "kind": "TYPE", "role": "session context"}, {"name": "mqtt_session_process", "kind": "FUNC", "role": "state transition handler"}],
+                    "files": [], "doc_ref": [],
+                },
+                {
+                    "module_id": "broker_app", "name": "broker_app", "role": "application composition and dispatch", "dependencies": ["session"],
+                    "artifacts": [{"name": "mqtt_broker_run", "kind": "FUNC", "role": "main event loop"}], "files": [], "doc_ref": [],
+                },
+            ],
+            "generation_order": ["session", "broker_app"],
+            "consistency_rules": [],
+            "forbidden_symbols": [],
+            "assumptions": [],
+            "unresolved_questions": [],
+        }
+        diags = validate_module_artifacts_candidate(candidate, selected, {}, {}, {})
+        self.assertFalse(_has(diags, "codec_module_missing_decoder_encoder_artifacts"))
+        self.assertFalse(_has(diags, "session_module_missing_type_artifact"))
+        self.assertFalse(_has(diags, "router_module_missing_type_artifact"))
+        self.assertFalse(_has(diags, "topic_module_missing_type_artifact"))
 
     def test_shape_rejects_extra_missing_and_wrong_enum(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:
@@ -370,6 +455,44 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             missing["functions"] = [item for item in missing["functions"] if item["name"] != next(iter(func_artifacts))]
             self.assertTrue(_has(validate_function_inventory_candidate(missing, draft["module_artifacts"], draft, profile, planning_ir), "function_inventory_missing_artifact_function"))
 
+    def test_function_inventory_accepts_surface_catalog_messages_but_rejects_non_wire_field_ids(self) -> None:
+        module = {
+            "module_id": "broker_app",
+            "name": "broker app",
+            "role": "broker orchestration",
+            "dependencies": [],
+            "artifacts": [{"name": "mqtt_handle_connack", "kind": "FUNC", "role": "Handle CONNACK"}],
+            "state_owned": [],
+            "owned_capabilities": [],
+            "files": [],
+            "doc_ref": [],
+        }
+        planning_ir = {
+            "protocol_facts": {
+                "message_model": {
+                    "surface_catalog": [{"name": "connack"}, {"name": "suback"}, {"name": "pingresp"}],
+                    "message_or_command_entries": [{"name": "connect", "fields": [{"name": "client_id", "fact_id": "field:wire:client_id"}]}],
+                }
+            }
+        }
+        function = _inventory_function("mqtt_handle_connack", "broker_app")
+        function["covers_message_ids"] = ["message:connack", "message:suback", "message:pingresp"]
+        candidate = {
+            "schema_version": "function_inventory_candidate/v2",
+            "candidate_id": "candidate:broker_app:surface_messages",
+            "producer": {"stage": "5.4b_function_inventory", "prompt_name": "function_inventory_candidate_prompt", "prompt_version": "test"},
+            "module_id": "broker_app",
+            "functions": [function],
+            "assumptions": [],
+            "unresolved_questions": [],
+        }
+        draft = {"module_artifacts": [module], "type_inventory": [], "function_contracts": []}
+        self.assertFalse(_has_error(validate_function_inventory_candidate(candidate, [module], draft, {}, planning_ir)))
+
+        bad = copy.deepcopy(candidate)
+        bad["functions"][0]["covers_field_ids"] = ["field:mqtt_connection_t:fd"]
+        self.assertTrue(_has(validate_function_inventory_candidate(bad, [module], draft, {}, planning_ir), "unknown_function_field_ref"))
+
     def test_type_inventory_is_seeded_by_module_artifacts(self) -> None:
         module = {
             "module_id": "mqtt_codec",
@@ -394,6 +517,496 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
         missing = copy.deepcopy(candidate)
         missing["types"] = [item for item in missing["types"] if item["name"] != "mqtt_packet"]
         self.assertTrue(_has(validate_type_inventory_candidate(missing, [module], draft), "type_inventory_missing_artifact_type"))
+
+    def test_type_inventory_context_exposes_protocol_type_generation_targets(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            planning_ir, profile, constraints, selected, draft, _, _ = self._fixtures(Path(raw_tmp))
+            codec = next(module for module in draft["module_artifacts"] if any("decode" in str(artifact.get("role", "")).lower() for artifact in module["artifacts"]))
+            context = build_type_inventory_context(draft, codec, planning_ir)
+            targets = context["type_generation_targets"]
+            kinds = {target["target_kind"] for target in targets}
+            self.assertIn("packet_enum", kinds)
+            self.assertIn("payload_struct", kinds)
+            self.assertIn("packet_container_struct", kinds)
+            self.assertIn("global_module_artifacts_reference", context)
+            self.assertTrue(any(target["required_fields"] for target in targets if target["target_kind"] == "payload_struct"))
+            enum_target = next(target for target in targets if target["target_kind"] == "packet_enum")
+            enum_names = {field["field_name"] for field in enum_target["required_fields"]}
+            self.assertTrue({"RESERVED", "CONNECT", "CONNACK", "PUBLISH", "SUBSCRIBE", "SUBACK", "PINGREQ", "PINGRESP", "DISCONNECT"}.issubset(enum_names))
+            connect_target = next(target for target in targets if target["suggested_name"] == "mqtt_connect_payload_t")
+            connect_fields = {field["field_name"]: field["field_type"] for field in connect_target["required_fields"]}
+            self.assertEqual(connect_fields["client_id"], "char*")
+            self.assertEqual(connect_fields["keep_alive"], "uint16_t")
+            self.assertEqual(connect_fields["clean_session"], "bool")
+            publish_target = next(target for target in targets if target["suggested_name"] == "mqtt_publish_payload_t")
+            publish_fields = {field["field_name"]: field["field_type"] for field in publish_target["required_fields"]}
+            self.assertEqual(publish_fields["payload"], "uint8_t*")
+            self.assertEqual(publish_fields["payload_len"], "size_t")
+            packet_target = next(target for target in targets if target["target_kind"] == "packet_container_struct")
+            self.assertTrue(any(field.get("field_type") == "union" and field.get("variants") for field in packet_target["required_fields"]))
+            fixed_target = next(target for target in targets if target["suggested_name"] == "mqtt_fixed_header_payload_t")
+            fixed_fields = {field["field_name"]: field["field_type"] for field in fixed_target["required_fields"]}
+            self.assertEqual(fixed_fields["packet_type"], "mqtt_packet_type_t")
+            self.assertEqual(fixed_fields["remaining_length"], "uint32_t")
+
+    def test_type_inventory_context_exposes_provider_public_seed_types_only_for_dependencies(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            planning_ir, _, _, _, _, _, _ = self._fixtures(Path(raw_tmp))
+            draft, network, _, session = self._provider_seed_draft()
+            context = build_type_inventory_context(draft, session, planning_ir)
+            provider_types = {group["module_id"]: {item["name"] for item in group["types"]} for group in context["provider_public_types"]}
+            self.assertIn("mqtt_packet_t", provider_types["codec"])
+            self.assertNotIn("mqtt_connection_t", provider_types["network"])
+            self.assertIn("type:codec:mqtt_packet_t", context["legal_id_universe"]["type_ids"])
+            self.assertIn("type:mqtt_packet_t", context["legal_id_universe"]["type_ids"])
+
+            network_context = build_type_inventory_context(draft, network, planning_ir)
+            network_provider_types = {item["name"] for group in network_context["provider_public_types"] for item in group["types"]}
+            self.assertNotIn("mqtt_parser_t", network_provider_types)
+
+    def test_type_inventory_validator_accepts_provider_seed_alias_but_rejects_internal_provider_type(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            planning_ir, _, _, _, _, _, _ = self._fixtures(Path(raw_tmp))
+            draft, _, _, session = self._provider_seed_draft()
+            candidate = {
+                "schema_version": "type_inventory_candidate/v1",
+                "candidate_id": "candidate:session:provider_seed",
+                "producer": {"stage": "5.4a_type_inventory", "prompt_name": "type_inventory_candidate_prompt", "prompt_version": "test"},
+                "module_id": "session",
+                "types": [
+                    {
+                        "type_id": "type:session:mqtt_session_t",
+                        "name": "mqtt_session_t",
+                        "module_id": "session",
+                        "kind": "opaque_handle",
+                        "visibility": "public",
+                        "defined_in": "public_header",
+                        "purpose": "session handle",
+                        "fields": [],
+                        "enum_values": [],
+                        "callback_signature": None,
+                        "ownership_lifetime": "",
+                        "lifecycle": {"created_by": [], "initialized_by": [], "destroyed_by": [], "freed_by": []},
+                        "related_functions": [],
+                        "dependencies": ["type:mqtt_packet_t"],
+                        "trace_ref_keys": [],
+                        "status": "inferred",
+                    }
+                ],
+                "assumptions": [],
+                "unresolved_questions": [],
+            }
+            self.assertFalse(_has_error(validate_type_inventory_candidate(normalize_type_inventory_candidate(candidate), draft["module_artifacts"], draft, planning_ir=planning_ir)))
+
+            bad = copy.deepcopy(candidate)
+            bad["types"][0]["dependencies"] = ["type:mqtt_connection_t"]
+            self.assertTrue(_has(validate_type_inventory_candidate(normalize_type_inventory_candidate(bad), draft["module_artifacts"], draft, planning_ir=planning_ir), "unknown_type_ref"))
+
+    def test_type_inventory_validator_keeps_public_private_boundary_and_normalizes_union_ref(self) -> None:
+        module = {
+            "module_id": "router",
+            "name": "router",
+            "role": "topic router",
+            "dependencies": [],
+            "artifacts": [{"name": "mqtt_router_t", "kind": "TYPE", "role": "Public router handle"}],
+            "state_owned": [],
+            "owned_capabilities": [],
+            "files": [],
+            "doc_ref": [],
+        }
+        candidate = {
+            "schema_version": "type_inventory_candidate/v1",
+            "candidate_id": "candidate:router:union",
+            "producer": {"stage": "5.4a_type_inventory", "prompt_name": "type_inventory_candidate_prompt", "prompt_version": "test"},
+            "module_id": "router",
+            "types": [
+                {
+                    "type_id": "type:router:mqtt_router_t",
+                    "name": "mqtt_router_t",
+                    "module_id": "router",
+                    "kind": "struct",
+                    "visibility": "public",
+                    "defined_in": "public_header",
+                    "purpose": "router handle",
+                    "fields": [{"field_name": "v", "field_type": "union", "type_ref": "union", "required": True, "ownership": "BORROWED", "lifetime": "valid while router is valid", "length_field": "", "capacity_field": "", "validation_notes": ""}],
+                    "enum_values": [],
+                    "callback_signature": {"return_type": "", "params": []},
+                    "ownership_lifetime": "",
+                    "lifecycle": {"created_by": [], "initialized_by": [], "destroyed_by": [], "freed_by": []},
+                    "related_functions": [],
+                    "dependencies": [],
+                    "trace_ref_keys": [],
+                    "status": "inferred",
+                }
+            ],
+            "assumptions": [],
+            "unresolved_questions": [],
+        }
+        normalized = normalize_type_inventory_candidate(candidate)
+        self.assertEqual(normalized["types"][0]["fields"][0]["type_ref"], "")
+        self.assertFalse(_has_error(validate_type_inventory_candidate(normalized, [module], {"module_artifacts": [module]})))
+
+        leaked = copy.deepcopy(candidate)
+        leaked["types"].append(
+            {
+                **copy.deepcopy(candidate["types"][0]),
+                "type_id": "type:router:mqtt_router_private_t",
+                "name": "mqtt_router_private_t",
+                "kind": "internal_state",
+                "visibility": "private",
+                "defined_in": "source_file",
+                "fields": [],
+            }
+        )
+        leaked["types"][0]["fields"][0].update({"field_type": "mqtt_router_private_t*", "type_ref": "type:router:mqtt_router_private_t"})
+        self.assertTrue(_has(validate_type_inventory_candidate(normalize_type_inventory_candidate(leaked), [module], {"module_artifacts": [module]}), "public_type_field_uses_private_type"))
+
+    def test_type_generation_targets_do_not_create_callback_boundary_from_connection_text_only(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            planning_ir, _, _, _, _, _, _ = self._fixtures(Path(raw_tmp))
+            draft, network, codec, session = self._provider_seed_draft()
+            codec["role"] = "MQTT codec for bytes read from a connection"
+            session["role"] = "MQTT session connection state"
+            self.assertFalse(any(target["target_kind"] == "callback_or_event_boundary" for target in derive_type_generation_targets(draft, codec, planning_ir)))
+            self.assertFalse(any(target["target_kind"] == "callback_or_event_boundary" for target in derive_type_generation_targets(draft, session, planning_ir)))
+            self.assertTrue(any(target["target_kind"] == "callback_or_event_boundary" for target in derive_type_generation_targets(draft, network, planning_ir)))
+
+    def test_type_inventory_normalizes_callback_collection_and_private_callback_param_refs(self) -> None:
+        module = {
+            "module_id": "network",
+            "name": "network",
+            "role": "TCP server accept data close timer epoll runtime",
+            "dependencies": [],
+            "artifacts": [{"name": "mqtt_connection_t", "kind": "TYPE", "role": "per-connection context with socket fd and buffers"}, {"name": "mqtt_server_t", "kind": "TYPE", "role": "server context"}],
+            "state_owned": [],
+            "owned_capabilities": [],
+            "files": [],
+            "doc_ref": [],
+        }
+        candidate = fallback_type_inventory({"protocol_name": "mqtt", "module_artifacts": [module]}, module)
+        connection = next(item for item in candidate["types"] if item["name"] == "mqtt_connection_t")
+        connection.update({"kind": "internal_state", "visibility": "module_internal", "defined_in": "source_file", "fields": []})
+        callbacks = next(item for item in candidate["types"] if item["name"] == "mqtt_network_callbacks_t")
+        callbacks.update(
+            {
+                "kind": "callback_type",
+                "fields": [],
+                "callback_signature": {
+                    "return_type": "void",
+                    "params": [
+                        {"name": "on_accept", "type": "mqtt_network_on_accept_fn", "type_ref": "type:network:mqtt_network_on_accept_fn", "ownership": "BORROWED"},
+                        {"name": "on_data", "type": "mqtt_network_on_data_fn", "type_ref": "type:network:mqtt_network_on_data_fn", "ownership": "BORROWED"},
+                        {"name": "on_close", "type": "mqtt_network_on_close_fn", "type_ref": "type:network:mqtt_network_on_close_fn", "ownership": "BORROWED"},
+                        {"name": "on_timer", "type": "mqtt_network_on_timer_fn", "type_ref": "type:network:mqtt_network_on_timer_fn", "ownership": "BORROWED"},
+                    ],
+                },
+            }
+        )
+        for callback_type in [item for item in candidate["types"] if str(item["name"]).endswith(("_on_accept_fn", "_on_data_fn", "_on_close_fn"))]:
+            callback_type["dependencies"] = ["type:network:mqtt_connection_t"]
+            callback_type["callback_signature"]["params"] = [{"name": "conn", "type": "mqtt_connection_t*", "type_ref": "type:network:mqtt_connection_t", "ownership": "BORROWED"}]
+        normalized = normalize_type_inventory_candidate(candidate)
+        normalized_callbacks = next(item for item in normalized["types"] if item["name"] == "mqtt_network_callbacks_t")
+        self.assertEqual(normalized_callbacks["kind"], "event_struct")
+        self.assertTrue({"on_accept", "on_data", "on_close", "on_timer"}.issubset({field["field_name"] for field in normalized_callbacks["fields"]}))
+        normalized_accept = next(item for item in normalized["types"] if item["name"] == "mqtt_network_on_accept_fn")
+        self.assertEqual(normalized_accept["callback_signature"]["params"][0]["type"], "void*")
+        self.assertEqual(normalized_accept["callback_signature"]["params"][0]["type_ref"], "void")
+        self.assertFalse(_has_error(validate_type_inventory_candidate(normalized, [module], {"protocol_name": "mqtt", "module_artifacts": [module]})))
+
+    def test_type_inventory_normalizes_private_impl_detail_cross_module_refs(self) -> None:
+        network = {
+            "module_id": "network",
+            "name": "network",
+            "role": "TCP network runtime",
+            "dependencies": [],
+            "artifacts": [{"name": "mqtt_connection_t", "kind": "TYPE", "role": "per-connection context with socket fd and buffers"}],
+            "state_owned": [],
+            "owned_capabilities": [],
+            "files": [],
+            "doc_ref": [],
+        }
+        network_candidate = fallback_type_inventory({"protocol_name": "mqtt", "module_artifacts": [network]}, network)
+        connection = next(item for item in network_candidate["types"] if item["name"] == "mqtt_connection_t")
+        connection.update(
+            {
+                "kind": "internal_state",
+                "visibility": "module_internal",
+                "defined_in": "source_file",
+                "dependencies": ["type:mqtt_parser_t"],
+                "fields": [{"field_name": "parser", "field_type": "mqtt_parser_t", "type_ref": "type:mqtt_parser_t", "required": True, "ownership": "OWNED", "lifetime": "connection duration", "length_field": "", "capacity_field": "", "validation_notes": ""}],
+            }
+        )
+        normalized_network = normalize_type_inventory_candidate(network_candidate)
+        normalized_connection = next(item for item in normalized_network["types"] if item["name"] == "mqtt_connection_t")
+        self.assertEqual(normalized_connection["dependencies"], [])
+        self.assertEqual(normalized_connection["fields"][0]["field_type"], "void*")
+        self.assertFalse(_has_error(validate_type_inventory_candidate(normalized_network, [network], {"module_artifacts": [network]})))
+
+        session = {
+            "module_id": "session",
+            "name": "session",
+            "role": "session state machine",
+            "dependencies": ["network"],
+            "artifacts": [{"name": "mqtt_session_t", "kind": "TYPE", "role": "session state"}],
+            "state_owned": [],
+            "owned_capabilities": [],
+            "files": [],
+            "doc_ref": [],
+        }
+        session_candidate = fallback_type_inventory({"protocol_name": "mqtt", "module_artifacts": [network, session]}, session)
+        session_type = next(item for item in session_candidate["types"] if item["name"] == "mqtt_session_t")
+        session_type.update(
+            {
+                "kind": "internal_state",
+                "visibility": "module_internal",
+                "defined_in": "source_file",
+                "dependencies": ["type:network:mqtt_connection_t"],
+                "fields": [{"field_name": "connection", "field_type": "mqtt_connection_t*", "type_ref": "type:network:mqtt_connection_t", "required": True, "ownership": "BORROWED", "lifetime": "session duration", "length_field": "", "capacity_field": "", "validation_notes": ""}],
+            }
+        )
+        normalized_session = normalize_type_inventory_candidate(session_candidate)
+        normalized_session_type = next(item for item in normalized_session["types"] if item["name"] == "mqtt_session_t")
+        self.assertEqual(normalized_session_type["dependencies"], [])
+        self.assertEqual(normalized_session_type["fields"][0]["type_ref"], "void")
+        self.assertFalse(_has_error(validate_type_inventory_candidate(normalized_session, [network, session], {"module_artifacts": [network, session]})))
+
+        router = {
+            "module_id": "router",
+            "name": "router",
+            "role": "topic routing and subscription registry",
+            "dependencies": ["session"],
+            "artifacts": [{"name": "mqtt_router_t", "kind": "TYPE", "role": "router handle"}],
+            "state_owned": [],
+            "owned_capabilities": [],
+            "files": [],
+            "doc_ref": [],
+        }
+        router_candidate = fallback_type_inventory({"protocol_name": "mqtt", "module_artifacts": [session, router]}, router)
+        router_state = next(item for item in router_candidate["types"] if item["name"] == "mqtt_router_t")
+        router_state.update(
+            {
+                "kind": "internal_state",
+                "visibility": "private",
+                "defined_in": "source_file",
+                "dependencies": ["type:session:mqtt_session_t"],
+                "fields": [],
+            }
+        )
+        normalized_router = normalize_type_inventory_candidate(router_candidate)
+        normalized_router_state = next(item for item in normalized_router["types"] if item["name"] == "mqtt_router_t")
+        self.assertEqual(normalized_router_state["dependencies"], [])
+
+    def test_type_inventory_normalizes_public_packet_payload_visibility_without_hiding_other_private_leaks(self) -> None:
+        module = {
+            "module_id": "codec",
+            "name": "codec",
+            "role": "MQTT codec",
+            "dependencies": [],
+            "artifacts": [],
+            "state_owned": [],
+            "owned_capabilities": [],
+            "files": [],
+            "doc_ref": [],
+        }
+        base = fallback_type_inventory({"protocol_name": "mqtt", "module_artifacts": [module]}, module)
+        base["types"] = [
+            {
+                **copy.deepcopy(base["types"][0]),
+                "type_id": "type:codec:mqtt_packet_t",
+                "name": "mqtt_packet_t",
+                "kind": "struct",
+                "visibility": "public",
+                "defined_in": "public_header",
+                "purpose": "public packet container with variant payload",
+                "dependencies": ["type:codec:mqtt_connect_payload_t"],
+                "fields": [{"field_name": "v", "field_type": "union", "type_ref": "union", "required": True, "ownership": "BORROWED", "lifetime": "valid", "length_field": "", "capacity_field": "", "validation_notes": ""}],
+            },
+            {
+                **copy.deepcopy(base["types"][0]),
+                "type_id": "type:codec:mqtt_connect_payload_t",
+                "name": "mqtt_connect_payload_t",
+                "kind": "struct",
+                "visibility": "module_internal",
+                "defined_in": "source_file",
+                "purpose": "CONNECT payload",
+                "dependencies": [],
+                "fields": [],
+            },
+        ]
+        normalized = normalize_type_inventory_candidate(base)
+        payload = next(item for item in normalized["types"] if item["name"] == "mqtt_connect_payload_t")
+        self.assertEqual(payload["visibility"], "public")
+        self.assertFalse(_has_error(validate_type_inventory_candidate(normalized, [module], {"module_artifacts": [module]})))
+
+        leaked = copy.deepcopy(base)
+        leaked["types"][1].update({"name": "mqtt_codec_private_state_t", "type_id": "type:codec:mqtt_codec_private_state_t", "purpose": "private helper state"})
+        leaked["types"][0]["dependencies"] = ["type:codec:mqtt_codec_private_state_t"]
+        self.assertTrue(_has(validate_type_inventory_candidate(normalize_type_inventory_candidate(leaked), [module], {"module_artifacts": [module]}), "public_type_field_uses_private_type"))
+
+    def test_fallback_keeps_connection_state_private_but_server_public(self) -> None:
+        module = {
+            "module_id": "network",
+            "name": "network",
+            "role": "TCP network runtime",
+            "dependencies": [],
+            "artifacts": [
+                {"name": "mqtt_connection_t", "kind": "TYPE", "role": "per-connection context with socket fd and buffers"},
+                {"name": "mqtt_server_t", "kind": "TYPE", "role": "server context with event loop state"},
+            ],
+            "state_owned": [],
+            "owned_capabilities": [],
+            "files": [],
+            "doc_ref": [],
+        }
+        candidate = fallback_type_inventory({"protocol_name": "mqtt", "module_artifacts": [module]}, module)
+        connection = next(item for item in candidate["types"] if item["name"] == "mqtt_connection_t")
+        server = next(item for item in candidate["types"] if item["name"] == "mqtt_server_t")
+        self.assertEqual((connection["visibility"], connection["defined_in"]), ("module_internal", "source_file"))
+        self.assertEqual((server["visibility"], server["defined_in"]), ("public", "public_header"))
+
+    def test_type_inventory_accepts_system_namespace_and_opaque_backing_pair(self) -> None:
+        module = {
+            "module_id": "router",
+            "name": "router",
+            "role": "topic routing",
+            "dependencies": [],
+            "artifacts": [{"name": "mqtt_router_t", "kind": "TYPE", "role": "router handle"}],
+            "state_owned": ["topic tree"],
+            "owned_capabilities": ["resource_ownership"],
+            "files": [],
+            "doc_ref": [],
+        }
+        candidate = {
+            "schema_version": "type_inventory_candidate/v1",
+            "candidate_id": "candidate:router:type_inventory",
+            "producer": {"stage": "5.4a_type_inventory", "prompt_name": "type_inventory_candidate_prompt", "prompt_version": "test"},
+            "module_id": "router",
+            "types": [
+                {
+                    "type_id": "type:router:mqtt_router_t",
+                    "name": "mqtt_router_t",
+                    "module_id": "router",
+                    "kind": "opaque_handle",
+                    "visibility": "public",
+                    "defined_in": "public_header",
+                    "purpose": "public router handle",
+                    "fields": [],
+                    "enum_values": [],
+                    "callback_signature": {"return_type": "", "params": []},
+                    "ownership_lifetime": "",
+                    "lifecycle": {"created_by": [], "initialized_by": [], "destroyed_by": [], "freed_by": []},
+                    "related_functions": [],
+                    "dependencies": [],
+                    "trace_ref_keys": [],
+                    "status": "inferred",
+                },
+                {
+                    "type_id": "type:router:struct_mqtt_router",
+                    "name": "struct mqtt_router",
+                    "module_id": "router",
+                    "kind": "internal_state",
+                    "visibility": "private",
+                    "defined_in": "source_file",
+                    "purpose": "owned private router state",
+                    "fields": [
+                        {
+                            "field_name": "topic_tree",
+                            "field_type": "void*",
+                            "type_ref": "system:void",
+                            "required": True,
+                            "ownership": "OWNED",
+                            "lifetime": "until router destroy",
+                            "length_field": "",
+                            "capacity_field": "",
+                            "validation_notes": "",
+                        }
+                    ],
+                    "enum_values": [],
+                    "callback_signature": {"return_type": "", "params": []},
+                    "ownership_lifetime": "owned private state",
+                    "lifecycle": {"created_by": [], "initialized_by": [], "destroyed_by": ["mqtt_router_destroy"], "freed_by": []},
+                    "related_functions": ["mqtt_router_destroy"],
+                    "dependencies": [],
+                    "trace_ref_keys": [],
+                    "status": "inferred",
+                },
+            ],
+            "assumptions": [],
+            "unresolved_questions": [],
+        }
+        self.assertFalse(_has_error(validate_type_inventory_candidate(candidate, [module], {"module_artifacts": [module]})))
+        normalized = normalize_type_inventory_candidate(candidate)
+        self.assertEqual(normalized["types"][1]["fields"][0]["type_ref"], "void")
+        merged = merge_type_inventory({"protocol_name": "mqtt", "module_artifacts": [module]}, candidate)
+        merged_state = next(item for item in merged["type_inventory"] if item["name"] == "struct mqtt_router")
+        self.assertEqual(merged_state["fields"][0]["type_ref"], "void")
+
+    def test_type_inventory_rejects_non_opaque_duplicate_names(self) -> None:
+        module = {
+            "module_id": "router",
+            "name": "router",
+            "role": "topic routing",
+            "dependencies": [],
+            "artifacts": [],
+            "state_owned": [],
+            "owned_capabilities": [],
+            "files": [],
+            "doc_ref": [],
+        }
+        base = fallback_type_inventory({"protocol_name": "mqtt", "module_artifacts": [module]}, module)
+        first = base["types"][0]
+        first.update({"name": "struct mqtt_router", "kind": "struct", "visibility": "private", "defined_in": "source_file"})
+        second = copy.deepcopy(first)
+        second["type_id"] = "type:router:duplicate_router"
+        second["name"] = "mqtt_router_t"
+        second["kind"] = "struct"
+        base["types"] = [first, second]
+        self.assertTrue(_has(validate_type_inventory_candidate(base, [module], {"module_artifacts": [module]}), "duplicate_type_inventory_name"))
+
+    def test_codec_type_inventory_requires_protocol_packet_shapes(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            planning_ir, profile, constraints, selected, draft, _, _ = self._fixtures(Path(raw_tmp))
+            codec = next(module for module in draft["module_artifacts"] if any("decode" in str(artifact.get("role", "")).lower() for artifact in module["artifacts"]))
+            candidate = fallback_type_inventory(draft, codec, planning_ir)
+            self.assertFalse(_has_error(validate_type_inventory_candidate(candidate, draft["module_artifacts"], draft, profile, planning_ir)))
+
+            opaque_only = copy.deepcopy(candidate)
+            opaque_only["types"] = [
+                type_item
+                for type_item in opaque_only["types"]
+                if type_item["name"] in {artifact["name"] for artifact in codec["artifacts"] if artifact["kind"] == "TYPE"}
+            ]
+            for type_item in opaque_only["types"]:
+                type_item["kind"] = "opaque_handle"
+                type_item["fields"] = []
+                type_item["enum_values"] = []
+            diags = validate_type_inventory_candidate(opaque_only, draft["module_artifacts"], draft, profile, planning_ir)
+            self.assertTrue(_has(diags, "missing_packet_enum_type"))
+            self.assertTrue(_has(diags, "missing_payload_struct_type"))
+            self.assertTrue(_has(diags, "missing_packet_container_type"))
+
+    def test_network_type_inventory_generates_callback_collection(self) -> None:
+        module = {
+            "module_id": "network",
+            "name": "network",
+            "role": "TCP server connection accept read close timer epoll runtime",
+            "dependencies": [],
+            "artifacts": [
+                {"name": "mqtt_network_run", "kind": "FUNC", "role": "run epoll event loop"},
+                {"name": "mqtt_timer_register", "kind": "FUNC", "role": "schedule timer callback"},
+            ],
+            "state_owned": ["server"],
+            "owned_capabilities": ["transport_runtime"],
+            "files": [],
+            "doc_ref": [],
+        }
+        draft = {"protocol_name": "mqtt", "module_artifacts": [module]}
+        candidate = fallback_type_inventory(draft, module)
+        callback_collection = next(item for item in candidate["types"] if item["name"] == "mqtt_network_callbacks_t")
+        field_names = {field["field_name"] for field in callback_collection["fields"]}
+        self.assertTrue({"on_accept", "on_data", "on_close", "on_timer"}.issubset(field_names))
+        self.assertFalse(_has_error(validate_type_inventory_candidate(candidate, [module], draft)))
 
     def test_type_inventory_validator_missing_private_leak_and_ownership(self) -> None:
         module = {
@@ -461,6 +1074,221 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
         self.assertTrue(_has(diags, "public_type_field_uses_private_type"))
         self.assertTrue(_has(diags, "pointer_field_missing_ownership"))
         self.assertTrue(_has(diags, "buffer_type_missing_size_fields"))
+
+    def test_function_inventory_context_exposes_type_obligations(self) -> None:
+        module = {
+            "module_id": "codec",
+            "name": "codec",
+            "role": "codec with callbacks and owned packet buffers",
+            "dependencies": [],
+            "artifacts": [{"name": "mqtt_decode", "kind": "FUNC", "role": "Decode"}],
+            "files": [],
+            "doc_ref": [],
+        }
+        packet = {
+            "type_id": "type:codec:mqtt_packet_t",
+            "name": "mqtt_packet_t",
+            "module_id": "codec",
+            "kind": "struct",
+            "visibility": "public",
+            "defined_in": "public_header",
+            "purpose": "packet with owned payload",
+            "fields": [
+                {
+                    "field_name": "payload",
+                    "field_type": "uint8_t*",
+                    "type_ref": "uint8_t",
+                    "required": False,
+                    "ownership": "OWNED",
+                    "lifetime": "owned until packet cleanup",
+                    "length_field": "payload_len",
+                    "capacity_field": "",
+                    "validation_notes": "",
+                }
+            ],
+            "enum_values": [],
+            "callback_signature": {"return_type": "", "params": []},
+            "ownership_lifetime": "owns dynamic payload",
+            "lifecycle": {"created_by": ["mqtt_packet_create"], "initialized_by": [], "destroyed_by": ["mqtt_packet_destroy"], "freed_by": []},
+            "related_functions": ["mqtt_packet_destroy"],
+            "dependencies": [],
+            "trace_ref_keys": [],
+            "status": "inferred",
+        }
+        callback = copy.deepcopy(packet)
+        callback.update(
+            {
+                "type_id": "type:codec:mqtt_on_packet_fn",
+                "name": "mqtt_on_packet_fn",
+                "kind": "callback_type",
+                "fields": [],
+                "callback_signature": {"return_type": "void", "params": [{"name": "user", "type": "void*", "type_ref": "void", "ownership": "BORROWED"}]},
+                "lifecycle": {"created_by": [], "initialized_by": [], "destroyed_by": [], "freed_by": []},
+                "related_functions": ["mqtt_decoder_register_callback"],
+            }
+        )
+        draft = {"protocol_name": "mqtt", "module_artifacts": [module], "type_inventory": [packet, callback]}
+        obligations = derive_type_obligations(draft, module)
+        actions = {item["action"] for item in obligations}
+        self.assertIn("create", actions)
+        self.assertIn("destroy", actions)
+        self.assertIn("release_owned_data", actions)
+        self.assertIn("register_callback", actions)
+        context = build_function_inventory_context(draft, module)
+        self.assertEqual(context["type_obligations"], obligations)
+
+    def test_type_obligations_ignore_broker_lifecycle_names_outside_broker_app(self) -> None:
+        module = {
+            "module_id": "network",
+            "name": "network",
+            "role": "network runtime",
+            "dependencies": [],
+            "artifacts": [{"name": "mqtt_network_run", "kind": "FUNC", "role": "run network loop"}],
+            "files": [],
+            "doc_ref": [],
+        }
+        server = {
+            "type_id": "type:network:mqtt_server_t",
+            "name": "mqtt_server_t",
+            "module_id": "network",
+            "kind": "opaque_handle",
+            "visibility": "public",
+            "defined_in": "public_header",
+            "purpose": "network server context",
+            "fields": [],
+            "enum_values": [],
+            "callback_signature": {"return_type": "", "params": []},
+            "ownership_lifetime": "owned by broker but implemented by network",
+            "lifecycle": {"created_by": ["mqtt_broker_init"], "initialized_by": ["mqtt_broker_init"], "destroyed_by": ["mqtt_broker_run"], "freed_by": ["mqtt_broker_run"]},
+            "related_functions": [],
+            "dependencies": [],
+            "trace_ref_keys": [],
+            "status": "inferred",
+        }
+        obligations = derive_type_obligations({"type_inventory": [server]}, module)
+        by_action = {item["action"]: item["required_function_names"] for item in obligations}
+        self.assertIn("mqtt_server_create", by_action["create"])
+        self.assertIn("mqtt_server_destroy", by_action["destroy"])
+        self.assertNotIn("mqtt_broker_init", by_action["create"])
+        self.assertNotIn("mqtt_broker_run", by_action["destroy"])
+
+    def test_function_inventory_must_cover_type_obligations_or_block(self) -> None:
+        module = {
+            "module_id": "codec",
+            "name": "codec",
+            "role": "codec",
+            "dependencies": [],
+            "artifacts": [{"name": "mqtt_decode", "kind": "FUNC", "role": "Decode"}],
+            "files": [],
+            "doc_ref": [],
+        }
+        packet = {
+            "type_id": "type:codec:mqtt_packet_t",
+            "name": "mqtt_packet_t",
+            "module_id": "codec",
+            "kind": "struct",
+            "visibility": "public",
+            "defined_in": "public_header",
+            "purpose": "packet with owned payload",
+            "fields": [
+                {
+                    "field_name": "payload",
+                    "field_type": "uint8_t*",
+                    "type_ref": "uint8_t",
+                    "required": False,
+                    "ownership": "OWNED",
+                    "lifetime": "owned until packet cleanup",
+                    "length_field": "payload_len",
+                    "capacity_field": "",
+                    "validation_notes": "",
+                }
+            ],
+            "enum_values": [],
+            "callback_signature": {"return_type": "", "params": []},
+            "ownership_lifetime": "owns dynamic payload",
+            "lifecycle": {"created_by": [], "initialized_by": [], "destroyed_by": [], "freed_by": ["mqtt_packet_free"]},
+            "related_functions": ["mqtt_packet_free"],
+            "dependencies": [],
+            "trace_ref_keys": [],
+            "status": "inferred",
+        }
+        draft = {"protocol_name": "mqtt", "module_artifacts": [module], "type_inventory": [packet]}
+        candidate = {
+            "schema_version": "function_inventory_candidate/v2",
+            "candidate_id": "candidate:test:type_obligation",
+            "producer": {"stage": "5.4b_function_inventory", "prompt_name": "function_inventory_candidate_prompt", "prompt_version": "test"},
+            "module_id": "codec",
+            "functions": [_inventory_function("mqtt_decode", "codec", kind="parser")],
+            "assumptions": [],
+            "unresolved_questions": [],
+        }
+        diags = validate_function_inventory_candidate(candidate, [module], draft, {}, {})
+        self.assertTrue(_has(diags, "type_obligation_uncovered"))
+
+        blocked = copy.deepcopy(candidate)
+        blocked["unresolved_questions"] = [
+            {
+                "question_id": "q:type_obligation",
+                "target_kind": "type_obligation",
+                "target_id": "obligation:type:codec:mqtt_packet_t:release_owned_data",
+                "question": "Need a packet cleanup boundary.",
+                "unresolved_reason": "No evidence for public or internal ownership boundary.",
+                "blocking": True,
+                "trace_ref_keys": [],
+            }
+        ]
+        self.assertFalse(_has(validate_function_inventory_candidate(blocked, [module], draft, {}, {}), "type_obligation_uncovered"))
+
+        covered = copy.deepcopy(candidate)
+        covered["functions"].append(_inventory_function("mqtt_packet_free", "codec", kind="resource_lifecycle"))
+        self.assertFalse(_has_error(validate_function_inventory_candidate(covered, [module], draft, {}, {})))
+
+    def test_function_inventory_rejects_type_function_reference_drift(self) -> None:
+        module = {
+            "module_id": "codec",
+            "name": "codec",
+            "role": "codec",
+            "dependencies": [],
+            "artifacts": [{"name": "mqtt_decode", "kind": "FUNC", "role": "Decode"}],
+            "files": [],
+            "doc_ref": [],
+        }
+        type_item = fallback_type_inventory({"protocol_name": "mqtt", "module_artifacts": [module]}, module)["types"][0]
+        type_item["related_functions"] = ["mqtt_missing_cleanup"]
+        type_item["lifecycle"]["freed_by"] = ["mqtt_missing_cleanup"]
+        draft = {"protocol_name": "mqtt", "module_artifacts": [module], "type_inventory": [type_item], "function_contracts": []}
+        candidate = {
+            "schema_version": "function_inventory_candidate/v2",
+            "candidate_id": "candidate:test:type_ref_drift",
+            "producer": {"stage": "5.4b_function_inventory", "prompt_name": "function_inventory_candidate_prompt", "prompt_version": "test"},
+            "module_id": "all_modules",
+            "functions": [_inventory_function("mqtt_decode", "codec", kind="parser")],
+            "assumptions": [],
+            "unresolved_questions": [],
+        }
+        diags = validate_function_inventory_candidate(candidate, [module], draft, {}, {})
+        self.assertTrue(_has(diags, "type_function_reference_unresolved"))
+
+    def test_type_function_reference_reconciliation_uses_generated_lifecycle(self) -> None:
+        module = {
+            "module_id": "codec",
+            "name": "codec",
+            "role": "codec",
+            "dependencies": [],
+            "artifacts": [{"name": "mqtt_decode", "kind": "FUNC", "role": "Decode"}],
+            "files": [],
+            "doc_ref": [],
+        }
+        type_item = fallback_type_inventory({"protocol_name": "mqtt", "module_artifacts": [module]}, module)["types"][0]
+        type_item["lifecycle"]["freed_by"] = ["old_packet_cleanup"]
+        draft = {
+            "protocol_name": "mqtt",
+            "module_artifacts": [module],
+            "type_inventory": [type_item],
+            "function_contracts": [_inventory_function("mqtt_packet_free", "codec", kind="resource_lifecycle")],
+        }
+        reconciled = reconcile_type_inventory_function_refs(draft)
+        self.assertEqual(reconciled["type_inventory"][0]["lifecycle"]["freed_by"], ["mqtt_packet_free"])
 
     def test_type_inventory_repair_patch_and_merge(self) -> None:
         module = {
@@ -549,6 +1377,72 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
         report = validation_report("5.4b_function_inventory:test", diags)
         self.assertTrue(report["passed"])
         self.assertTrue(any("mirrors mandatory FUNC artifacts" in hint for hint in report["repair_hints"]))
+
+    def test_function_inventory_requires_handlers_only_for_handler_owner_module(self) -> None:
+        session = {
+            "module_id": "session",
+            "name": "session",
+            "role": "session state machine",
+            "dependencies": [],
+            "artifacts": [
+                {"name": "mqtt_session_create", "kind": "FUNC", "role": "create session"},
+                {"name": "mqtt_session_process", "kind": "FUNC", "role": "process packet through state machine"},
+                {"name": "mqtt_session_destroy", "kind": "FUNC", "role": "destroy session"},
+            ],
+            "state_owned": [],
+            "owned_capabilities": [],
+            "files": [],
+            "doc_ref": [],
+        }
+        broker = {
+            "module_id": "broker_app",
+            "name": "broker app",
+            "role": "broker dispatch",
+            "dependencies": ["session"],
+            "artifacts": [{"name": "mqtt_broker_dispatch", "kind": "FUNC", "role": "dispatch packet"}],
+            "state_owned": [],
+            "owned_capabilities": [],
+            "files": [],
+            "doc_ref": [],
+        }
+        core_design = {
+            "module_artifacts": [session, broker],
+            "handler_matrix": [{"handler_id": "handle_connect", "owner_module_id": "broker_app", "handler_kind": "message"}],
+            "type_inventory": [],
+            "function_contracts": [],
+        }
+        profile = {"required_capabilities": [{"capability_id": "state_machine"}, {"capability_id": "semantic_dispatch"}]}
+        session_candidate = {
+            "schema_version": "function_inventory_candidate/v2",
+            "candidate_id": "candidate:session:no_handler_required",
+            "producer": {"stage": "5.4b_function_inventory", "prompt_name": "function_inventory_candidate_prompt", "prompt_version": "test"},
+            "module_id": "session",
+            "functions": [
+                _inventory_function("mqtt_session_create", "session", kind="resource_lifecycle", purpose="create session"),
+                _inventory_function("mqtt_session_process", "session", kind="public_api", purpose="run state machine"),
+                _inventory_function("mqtt_session_destroy", "session", kind="resource_lifecycle", purpose="destroy session"),
+            ],
+            "assumptions": [],
+            "unresolved_questions": [],
+        }
+        session_candidate["functions"][1]["capability_ids"] = ["state_machine"]
+        self.assertFalse(_has(validate_function_inventory_candidate(session_candidate, [session, broker], core_design, profile, {}), "missing_handler_function"))
+
+        broker_candidate = {
+            **copy.deepcopy(session_candidate),
+            "candidate_id": "candidate:broker_app:missing_handler",
+            "module_id": "broker_app",
+            "functions": [_inventory_function("mqtt_broker_dispatch", "broker_app", kind="public_api", purpose="dispatch packet")],
+        }
+        broker_candidate["functions"][0]["capability_ids"] = ["semantic_dispatch"]
+        self.assertTrue(_has(validate_function_inventory_candidate(broker_candidate, [session, broker], core_design, profile, {}), "missing_handler_function"))
+
+        all_modules = copy.deepcopy(session_candidate)
+        all_modules["module_id"] = "all_modules"
+        all_modules["functions"].append(_inventory_function("mqtt_broker_dispatch", "broker_app", kind="handler", purpose="dispatch packet"))
+        all_modules["functions"][-1]["covers_handler_ids"] = ["handle_connect"]
+        all_modules["functions"][-1]["capability_ids"] = ["semantic_dispatch"]
+        self.assertFalse(_has(validate_function_inventory_candidate(all_modules, [session, broker], core_design, profile, {}), "missing_handler_function"))
 
     def test_derived_public_api_requires_justification_warning(self) -> None:
         module = {

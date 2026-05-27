@@ -664,7 +664,7 @@ python3 -m agent planning plan \
 python3 -m agent planning plan \
   --facts agent/facts/gold_facts/mqtt_min/protocol_facts.json \
   --target-profile agent/planning/planning_target_profile_mqtt.json \
-  --resume-from-stage 5.4a \
+  --resume-from-stage 5.1 \
   --stop-after-stage 5.4a
 ```
 

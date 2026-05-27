@@ -7,6 +7,7 @@ from typing import Any
 from ..artifact_io import safe_slug, write_json
 from ..schemas.coder_manifest import SCHEMA_VERSION as CODER_MANIFEST_SCHEMA_VERSION
 from .coder_spec_lowering import (
+    _canonical_field_type,
     canonical_type_symbol,
     default_handle_type,
     extract_c_signature_type_refs,

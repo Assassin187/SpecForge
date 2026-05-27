@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import Any
 
-from .implementation_plan import _capability_refs, _compressed_refs, _field_value, _handler_surfaces, _surface_units, _target_directives, _wire_fields
+from .implementation_plan import _capability_refs, _compressed_refs, _field_value, _handler_surfaces, _safe_id, _surface_units, _target_directives, _wire_fields
 from .function_inventory_decomposition import select_top_decomposition_hints
 
 
@@ -42,6 +43,179 @@ SYSTEM_TYPE_IDS = [
     "struct epoll_event",
     "void",
 ]
+
+MQTT_PACKET_TYPE_VALUES = {
+    "RESERVED": "0",
+    "CONNECT": "1",
+    "CONNACK": "2",
+    "PUBLISH": "3",
+    "SUBSCRIBE": "8",
+    "SUBACK": "9",
+    "PINGREQ": "12",
+    "PINGRESP": "13",
+    "DISCONNECT": "14",
+}
+
+
+def normalize_system_type_ref(value: Any) -> str:
+    text = str(value or "").strip()
+    if text.startswith("system:"):
+        bare = text.split(":", 1)[1].strip()
+        return bare if bare in SYSTEM_TYPE_IDS else text
+    return text
+
+
+def _empty_callback_signature() -> dict[str, Any]:
+    return {"return_type": "", "params": []}
+
+
+def _empty_type_lifecycle() -> dict[str, list[str]]:
+    return {"created_by": [], "initialized_by": [], "destroyed_by": [], "freed_by": []}
+
+
+def _is_public_type_item(type_item: dict[str, Any]) -> bool:
+    return str(type_item.get("visibility", "")) == "public" and str(type_item.get("defined_in", "")) == "public_header"
+
+
+def _type_ref_aliases(type_item: dict[str, Any]) -> set[str]:
+    type_id = str(type_item.get("type_id", "")).strip()
+    name = str(type_item.get("name", "")).strip()
+    aliases = {type_id, name, name.removeprefix("struct ")}
+    if type_id.startswith("type:") and ":" in type_id:
+        tail = type_id.rsplit(":", 1)[-1]
+        aliases.update({tail, f"type:{tail}"})
+    return {alias for alias in aliases if alias}
+
+
+def _type_lookup(types: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    result: dict[str, dict[str, Any]] = {}
+    for type_item in types:
+        if isinstance(type_item, dict):
+            for alias in _type_ref_aliases(type_item):
+                result.setdefault(alias, type_item)
+    return result
+
+
+def _is_callback_collection(type_item: dict[str, Any]) -> bool:
+    name = str(type_item.get("name", "")).lower()
+    if "callbacks" in name or name.endswith("_cb_t"):
+        return True
+    signature = type_item.get("callback_signature", {}) if isinstance(type_item.get("callback_signature"), dict) else {}
+    params = signature.get("params", []) if isinstance(signature.get("params", []), list) else []
+    param_names = {str(param.get("name", "")).lower() for param in params if isinstance(param, dict)}
+    return bool(param_names & {"on_accept", "on_data", "on_close", "on_timer"})
+
+
+def _callback_collection_fields(type_item: dict[str, Any]) -> list[dict[str, Any]]:
+    signature = type_item.get("callback_signature", {}) if isinstance(type_item.get("callback_signature"), dict) else {}
+    fields: list[dict[str, Any]] = []
+    for param in signature.get("params", []) if isinstance(signature.get("params", []), list) else []:
+        if not isinstance(param, dict):
+            continue
+        name = str(param.get("name", "")).strip()
+        if not name.startswith("on_"):
+            continue
+        field_type = str(param.get("type") or param.get("type_ref") or "").strip()
+        fields.append(
+            {
+                "field_name": name,
+                "field_type": field_type,
+                "type_ref": normalize_system_type_ref(param.get("type_ref", "")),
+                "required": True,
+                "ownership": "BORROWED",
+                "lifetime": "valid for runtime lifetime",
+                "length_field": "",
+                "capacity_field": "",
+                "validation_notes": "normalized callback collection field",
+            }
+        )
+    return fields
+
+
+def _is_payload_type(type_item: dict[str, Any]) -> bool:
+    text = f"{type_item.get('name', '')} {type_item.get('purpose', '')} {type_item.get('kind', '')}".lower()
+    return "payload" in text or "packet specific" in text or "variant" in text
+
+
+def _is_packet_container_type(type_item: dict[str, Any]) -> bool:
+    text = f"{type_item.get('name', '')} {type_item.get('purpose', '')}".lower()
+    field_types = " ".join(str(field.get("field_type", "")) for field in type_item.get("fields", []) if isinstance(field, dict)).lower()
+    return "packet" in text and ("container" in text or "decoded" in text or "union" in field_types)
+
+
+def _is_private_impl_detail_ref(ref: Any) -> bool:
+    text = str(ref or "").strip().lower()
+    tail = text.rsplit(":", 1)[-1]
+    return text.startswith("type:") and any(token in tail for token in ("connection", "parser", "session"))
+
+
+def _void_boundary_field(field: dict[str, Any], *, note: str) -> None:
+    field["field_type"] = "void*"
+    field["type_ref"] = "void"
+    existing = str(field.get("validation_notes", "")).strip()
+    field["validation_notes"] = f"{existing}; {note}" if existing else note
+
+
+def normalize_type_inventory_candidate(candidate: dict[str, Any]) -> dict[str, Any]:
+    result = deepcopy(candidate)
+    types = [item for item in result.get("types", []) if isinstance(item, dict)]
+    by_ref = _type_lookup(types)
+    for type_item in types:
+        if not isinstance(type_item, dict):
+            continue
+        type_item["dependencies"] = [normalize_system_type_ref(dep) for dep in type_item.get("dependencies", [])]
+        if _is_public_type_item(type_item) and _is_callback_collection(type_item):
+            fields = _callback_collection_fields(type_item)
+            if fields:
+                type_item["kind"] = "event_struct"
+                type_item["fields"] = fields
+                type_item["callback_signature"] = _empty_callback_signature()
+        if _is_public_type_item(type_item) and _is_packet_container_type(type_item):
+            for dependency in type_item.get("dependencies", []):
+                dep = by_ref.get(str(dependency))
+                if isinstance(dep, dict) and dep.get("module_id") == type_item.get("module_id") and _is_payload_type(dep):
+                    dep["visibility"] = "public"
+                    dep["defined_in"] = "public_header"
+        if _is_public_type_item(type_item) and str(type_item.get("kind", "")) == "callback_type":
+            kept_dependencies: list[str] = []
+            for dependency in type_item.get("dependencies", []):
+                dep = by_ref.get(str(dependency))
+                if isinstance(dep, dict) and dep.get("module_id") == type_item.get("module_id") and not _is_public_type_item(dep):
+                    continue
+                kept_dependencies.append(str(dependency))
+            type_item["dependencies"] = kept_dependencies
+        if not _is_public_type_item(type_item):
+            type_item["dependencies"] = [
+                str(dependency)
+                for dependency in type_item.get("dependencies", [])
+                if by_ref.get(str(dependency)) is not None or not _is_private_impl_detail_ref(dependency)
+            ]
+        for field in type_item.get("fields", []):
+            if isinstance(field, dict):
+                if str(field.get("field_type", "")).strip().lower() == "union":
+                    field["type_ref"] = ""
+                else:
+                    field["type_ref"] = normalize_system_type_ref(field.get("type_ref", ""))
+                if not _is_public_type_item(type_item) and by_ref.get(str(field.get("type_ref", ""))) is None and _is_private_impl_detail_ref(field.get("type_ref", "")):
+                    _void_boundary_field(field, note="normalized private implementation-detail reference to opaque context")
+        signature = type_item.get("callback_signature", {})
+        if not isinstance(signature, dict):
+            signature = {"return_type": "", "params": []}
+            type_item["callback_signature"] = signature
+        if not isinstance(signature.get("params", []), list):
+            signature["params"] = []
+        params = signature.get("params", []) if isinstance(signature, dict) else []
+        for param in params:
+            if isinstance(param, dict):
+                param["type_ref"] = normalize_system_type_ref(param.get("type_ref", ""))
+                dep = by_ref.get(str(param.get("type_ref", "")))
+                if _is_public_type_item(type_item) and isinstance(dep, dict) and dep.get("module_id") == type_item.get("module_id") and not _is_public_type_item(dep):
+                    if _is_private_impl_detail_ref(param.get("type_ref", "")):
+                        param["type"] = "void*"
+                        param["type_ref"] = "void"
+                    else:
+                        param["type_ref"] = ""
+    return result
 
 
 def _constraints(constraints: dict[str, Any]) -> list[dict[str, Any]]:
@@ -123,6 +297,401 @@ def _field_summaries(planning_ir: dict[str, Any]) -> list[dict[str, Any]]:
         }
         for item in _wire_fields(planning_ir)
     ]
+
+
+def _protocol_prefix(draft: dict[str, Any]) -> str:
+    return str(draft.get("protocol_name", "protocol")).lower().replace("-", "_")
+
+
+def _module_text(module_artifact: dict[str, Any]) -> str:
+    parts: list[str] = [
+        str(module_artifact.get("module_id", "")),
+        str(module_artifact.get("name", "")),
+        str(module_artifact.get("role", "")),
+        " ".join(str(item) for item in module_artifact.get("owned_capabilities", [])),
+        " ".join(str(item) for item in module_artifact.get("state_owned", [])),
+    ]
+    for artifact in module_artifact.get("artifacts", []):
+        if isinstance(artifact, dict):
+            parts.extend([str(artifact.get("name", "")), str(artifact.get("role", ""))])
+    return " ".join(parts).lower()
+
+
+def _message_fields_from_source(planning_ir: dict[str, Any] | None, draft: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+    fields: list[dict[str, Any]] = []
+    facts = (planning_ir or {}).get("protocol_facts", {}) if isinstance(planning_ir, dict) else {}
+    message_model = facts.get("message_model", {}) if isinstance(facts, dict) and isinstance(facts.get("message_model"), dict) else {}
+    entries = message_model.get("message_or_command_entries", []) if isinstance(message_model.get("message_or_command_entries"), list) else []
+    for entry_idx, entry in enumerate(entries):
+        if not isinstance(entry, dict):
+            continue
+        message = str(entry.get("name") or entry.get("surface_unit") or f"entry_{entry_idx}").strip()
+        syntax = str(entry.get("syntax_or_layout", ""))
+        entry_summary = str(entry.get("summary", ""))
+        for field_idx, field in enumerate(entry.get("fields", []) if isinstance(entry.get("fields"), list) else []):
+            if not isinstance(field, dict):
+                continue
+            field_name = str(field.get("name") or f"field_{field_idx}").strip()
+            field_summary = str(field.get("summary", ""))
+            field_type = str(field.get("type") or field.get("value_type") or field.get("encoding") or field.get("wire_type") or "").strip()
+            fields.append(
+                {
+                    "field_id": str(field.get("fact_id") or f"fact:message_model_message_or_command_entries_{entry_idx}_fields_{field_idx}"),
+                    "message": message,
+                    "field": field_name,
+                    "field_type": field_type or _infer_protocol_field_type(field_name, field_summary, syntax, entry_summary),
+                    "field_summary": field_summary,
+                    "entry_summary": entry_summary,
+                    "syntax_or_layout": syntax,
+                    "access_path_id": f"access:{message.lower().replace(' ', '_')}:{field_name.lower().replace(' ', '_')}",
+                    "access_path": f"{message.lower().replace(' ', '_')}.{field_name.lower().replace(' ', '_')}",
+                }
+            )
+    if not fields:
+        fields = [
+            {
+                "field_id": str(item.get("field_id", "")),
+                "message": str(item.get("message", "")),
+                "field": str(item.get("field", "")),
+                "field_type": str(item.get("field_type", "")),
+                "access_path_id": str(item.get("access_path_id", "")),
+                "access_path": str(item.get("access_path", "")),
+            }
+            for item in draft.get("deterministic_indexes", {}).get("field_index", {}).values()
+            if isinstance(item, dict)
+        ]
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for field in fields:
+        message = str(field.get("message", "")).strip()
+        if message:
+            grouped.setdefault(message, []).append(field)
+    return grouped
+
+
+def _surface_messages_from_source(planning_ir: dict[str, Any] | None) -> list[dict[str, str]]:
+    facts = (planning_ir or {}).get("protocol_facts", {}) if isinstance(planning_ir, dict) else {}
+    message_model = facts.get("message_model", {}) if isinstance(facts, dict) and isinstance(facts.get("message_model"), dict) else {}
+    surfaces = message_model.get("surface_catalog", []) if isinstance(message_model.get("surface_catalog"), list) else []
+    result: list[dict[str, str]] = []
+    for item in surfaces:
+        if isinstance(item, dict) and str(item.get("name", "")).strip():
+            name = str(item.get("name", "")).strip()
+            result.append({"name": name, "message_id": f"message:{name.lower().replace(' ', '_')}", "fact_id": str(item.get("fact_id", ""))})
+    return result
+
+
+def _surface_messages_from_draft(draft: dict[str, Any]) -> list[dict[str, str]]:
+    surfaces = draft.get("deterministic_indexes", {}).get("surface_unit_index", {})
+    result: list[dict[str, str]] = []
+    if isinstance(surfaces, dict):
+        for name, item in surfaces.items():
+            surface_name = str(item.get("name", name) if isinstance(item, dict) else name).strip()
+            if surface_name:
+                result.append({"name": surface_name, "message_id": f"message:{surface_name.lower().replace(' ', '_')}", "fact_id": ""})
+    return result
+
+
+def _infer_protocol_field_type(field_name: str, field_summary: str = "", syntax: str = "", entry_summary: str = "") -> str:
+    name = field_name.lower().replace("-", "_")
+    text = f"{name} {field_summary} {syntax} {entry_summary}".lower()
+    local_text = f"{name} {field_summary}".lower()
+    if name == "packet_type":
+        return "mqtt_packet_type_t"
+    if name == "remaining_length":
+        return "uint32_t"
+    if name in {"packet_id", "keep_alive"}:
+        return "uint16_t"
+    if name in {"client_id", "topic_name", "topic_filter", "protocol_name", "filter"}:
+        return "char*"
+    if name in {"clean_session", "retain", "dup", "has_packet_id", "session_present"} or " flag" in text or "boolean" in text:
+        return "bool"
+    if "payload" in name and ("byte" in text or "opaque" in text or "remaining bytes" in text):
+        return "uint8_t*"
+    if "u16" in local_text or "uint16" in local_text:
+        return "uint16_t"
+    if "string" in local_text:
+        return "char*"
+    if "qos" in name or "level" in name or "code" in name or "byte" in text:
+        return "uint8_t"
+    return "uint8_t"
+
+
+def _target_field(field: dict[str, Any]) -> dict[str, str]:
+    return {
+        "field_name": str(field.get("field", "")).lower().replace(" ", "_"),
+        "field_type": str(field.get("field_type") or _infer_protocol_field_type(str(field.get("field", "")))),
+        "source_field_id": str(field.get("field_id", "")),
+    }
+
+
+def _payload_target_fields(protocol: str, message_key: str, fields: list[dict[str, Any]]) -> tuple[list[dict[str, str]], list[dict[str, Any]]]:
+    field_names = {str(field.get("field", "")).lower().replace(" ", "_") for field in fields}
+    payload_fields = [_target_field(field) for field in fields]
+    extra_targets: list[dict[str, Any]] = []
+    if message_key == "subscribe" and {"topic_filter", "requested_qos"}.issubset(field_names):
+        item_name = f"{protocol}_subscribe_topic_t"
+        extra_targets.append(
+            {
+                "target_id": "target:payload:subscribe_topic",
+                "target_kind": "payload_struct",
+                "suggested_name": item_name,
+                "owner_module_id": "",
+                "source_message_ids": ["message:subscribe"],
+                "source_field_ids": [str(field.get("field_id", "")) for field in fields if str(field.get("field", "")).lower().replace(" ", "_") in {"topic_filter", "requested_qos"}],
+                "required_fields": [
+                    {"field_name": "filter", "field_type": "char*", "source_field_id": ""},
+                    {"field_name": "qos", "field_type": "uint8_t", "source_field_id": ""},
+                ],
+                "reason": "Repeated SUBSCRIBE topic filters need a stable item struct.",
+                "trace_ref_keys": [str(field.get("field_id", "")) for field in fields if str(field.get("field_id", "")).strip()],
+            }
+        )
+        packet_id = next((field for field in payload_fields if field["field_name"] == "packet_id"), {"field_name": "packet_id", "field_type": "uint16_t", "source_field_id": ""})
+        payload_fields = [
+            packet_id,
+            {"field_name": "topics", "field_type": f"{item_name}*", "source_field_id": ""},
+            {"field_name": "topic_count", "field_type": "size_t", "source_field_id": ""},
+        ]
+    if message_key == "publish":
+        if any(field["field_name"] == "payload" and field["field_type"] == "uint8_t*" for field in payload_fields) and not any(field["field_name"] == "payload_len" for field in payload_fields):
+            payload_fields.append({"field_name": "payload_len", "field_type": "size_t", "source_field_id": ""})
+        if not any(field["field_name"] == "dup" for field in payload_fields):
+            payload_fields.append({"field_name": "dup", "field_type": "bool", "source_field_id": ""})
+        if not any(field["field_name"] == "has_packet_id" for field in payload_fields):
+            payload_fields.append({"field_name": "has_packet_id", "field_type": "bool", "source_field_id": ""})
+        if not any(field["field_name"] == "packet_id" for field in payload_fields):
+            payload_fields.append({"field_name": "packet_id", "field_type": "uint16_t", "source_field_id": ""})
+    return payload_fields, extra_targets
+
+
+def derive_type_generation_targets(draft: dict[str, Any], module_artifact: dict[str, Any], planning_ir: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    module_id = str(module_artifact.get("module_id", ""))
+    protocol = _protocol_prefix(draft)
+    text = _module_text(module_artifact)
+    grouped_fields = _message_fields_from_source(planning_ir, draft)
+    artifact_function_names = " ".join(
+        str(artifact.get("name", ""))
+        for artifact in module_artifact.get("artifacts", [])
+        if isinstance(artifact, dict) and str(artifact.get("kind", "")).upper() == "FUNC"
+    ).lower()
+    module_identity = f"{module_id} {module_artifact.get('name', '')}".lower()
+    owned_caps = " ".join(str(item) for item in module_artifact.get("owned_capabilities", [])).lower()
+    owns_codec = bool(grouped_fields) and (
+        "codec" in module_identity
+        or any(word in artifact_function_names for word in ("decode", "decoder", "encode", "encoder", "parse", "parser", "serialize", "serializer"))
+        or any(word in owned_caps for word in ("message_decode", "message_encode", "framing"))
+    )
+    targets: list[dict[str, Any]] = []
+    if owns_codec:
+        surface_messages = _surface_messages_from_source(planning_ir) or _surface_messages_from_draft(draft)
+        enum_messages = surface_messages or [{"name": message, "message_id": f"message:{message.lower().replace(' ', '_')}", "fact_id": ""} for message in grouped_fields]
+        enum_names = ["RESERVED"] if protocol == "mqtt" else []
+        enum_names.extend(str(item["name"]).upper().replace(" ", "_") for item in enum_messages)
+        source_message_ids = [str(item["message_id"]) for item in enum_messages]
+        targets.append(
+            {
+                "target_id": f"target:{module_id}:packet_enum",
+                "target_kind": "packet_enum",
+                "suggested_name": f"{protocol}_packet_type_t",
+                "owner_module_id": module_id,
+                "source_message_ids": source_message_ids,
+                "source_field_ids": [],
+                "required_fields": [
+                    {
+                        "field_name": enum_name,
+                        "field_type": "enum_value",
+                        "source_field_id": "",
+                        "value": MQTT_PACKET_TYPE_VALUES.get(enum_name, str(index if protocol == "mqtt" else index + 1)),
+                    }
+                    for index, enum_name in enumerate(dict.fromkeys(enum_names))
+                ],
+                "reason": "Protocol message facts require a stable packet/control type enum.",
+                "trace_ref_keys": source_message_ids,
+            }
+        )
+        variant_fields: list[dict[str, Any]] = []
+        for message, fields in grouped_fields.items():
+            message_key = message.lower().replace(" ", "_")
+            payload_fields, extra_payload_targets = _payload_target_fields(protocol, message_key, fields)
+            for extra_target in extra_payload_targets:
+                extra_target["target_id"] = f"target:{module_id}:{str(extra_target['target_id']).removeprefix('target:')}"
+                extra_target["owner_module_id"] = module_id
+                targets.append(extra_target)
+            if message_key != "fixed_header":
+                variant_fields.append({"field_name": message_key, "field_type": f"{protocol}_{message_key}_payload_t", "source_field_id": ""})
+            targets.append(
+                {
+                    "target_id": f"target:{module_id}:payload:{message_key}",
+                    "target_kind": "payload_struct",
+                    "suggested_name": f"{protocol}_{message_key}_payload_t",
+                    "owner_module_id": module_id,
+                    "source_message_ids": [f"message:{message_key}"],
+                    "source_field_ids": [str(field.get("field_id", "")) for field in fields if str(field.get("field_id", "")).strip()],
+                    "required_fields": payload_fields,
+                    "reason": "Message-specific protocol facts should lower into an implementation payload struct.",
+                    "trace_ref_keys": [str(field.get("field_id", "")) for field in fields if str(field.get("field_id", "")).strip()],
+                }
+            )
+        packet_fields: list[dict[str, Any]] = [{"field_name": "type", "field_type": f"{protocol}_packet_type_t", "source_field_id": ""}]
+        if variant_fields:
+            packet_fields.append({"field_name": "v", "field_type": "union", "source_field_id": "", "variants": variant_fields})
+        targets.append(
+            {
+                "target_id": f"target:{module_id}:packet_container",
+                "target_kind": "packet_container_struct",
+                "suggested_name": f"{protocol}_packet_t",
+                "owner_module_id": module_id,
+                "source_message_ids": source_message_ids,
+                "source_field_ids": [],
+                "required_fields": packet_fields,
+                "reason": "Decoder and semantic dispatch need one stable packet container type.",
+                "trace_ref_keys": source_message_ids,
+            }
+        )
+        if any(word in text for word in ("encode", "encoder", "serializer", "bytes", "buffer")):
+            targets.append(
+                {
+                    "target_id": f"target:{module_id}:encoded_bytes",
+                    "target_kind": "owned_buffer",
+                    "suggested_name": f"{protocol}_bytes_t",
+                    "owner_module_id": module_id,
+                    "source_message_ids": source_message_ids,
+                    "source_field_ids": [],
+                    "required_fields": [
+                        {"field_name": "data", "field_type": "uint8_t*", "source_field_id": ""},
+                        {"field_name": "len", "field_type": "size_t", "source_field_id": ""},
+                    ],
+                    "reason": "Encoding results need an owned byte buffer/result type with release semantics.",
+                    "trace_ref_keys": source_message_ids,
+                }
+            )
+    if any(word in text for word in ("callback", "event", "timer", "epoll", "accept", "runtime", "server", "listen")):
+        callback_fields: list[dict[str, str]] = []
+        if any(word in text for word in ("accept", "server", "listen", "connection")):
+            callback_fields.append({"field_name": "on_accept", "field_type": f"{protocol}_{module_id}_on_accept_fn", "source_field_id": ""})
+        if any(word in text for word in ("data", "read", "receive", "io", "epoll", "connection")):
+            callback_fields.append({"field_name": "on_data", "field_type": f"{protocol}_{module_id}_on_data_fn", "source_field_id": ""})
+        if any(word in text for word in ("close", "closed", "destroy", "connection")):
+            callback_fields.append({"field_name": "on_close", "field_type": f"{protocol}_{module_id}_on_close_fn", "source_field_id": ""})
+        if "timer" in text:
+            callback_fields.append({"field_name": "on_timer", "field_type": f"{protocol}_{module_id}_on_timer_fn", "source_field_id": ""})
+        targets.append(
+            {
+                "target_id": f"target:{module_id}:callback_boundary",
+                "target_kind": "callback_or_event_boundary",
+                "suggested_name": f"{protocol}_{module_id}_callbacks_t",
+                "owner_module_id": module_id,
+                "source_message_ids": [],
+                "source_field_ids": [],
+                "required_fields": callback_fields,
+                "reason": "Runtime/event responsibilities need stable callback or event boundary types.",
+                "trace_ref_keys": module_artifact.get("source_fact_ids", []),
+            }
+        )
+    if module_artifact.get("state_owned") or module_artifact.get("owned_capabilities"):
+        targets.append(
+            {
+                "target_id": f"target:{module_id}:private_state",
+                "target_kind": "internal_state",
+                "suggested_name": f"struct {protocol}_{module_id}",
+                "owner_module_id": module_id,
+                "source_message_ids": [],
+                "source_field_ids": [],
+                "required_fields": [],
+                "reason": "Resource-owning modules need private implementation state.",
+                "trace_ref_keys": module_artifact.get("source_fact_ids", []),
+            }
+        )
+    return targets
+
+
+def _type_base_name(type_name: str) -> str:
+    base = str(type_name).strip().removeprefix("struct ").removesuffix("_t")
+    for suffix in ("_fn", "_callback", "_callbacks", "_buffer", "_bytes"):
+        if base.endswith(suffix):
+            base = base[: -len(suffix)]
+    return base or str(type_name).strip().replace(" ", "_")
+
+
+def _has_owned_pointer_field(type_item: dict[str, Any]) -> bool:
+    for field in type_item.get("fields", []):
+        if not isinstance(field, dict):
+            continue
+        field_type = str(field.get("field_type", "")).lower()
+        if ("*" in field_type or "buffer" in field_type or "string" in field_type) and str(field.get("ownership", "")) in {"OWNED", "TRANSFER"}:
+            return True
+    return False
+
+
+def _obligation_names(type_item: dict[str, Any], action: str) -> list[str]:
+    lifecycle = type_item.get("lifecycle", {}) if isinstance(type_item.get("lifecycle"), dict) else {}
+    if action in {"create", "initialize"}:
+        explicit = lifecycle.get("created_by" if action == "create" else "initialized_by", [])
+    elif action in {"destroy", "free", "release_owned_data"}:
+        explicit = [*lifecycle.get("destroyed_by", []), *lifecycle.get("freed_by", [])]
+    else:
+        explicit = type_item.get("related_functions", [])
+    module_id = str(type_item.get("module_id", ""))
+    names = [
+        str(name)
+        for name in explicit
+        if str(name).strip() and not (module_id != "broker_app" and "_broker_" in str(name))
+    ]
+    if names:
+        return sorted(set(names))
+    base = _type_base_name(str(type_item.get("name", "")))
+    if action == "create":
+        return [f"{base}_create", f"{base}_init"]
+    if action == "initialize":
+        return [f"{base}_init", f"{base}_create"]
+    if action in {"destroy", "free", "release_owned_data"}:
+        return [f"{base}_destroy", f"{base}_free", f"{base}_cleanup"]
+    if action == "register_callback":
+        return [f"{base}_register", f"{base}_set", f"{base}_adapter"]
+    return [f"{base}_{action}"]
+
+
+def _type_obligation(type_item: dict[str, Any], action: str, *, reason: str, kind: str = "resource_lifecycle", visibility: str = "module_internal") -> dict[str, Any]:
+    type_id = str(type_item.get("type_id", ""))
+    return {
+        "obligation_id": f"obligation:{type_id}:{action}",
+        "type_id": type_id,
+        "type_name": str(type_item.get("name", "")),
+        "action": action,
+        "required_function_names": _obligation_names(type_item, action),
+        "required_function_kind": kind,
+        "visibility_hint": visibility,
+        "reason": reason,
+        "trace_ref_keys": type_item.get("trace_ref_keys", []),
+    }
+
+
+def derive_type_obligations(draft: dict[str, Any], module_artifact: dict[str, Any]) -> list[dict[str, Any]]:
+    module_id = str(module_artifact.get("module_id", ""))
+    obligations: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for type_item in draft.get("type_inventory", []):
+        if not isinstance(type_item, dict) or str(type_item.get("module_id", "")) != module_id:
+            continue
+        lifecycle = type_item.get("lifecycle", {}) if isinstance(type_item.get("lifecycle"), dict) else {}
+        actions: list[tuple[str, str, str, str]] = []
+        if lifecycle.get("created_by"):
+            actions.append(("create", "Type lifecycle declares creator functions.", "resource_lifecycle", "public" if type_item.get("visibility") == "public" else "module_internal"))
+        if lifecycle.get("initialized_by"):
+            actions.append(("initialize", "Type lifecycle declares initializer functions.", "resource_lifecycle", "public" if type_item.get("visibility") == "public" else "module_internal"))
+        if lifecycle.get("destroyed_by"):
+            actions.append(("destroy", "Type lifecycle declares destroy functions.", "resource_lifecycle", "public" if type_item.get("visibility") == "public" else "module_internal"))
+        if lifecycle.get("freed_by") or type_item.get("kind") in {"owned_buffer", "result_struct"} or _has_owned_pointer_field(type_item):
+            actions.append(("release_owned_data", "Owned pointer/string/buffer fields require a cleanup/free path.", "resource_lifecycle", "public" if type_item.get("visibility") == "public" else "module_internal"))
+        if type_item.get("kind") == "callback_type":
+            actions.append(("register_callback", "Callback boundary types require registration or adapter functions.", "public_api", "public" if type_item.get("visibility") == "public" else "module_internal"))
+        for action, reason, kind, visibility in actions:
+            key = (str(type_item.get("type_id", "")), action)
+            if key in seen:
+                continue
+            seen.add(key)
+            obligations.append(_type_obligation(type_item, action, reason=reason, kind=kind, visibility=visibility))
+    return obligations
 
 
 def _legal_ids_from_draft(draft: dict[str, Any]) -> dict[str, Any]:
@@ -327,29 +896,199 @@ def _provider_consumer_modules(draft: dict[str, Any], module_artifact: dict[str,
     return provider_modules, consumers
 
 
-def build_type_inventory_context(draft: dict[str, Any], module_artifact: dict[str, Any]) -> dict[str, Any]:
+def _type_seed_kind(name: str, role: str, target_kind: str = "") -> str:
+    text = f"{name} {role} {target_kind}".lower()
+    if target_kind == "packet_enum" or "enum" in text or "packet_type" in text:
+        return "enum"
+    if target_kind == "owned_buffer" or any(word in text for word in ("bytes", "buffer")):
+        return "owned_buffer"
+    if target_kind == "callback_or_event_boundary" or any(word in text for word in ("callback", "_cb", "_fn", "event")):
+        return "callback_type" if "_fn" in text or "callback" in text else "event_struct"
+    if any(word in text for word in ("handle", "opaque", "server")):
+        return "opaque_handle"
+    return "struct"
+
+
+def _public_seed_item(module_id: str, name: str, kind: str, *, seed_source: str, seed_reason: str, trace_ref_keys: list[str] | None = None) -> dict[str, Any]:
+    type_id = f"type:{module_id}:{_safe_id(name)}"
+    aliases = sorted({f"type:{_safe_id(name)}"})
+    return {
+        "type_id": type_id,
+        "type_id_aliases": aliases,
+        "name": name,
+        "module_id": module_id,
+        "kind": kind,
+        "visibility": "public",
+        "defined_in": "public_header",
+        "purpose": seed_reason,
+        "fields": [],
+        "enum_values": [],
+        "callback_signature": {"return_type": "", "params": []},
+        "ownership_lifetime": "",
+        "lifecycle": {"created_by": [], "initialized_by": [], "destroyed_by": [], "freed_by": []},
+        "related_functions": [],
+        "dependencies": [],
+        "trace_ref_keys": trace_ref_keys or [],
+        "status": "seed",
+        "seed_source": seed_source,
+        "seed_reason": seed_reason,
+    }
+
+
+def _is_internal_connection_seed(name: str, role: str) -> bool:
+    text = f"{name} {role}".lower()
+    return "connection" in text and "server" not in text
+
+
+def _is_internal_connection_public_surface(type_item: dict[str, Any]) -> bool:
+    name = str(type_item.get("name", ""))
+    text = " ".join(
+        [
+            name,
+            str(type_item.get("purpose", "")),
+            str(type_item.get("ownership_lifetime", "")),
+            " ".join(str(field.get("field_name", "")) + " " + str(field.get("field_type", "")) for field in type_item.get("fields", []) if isinstance(field, dict)),
+        ]
+    ).lower()
+    if "server" in text:
+        return False
+    return "connection" in text and any(word in text for word in ("per-connection", "socket", "fd", "buffer", "recv", "send"))
+
+
+def _artifact_is_public_type_seed(protocol: str, module_id: str, artifact: dict[str, Any]) -> bool:
+    name = str(artifact.get("name", "")).strip()
+    role = str(artifact.get("role", "")).strip()
+    text = f"{module_id} {name} {role}".lower()
+    if not name or _is_internal_connection_seed(name, role):
+        return False
+    module_handle = name == f"{protocol}_{_safe_id(module_id)}_t"
+    if module_handle or any(word in text for word in ("public", "opaque", "handle")):
+        return True
+    if "network" in text or "transport" in text:
+        return "server" in text
+    if "codec" in text:
+        return any(word in text for word in ("packet", "payload", "parser", "decode", "encode", "bytes", "buffer"))
+    return name.endswith("_t") and any(word in text for word in ("session", "router", "broker", "topic", "resource", "app"))
+
+
+def _dedupe_seed_types(types: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in types:
+        type_id = str(item.get("type_id", "")).strip()
+        key = type_id or f"{item.get('module_id')}:{item.get('name')}"
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        result.append(item)
+    return result
+
+
+def public_type_seed_index(draft: dict[str, Any], planning_ir: dict[str, Any] | None = None) -> dict[str, list[dict[str, Any]]]:
+    protocol = _protocol_prefix(draft)
+    index: dict[str, list[dict[str, Any]]] = {}
+    for module in [item for item in draft.get("module_artifacts", []) if isinstance(item, dict)]:
+        module_id = str(module.get("module_id", "")).strip()
+        if not module_id:
+            continue
+        seeds: list[dict[str, Any]] = []
+        for artifact in module.get("artifacts", []):
+            if not isinstance(artifact, dict) or str(artifact.get("kind", "")).upper() != "TYPE":
+                continue
+            name = str(artifact.get("name", "")).strip()
+            role = str(artifact.get("role", "")).strip()
+            if _artifact_is_public_type_seed(protocol, module_id, artifact):
+                seeds.append(
+                    _public_seed_item(
+                        module_id,
+                        name,
+                        _type_seed_kind(name, role),
+                        seed_source="module_artifacts",
+                        seed_reason=role or "Public module boundary TYPE artifact.",
+                        trace_ref_keys=module.get("source_fact_ids", []),
+                    )
+                )
+        for target in derive_type_generation_targets(draft, module, planning_ir):
+            target_kind = str(target.get("target_kind", ""))
+            if target_kind not in {"packet_enum", "payload_struct", "packet_container_struct", "owned_buffer", "callback_or_event_boundary"}:
+                continue
+            name = str(target.get("suggested_name", "")).strip()
+            if not name or _is_internal_connection_seed(name, str(target.get("reason", ""))):
+                continue
+            seeds.append(
+                _public_seed_item(
+                    module_id,
+                    name,
+                    _type_seed_kind(name, str(target.get("reason", "")), target_kind),
+                    seed_source="type_generation_targets",
+                    seed_reason=str(target.get("reason", "")) or f"Derived public {target_kind} boundary.",
+                    trace_ref_keys=target.get("trace_ref_keys", []),
+                )
+            )
+        index[module_id] = _dedupe_seed_types(seeds)
+    return index
+
+
+def provider_public_type_seeds_for_module(draft: dict[str, Any], module_artifact: dict[str, Any], planning_ir: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    provider_modules, _ = _provider_consumer_modules(draft, module_artifact)
+    seed_index = public_type_seed_index(draft, planning_ir)
+    return [
+        {"module_id": str(item.get("module_id", "")), "types": seed_index.get(str(item.get("module_id", "")), [])}
+        for item in provider_modules
+    ]
+
+
+def _public_provider_types(draft: dict[str, Any], provider_modules: list[dict[str, Any]], planning_ir: dict[str, Any] | None) -> list[dict[str, Any]]:
+    seed_groups = public_type_seed_index(draft, planning_ir)
+    result: list[dict[str, Any]] = []
+    for provider in provider_modules:
+        provider_id = str(provider.get("module_id", ""))
+        types = [
+            type_item
+            for type_item in _module_type_inventory(draft, provider_id)
+            if str(type_item.get("visibility", "")) == "public"
+            and str(type_item.get("defined_in", "")) == "public_header"
+            and not _is_internal_connection_public_surface(type_item)
+        ]
+        types.extend(seed_groups.get(provider_id, []))
+        result.append({"module_id": provider_id, "types": _dedupe_seed_types(types)})
+    return result
+
+
+def _legal_ids_with_provider_seeds(draft: dict[str, Any], provider_public_types: list[dict[str, Any]]) -> dict[str, Any]:
+    legal_ids = _legal_ids_from_draft(draft)
+    seed_type_ids = {
+        ref
+        for group in provider_public_types
+        for type_item in group.get("types", [])
+        if isinstance(type_item, dict) and type_item.get("seed_source")
+        for ref in [str(type_item.get("type_id", "")), *[str(alias) for alias in type_item.get("type_id_aliases", [])]]
+        if ref.strip()
+    }
+    legal_ids["type_ids"] = sorted(set(legal_ids.get("type_ids", [])) | seed_type_ids)
+    return legal_ids
+
+
+def build_type_inventory_context(draft: dict[str, Any], module_artifact: dict[str, Any], planning_ir: dict[str, Any] | None = None) -> dict[str, Any]:
     module_id = str(module_artifact.get("module_id", ""))
     provider_modules, consumers = _provider_consumer_modules(draft, module_artifact)
+    provider_public_types = _public_provider_types(draft, provider_modules, planning_ir)
     return {
         "schema_version": "type_inventory_context/v1",
         "module_artifact": module_artifact,
         "current_module_artifacts": module_artifact.get("artifacts", []),
+        "global_module_artifacts_reference": [
+            {"module_id": item.get("module_id"), "role": item.get("role"), "dependencies": item.get("dependencies", []), "artifacts": item.get("artifacts", [])}
+            for item in draft.get("module_artifacts", [])
+            if isinstance(item, dict)
+        ],
+        "type_generation_targets": derive_type_generation_targets(draft, module_artifact, planning_ir),
         "current_module_dependencies": module_artifact.get("dependencies", []),
         "provider_module_artifacts": [
             {"module_id": item.get("module_id"), "artifacts": item.get("artifacts", [])}
             for item in provider_modules
         ],
-        "provider_public_types": [
-            {
-                "module_id": item.get("module_id"),
-                "types": [
-                    type_item
-                    for type_item in _module_type_inventory(draft, str(item.get("module_id", "")))
-                    if str(type_item.get("visibility", "")) == "public"
-                ],
-            }
-            for item in provider_modules
-        ],
+        "provider_public_types": provider_public_types,
         "consumer_module_artifact_dependencies": [
             {"module_id": item.get("module_id"), "artifacts": item.get("artifacts", [])}
             for item in consumers
@@ -372,7 +1111,7 @@ def build_type_inventory_context(draft: dict[str, Any], module_artifact: dict[st
             item for item in draft.get("handler_matrix", []) if isinstance(item, dict) and str(item.get("owner_module_id", "")) == module_id
         ],
         "core_design_summary": _accepted_summary(draft),
-        "legal_id_universe": _legal_ids_from_draft(draft),
+        "legal_id_universe": _legal_ids_with_provider_seeds(draft, provider_public_types),
     }
 
 
@@ -407,7 +1146,13 @@ def build_function_inventory_context(draft: dict[str, Any], module_artifact: dic
         "schema_version": "function_inventory_context/v1",
         "module_artifact": module_artifact,
         "current_module_artifacts": module_artifact.get("artifacts", []),
+        "global_module_artifacts_reference": [
+            {"module_id": item.get("module_id"), "role": item.get("role"), "dependencies": item.get("dependencies", []), "artifacts": item.get("artifacts", [])}
+            for item in draft.get("module_artifacts", [])
+            if isinstance(item, dict)
+        ],
         "current_module_type_inventory": _module_type_inventory(draft, module_id),
+        "type_obligations": derive_type_obligations(draft, module_artifact),
         "current_module_dependencies": module_artifact.get("dependencies", []),
         "provider_module_artifacts": [
             {
