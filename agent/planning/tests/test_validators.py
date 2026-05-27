@@ -370,6 +370,11 @@ class PlanningValidatorTests(unittest.TestCase):
             self.assertEqual(len(inventory["functions"]), len(signature["function_signature_updates"]))
             self.assertEqual(len(inventory["functions"]), len(behavior["function_behavior_updates"]))
             self.assertTrue((step_logs / STEP_FILENAMES["runtime_entrypoint_candidate"]).exists())
+            event_log = (result.output_dir / "_agent_logs" / "000_stage_events.log").read_text(encoding="utf-8")
+            self.assertGreater(calls.count("function_inventory_repair_patch_prompt"), 0)
+            self.assertIn("quality_repair_attempt=1", event_log)
+            self.assertIn("quality_repair", event_log)
+            self.assertNotIn(" repair_attempt=1 prompt=function_inventory_repair_patch_prompt", event_log)
 
 
 if __name__ == "__main__":

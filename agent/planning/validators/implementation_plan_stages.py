@@ -362,12 +362,20 @@ def _module_type_matches(types: list[dict[str, Any]], suggested_name: str, *, ki
     return False
 
 
+def _field_has_variant_boundary(field: dict[str, Any]) -> bool:
+    return (
+        str(field.get("field_type", "")).lower() == "union"
+        or "variant" in str(field.get("validation_notes", "")).lower()
+        or bool(field.get("variants"))
+    )
+
+
 def _find_packet_container(types: list[dict[str, Any]], suggested_name: str) -> dict[str, Any] | None:
     suggested_key = normalize_type_key(suggested_name)
     for item in types:
         name = str(item.get("name", ""))
         fields = item.get("fields", [])
-        has_variant = any(str(field.get("field_type", "")).lower() == "union" or "variant" in str(field.get("validation_notes", "")).lower() for field in fields if isinstance(field, dict))
+        has_variant = any(_field_has_variant_boundary(field) for field in fields if isinstance(field, dict))
         if normalize_type_key(name) == suggested_key and fields and (has_variant or len(fields) > 1):
             return item
         if "packet" in name.lower() and item.get("kind") in {"struct", "view_struct", "result_struct"} and fields and (has_variant or len(fields) > 1):

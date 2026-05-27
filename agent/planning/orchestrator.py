@@ -1756,6 +1756,7 @@ class PlanningAgent:
                             "accepted": False,
                             "rejection_reasons": [],
                             "repair_mode": repair_mode,
+                            "repair_kind": "quality_repair",
                         }
                         if patch_candidate is None:
                             repair_diags = patch_llm_diags
@@ -1841,14 +1842,14 @@ class PlanningAgent:
                             accepted=bool(repair_attempt.get("accepted")),
                         )
                         store.log_event(
-                            f"stage=implementation_plan substage={stage_label} repair_attempt=1 prompt={repair_prompt_name} {_llm_token_event(repair_attempt.get('meta', {}))}"
+                            f"stage=implementation_plan substage={stage_label} quality_repair_attempt=1 prompt={repair_prompt_name} mode={repair_attempt.get('repair_mode', '')} {_llm_token_event(repair_attempt.get('meta', {}))}"
                         )
                         repair_reasons = [str(reason) for reason in repair_attempt.get("rejection_reasons", []) if str(reason)]
                         if repair_reasons:
                             store.write_agent_log(f"{repair_log_key}_llm_attempt_1_rejection", "\n".join(repair_reasons))
-                            store.log_event(f"stage=implementation_plan substage={stage_label} repair rejected reason={repair_reasons[0]}")
+                            store.log_event(f"stage=implementation_plan substage={stage_label} quality_repair rejected reason={repair_reasons[0]}")
                         else:
-                            store.log_event(f"stage=implementation_plan substage={stage_label} repair accepted")
+                            store.log_event(f"stage=implementation_plan substage={stage_label} quality_repair accepted")
                         if result.get("repair_patch") is not None:
                             repair_patch_path = store.write_step_json(
                                 _suffixed_step_filename(STEP_FILENAMES["function_inventory_repair_patch"], module_id),
@@ -1856,7 +1857,7 @@ class PlanningAgent:
                             )
                             repair_report_path = store.write_step_json(
                                 _suffixed_step_filename(STEP_FILENAMES["function_inventory_repair_validation_report"], module_id),
-                                validation_report(f"{stage_label}:repair", result.get("repair_diags", [])),
+                                validation_report(f"{stage_label}:quality_repair", result.get("repair_diags", [])),
                             )
                             artifact_suffix = safe_slug(module_id)
                             artifact_paths[f"function_inventory_repair_patch_{artifact_suffix}"] = repair_patch_path

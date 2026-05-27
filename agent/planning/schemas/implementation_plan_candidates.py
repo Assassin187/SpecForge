@@ -252,6 +252,14 @@ FUNCTION_INVENTORY_SCHEMA = _object(
     }
 )
 
+TYPE_INVENTORY_FIELD_VARIANT_SCHEMA = _object(
+    {
+        "field_name": STRING,
+        "field_type": STRING,
+        "source_field_id": STRING,
+    }
+)
+
 TYPE_INVENTORY_FIELD_SCHEMA = _object(
     {
         "field_name": STRING,
@@ -263,7 +271,19 @@ TYPE_INVENTORY_FIELD_SCHEMA = _object(
         "length_field": STRING,
         "capacity_field": STRING,
         "validation_notes": STRING,
-    }
+        "variants": _array(TYPE_INVENTORY_FIELD_VARIANT_SCHEMA),
+    },
+    required=[
+        "field_name",
+        "field_type",
+        "type_ref",
+        "required",
+        "ownership",
+        "lifetime",
+        "length_field",
+        "capacity_field",
+        "validation_notes",
+    ],
 )
 
 TYPE_INVENTORY_ENUM_VALUE_SCHEMA = _object(

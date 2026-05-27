@@ -19,7 +19,7 @@ JSON_ONLY_RULES = (
 )
 
 ID_REFERENCE_RULES = [
-    "Every *_id, *_ids, *_ref, and *_refs value must be copied exactly from the context or the legal_id_universe unless the schema defines it as a new candidate-local ID.",
+    "Reference IDs, ID lists, type refs, and dependency refs must be copied exactly from the context or the legal_id_universe unless the field is explicitly listed in local_id_rules.",
     "Do not convert paths, filenames, display names, descriptions, or natural-language labels into IDs.",
     "Do not cross ID namespaces: type_ids, state_ids, message_ids, field_ids, file_ids, function_ids, module_ids, capability_ids, constraint_ids, and error_ids are not interchangeable.",
     "If a needed referenced ID is absent, record an unresolved_questions item instead of inventing a plausible ID.",
@@ -31,6 +31,29 @@ ENUM_USAGE_RULES = [
     "Do not use return-result words such as status_code, boolean, void, int, or pointer_null as contract_kind; put those in error_behavior.return_policy when applicable.",
     "Use unknown or unresolved_questions when the enum choice cannot be determined from the context.",
 ]
+
+LOCAL_ID_RULES = {
+    "type_inventory_candidate/v1": [
+        "candidate_id is a new local ID and should use candidate:type_inventory:{module_id}.",
+        "types[].type_id is a new local ID and should use type:{module_id}:{symbol}.",
+        "dependencies, fields[].type_ref, and callback_signature.params[].type_ref are references; use local type_ids declared in this candidate, provider_public_types, or legal_id_universe.system_type_ids.",
+    ],
+    "type_inventory_repair_patch/v1": [
+        "patch_id is a new local ID and should use patch:type_inventory:{module_id}:{purpose}.",
+        "added_types[].type_id is a new local ID and should use type:{module_id}:{symbol}.",
+        "updated_types[].type_id must reference an existing type_id from current_candidate.types.",
+    ],
+    "function_inventory_candidate/v2": [
+        "candidate_id is a new local ID and should use candidate:function_inventory:{module_id}.",
+        "functions[].function_id is a new local ID and should use fn:{module_id}:{action}.",
+        "capability_ids, covers_handler_ids, covers_message_ids, and covers_field_ids are references and must come from legal_id_universe.",
+    ],
+    "function_inventory_repair_patch/v1": [
+        "patch_id is a new local ID and should use patch:function_inventory:{module_id}:{purpose}.",
+        "added_functions[].function_id is a new local ID and should use fn:{module_id}:{action}.",
+        "updated_functions[].function_id must reference an existing function_id from current_candidate.functions.",
+    ],
+}
 
 STAGE_SEMANTIC_RULES = {
     "core_design_candidate/v1": [
@@ -56,8 +79,9 @@ STAGE_SEMANTIC_RULES = {
     "type_inventory_candidate/v1": [
         "Task definition: given one module and its module_artifacts TYPE/FUNC seeds, plan the implementation-oriented type inventory for that module only.",
         "Generate only type inventory; do not include function signatures, input/output contracts, state access, wire mappings, calls, file layout, dependency graph, or code.",
-        "Every current_module_artifacts item with kind=TYPE must be represented by types[] unless a blocking unresolved_questions item names that artifact.",
+        "Every current_module_artifacts item with kind=TYPE is a deterministic mandatory seed and must be represented by types[] unless a blocking unresolved_questions item names that artifact.",
         "TYPE artifacts are mandatory seeds but not a closed set; type_generation_targets are required implementation targets derived from protocol facts, canonical types, module role, and runtime responsibilities.",
+        "The type inventory may add richer implementation-oriented types beyond TYPE artifacts, including internal_state, payload structs, packet/container structs, callback/event boundaries, owned buffers, result structs, bitflags, or aliases when justified by module responsibilities.",
         "global_module_artifacts_reference is reference-only 5.3 context for architecture boundaries and naming; it is not an unrestricted dependency surface.",
         "Cross-module type dependencies may come only from provider_public_types for current_module_dependencies; unrelated global_module_artifacts_reference entries may not be used in fields, dependencies, or callback_signature.",
         "provider_public_types entries with seed_source are deterministic public boundary intent for reference validation only; do not copy them into the current module's types[] unless the current module owns that type.",
@@ -65,7 +89,7 @@ STAGE_SEMANTIC_RULES = {
         "Add internal state, packet enum, payload struct, packet/container struct, config, callback, event, view, owned buffer, result, bitflag, or alias types when needed for API clarity, lifecycle closure, protocol facts, or module boundaries.",
         "For codec/parser/serializer modules, derive packet enums, per-message payload structs, unified packet/container structs, and result or owned byte buffer types from protocol facts/canonical_types instead of leaving packet data as an opaque placeholder.",
         "Do not use uint8_t placeholders when facts imply concrete types: string fields should be char*, u16/packet_id/keep_alive should be uint16_t, flags should be bool, payload bytes should be uint8_t* with length/count fields.",
-        "Unified packet/container structs must expose a variant boundary, such as type plus a union-like payload field or equivalent variant fields; a packet container with only a type discriminator is incomplete.",
+        "Unified packet/container structs must expose a variant boundary, such as type plus a union-like payload field with fields[].variants, or equivalent variant fields; a packet container with only a type discriminator is incomplete.",
         "If packet payloads own strings, repeated arrays, or byte buffers, declare a cleanup/free lifecycle intent such as protocol_packet_free.",
         "For network/runtime/event modules, represent callback_type/event_struct and callback collection types when accept/data/close/timer/epoll style boundaries are present.",
         "Callback collection types such as *_callbacks_t must use fields[] for on_accept/on_data/on_close/on_timer entries; callback_signature is only for a single function pointer callback_type.",
@@ -567,7 +591,8 @@ def _stage_messages(
                 "Return only the current stage candidate or patch. "
                 "Never return a complete implementation_plan/v1. "
                 "Never output code. "
-                "Do not invent protocol facts or identifiers outside the provided legal ID universe."
+                "Do not invent protocol facts or reference identifiers outside the provided legal ID universe. "
+                "Generate only the candidate-local identifiers explicitly allowed by local_id_rules."
             ),
         },
         {
@@ -583,6 +608,7 @@ def _stage_messages(
                     "validator_after_output": validator,
                     context_key: context,
                     "id_reference_rules": ID_REFERENCE_RULES,
+                    "local_id_rules": LOCAL_ID_RULES.get(expected_schema, []),
                     "enum_usage_rules": ENUM_USAGE_RULES,
                     "semantic_validation_rules": STAGE_SEMANTIC_RULES.get(expected_schema, []),
                     "hard_validation_rules": [
@@ -592,7 +618,7 @@ def _stage_messages(
                         "Do not include a complete implementation_plan/v1.",
                         "Do not include forbidden fields.",
                         "Do not include any fields not shown in output_shape.",
-                        "Use only IDs present in the context legal ID universe.",
+                        "Reference IDs must come from the context legal ID universe; only fields listed in local_id_rules may introduce new candidate-local IDs.",
                         "If information is insufficient, add unresolved_questions instead of inventing facts.",
                     ],
                 }

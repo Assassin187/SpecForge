@@ -986,6 +986,29 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             self.assertTrue(_has(diags, "missing_payload_struct_type"))
             self.assertTrue(_has(diags, "missing_packet_container_type"))
 
+    def test_type_inventory_packet_container_accepts_optional_variants(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            planning_ir, profile, constraints, selected, draft, _, _ = self._fixtures(Path(raw_tmp))
+            codec = next(module for module in draft["module_artifacts"] if any("decode" in str(artifact.get("role", "")).lower() for artifact in module["artifacts"]))
+            candidate = fallback_type_inventory(draft, codec, planning_ir)
+            packet = next(item for item in candidate["types"] if item["name"] == "mqtt_packet_t")
+            variant_field = next(field for field in packet["fields"] if field["field_name"] == "v")
+            variant_field["field_type"] = "mqtt_packet_payload_u"
+            variant_field["type_ref"] = ""
+            variant_field["validation_notes"] = ""
+            variant_field["variants"] = [
+                {"field_name": "connect", "field_type": "mqtt_connect_payload_t", "source_field_id": ""},
+                {"field_name": "publish", "field_type": "mqtt_publish_payload_t", "source_field_id": ""},
+            ]
+
+            self.assertFalse(_has_error(validate_type_inventory_candidate(candidate, draft["module_artifacts"], draft, profile, planning_ir)))
+
+            without_variants = copy.deepcopy(candidate)
+            packet_without_variants = next(item for item in without_variants["types"] if item["name"] == "mqtt_packet_t")
+            packet_without_variants["fields"] = [field for field in packet_without_variants["fields"] if field["field_name"] == "type"]
+            diags = validate_type_inventory_candidate(without_variants, draft["module_artifacts"], draft, profile, planning_ir)
+            self.assertTrue(_has(diags, "missing_packet_container_type"))
+
     def test_network_type_inventory_generates_callback_collection(self) -> None:
         module = {
             "module_id": "network",
@@ -1672,6 +1695,23 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             for rule in DECOMPOSITION_RULES:
                 count = prompt_text.count(rule.hint)
                 self.assertEqual(count, 1 if rule.hint in selected_hints else 0)
+
+    def test_stage_prompts_distinguish_local_ids_from_reference_ids(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            planning_ir, profile, constraints, selected, draft, _, _ = self._fixtures(Path(raw_tmp))
+            module = draft["module_artifacts"][0]
+            type_payload = json.loads(type_inventory_candidate_messages(build_type_inventory_context(draft, module, planning_ir))[1]["content"])
+            function_payload = json.loads(function_inventory_candidate_messages(build_function_inventory_context(draft, module))[1]["content"])
+            combined = json.dumps([type_payload, function_payload], ensure_ascii=False)
+
+            self.assertNotIn("Use only IDs present in the context legal ID universe.", combined)
+            self.assertTrue(any("type:{module_id}:{symbol}" in rule for rule in type_payload["local_id_rules"]))
+            self.assertTrue(any("fn:{module_id}:{action}" in rule for rule in function_payload["local_id_rules"]))
+            self.assertTrue(any("Reference IDs must come from" in rule for rule in type_payload["hard_validation_rules"]))
+            type_rules = "\n".join(type_payload["semantic_validation_rules"])
+            self.assertIn("deterministic mandatory seed", type_rules)
+            self.assertIn("not a closed set", type_rules)
+            self.assertIn("richer implementation-oriented types", type_rules)
 
     def test_function_inventory_coverage_scoring_thresholds(self) -> None:
         module = {
