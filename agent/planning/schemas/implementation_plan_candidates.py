@@ -319,6 +319,42 @@ TYPE_LIFECYCLE_SCHEMA = _object(
     }
 )
 
+TYPE_SLOT_FILLING_SCHEMA = _object(
+    {
+        "slot_id": STRING,
+        "semantic_purpose": STRING,
+        "fields": _array(TYPE_INVENTORY_FIELD_SCHEMA),
+        "enum_values": _array(TYPE_INVENTORY_ENUM_VALUE_SCHEMA),
+        "callback_signature": CALLBACK_SIGNATURE_SCHEMA,
+        "ownership_lifetime": STRING,
+        "lifecycle": TYPE_LIFECYCLE_SCHEMA,
+        "dependencies": STRING_LIST,
+        "trace_ref_keys": STRING_LIST,
+        "status": STATUS,
+    }
+)
+
+TYPE_OPTIONAL_PROPOSAL_SCHEMA = _object(
+    {
+        "proposal_key": STRING,
+        "name_hint": STRING,
+        "kind": _scalar("string", enum=TYPE_INVENTORY_KIND_VALUES),
+        "visibility": _scalar("string", enum=TYPE_INVENTORY_VISIBILITY_VALUES),
+        "defined_in": _scalar("string", enum=TYPE_INVENTORY_DEFINED_IN_VALUES),
+        "semantic_purpose": STRING,
+        "fields": _array(TYPE_INVENTORY_FIELD_SCHEMA),
+        "enum_values": _array(TYPE_INVENTORY_ENUM_VALUE_SCHEMA),
+        "callback_signature": CALLBACK_SIGNATURE_SCHEMA,
+        "ownership_lifetime": STRING,
+        "lifecycle": TYPE_LIFECYCLE_SCHEMA,
+        "dependencies": STRING_LIST,
+        "expansion_reason": STRING,
+        "source_refs": STRING_LIST,
+        "trace_ref_keys": STRING_LIST,
+        "status": STATUS,
+    }
+)
+
 TYPE_INVENTORY_SCHEMA = _object(
     {
         "type_id": STRING,
@@ -356,6 +392,41 @@ TYPE_INVENTORY_UPDATE_SCHEMA = _object(
         "status": STATUS,
     },
     required=["type_id"],
+)
+
+FUNCTION_SEED_ANNOTATION_SCHEMA = _object(
+    {
+        "seed_id": STRING,
+        "purpose": STRING,
+        "grouping_hint": STRING,
+        "trace_ref_keys": STRING_LIST,
+        "status": STATUS,
+    }
+)
+
+FUNCTION_OPTIONAL_PROPOSAL_SCHEMA = _object(
+    {
+        "proposal_key": STRING,
+        "name_hint": STRING,
+        "function_kind": _scalar("string", enum=FUNCTION_KIND_VALUES),
+        "coder_function_type": _scalar("string", enum=CODER_FUNCTION_TYPE_VALUES),
+        "visibility": VISIBILITY,
+        "api_surface": _scalar("string", enum=API_SURFACE_VALUES),
+        "exported": BOOL,
+        "export_reason": STRING,
+        "public_api_role": STRING,
+        "grouping_hint": STRING,
+        "purpose": STRING,
+        "capability_ids": STRING_LIST,
+        "covers_handler_ids": STRING_LIST,
+        "covers_message_ids": STRING_LIST,
+        "covers_field_ids": STRING_LIST,
+        "family": STRING,
+        "expansion_reason": STRING,
+        "source_refs": STRING_LIST,
+        "trace_ref_keys": STRING_LIST,
+        "status": STATUS,
+    }
 )
 
 FUNCTION_INVENTORY_UPDATE_SCHEMA = _object(
@@ -710,6 +781,19 @@ SCHEMA_SPECS: dict[str, SchemaSpec] = {
             "unresolved_questions": _array(UNRESOLVED_QUESTION_SCHEMA),
         }
     ),
+    "type_filling_candidate/v1": _object(
+        {
+            "schema_version": _scalar("string", enum={"type_filling_candidate/v1"}),
+            "candidate_id": STRING,
+            "producer": PRODUCER_SCHEMA,
+            "module_id": STRING,
+            "slot_fillings": _array(TYPE_SLOT_FILLING_SCHEMA),
+            "optional_type_proposals": _array(TYPE_OPTIONAL_PROPOSAL_SCHEMA),
+            "assumptions": _array(ASSUMPTION_SCHEMA),
+            "unresolved_questions": _array(UNRESOLVED_QUESTION_SCHEMA),
+            "expansion_notes": STRING_LIST,
+        }
+    ),
     "type_inventory_repair_patch/v1": _object(
         {
             "schema_version": _scalar("string", enum={"type_inventory_repair_patch/v1"}),
@@ -731,6 +815,19 @@ SCHEMA_SPECS: dict[str, SchemaSpec] = {
             "functions": _array(FUNCTION_INVENTORY_SCHEMA),
             "assumptions": _array(ASSUMPTION_SCHEMA),
             "unresolved_questions": _array(UNRESOLVED_QUESTION_SCHEMA),
+        }
+    ),
+    "function_annotation_candidate/v1": _object(
+        {
+            "schema_version": _scalar("string", enum={"function_annotation_candidate/v1"}),
+            "candidate_id": STRING,
+            "producer": PRODUCER_SCHEMA,
+            "module_id": STRING,
+            "seed_annotations": _array(FUNCTION_SEED_ANNOTATION_SCHEMA),
+            "optional_function_proposals": _array(FUNCTION_OPTIONAL_PROPOSAL_SCHEMA),
+            "assumptions": _array(ASSUMPTION_SCHEMA),
+            "unresolved_questions": _array(UNRESOLVED_QUESTION_SCHEMA),
+            "decomposition_notes": STRING_LIST,
         }
     ),
     "function_inventory_repair_patch/v1": _object(

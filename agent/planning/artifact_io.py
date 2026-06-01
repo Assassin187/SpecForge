@@ -92,6 +92,9 @@ class ArtifactStore:
         path.write_text(content, encoding="utf-8")
         return path
 
+    def write_agent_json(self, filename: str, data: Any) -> Path:
+        return write_json(self.agent_logs_dir / filename, data)
+
     def step_path(self, filename: str) -> Path:
         if "validation_report" in filename:
             return self.validation_reports_dir / filename

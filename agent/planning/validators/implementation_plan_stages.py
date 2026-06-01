@@ -9,6 +9,7 @@ from ..schemas.implementation_plan import (
     CORE_DESIGN_CANDIDATE_SCHEMA_VERSION,
     DEPENDENCY_REPAIR_PATCH_SCHEMA_VERSION,
     FILE_LAYOUT_CANDIDATE_SCHEMA_VERSION,
+    FUNCTION_ANNOTATION_CANDIDATE_SCHEMA_VERSION,
     FUNCTION_BEHAVIOR_CONTRACT_PATCH_SCHEMA_VERSION,
     FUNCTION_INVENTORY_CANDIDATE_SCHEMA_VERSION,
     FUNCTION_INVENTORY_REPAIR_PATCH_SCHEMA_VERSION,
@@ -16,6 +17,7 @@ from ..schemas.implementation_plan import (
     MODULE_ARTIFACTS_CANDIDATE_SCHEMA_VERSION,
     RUNTIME_ENTRYPOINT_CANDIDATE_SCHEMA_VERSION,
     SCHEMA_VERSION,
+    TYPE_FILLING_CANDIDATE_SCHEMA_VERSION,
     TYPE_INVENTORY_CANDIDATE_SCHEMA_VERSION,
     TYPE_INVENTORY_REPAIR_PATCH_SCHEMA_VERSION,
     VALIDATION_REPORT_SCHEMA_VERSION,
@@ -23,7 +25,7 @@ from ..schemas.implementation_plan import (
 )
 from ..schemas.implementation_plan_candidates import validate_shape
 from ..stages.coder_spec_lowering import normalize_type_key
-from ..stages.function_inventory_decomposition import select_top_decomposition_hints
+from ..stages.function_inventory_decomposition import DECOMPOSITION_RULES, select_top_decomposition_hints
 from ..stages.implementation_plan import _handler_surfaces, _safe_id, _surface_units, _wire_fields
 from ..stages.implementation_plan_context import (
     SYSTEM_TYPE_IDS,
@@ -41,6 +43,12 @@ BARE_C_SYMBOL_DENYLIST = {"connect", "read", "write", "close", "send", "publish"
 C_SYMBOL_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 FUNCTION_INVENTORY_COVERAGE_REPAIR_THRESHOLD = 0.45
 FUNCTION_INVENTORY_COVERAGE_WARNING_THRESHOLD = 0.65
+NON_FUNCTION_LIFECYCLE_NAMES = {"caller", "external", "application", "app", "user", "callee", "owner", "runtime", "system"}
+ABSTRACT_FUNCTION_FAMILY_NAMES = {
+    family
+    for rule in DECOMPOSITION_RULES
+    for family in rule.expected_function_families
+}
 
 FUNCTION_FAMILY_EXTRA_TERMS = {
     "lifecycle_control": {"init", "create", "start", "run", "stop", "destroy", "shutdown"},
@@ -99,7 +107,7 @@ def _is_lifecycle_api(function: dict[str, Any], action: str) -> bool:
     )
 
 
-def validation_report(stage: str, diagnostics: list[PlanningDiagnostic]) -> dict[str, Any]:
+def validation_report(stage: str, diagnostics: list[PlanningDiagnostic], *, quality_diagnostics: list[dict[str, Any]] | None = None, richness_summary: dict[str, Any] | None = None) -> dict[str, Any]:
     errors = [item for item in diagnostics if item.level == "error"]
     warnings = [item for item in diagnostics if item.level != "error"]
     return {
@@ -115,6 +123,8 @@ def validation_report(stage: str, diagnostics: list[PlanningDiagnostic]) -> dict
             for item in warnings
         ],
         "repair_hints": [item.message for item in (errors + warnings)[:8]],
+        "quality_diagnostics": quality_diagnostics or [],
+        "richness_summary": richness_summary or {},
     }
 
 
@@ -301,6 +311,11 @@ def _function_text(function: dict[str, Any]) -> str:
     ).lower()
 
 
+def _looks_like_abstract_family_function_name(name: str) -> bool:
+    safe_name = _safe_id(name)
+    return any(safe_name == family or safe_name.endswith(f"_{family}") for family in ABSTRACT_FUNCTION_FAMILY_NAMES)
+
+
 def _type_inventory_by_id(draft: dict[str, Any]) -> dict[str, dict[str, Any]]:
     result: dict[str, dict[str, Any]] = {}
     for item in draft.get("type_inventory", []):
@@ -370,17 +385,101 @@ def _field_has_variant_boundary(field: dict[str, Any]) -> bool:
     )
 
 
+def _field_ownership_requires_release(field: dict[str, Any]) -> bool:
+    field_type = re.sub(r"\s+", "", str(field.get("field_type", "")).lower())
+    type_ref = normalize_system_type_ref(field.get("type_ref", ""))
+    if type_ref == "void" or field_type in {"void*", "constvoid*"}:
+        return False
+    release_capable = (
+        "*" in field_type
+        or "[" in field_type
+        or "buffer" in field_type
+        or "string" in field_type
+        or field_type == "union"
+        or bool(field.get("variants"))
+    )
+    if not release_capable:
+        return False
+    ownership = re.sub(r"[^A-Z0-9]+", "_", str(field.get("ownership", "")).upper()).strip("_")
+    if not ownership or ownership in {"UNKNOWN", "BORROWED", "SHARED", "OWNED_BY_CALLER", "CALLER_OWNED"}:
+        return False
+    return ownership in {"OWNED", "TRANSFER"} or ownership.startswith("OWNED_BY_") or "TAKES_OWNERSHIP" in ownership
+
+
+def _type_text_requires_release(type_item: dict[str, Any]) -> bool:
+    text = f"{type_item.get('purpose', '')} {type_item.get('ownership_lifetime', '')}".lower()
+    if any(marker in text for marker in ("caller_owned", "owned_by_caller", "caller retains", "borrowed", "not owned")):
+        return False
+    return any(marker in text for marker in (" owned", "owns ", "takes ownership", "must free", "cleanup", "release"))
+
+
+def _type_requires_release_path(type_item: dict[str, Any]) -> bool:
+    kind = str(type_item.get("kind", ""))
+    if kind == "owned_buffer":
+        return True
+    fields = [field for field in type_item.get("fields", []) if isinstance(field, dict)]
+    if any(_field_ownership_requires_release(field) for field in fields):
+        return True
+    if any(_field_has_variant_boundary(field) for field in fields) and _type_text_requires_release(type_item):
+        return True
+    return kind in {"result_struct", "internal_state", "struct"} and _type_text_requires_release(type_item)
+
+
+def _has_release_path(type_item: dict[str, Any]) -> bool:
+    lifecycle = type_item.get("lifecycle", {}) if isinstance(type_item.get("lifecycle"), dict) else {}
+    return bool(lifecycle.get("freed_by") or lifecycle.get("destroyed_by"))
+
+
+def _protocol_alias_matches(actual_key: str, expected_key: str) -> bool:
+    if actual_key == expected_key:
+        return True
+    if expected_key.startswith("protocol_"):
+        suffix = expected_key.removeprefix("protocol_")
+        return actual_key == suffix or actual_key.endswith(f"_{suffix}")
+    if actual_key.startswith("protocol_"):
+        suffix = actual_key.removeprefix("protocol_")
+        return expected_key == suffix or expected_key.endswith(f"_{suffix}")
+    return False
+
+
+def _field_type_matches_expected(actual: str, expected: str) -> bool:
+    if actual == expected:
+        return True
+    return _protocol_alias_matches(normalize_type_key(actual), normalize_type_key(expected))
+
+
+def _packet_container_score(item: dict[str, Any], suggested_key: str) -> int:
+    if item.get("kind") not in {"struct", "view_struct", "result_struct"}:
+        return 0
+    fields = [field for field in item.get("fields", []) if isinstance(field, dict)]
+    if not fields:
+        return 0
+    name = str(item.get("name", ""))
+    text = f"{name} {item.get('purpose', '')}".lower()
+    has_variant = any(_field_has_variant_boundary(field) for field in fields)
+    has_container_semantics = any(marker in text for marker in ("container", "decoded", "unified"))
+    if not has_variant and (not has_container_semantics or len(fields) <= 1):
+        return 0
+    score = 0
+    if normalize_type_key(name) == suggested_key:
+        score += 16
+    if has_variant:
+        score += 8
+    if has_container_semantics:
+        score += 4
+    if "packet" in name.lower():
+        score += 1
+    return score
+
+
 def _find_packet_container(types: list[dict[str, Any]], suggested_name: str) -> dict[str, Any] | None:
     suggested_key = normalize_type_key(suggested_name)
-    for item in types:
-        name = str(item.get("name", ""))
-        fields = item.get("fields", [])
-        has_variant = any(_field_has_variant_boundary(field) for field in fields if isinstance(field, dict))
-        if normalize_type_key(name) == suggested_key and fields and (has_variant or len(fields) > 1):
-            return item
-        if "packet" in name.lower() and item.get("kind") in {"struct", "view_struct", "result_struct"} and fields and (has_variant or len(fields) > 1):
-            return item
-    return None
+    ranked = [(_packet_container_score(item, suggested_key), item) for item in types]
+    ranked = [(score, item) for score, item in ranked if score > 0]
+    if not ranked:
+        return None
+    ranked.sort(key=lambda pair: pair[0], reverse=True)
+    return ranked[0][1]
 
 
 def _has_packet_container(types: list[dict[str, Any]], suggested_name: str) -> bool:
@@ -393,15 +492,16 @@ def _find_payload_struct(types: list[dict[str, Any]], suggested_name: str, targe
     if source_messages:
         message = str(source_messages[0]).removeprefix("message:").replace("_", "")
     suggested_key = normalize_type_key(suggested_name)
+    message_matches: list[dict[str, Any]] = []
     for item in types:
         if str(item.get("kind", "")) not in {"struct", "view_struct", "result_struct"}:
             continue
         name_key = normalize_type_key(item.get("name", ""))
-        if name_key == suggested_key:
+        if _protocol_alias_matches(name_key, suggested_key):
             return item
         if message and message in name_key.replace("_", "") and "payload" in name_key:
-            return item
-    return None
+            message_matches.append(item)
+    return message_matches[0] if message_matches else None
 
 
 def _has_payload_struct(types: list[dict[str, Any]], suggested_name: str, target: dict[str, Any]) -> bool:
@@ -418,7 +518,7 @@ def _payload_fields_cover_target(type_item: dict[str, Any], target: dict[str, An
         actual = fields.get(name)
         if not actual:
             return False
-        if expected != "enum_value" and expected != actual:
+        if expected != "enum_value" and not _field_type_matches_expected(actual, expected):
             return False
     return True
 
@@ -948,19 +1048,20 @@ def validate_type_inventory_candidate(candidate: dict[str, Any], module_artifact
             is_pointer_like = "*" in field_type or "char*" in lower or "buffer" in lower or "string" in lower or "uint8_t*" in lower
             if is_pointer_like and (not str(field.get("ownership", "")).strip() or field.get("ownership") == "UNKNOWN" or not str(field.get("lifetime", "")).strip()):
                 diagnostics.append(PlanningDiagnostic("error", "pointer_field_missing_ownership", f"field '{type_item['type_id']}.{field.get('field_name')}' lacks ownership/lifetime", path))
-        lifecycle = type_item.get("lifecycle", {}) if isinstance(type_item.get("lifecycle"), dict) else {}
         if type_item.get("kind") == "owned_buffer":
             field_names = {str(field.get("field_name", "")) for field in type_item.get("fields", []) if isinstance(field, dict)}
             has_size_fields = any(str(field.get("length_field", "")).strip() for field in type_item.get("fields", []) if isinstance(field, dict)) or bool(field_names & {"len", "length", "size", "capacity", "cap"})
             if not has_size_fields:
                 diagnostics.append(PlanningDiagnostic("error", "buffer_type_missing_size_fields", f"owned buffer type '{type_id}' lacks length/capacity fields", path))
-        if type_item.get("kind") in {"owned_buffer", "struct", "internal_state"} and "owned" in f"{type_item.get('purpose', '')} {type_item.get('ownership_lifetime', '')}".lower():
-            if not lifecycle.get("freed_by") and not lifecycle.get("destroyed_by"):
-                diagnostics.append(PlanningDiagnostic("error", "owned_type_missing_release_path", f"owned type '{type_id}' has no free/destroy path", path))
+        if _type_requires_release_path(type_item) and not _has_release_path(type_item):
+            diagnostics.append(PlanningDiagnostic("error", "owned_type_missing_release_path", f"owned type '{type_id}' has no free/destroy path", path))
         for cb_param in type_item.get("callback_signature", {}).get("params", []):
             type_ref = normalize_system_type_ref(cb_param.get("type_ref", ""))
-            if type_ref and not _is_system_type_ref(type_ref) and _resolve_type_reference(type_ref, "", by_id, by_name, provider_by_id, provider_by_name) is None:
+            target = _resolve_type_reference(type_ref, "", by_id, by_name, provider_by_id, provider_by_name)
+            if type_ref and not _is_system_type_ref(type_ref) and target is None:
                 diagnostics.append(PlanningDiagnostic("error", "unknown_type_ref", f"callback type '{type_id}' references unknown type '{type_ref}'", path))
+            if _is_public_type(type_item) and target is not None and not _is_public_type(target):
+                diagnostics.append(PlanningDiagnostic("error", "public_callback_param_uses_private_type", f"public callback type '{type_id}' references private/internal type '{type_ref}'", path))
     unresolved = _unresolved_targets(candidate)
     for module_id in sorted(candidate_module_ids & module_ids):
         module = modules_by_id.get(module_id, {})
@@ -979,6 +1080,9 @@ def validate_type_inventory_candidate(candidate: dict[str, Any], module_artifact
             diagnostics.append(PlanningDiagnostic("warning", "config_module_missing_config_struct", f"module '{module_id}' appears to need configuration but lacks config_struct", path))
         if any(word in text for word in ("callback", "event", "timer", "epoll")) and not any(item.get("kind") in {"callback_type", "event_struct"} for item in module_types):
             diagnostics.append(PlanningDiagnostic("warning", "event_callback_type_missing", f"module '{module_id}' appears to expose callbacks/events but lacks callback/event type", path))
+        missing_trace = [str(item.get("type_id", "")) for item in module_types if not [ref for ref in item.get("trace_ref_keys", []) if str(ref).strip()]]
+        if missing_trace:
+            diagnostics.append(PlanningDiagnostic("warning", "type_inventory_missing_trace_refs", f"module '{module_id}' has {len(missing_trace)} type inventory entries without trace_ref_keys", path))
         for target in derive_type_generation_targets(core_design, module, planning_ir):
             target_kind = str(target.get("target_kind", ""))
             suggested_name = str(target.get("suggested_name", ""))
@@ -998,21 +1102,31 @@ def validate_type_inventory_candidate(candidate: dict[str, Any], module_artifact
                 if packet_type is None:
                     diagnostics.append(PlanningDiagnostic("error", "missing_packet_container_type", f"module '{module_id}' lacks packet/container struct target '{target_id}'", path))
                 else:
-                    lifecycle = packet_type.get("lifecycle", {}) if isinstance(packet_type.get("lifecycle"), dict) else {}
-                    if any(isinstance(field, dict) and field.get("variants") for field in target.get("required_fields", [])) and not lifecycle.get("freed_by") and not lifecycle.get("destroyed_by"):
+                    if any(isinstance(field, dict) and field.get("variants") for field in target.get("required_fields", [])) and not _has_release_path(packet_type):
                         diagnostics.append(PlanningDiagnostic("error", "packet_container_missing_release_path", f"module '{module_id}' packet/container target '{target_id}' lacks cleanup/free lifecycle", path))
             elif target_kind == "owned_buffer" and not _has_owned_result_buffer(module_types, suggested_name):
                 diagnostics.append(PlanningDiagnostic("error", "missing_result_buffer_type", f"module '{module_id}' lacks owned result/buffer target '{target_id}'", path))
             elif target_kind == "callback_or_event_boundary" and not _callback_boundary_covers_target(module_types, suggested_name, target):
                 diagnostics.append(PlanningDiagnostic("error", "missing_callback_boundary_type", f"module '{module_id}' lacks callback/event boundary target '{target_id}'", path))
         concept_counts: dict[str, int] = {}
+        packet_stems: set[str] = set()
+        payload_stems: set[str] = set()
         for item in module_types:
             key = str(item.get("kind", ""))
             if key in {"config_struct", "result_struct", "internal_state"}:
                 concept_counts[key] = concept_counts.get(key, 0) + 1
+            name_key = normalize_type_key(str(item.get("name", "")).removeprefix("struct ").removesuffix("_t"))
+            concept_stem = name_key.replace("packet", "").replace("payload", "").strip("_")
+            if "packet" in name_key:
+                packet_stems.add(concept_stem)
+            if "payload" in name_key:
+                payload_stems.add(concept_stem)
         for key, count in concept_counts.items():
             if count > 1:
                 diagnostics.append(PlanningDiagnostic("warning", "duplicate_concept_type", f"module '{module_id}' has {count} {key} types", path))
+        overlap = packet_stems & payload_stems
+        if overlap:
+            diagnostics.append(PlanningDiagnostic("warning", "duplicate_packet_payload_concept", f"module '{module_id}' has overlapping packet/payload concepts: {', '.join(sorted(overlap)[:4])}", path))
     return diagnostics
 
 
@@ -1048,6 +1162,36 @@ def validate_type_inventory_repair_patch(patch: dict[str, Any], candidate: dict[
         if type_id in seen_updates:
             diagnostics.append(PlanningDiagnostic("error", "repair_duplicate_update_type", f"duplicate update for type '{type_id}'", path))
         seen_updates.add(type_id)
+    return diagnostics
+
+
+def validate_type_filling_candidate(candidate: dict[str, Any], module_artifacts: list[dict[str, Any]], *, path: str | None = None) -> list[PlanningDiagnostic]:
+    diagnostics = _shape(candidate, TYPE_FILLING_CANDIDATE_SCHEMA_VERSION, path=path)
+    if has_errors(diagnostics):
+        return diagnostics
+    module_ids = _module_artifact_ids(module_artifacts)
+    module_id = str(candidate.get("module_id", ""))
+    if module_id not in module_ids:
+        diagnostics.append(PlanningDiagnostic("error", "unknown_type_filling_module", f"candidate module_id '{module_id}' is not a module", path))
+    seen_slots: set[str] = set()
+    for filling in candidate.get("slot_fillings", []):
+        slot_id = str(filling.get("slot_id", ""))
+        if slot_id in seen_slots:
+            diagnostics.append(PlanningDiagnostic("error", "duplicate_type_slot_filling", f"duplicate slot filling '{slot_id}'", path))
+        seen_slots.add(slot_id)
+        for dependency in filling.get("dependencies", []):
+            if str(dependency).startswith(("state:", "message:", "field:", "handler:", "func:", "file:", "module:")):
+                diagnostics.append(PlanningDiagnostic("error", "invalid_type_filling_ref_namespace", f"slot '{slot_id}' uses non-type dependency '{dependency}'", path))
+    seen_proposals: set[str] = set()
+    for proposal in candidate.get("optional_type_proposals", []):
+        key = str(proposal.get("proposal_key", ""))
+        if key in seen_proposals:
+            diagnostics.append(PlanningDiagnostic("error", "duplicate_optional_type_proposal", f"duplicate optional type proposal '{key}'", path))
+        seen_proposals.add(key)
+        if not str(proposal.get("expansion_reason", "")).strip():
+            diagnostics.append(PlanningDiagnostic("error", "optional_type_missing_expansion_reason", f"optional type proposal '{key}' lacks expansion_reason", path))
+        if not [ref for ref in proposal.get("source_refs", []) if str(ref).strip()]:
+            diagnostics.append(PlanningDiagnostic("error", "optional_type_missing_source_refs", f"optional type proposal '{key}' lacks source_refs", path))
     return diagnostics
 
 
@@ -1115,6 +1259,24 @@ def validate_function_inventory_candidate(candidate: dict[str, Any], module_arti
                 diagnostics.append(PlanningDiagnostic("error", "unknown_function_field_ref", f"function '{function_id}' references unknown field '{field_id}'", path))
         if function["coder_function_type"] not in {"ALGORITHM", "EVENT", "ENTRYPOINT"}:
             diagnostics.append(PlanningDiagnostic("error", "invalid_coder_function_type", f"function '{function_id}' has non-coder function type '{function['coder_function_type']}'", path))
+        if not _is_public_function(function) and _looks_like_abstract_family_function_name(str(name)):
+            diagnostics.append(
+                PlanningDiagnostic(
+                    "warning",
+                    "abstract_function_family_name",
+                    f"internal function '{function_id}' uses an abstract decomposition family name; prefer a concrete implementation helper name",
+                    path,
+                )
+            )
+        if _safe_id(str(name)) in NON_FUNCTION_LIFECYCLE_NAMES:
+            diagnostics.append(
+                PlanningDiagnostic(
+                    "warning",
+                    "non_function_lifecycle_name_in_inventory",
+                    f"function inventory contains lifecycle actor name '{name}' as a function; use a concrete module-owned function name",
+                    path,
+                )
+            )
     candidate_caps = {cap for function in candidate["functions"] for cap in function["capability_ids"]}
     unresolved = _unresolved_targets(candidate)
     if "message_decode" in candidate_caps and "parser" not in kinds and "message_decode" not in unresolved:
@@ -1131,6 +1293,28 @@ def validate_function_inventory_candidate(candidate: dict[str, Any], module_arti
         for function in core_design.get("function_contracts", [])
         if isinstance(function, dict) and str(function.get("name", "")).strip()
     }
+    all_function_ids = {
+        str(function.get("function_id", "")).strip()
+        for function in candidate.get("functions", [])
+        if isinstance(function, dict) and str(function.get("function_id", "")).strip()
+    } | {
+        str(function.get("function_id", "")).strip()
+        for function in core_design.get("function_contracts", [])
+        if isinstance(function, dict) and str(function.get("function_id", "")).strip()
+    }
+    for assumption in candidate.get("assumptions", []):
+        if not isinstance(assumption, dict):
+            continue
+        target_id = str(assumption.get("target_id", "")).strip()
+        if target_id.startswith("fn:") and target_id not in all_function_ids:
+            diagnostics.append(
+                PlanningDiagnostic(
+                    "warning",
+                    "assumption_function_reference_unresolved",
+                    f"assumption '{assumption.get('assumption_id', '')}' references unknown function '{target_id}'",
+                    path,
+                )
+            )
     blocking_unresolved = _blocking_unresolved_targets(candidate)
     for module_id in sorted(candidate_module_ids & module_ids):
         expected_artifact_funcs = {
@@ -1155,6 +1339,9 @@ def validate_function_inventory_candidate(candidate: dict[str, Any], module_arti
             for function in candidate.get("functions", [])
             if isinstance(function, dict) and str(function.get("module_id", "")) == module_id
         ]
+        missing_trace = [str(function.get("function_id", "")) for function in module_functions if not [ref for ref in function.get("trace_ref_keys", []) if str(ref).strip()]]
+        if missing_trace:
+            diagnostics.append(PlanningDiagnostic("warning", "function_inventory_missing_trace_refs", f"module '{module_id}' has {len(missing_trace)} function inventory entries without trace_ref_keys", path))
         owned_handler_ids = {
             str(handler.get("handler_id", ""))
             for handler in core_design.get("handler_matrix", [])
@@ -1196,6 +1383,18 @@ def validate_function_inventory_candidate(candidate: dict[str, Any], module_arti
                         diagnostics.append(PlanningDiagnostic("error", "type_function_reference_unresolved", f"type '{type_item.get('type_id')}' references unknown function '{ref}'", path))
         internal_functions = [function for function in module_functions if not _is_public_function(function)]
         module_text = _artifact_semantic_text(module)
+        provider_ids = {str(dep) for dep in module.get("dependencies", []) if str(dep).strip()}
+        provider_text = " ".join(_artifact_semantic_text(modules_by_id.get(dep, {})) for dep in provider_ids).lower()
+        has_codec_provider = any(term in provider_text or any(term in dep.lower() for dep in provider_ids) for term in ("codec", "parser", "encoder", "decoder", "message_decode", "message_encode", "wire format", "packet"))
+        is_transport_only = _has_any(module_text, {"network", "transport", "socket", "tcp", "udp", "epoll", "connection", "read", "write", "send", "flush", "close"}) and not _has_any(module_text, {"message_decode", "message_encode"})
+        boundary_codec_helpers = [
+            function.get("function_id", "")
+            for function in module_functions
+            if str(function.get("function_kind", "")) in {"parser", "serializer"}
+            and _has_any(_function_text(function), {"decode message", "encode message", "wire field", "packet", "protocol bytes"})
+        ]
+        if is_transport_only and has_codec_provider and boundary_codec_helpers:
+            diagnostics.append(PlanningDiagnostic("warning", "wire_format_boundary_in_transport_module", f"transport module '{module_id}' appears to include codec helpers despite a provider codec boundary", path))
         if expected_artifact_funcs and not internal_functions and inventory_names and inventory_names.issubset(expected_artifact_funcs):
             diagnostics.append(
                 PlanningDiagnostic(
@@ -1245,7 +1444,7 @@ def validate_function_inventory_candidate(candidate: dict[str, Any], module_arti
         function_text = " ".join(_function_text(function) for function in module_functions)
         module_or_function_text = f"{module_text} {function_text}"
         owns_parser = _has_any(module_text, {"decode", "decoder", "parse", "parser", "framing", "wire format", "delimiter", "length", "field", "header", "option"})
-        owns_serializer = _has_any(module_text, {"encode", "encoder", "serialize", "serializer", "response", "reply", "writer", "ack", "status code"})
+        owns_serializer = _has_any(module_text, {"encode", "encoder", "serialize", "serializer", "response", "reply", "writer", "status code"})
         owns_dispatch = _has_any(module_text, {"dispatch", "handler", "state machine", "semantic", "protocol event", "callback", "orchestration"})
         owns_resource = _has_any(module_text, {"resource", "session", "transaction", "connection", "state", "lifecycle", "runtime", "registry", "payload", "buffer", "endpoint"})
         if owns_parser and not any(str(function.get("function_kind", "")) == "parser" for function in module_functions):
@@ -1295,6 +1494,33 @@ def validate_function_inventory_candidate(candidate: dict[str, Any], module_arti
                 path,
             )
         )
+    return diagnostics
+
+
+def validate_function_annotation_candidate(candidate: dict[str, Any], module_artifacts: list[dict[str, Any]], *, path: str | None = None) -> list[PlanningDiagnostic]:
+    diagnostics = _shape(candidate, FUNCTION_ANNOTATION_CANDIDATE_SCHEMA_VERSION, path=path)
+    if has_errors(diagnostics):
+        return diagnostics
+    module_ids = _module_artifact_ids(module_artifacts)
+    module_id = str(candidate.get("module_id", ""))
+    if module_id not in module_ids:
+        diagnostics.append(PlanningDiagnostic("error", "unknown_function_annotation_module", f"candidate module_id '{module_id}' is not a module", path))
+    seen_seeds: set[str] = set()
+    for annotation in candidate.get("seed_annotations", []):
+        seed_id = str(annotation.get("seed_id", ""))
+        if seed_id in seen_seeds:
+            diagnostics.append(PlanningDiagnostic("error", "duplicate_function_seed_annotation", f"duplicate seed annotation '{seed_id}'", path))
+        seen_seeds.add(seed_id)
+    seen_proposals: set[str] = set()
+    for proposal in candidate.get("optional_function_proposals", []):
+        key = str(proposal.get("proposal_key", ""))
+        if key in seen_proposals:
+            diagnostics.append(PlanningDiagnostic("error", "duplicate_optional_function_proposal", f"duplicate optional function proposal '{key}'", path))
+        seen_proposals.add(key)
+        if not str(proposal.get("expansion_reason", "")).strip():
+            diagnostics.append(PlanningDiagnostic("error", "optional_function_missing_expansion_reason", f"optional function proposal '{key}' lacks expansion_reason", path))
+        if not [ref for ref in proposal.get("source_refs", []) if str(ref).strip()]:
+            diagnostics.append(PlanningDiagnostic("error", "optional_function_missing_source_refs", f"optional function proposal '{key}' lacks source_refs", path))
     return diagnostics
 
 

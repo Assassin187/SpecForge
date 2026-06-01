@@ -7,7 +7,7 @@ from ..schemas.implementation_plan import SCHEMA_VERSION
 from .coder_spec_lowering import normalize_param_ownership_for_coder
 from .dependencies import derive_dependency_graph
 from .implementation_plan import _capability_refs, _field_value, _function_signature, _handler_surfaces, _safe_id, _surface_units, _target_directives, _wire_fields
-from .implementation_plan_context import SYSTEM_TYPE_IDS, derive_type_generation_targets, derive_type_obligations, normalize_type_inventory_candidate
+from .implementation_plan_context import SYSTEM_TYPE_IDS, normalize_type_inventory_candidate
 
 
 def _constraint_ids(constraints: dict[str, Any]) -> list[str]:
@@ -49,9 +49,6 @@ def _error_behavior_text(value: Any) -> str:
         f"recovery={value.get('recovery', 'unknown')}; "
         f"return_policy={value.get('return_policy', 'unknown')}"
     )
-
-
-LIFECYCLE_ROLES = ("runtime_create", "runtime_start", "runtime_run", "runtime_destroy")
 
 
 def _lifecycle_name_matches(action: str, name: str) -> bool:
@@ -455,338 +452,12 @@ def merge_module_artifacts(draft: dict[str, Any], candidate: dict[str, Any]) -> 
     return result
 
 
-def _empty_callback_signature() -> dict[str, Any]:
-    return {"return_type": "", "params": []}
-
-
-def _empty_type_lifecycle() -> dict[str, list[str]]:
-    return {"created_by": [], "initialized_by": [], "destroyed_by": [], "freed_by": []}
-
-
-def _type_inventory_item(
-    *,
-    module_id: str,
-    name: str,
-    kind: str,
-    visibility: str,
-    defined_in: str,
-    purpose: str,
-    related_functions: list[str] | None = None,
-    lifecycle: dict[str, list[str]] | None = None,
-    trace_ref_keys: list[str] | None = None,
-) -> dict[str, Any]:
-    return {
-        "type_id": f"type:{module_id}:{_safe_id(name)}",
-        "name": name,
-        "module_id": module_id,
-        "kind": kind,
-        "visibility": visibility,
-        "defined_in": defined_in,
-        "purpose": purpose,
-        "fields": [],
-        "enum_values": [],
-        "callback_signature": _empty_callback_signature(),
-        "ownership_lifetime": "",
-        "lifecycle": lifecycle or _empty_type_lifecycle(),
-        "related_functions": related_functions or [],
-        "dependencies": [],
-        "trace_ref_keys": trace_ref_keys or [],
-        "status": "inferred",
-    }
-
-
-def _type_inventory_field(
-    name: str,
-    field_type: str,
-    *,
-    type_ref: str = "",
-    ownership: str = "BORROWED",
-    lifetime: str = "valid while parent type is valid",
-    length_field: str = "",
-    capacity_field: str = "",
-    validation_notes: str = "",
-) -> dict[str, Any]:
-    return {
-        "field_name": name,
-        "field_type": field_type,
-        "type_ref": type_ref,
-        "required": True,
-        "ownership": ownership,
-        "lifetime": lifetime,
-        "length_field": length_field,
-        "capacity_field": capacity_field,
-        "validation_notes": validation_notes,
-    }
-
-
-def _system_type_ref(field_type: str) -> str:
-    raw = str(field_type).replace("const", "").replace("*", "").strip()
-    return raw if raw in SYSTEM_TYPE_IDS else ""
-
-
-def _type_ref_for_field(field_type: str) -> str:
-    raw = _system_type_ref(field_type)
-    if raw:
-        return raw
-    clean = str(field_type).replace("const", "").replace("*", "").strip()
-    if clean and clean not in {"union"}:
-        return f"type:{clean}" if clean.endswith("_t") else ""
-    return ""
-
-
-def _add_or_update_generated_type(types: list[dict[str, Any]], item: dict[str, Any]) -> None:
-    key = _safe_id(str(item.get("name", "")).removeprefix("struct "))
-    for existing in types:
-        if _safe_id(str(existing.get("name", "")).removeprefix("struct ")) == key:
-            if not existing.get("fields") and item.get("fields"):
-                existing["kind"] = item["kind"]
-                existing["fields"] = deepcopy(item["fields"])
-                existing["enum_values"] = deepcopy(item.get("enum_values", []))
-                existing["callback_signature"] = deepcopy(item.get("callback_signature", existing.get("callback_signature", _empty_callback_signature())))
-                existing["ownership_lifetime"] = item.get("ownership_lifetime", existing.get("ownership_lifetime", ""))
-                existing["lifecycle"] = deepcopy(item.get("lifecycle", existing.get("lifecycle", _empty_type_lifecycle())))
-                existing["related_functions"] = sorted(set(existing.get("related_functions", []) + item.get("related_functions", [])))
-            return
-    types.append(item)
-
-
-def _apply_type_generation_targets(draft: dict[str, Any], module_artifact: dict[str, Any], types: list[dict[str, Any]], artifact_funcs: list[str], planning_ir: dict[str, Any] | None = None) -> None:
-    module_id = str(module_artifact.get("module_id", "module"))
-    for target in derive_type_generation_targets(draft, module_artifact, planning_ir):
-        suggested = str(target.get("suggested_name", "")).strip()
-        if not suggested:
-            continue
-        target_kind = str(target.get("target_kind", ""))
-        if target_kind == "packet_enum":
-            enum_type = _type_inventory_item(
-                module_id=module_id,
-                name=suggested,
-                kind="enum",
-                visibility="public",
-                defined_in="public_header",
-                purpose=str(target.get("reason", "")),
-                related_functions=artifact_funcs,
-                trace_ref_keys=target.get("trace_ref_keys", []),
-            )
-            enum_type["enum_values"] = [
-                {
-                    "name": f"{_safe_id(suggested).removesuffix('_t').upper()}_{_safe_id(str(field.get('field_name', 'message'))).upper()}",
-                    "value": str(field.get("value", index + 1)),
-                    "role": str(field.get("field_name", "")),
-                }
-                for index, field in enumerate(target.get("required_fields", []))
-                if isinstance(field, dict)
-            ]
-            _add_or_update_generated_type(types, enum_type)
-        elif target_kind == "payload_struct":
-            payload_type = _type_inventory_item(
-                module_id=module_id,
-                name=suggested,
-                kind="struct",
-                visibility="public",
-                defined_in="public_header",
-                purpose=str(target.get("reason", "")),
-                related_functions=artifact_funcs,
-                trace_ref_keys=target.get("trace_ref_keys", []),
-            )
-            payload_type["fields"] = [
-                _type_inventory_field(
-                    _safe_id(str(field.get("field_name", "field"))),
-                    str(field.get("field_type") or "uint8_t"),
-                    type_ref=_type_ref_for_field(str(field.get("field_type") or "")),
-                    ownership="OWNED" if "*" in str(field.get("field_type", "")) else "BORROWED",
-                    lifetime="owned by packet until packet cleanup" if "*" in str(field.get("field_type", "")) else "valid while packet is valid",
-                    length_field=f"{_safe_id(str(field.get('field_name', 'field')))}_len" if str(field.get("field_type", "")) == "uint8_t*" and not str(field.get("field_name", "")).endswith("_len") else "",
-                    validation_notes=str(field.get("source_field_id", "")),
-                )
-                for field in target.get("required_fields", [])
-                if isinstance(field, dict) and str(field.get("field_name", "")).strip()
-            ]
-            if any(field.get("ownership") == "OWNED" for field in payload_type["fields"]):
-                packet_free = f"{_safe_id(str(draft.get('protocol_name', 'protocol')))}_packet_free"
-                payload_type["ownership_lifetime"] = "Owned payload fields are released by packet cleanup/free path."
-                payload_type["lifecycle"]["freed_by"] = [packet_free]
-                payload_type["related_functions"] = sorted(set(payload_type["related_functions"] + [packet_free]))
-            _add_or_update_generated_type(types, payload_type)
-        elif target_kind == "packet_container_struct":
-            packet_type = _type_inventory_item(
-                module_id=module_id,
-                name=suggested,
-                kind="struct",
-                visibility="public",
-                defined_in="public_header",
-                purpose=str(target.get("reason", "")),
-                related_functions=artifact_funcs,
-                trace_ref_keys=target.get("trace_ref_keys", []),
-            )
-            enum_name = str(next((item.get("suggested_name", "") for item in derive_type_generation_targets(draft, module_artifact, planning_ir) if item.get("target_kind") == "packet_enum"), ""))
-            packet_fields: list[dict[str, Any]] = []
-            for field in target.get("required_fields", []):
-                if not isinstance(field, dict):
-                    continue
-                field_name = _safe_id(str(field.get("field_name", "field")))
-                field_type = str(field.get("field_type") or "uint8_t")
-                notes = str(field.get("source_field_id", ""))
-                variants = field.get("variants", [])
-                if isinstance(variants, list) and variants:
-                    notes = "variants: " + "; ".join(f"{variant.get('field_name')}={variant.get('field_type')}" for variant in variants if isinstance(variant, dict))
-                packet_fields.append(_type_inventory_field(field_name, field_type, type_ref=enum_name if field_name == "type" and enum_name else _type_ref_for_field(field_type), validation_notes=notes))
-            packet_type["fields"] = packet_fields or [_type_inventory_field("type", enum_name or "uint8_t", type_ref=enum_name, validation_notes="packet discriminator")]
-            packet_type["lifecycle"]["freed_by"] = [f"{suggested.removesuffix('_t')}_free"]
-            packet_type["ownership_lifetime"] = "Packet may own dynamic payload fields; release through packet cleanup/free path."
-            _add_or_update_generated_type(types, packet_type)
-        elif target_kind == "owned_buffer":
-            buffer_type = _type_inventory_item(
-                module_id=module_id,
-                name=suggested,
-                kind="owned_buffer",
-                visibility="public",
-                defined_in="public_header",
-                purpose=str(target.get("reason", "")),
-                related_functions=artifact_funcs,
-                trace_ref_keys=target.get("trace_ref_keys", []),
-            )
-            buffer_type["fields"] = [
-                _type_inventory_field("data", "uint8_t*", type_ref="uint8_t", ownership="OWNED", lifetime="owned until buffer free", length_field="len", capacity_field="cap"),
-                _type_inventory_field("len", "size_t", type_ref="size_t"),
-                _type_inventory_field("cap", "size_t", type_ref="size_t"),
-            ]
-            buffer_type["lifecycle"]["freed_by"] = [f"{suggested.removesuffix('_t')}_free"]
-            buffer_type["ownership_lifetime"] = "Owned byte buffer; caller must release through the free path."
-            _add_or_update_generated_type(types, buffer_type)
-        elif target_kind == "callback_or_event_boundary" and not any(item.get("name") == suggested for item in types):
-            callback_fields: list[dict[str, Any]] = []
-            for field in target.get("required_fields", []):
-                if not isinstance(field, dict):
-                    continue
-                callback_name = str(field.get("field_type", "")).strip()
-                if not callback_name:
-                    continue
-                callback_type = _type_inventory_item(
-                    module_id=module_id,
-                    name=callback_name,
-                    kind="callback_type",
-                    visibility="public",
-                    defined_in="public_header",
-                    purpose=f"Callback boundary for {field.get('field_name', 'event')}.",
-                    related_functions=artifact_funcs,
-                    trace_ref_keys=target.get("trace_ref_keys", []),
-                )
-                callback_type["callback_signature"] = {
-                    "return_type": "void",
-                    "params": [
-                        {"name": "user", "type": "void*", "type_ref": "void", "ownership": "BORROWED"},
-                        {"name": "connection", "type": "void*", "type_ref": "void", "ownership": "BORROWED"},
-                    ],
-                }
-                _add_or_update_generated_type(types, callback_type)
-                callback_fields.append(_type_inventory_field(str(field.get("field_name", "callback")), callback_name, type_ref=callback_name, ownership="BORROWED", lifetime="valid for runtime lifetime"))
-            callback_collection = _type_inventory_item(
-                module_id=module_id,
-                name=suggested,
-                kind="event_struct",
-                visibility="public",
-                defined_in="public_header",
-                purpose=str(target.get("reason", "")),
-                related_functions=artifact_funcs,
-                trace_ref_keys=target.get("trace_ref_keys", []),
-            )
-            callback_collection["fields"] = callback_fields
-            _add_or_update_generated_type(types, callback_collection)
-
-
-def _type_artifact_kind(name: str, role: str) -> tuple[str, str, str]:
-    text = f"{name} {role}".lower()
-    if "connection" in text and "server" not in text and any(word in text for word in ("per-connection", "socket", "fd", "buffer")):
-        return "internal_state", "module_internal", "source_file"
-    if name.endswith("_t") or any(word in text for word in ("opaque", "handle", "context")):
-        return "opaque_handle", "public", "public_header"
-    if any(word in text for word in ("buffer", "payload", "bytes")):
-        return "owned_buffer", "public", "public_header"
-    if any(word in text for word in ("callback", "cb", "hook")):
-        return "callback_type", "public", "public_header"
-    if any(word in text for word in ("enum", "flags", "bitflag")):
-        return "enum", "public", "public_header"
-    return "struct", "public", "public_header"
-
-
 def fallback_type_inventory(draft: dict[str, Any], module_artifact: dict[str, Any], planning_ir: dict[str, Any] | None = None) -> dict[str, Any]:
-    module_id = str(module_artifact.get("module_id", "module"))
-    protocol = _safe_id(str(draft.get("protocol_name", "protocol")))
-    artifact_funcs = [
-        str(item.get("name", "")).strip()
-        for item in module_artifact.get("artifacts", [])
-        if isinstance(item, dict) and str(item.get("kind", "")).upper() == "FUNC" and str(item.get("name", "")).strip()
-    ]
-    lifecycle = _empty_type_lifecycle()
-    lifecycle["created_by"] = [name for name in artifact_funcs if name.endswith(("_create", "_init", "_open"))]
-    lifecycle["initialized_by"] = [name for name in artifact_funcs if name.endswith(("_init", "_create", "_start"))]
-    lifecycle["destroyed_by"] = [name for name in artifact_funcs if name.endswith(("_destroy", "_close", "_deinit", "_cleanup"))]
-    lifecycle["freed_by"] = [name for name in artifact_funcs if name.endswith(("_free", "_destroy", "_close", "_cleanup"))]
-    types: list[dict[str, Any]] = []
-    for artifact in module_artifact.get("artifacts", []):
-        if not isinstance(artifact, dict) or str(artifact.get("kind", "")).upper() != "TYPE":
-            continue
-        name = str(artifact.get("name", "")).strip()
-        if not name:
-            continue
-        kind, visibility, defined_in = _type_artifact_kind(name, str(artifact.get("role", "")))
-        item = _type_inventory_item(
-            module_id=module_id,
-            name=name,
-            kind=kind,
-            visibility=visibility,
-            defined_in=defined_in,
-            purpose=str(artifact.get("role", "")) or f"Type artifact {name}.",
-            related_functions=artifact_funcs,
-            lifecycle=deepcopy(lifecycle),
-            trace_ref_keys=module_artifact.get("source_fact_ids", []),
-        )
-        if kind in {"owned_buffer", "struct"} and any(word in item["purpose"].lower() for word in ("owned", "allocated", "heap", "payload", "buffer")):
-            item["ownership_lifetime"] = "Owned data must be released by the module cleanup/free path."
-        types.append(item)
-    if not any(item["kind"] == "opaque_handle" for item in types):
-        handle = f"{protocol}_{_safe_id(module_id)}_t"
-        types.append(
-            _type_inventory_item(
-                module_id=module_id,
-                name=handle,
-                kind="opaque_handle",
-                visibility="public",
-                defined_in="public_header",
-                purpose="Opaque module context handle.",
-                related_functions=artifact_funcs,
-                lifecycle=deepcopy(lifecycle),
-                trace_ref_keys=module_artifact.get("source_fact_ids", []),
-            )
-        )
-    if module_artifact.get("state_owned") or module_artifact.get("owned_capabilities"):
-        state_name = f"struct {protocol}_{_safe_id(module_id)}"
-        state_key = _safe_id(state_name.removeprefix("struct "))
-        if not any(item.get("kind") == "internal_state" and _safe_id(str(item["name"]).removeprefix("struct ").removesuffix("_t")) == state_key for item in types):
-            types.append(
-                _type_inventory_item(
-                    module_id=module_id,
-                    name=state_name,
-                    kind="internal_state",
-                    visibility="private",
-                    defined_in="source_file",
-                    purpose="Private module context storage.",
-                    related_functions=artifact_funcs,
-                    lifecycle=deepcopy(lifecycle),
-                    trace_ref_keys=module_artifact.get("source_fact_ids", []),
-                )
-            )
-    _apply_type_generation_targets(draft, module_artifact, types, artifact_funcs, planning_ir)
-    return {
-        "schema_version": "type_inventory_candidate/v1",
-        "candidate_id": f"candidate:type_inventory:{module_id}",
-        "producer": _producer("5.4a_type_inventory", "type_inventory_candidate_prompt"),
-        "module_id": module_id,
-        "types": types,
-        "assumptions": [],
-        "unresolved_questions": [],
-    }
+    from .inventory_planning_space import build_type_planning_space
+    from .inventory_reconciliation import reconcile_type_filling_candidate
+
+    space = build_type_planning_space(draft, module_artifact, planning_ir)
+    return reconcile_type_filling_candidate(space, None)["candidate"]
 
 
 def _canonical_kind_for_type_inventory(kind: str) -> str:
@@ -866,29 +537,62 @@ def _replacement_function_name(functions: list[dict[str, Any]], action: str, typ
         "related_functions": (),
     }
     suffixes = suffixes_by_action.get(action, ())
+    base = _safe_id(str(type_name).removeprefix("struct ").removesuffix("_t"))
+    base_tail = base.removeprefix("mqtt_")
     if action == "related_functions":
-        base = _safe_id(str(type_name).removeprefix("struct ").removesuffix("_t"))
         for function in functions:
             name = str(function.get("name", ""))
             if base and base in _safe_id(name):
                 return name
         return ""
     for suffix in suffixes:
-        for function in functions:
+        candidates = [
+            function
+            for function in functions
+            if str(function.get("name", "")).endswith(suffix) and str(function.get("function_kind", "")) != "handler"
+        ]
+        preferred = [
+            function
+            for function in candidates
+            if base and (base in _safe_id(str(function.get("name", ""))) or (base_tail and base_tail in _safe_id(str(function.get("name", "")))))
+        ]
+        for function in [*preferred, *candidates]:
             name = str(function.get("name", ""))
-            if name.endswith(suffix) and str(function.get("function_kind", "")) != "handler":
+            if name:
                 return name
     return ""
+
+
+def _add_unresolved_type_function_ref(result: dict[str, Any], type_item: dict[str, Any], action: str, ref: str) -> None:
+    question_id = "q:type_function_ref:{module}:{type}:{action}:{ref}".format(
+        module=_safe_id(str(type_item.get("module_id", ""))),
+        type=_safe_id(str(type_item.get("type_id", type_item.get("name", "")))),
+        action=_safe_id(action),
+        ref=_safe_id(ref),
+    )
+    existing = {
+        str(item.get("question_id", ""))
+        for item in result.get("unresolved_questions", [])
+        if isinstance(item, dict)
+    }
+    if question_id in existing:
+        return
+    result.setdefault("unresolved_questions", []).append(
+        {
+            "question_id": question_id,
+            "target_kind": "function",
+            "target_id": ref,
+            "question": f"Resolve function reference '{ref}' for type '{type_item.get('type_id', type_item.get('name', ''))}'.",
+            "unresolved_reason": "The type lifecycle or related function reference did not match any concrete same-module function inventory entry after 5.4b reconciliation.",
+            "blocking": True,
+            "trace_ref_keys": [str(type_item.get("type_id", ""))],
+        }
+    )
 
 
 def reconcile_type_inventory_function_refs(draft: dict[str, Any]) -> dict[str, Any]:
     result = deepcopy(draft)
     functions_by_module: dict[str, list[dict[str, Any]]] = {}
-    function_names = {
-        str(function.get("name", ""))
-        for function in result.get("function_contracts", [])
-        if isinstance(function, dict) and str(function.get("name", "")).strip()
-    }
     for function in result.get("function_contracts", []):
         if isinstance(function, dict):
             functions_by_module.setdefault(str(function.get("module_id", "")), []).append(function)
@@ -896,16 +600,23 @@ def reconcile_type_inventory_function_refs(draft: dict[str, Any]) -> dict[str, A
         if not isinstance(type_item, dict):
             continue
         module_functions = functions_by_module.get(str(type_item.get("module_id", "")), [])
+        module_function_names = {
+            str(function.get("name", ""))
+            for function in module_functions
+            if str(function.get("name", "")).strip()
+        }
         lifecycle = type_item.get("lifecycle", {}) if isinstance(type_item.get("lifecycle"), dict) else {}
         for action in ("created_by", "initialized_by", "destroyed_by", "freed_by"):
             repaired: list[str] = []
             replacement = ""
             for name in lifecycle.get(action, []):
                 name = str(name)
-                if name in function_names:
+                if name in module_function_names:
                     repaired.append(name)
                     continue
                 replacement = replacement or _replacement_function_name(module_functions, action, str(type_item.get("name", "")))
+                if not replacement:
+                    _add_unresolved_type_function_ref(result, type_item, action, name)
             if replacement and replacement not in repaired:
                 repaired.append(replacement)
             lifecycle[action] = repaired
@@ -915,10 +626,17 @@ def reconcile_type_inventory_function_refs(draft: dict[str, Any]) -> dict[str, A
         replacement = ""
         for name in type_item.get("related_functions", []):
             name = str(name)
-            if name in function_names:
+            if name in module_function_names:
                 related.append(name)
                 continue
-            replacement = replacement or _replacement_function_name(module_functions, "related_functions", str(type_item.get("name", "")))
+            related_action = "related_functions"
+            if name.endswith(("_cleanup", "_destroy", "_free", "_close", "_deinit")):
+                related_action = "destroyed_by"
+            elif name.endswith(("_init", "_create", "_open", "_start")):
+                related_action = "initialized_by"
+            replacement = replacement or _replacement_function_name(module_functions, related_action, str(type_item.get("name", ""))) or _replacement_function_name(module_functions, "related_functions", str(type_item.get("name", "")))
+            if not replacement:
+                _add_unresolved_type_function_ref(result, type_item, "related_functions", name)
         if replacement and replacement not in related:
             related.append(replacement)
         type_item["related_functions"] = related
@@ -945,222 +663,12 @@ def apply_type_inventory_repair_patch(candidate: dict[str, Any], patch: dict[str
     return result
 
 
-def _contract_base(
-    *,
-    draft: dict[str, Any],
-    module_id: str,
-    action: str,
-    name: str,
-    function_kind: str,
-    purpose: str,
-    capability_ids: list[str],
-    exported: bool = False,
-    public_api_role: str = "",
-) -> dict[str, Any]:
-    visibility = "public" if exported else "internal"
-    return {
-        "function_id": f"fn:{module_id}:{action}",
-        "name": name,
-        "module_id": module_id,
-        "function_kind": function_kind,
-        "coder_function_type": "ALGORITHM",
-        "visibility": visibility,
-        "api_surface": "public" if exported else "module_internal",
-        "exported": exported,
-        "export_reason": "Exported by module artifact plan." if exported else "",
-        "public_api_role": public_api_role if exported else "",
-        "grouping_hint": module_id,
-        "purpose": purpose,
-        "capability_ids": capability_ids,
-        "covers_handler_ids": [],
-        "covers_message_ids": [],
-        "covers_field_ids": [],
-        "trace_ref_keys": [f"decision:function:{module_id}:{action}"],
-        "status": "inferred",
-    }
-
-
-def _artifact_function_kind(name: str) -> tuple[str, str, str]:
-    if name == "main":
-        return "public_api", "ENTRYPOINT", "runtime_entrypoint"
-    if name.endswith(("_create", "_destroy", "_start", "_run", "_serve", "_stop")):
-        role = "runtime_run" if name.endswith(("_run", "_serve")) else f"runtime_{name.rsplit('_', 1)[-1]}"
-        return "resource_lifecycle", "ALGORITHM", role
-    if "decode" in name or "decoder" in name:
-        return "parser", "ALGORITHM", "decoder"
-    if "encode" in name or "encoder" in name:
-        return "serializer", "ALGORITHM", "encoder"
-    if any(word in name for word in ("route", "publish", "subscribe", "handle", "dispatch")):
-        return "handler", "ALGORITHM", "module_boundary_operation"
-    return "public_api", "ALGORITHM", "module_boundary_operation"
-
-
 def fallback_function_inventory(draft: dict[str, Any], module_artifact: dict[str, Any]) -> dict[str, Any]:
-    protocol = str(draft.get("protocol_name", "protocol"))
-    module_id = str(module_artifact.get("module_id", "module"))
-    prefix = f"{_safe_id(protocol)}_{_safe_id(module_id)}"
-    owned = [str(cap) for cap in module_artifact.get("owned_capabilities", [])]
-    artifact_functions = [
-        item
-        for item in module_artifact.get("artifacts", [])
-        if isinstance(item, dict) and str(item.get("kind", "")).upper() == "FUNC" and str(item.get("name", "")).strip()
-    ]
-    def add_type_obligation_functions(functions: list[dict[str, Any]]) -> None:
-        existing_names = {str(function.get("name", "")) for function in functions}
-        existing_ids = {str(function.get("function_id", "")) for function in functions}
-        for obligation in derive_type_obligations(draft, module_artifact):
-            if any(name in existing_names for name in obligation.get("required_function_names", [])):
-                continue
-            names = [str(name) for name in obligation.get("required_function_names", []) if str(name).strip()]
-            if not names:
-                continue
-            name = names[0]
-            action = _safe_id(name.removeprefix(f"{_safe_id(protocol)}_")) or _safe_id(str(obligation.get("action", name)))
-            function_id = f"fn:{module_id}:{action}"
-            if function_id in existing_ids:
-                continue
-            exported = str(obligation.get("visibility_hint", "")) == "public"
-            kind = str(obligation.get("required_function_kind", "resource_lifecycle")) or "resource_lifecycle"
-            item = _contract_base(
-                draft=draft,
-                module_id=module_id,
-                action=action,
-                name=name,
-                function_kind=kind if kind in {"public_api", "handler", "parser", "serializer", "validator", "state_machine", "resource_lifecycle", "error_helper", "internal_helper"} else "internal_helper",
-                purpose=f"Satisfy type obligation {obligation.get('obligation_id')}: {obligation.get('reason')}",
-                capability_ids=owned[:1],
-                exported=exported,
-                public_api_role="module_boundary_operation" if exported else "",
-            )
-            functions.append(item)
-            existing_names.add(name)
-            existing_ids.add(function_id)
+    from .inventory_planning_space import build_function_planning_space
+    from .inventory_reconciliation import reconcile_function_annotation_candidate
 
-    def add_owned_handler_functions(functions: list[dict[str, Any]]) -> None:
-        covered = {
-            str(handler_id)
-            for function in functions
-            if isinstance(function, dict) and str(function.get("function_kind", "")) == "handler"
-            for handler_id in function.get("covers_handler_ids", [])
-            if str(handler_id).strip()
-        }
-        existing_names = {str(function.get("name", "")) for function in functions}
-        existing_ids = {str(function.get("function_id", "")) for function in functions}
-        handler_caps = [cap for cap in owned if cap in {"semantic_dispatch", "state_machine", "protocol_error_policy"}]
-        for handler in draft.get("handler_matrix", []):
-            if not isinstance(handler, dict) or str(handler.get("owner_module_id", "")) != module_id:
-                continue
-            handler_id = str(handler.get("handler_id", "")).strip()
-            if not handler_id or handler_id in covered:
-                continue
-            surface = str(handler.get("trigger") or handler_id)
-            action = f"handle_{_safe_id(surface) or _safe_id(handler_id)}"
-            name = f"{prefix}_{action}"
-            function_id = f"fn:{module_id}:{action}"
-            if name in existing_names or function_id in existing_ids:
-                action = f"handle_{_safe_id(handler_id)}"
-                name = f"{prefix}_{action}"
-            item = _contract_base(
-                draft=draft,
-                module_id=module_id,
-                action=action,
-                name=name,
-                function_kind="handler",
-                purpose=f"Handle target-scope surface unit {surface}.",
-                capability_ids=handler_caps,
-            )
-            item["covers_handler_ids"] = [handler_id]
-            functions.append(item)
-            covered.add(handler_id)
-            existing_names.add(name)
-            existing_ids.add(str(item.get("function_id", "")))
-
-    if artifact_functions:
-        functions = []
-        for artifact in artifact_functions:
-            name = str(artifact.get("name", "")).strip()
-            function_kind, coder_function_type, public_api_role = _artifact_function_kind(name)
-            action = _safe_id(name.removeprefix(f"{_safe_id(protocol)}_")) or _safe_id(name)
-            item = _contract_base(
-                draft=draft,
-                module_id=module_id,
-                action=action,
-                name=name,
-                function_kind=function_kind,
-                purpose=str(artifact.get("role", "")) or f"Implement artifact {name}.",
-                capability_ids=owned[:1],
-                exported=True,
-                public_api_role=public_api_role,
-            )
-            item["coder_function_type"] = coder_function_type
-            functions.append(item)
-        add_owned_handler_functions(functions)
-        add_type_obligation_functions(functions)
-        return {
-            "schema_version": "function_inventory_candidate/v2",
-            "candidate_id": f"candidate:function_inventory:{module_id}",
-            "producer": _producer("5.4b_function_inventory", "function_inventory_candidate_prompt"),
-            "module_id": module_id,
-            "functions": functions,
-            "assumptions": [],
-            "unresolved_questions": [],
-        }
-    public_roles: list[str] = []
-    exported_caps = owned
-    functions = [
-        _contract_base(draft=draft, module_id=module_id, action="create", name=f"{prefix}_create", function_kind="resource_lifecycle", purpose=f"Allocate and initialize the {module_id} module context.", capability_ids=owned[:1], exported="runtime_create" in public_roles, public_api_role="runtime_create"),
-        _contract_base(draft=draft, module_id=module_id, action="destroy", name=f"{prefix}_destroy", function_kind="resource_lifecycle", purpose=f"Release resources owned by the {module_id} module context.", capability_ids=owned[:1], exported="runtime_destroy" in public_roles, public_api_role="runtime_destroy"),
-    ]
-    for action in ("start", "run"):
-        role = f"runtime_{action}"
-        if role in public_roles:
-            functions.append(
-                _contract_base(
-                    draft=draft,
-                    module_id=module_id,
-                    action=action,
-                    name=f"{prefix}_{action}",
-                    function_kind="public_api",
-                    purpose=f"{action.capitalize()} the {module_id} key flow runtime boundary.",
-                    capability_ids=exported_caps,
-                    exported=True,
-                    public_api_role=role,
-                )
-            )
-    for index, role in enumerate(public_roles or ["module_boundary_operation"]):
-        if role in LIFECYCLE_ROLES:
-            continue
-        action = _safe_id(role) or f"public_{index + 1}"
-        functions.append(
-            _contract_base(
-                draft=draft,
-                module_id=module_id,
-                action=action,
-                name=f"{prefix}_{action}",
-                function_kind="public_api",
-                purpose=f"Public module API for {role}.",
-                capability_ids=exported_caps,
-                exported=True,
-                public_api_role=role,
-            )
-        )
-    if any(cap in owned for cap in {"message_decode"}) or any("decode" in cap or "framing" in cap for cap in owned):
-        functions.append(_contract_base(draft=draft, module_id=module_id, action="decode_message", name=f"{prefix}_decode_message", function_kind="parser", purpose="Decode protocol message data owned by this module.", capability_ids=[cap for cap in owned if "decode" in cap or "framing" in cap]))
-    if any(cap in owned for cap in {"message_encode"}) or any("encode" in cap or "framing" in cap for cap in owned):
-        functions.append(_contract_base(draft=draft, module_id=module_id, action="encode_message", name=f"{prefix}_encode_message", function_kind="serializer", purpose="Encode protocol message data owned by this module.", capability_ids=[cap for cap in owned if "encode" in cap or "framing" in cap]))
-    if any(cap in owned for cap in {"semantic_dispatch", "state_machine", "protocol_error_policy"}):
-        functions.append(_contract_base(draft=draft, module_id=module_id, action="dispatch", name=f"{prefix}_dispatch", function_kind="handler", purpose="Dispatch protocol semantics owned by this module.", capability_ids=[cap for cap in owned if cap in {"semantic_dispatch", "state_machine", "protocol_error_policy"}]))
-        add_owned_handler_functions(functions)
-    add_type_obligation_functions(functions)
-    return {
-        "schema_version": "function_inventory_candidate/v2",
-        "candidate_id": f"candidate:function_inventory:{module_id}",
-        "producer": _producer("5.4b_function_inventory", "function_inventory_candidate_prompt"),
-        "module_id": module_id,
-        "functions": functions,
-        "assumptions": [],
-        "unresolved_questions": [],
-    }
+    space = build_function_planning_space(draft, module_artifact)
+    return reconcile_function_annotation_candidate(space, None)["candidate"]
 
 
 def merge_function_inventory(draft: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any]:

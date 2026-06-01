@@ -15,7 +15,9 @@ from agent.planning.orchestrator import PlanningAgent, compare_output_to_referen
 from agent.planning.stages.architecture import build_architecture_candidates, select_architecture
 from agent.planning.stages.constraints import activate_constraints
 from agent.planning.stages.implementation_plan import build_implementation_plan
+from agent.planning.stages.implementation_plan_merger import fallback_function_inventory, fallback_type_inventory
 from agent.planning.stages.protocol_profile import build_protocol_profile
+from agent.planning.tests.test_validators import _augment_type_candidate, _ensure_type_release_functions
 from agent.planning.validators.planning_ir import validate_planning_ir
 
 
@@ -68,6 +70,37 @@ def _noop_profile_patch_candidate() -> dict:
         "uncertainties": [],
         "rationale": "No profile patch needed.",
     }
+
+
+def _fallback_inventory_candidate(prompt_name: str, messages: list[dict[str, str]]) -> dict | None:
+    if prompt_name == "type_inventory_candidate_prompt":
+        payload = json.loads(messages[1]["content"])
+        context = payload["type_inventory_context"]
+        draft = {
+            "protocol_name": "mqtt",
+            "module_artifacts": context["global_module_artifacts_reference"],
+            "canonical_types": context.get("canonical_types", []),
+            "state_design": context.get("state_design", []),
+            "resource_lifecycle": context.get("resource_lifecycle", []),
+            "error_strategy": context.get("error_strategy", []),
+            "handler_matrix": context.get("handler_matrix", []),
+        }
+        return _augment_type_candidate(fallback_type_inventory(draft, context["module_artifact"]), context)
+    if prompt_name == "function_inventory_candidate_prompt":
+        payload = json.loads(messages[1]["content"])
+        context = payload["function_inventory_context"]
+        draft = {
+            "protocol_name": "mqtt",
+            "module_artifacts": context["global_module_artifacts_reference"],
+            "type_inventory": context.get("current_module_type_inventory", []),
+            "handler_matrix": context.get("core_design_summary", {}).get("handler_matrix", []),
+            "traceability": {"required_capabilities": context.get("legal_id_universe", {}).get("capability_ids", [])},
+        }
+        return _ensure_type_release_functions(
+            fallback_function_inventory(draft, context["module_artifact"]),
+            context.get("current_module_type_inventory", []),
+        )
+    return None
 
 
 def _ranking_candidate(messages: list[dict[str, str]]) -> dict:
@@ -149,6 +182,9 @@ class PlanningCompatibilityDiscoveryTests(unittest.TestCase):
                     return architecture_candidates, [], {"mocked": True}
                 if prompt_name == "architecture_ranking_prompt":
                     return _ranking_candidate(messages), [], {"mocked": True}
+                inventory_candidate = _fallback_inventory_candidate(prompt_name, messages)
+                if inventory_candidate is not None:
+                    return inventory_candidate, [], {"mocked": True}
                 return None, [], {"mocked": True}
 
             with patch("agent.planning.orchestrator.request_json_candidate", side_effect=fake_request):
@@ -216,6 +252,9 @@ class PlanningCompatibilityDiscoveryTests(unittest.TestCase):
                     return architecture_candidates, [], {"mocked": True}
                 if prompt_name == "architecture_ranking_prompt":
                     return _ranking_candidate(messages), [], {"mocked": True}
+                inventory_candidate = _fallback_inventory_candidate(prompt_name, messages)
+                if inventory_candidate is not None:
+                    return inventory_candidate, [], {"mocked": True}
                 return None, [], {"mocked": True}
 
             output_root = tmp / "planning_out"
@@ -258,6 +297,9 @@ class PlanningCompatibilityDiscoveryTests(unittest.TestCase):
                     return architecture_candidates, [], {"mocked": True}
                 if prompt_name == "architecture_ranking_prompt":
                     return _ranking_candidate(messages), [], {"mocked": True}
+                inventory_candidate = _fallback_inventory_candidate(prompt_name, messages)
+                if inventory_candidate is not None:
+                    return inventory_candidate, [], {"mocked": True}
                 return None, [], {"mocked": True}
 
             source_dir = tmp / "manual_source"
@@ -378,6 +420,9 @@ class PlanningCompatibilityDiscoveryTests(unittest.TestCase):
                     return architecture_candidates, [], {"mocked": True}
                 if prompt_name == "architecture_ranking_prompt":
                     return _ranking_candidate(messages), [], {"mocked": True}
+                inventory_candidate = _fallback_inventory_candidate(prompt_name, messages)
+                if inventory_candidate is not None:
+                    return inventory_candidate, [], {"mocked": True}
                 return None, [], {"mocked": True}
 
             config = PlanningConfig(
@@ -413,6 +458,9 @@ class PlanningCompatibilityDiscoveryTests(unittest.TestCase):
                     return architecture_candidates, [], {"mocked": True}
                 if prompt_name == "architecture_ranking_prompt":
                     return _ranking_candidate(messages), [], {"mocked": True}
+                inventory_candidate = _fallback_inventory_candidate(prompt_name, messages)
+                if inventory_candidate is not None:
+                    return inventory_candidate, [], {"mocked": True}
                 return None, [], {"mocked": True}
 
             resumed_prompts: list[str] = []

@@ -38,6 +38,13 @@ LOCAL_ID_RULES = {
         "types[].type_id is a new local ID and should use type:{module_id}:{symbol}.",
         "dependencies, fields[].type_ref, and callback_signature.params[].type_ref are references; use local type_ids declared in this candidate, provider_public_types, or legal_id_universe.system_type_ids.",
     ],
+    "type_filling_candidate/v1": [
+        "candidate_id is a new local ID and should use candidate:type_filling:{module_id}.",
+        "slot_fillings[].slot_id must be copied exactly from type_planning_space mandatory_type_slots, derived_type_slots, or recommended_type_slots.",
+        "Do not assign final required type_id/name/module_id/kind/visibility; those are deterministic slot identity.",
+        "optional_type_proposals[].proposal_key is local. optional_type_proposals[].name_hint is only a hint; deterministic reconciliation assigns final identity.",
+        "dependencies, fields[].type_ref, and callback_signature.params[].type_ref are references and must use type_planning_space.allowed_type_refs or system types.",
+    ],
     "type_inventory_repair_patch/v1": [
         "patch_id is a new local ID and should use patch:type_inventory:{module_id}:{purpose}.",
         "added_types[].type_id is a new local ID and should use type:{module_id}:{symbol}.",
@@ -47,6 +54,13 @@ LOCAL_ID_RULES = {
         "candidate_id is a new local ID and should use candidate:function_inventory:{module_id}.",
         "functions[].function_id is a new local ID and should use fn:{module_id}:{action}.",
         "capability_ids, covers_handler_ids, covers_message_ids, and covers_field_ids are references and must come from legal_id_universe.",
+    ],
+    "function_annotation_candidate/v1": [
+        "candidate_id is a new local ID and should use candidate:function_annotation:{module_id}.",
+        "seed_annotations[].seed_id must be copied exactly from function_planning_space required or recommended seeds.",
+        "Do not assign final required function_id/name/module_id/kind/visibility; those are deterministic seed identity.",
+        "optional_function_proposals[].proposal_key is local. optional_function_proposals[].name_hint is only a hint; deterministic reconciliation assigns final identity.",
+        "capability_ids, covers_handler_ids, covers_message_ids, and covers_field_ids are references and must come from function_planning_space.legal_refs.",
     ],
     "function_inventory_repair_patch/v1": [
         "patch_id is a new local ID and should use patch:function_inventory:{module_id}:{purpose}.",
@@ -109,14 +123,26 @@ STAGE_SEMANTIC_RULES = {
         "related_functions should name the function artifacts or expected function inventory usage that creates, initializes, consumes, destroys, or frees the type.",
         "If a callback or event responsibility is present in the module role/artifacts/core design, represent callback_type or event_struct where it is needed for a stable boundary.",
     ],
+    "type_filling_candidate/v1": [
+        "Task definition: fill semantic details for the provided deterministic type_planning_space; do not generate a complete type inventory.",
+        "Preserve every mandatory, derived, and recommended slot identity. Use slot_fillings[].slot_id to attach fields, enum_values, callback_signature, ownership/lifetime, dependencies, assumptions, and unresolved questions.",
+        "The LLM is a local semantic proposal generator only. It may not delete, rename, re-module, re-kind, or change visibility for required slots.",
+        "optional_type_proposals are allowed only for justified module-local expansion. Each proposal must include expansion_reason and source_refs tied to message structure, field group, handler boundary, resource lifecycle, error strategy, parser/serializer need, callback/event boundary, coder compatibility, or explicit assumption.",
+        "Use only type_planning_space.allowed_type_refs for dependencies and type_ref fields. Never reference provider private types, unrelated module private types, state/message/field ids as type refs, or natural-language type names.",
+        "Declare ownership and lifetime for every pointer, string, and buffer field. Owned/resource/container/result types must declare lifecycle cleanup/free intent, but do not generate real function signatures or behavior.",
+        "Do not generate function inventory, signature, behavior, wire mapping, calls_allowed, file layout, dependency graph, or code.",
+    ],
     "type_inventory_repair_patch/v1": [
         "Return a minimal patch for the current module's existing type_inventory_candidate; do not return or rewrite a complete type_inventory_candidate.",
+        "Repair is small_patch_only: preserve useful existing candidate content and only fix the validator_errors listed in failure_context.",
+        "Output only type_inventory_repair_patch/v1 with added_types, updated_types, added_assumptions, and added_unresolved_questions; never output candidate_id or a full types array.",
         "Use added_types for missing artifact types, missing opaque handles, missing internal state, missing config, missing callback/event types, or genuinely needed unknown types.",
-        "Use updated_types to repair visibility, defined_in, fields, enum_values, callback_signature, ownership_lifetime, lifecycle, related_functions, dependencies, or status.",
+        "Use updated_types only for small corrections to description/boundary metadata such as visibility, defined_in, fields, enum_values, callback_signature, ownership_lifetime, lifecycle, related_functions, dependencies, or status.",
         "For unknown type references, prefer binding to an existing type before adding a new type.",
         "For private leaks, repair the boundary by changing visibility/defined_in only when that is semantically valid; otherwise leave an unresolved question for the later signature stage to use a public opaque handle.",
         "For ownership diagnostics, add only the missing ownership, lifetime, length_field, capacity_field, freed_by, or destroyed_by information.",
-        "Do not delete, rename, or change type_id/name/module_id/kind of existing types.",
+        "If the listed errors cannot be fixed with a small patch, add added_unresolved_questions instead of rewriting unrelated types.",
+        "Do not delete, rename, batch rewrite, or change type_id/name/module_id/kind of existing types.",
         "Do not include functions, signatures, state access, wire mappings, calls, files, dependency graphs, or code.",
     ],
     "function_inventory_candidate/v2": [
@@ -140,8 +166,9 @@ STAGE_SEMANTIC_RULES = {
         "For derived_public_api functions, export_reason must explain the stable boundary, public_api_role must describe the API role, and purpose must explain why the function cannot remain an internal helper. If that basis is weak, make it internal or add unresolved_questions.",
         "Do not create public APIs from examples, guessed names, naming preference, or protocol terms that merely sound important. Internal helpers do not need module_artifacts support.",
         "Selected decomposition hints in decomposition_context are heuristics for function families, not required function names; adapt them to the current module and do not copy them as prose.",
-        "selected_rule_ids, selected_decomposition_hints, expected_function_families_by_rule, and evidence_summary are the only decomposition rule context available to this prompt; do not assume access to the complete rule pool.",
+        "selected_rule_ids, selected_decomposition_hints, expected_function_families_by_rule, recommended_concrete_slots_by_rule, and evidence_summary are the only decomposition rule context available to this prompt; do not assume access to the complete rule pool.",
         "expected_function_families_by_rule lists responsibility families this module should try to cover with explainable public seeds or internal helpers.",
+        "recommended_concrete_slots_by_rule contains preferred concrete helper slots; do not turn abstract family names such as lifecycle_control, lookup_or_match, or create_configure_start_run_stop_destroy directly into function names.",
         "Coverage expectation: every mandatory FUNC seed must be covered; non-trivial parser, serializer, runtime, session, routing, orchestration, or resource-owning modules should include representative internal function families for their major responsibilities.",
         "If an expected function family cannot be reliably represented from the current trace/capability/module evidence, add an assumptions or unresolved_questions item explaining why.",
         "Do not mechanically generate helpers with no trace, capability, purpose, or module responsibility support; every added internal helper must have an explainable purpose.",
@@ -153,10 +180,30 @@ STAGE_SEMANTIC_RULES = {
         "Use EVENT only when the later behavior patch can provide trigger, precondition, input, action, state_change, response, and event_type; otherwise use ALGORITHM.",
         "covers_handler_ids, covers_message_ids, and covers_field_ids may reference only existing handler, message, and protocol wire field IDs from legal_id_universe; covers_field_ids must never invent IDs for type_inventory fields or struct members such as field:mqtt_connection_t:fd.",
     ],
+    "function_annotation_candidate/v1": [
+        "Task definition: annotate deterministic function_planning_space seeds and propose optional module-local helpers; do not generate a complete function inventory.",
+        "Preserve every required seed identity. Use seed_annotations[].seed_id to attach purpose, grouping_hint, trace_ref_keys, and status only.",
+        "The LLM may not delete, rename, re-module, re-kind, re-visibility, or re-export any mandatory, obligation, handler, parser, serializer, or recommended seed.",
+        "optional_function_proposals must be module-local helpers with expansion_reason, family, source_refs, and legal related capability/message/field/handler refs.",
+        "function_planning_space.function_budget is authoritative and is calibrated from specs-example/mqtt_specs FUNCTION_SPEC counts.",
+        "The accepted module inventory should stay within function_budget.module_soft_cap unless required seeds already exceed it.",
+        "optional_function_proposals length MUST be <= function_planning_space.optional_expansion_policy.max_optional_functions.",
+        "Use the example_baseline in function_budget as the target density: do not propose more helpers than comparable example specs use for this module role.",
+        "Before proposing optional helpers, prefer the concrete names and purposes already present in function_planning_space.source_context.decomposition_context.recommended_concrete_slots_by_rule; use optional proposals only for justified gaps.",
+        "Prefer zero optional proposals when required and recommended seeds already cover lifecycle, codec, session, routing, dispatch, and error boundaries.",
+        "Do not propose one helper per message, field, state, timer, or error. Add a helper only when it represents repeated behavior or a coder-critical implementation boundary.",
+        "Rank optional_function_proposals by implementation necessity; reconciliation keeps earlier proposals first when budget trimming is needed.",
+        "When the budget prevents covering an expected family, record decomposition_notes, assumptions, or unresolved_questions instead of adding more helpers.",
+        "For optional helpers, family may reuse a selected expected/concrete family from decomposition_context, but name_hint and purpose must describe a concrete implementation action; do not copy abstract family names such as lifecycle_control, lookup_or_match, or primitive_reader_or_tokenizer directly into function names or purpose text.",
+        "Do not propose cross-module private helper calls or unknown refs. If evidence is missing, record assumptions or unresolved_questions instead of inventing protocol facts.",
+        "Do not generate signatures, input/output contracts, behavior, state_access, wire mapping, calls_allowed, file layout, dependency graph, or code.",
+    ],
     "function_inventory_repair_patch/v1": [
         "Return a minimal patch for the current module's existing function_inventory_candidate; do not return or rewrite a complete function_inventory_candidate.",
+        "Repair is small_patch_only: preserve useful existing candidate content and only fix failure_context.validator_errors or the listed decomposition gaps.",
+        "Output only function_inventory_repair_patch/v1 with added_functions, updated_functions, added_assumptions, and added_unresolved_questions; never output candidate_id or a full functions array.",
         "Preserve all existing functions. Do not delete, rename, or change function_id, name, module_id, visibility, api_surface, exported, export_reason, or public_api_role of existing functions.",
-        "Use added_functions to add only the functions needed to cover missing_function_families, under-decomposed responsibilities, or coarse-function split helpers.",
+        "Prefer added_functions for missing validator-required functions, missing_function_families, under-decomposed responsibilities, or coarse-function split helpers.",
         "Prefer internal helpers for added_functions unless the repair_context proves a derived_public_api is required and provides a stable export_reason and public_api_role.",
         "For coarse function repair, keep the existing public API as a facade or entrypoint and add internal helpers for parser, validator, dispatcher, state transition, encoder/send, cleanup, or error handling responsibilities as applicable.",
         "updated_functions may only narrow purpose, grouping_hint, or status for an existing coarse facade/orchestrator; it must not alter identity or public API fields.",
@@ -166,6 +213,8 @@ STAGE_SEMANTIC_RULES = {
     "function_signature_patch/v1": [
         "Patch existing function_id values only; never add a new function.",
         "function_signature_updates must include exactly one update for every function in the batch.",
+        "Use only function_signature_context.functions, current_module_type_inventory, provider_public_types, module_summary, and legal_id_universe; omitted global functions are intentionally unavailable.",
+        "Return exactly one function_signature_update for each batch function and no updates for non-batch functions.",
         "signature.name must match the existing function name.",
         "For exported=true or api_surface=public functions, signature.raw, signature.name, return_type, and every param name/type must be complete enough to lower into a C header declaration.",
         "Public function signatures must not use static storage class and must not expose private/internal-only types except through a public opaque handle.",
@@ -176,10 +225,12 @@ STAGE_SEMANTIC_RULES = {
         "C primitive, POSIX, or common network types not present in the type pool must use an empty type_ref.",
         "Never use state_ids, message_ids, field_ids, paths, filenames, or natural-language names as type_ref.",
         "signature_dependencies describe type/header needs only; do not generate imports_allowed, calls_allowed, files, dependency graphs, or code.",
+        "Keep assumptions and unresolved_questions minimal; prefer empty arrays when validation-safe.",
     ],
     "function_behavior_contract_patch/v1": [
         "Patch existing function_id values only; never add a new function and never change signatures.",
         "function_behavior_updates must include exactly one update for every function in the batch.",
+        "Use only the current batch, module_state_access_policy, module_resource_refs, provider_public_api_summary, engineering_constraints, and legal_id_universe.",
         "For exported=true or api_surface=public functions, contract.input, contract.action, contract.output, thread_safety, and error propagation/return policy must be complete enough for coder-facing SOURCE.INTERFACE and FUNCTION_SPEC lowering.",
         "service_requirements may describe needed operations/capabilities but must not contain callee_function_id.",
         "Use requirement_kind=cross_module_service only when another existing module should provide the operation.",
@@ -188,6 +239,10 @@ STAGE_SEMANTIC_RULES = {
         "If logic_kind is EVENT, event_contract must fully populate trigger, precondition, input, action, state_change, response, and event_type.",
         "If those EVENT fields are not knowable, use logic_kind LOGIC and keep the event-like intent in contract.action.",
         "state_access.access_kind write or read_write is allowed only when the function's module owns that state. Otherwise use read, omit that state access, or add unresolved_questions.",
+        "state_access write or read_write is allowed only for module_state_access_policy.writable_state_ids.",
+        "For state owned by another module, use read access only when necessary, or describe the need as a cross_module_service requirement.",
+        "Do not restate behavior for non-batch functions and do not repeat full module/global design context.",
+        "Keep contract.input, contract.action, and contract.output concise and coder-facing.",
         "Do not generate calls_allowed, wire mappings, files, dependency graphs, or code.",
     ],
     "wire_access_binding_patch/v2": [
@@ -581,6 +636,41 @@ def _stage_messages(
     forbidden_fields: list[str],
     validator: str,
 ) -> list[dict[str, str]]:
+    payload: dict[str, Any] = {
+        "prompt_name": prompt_name,
+        "prompt_version": PROMPT_REGISTRY[prompt_name],
+        "task": task,
+        "output_schema": expected_schema,
+        "output_shape": output_shape(expected_schema),
+        "forbidden_fields": forbidden_fields,
+        "validator_after_output": validator,
+    }
+    if expected_schema.endswith("_repair_patch/v1"):
+        payload["repair_output_contract"] = [
+            f"Return only a {expected_schema} patch object.",
+            "Do not return a full candidate object.",
+            "Do not include candidate_id, full types/functions arrays, markdown, prose, comments, or analysis.",
+            "Make the smallest patch that fixes repair_target_errors while preserving stable_content_to_preserve.",
+        ]
+    payload.update(
+        {
+            context_key: context,
+            "id_reference_rules": ID_REFERENCE_RULES,
+            "local_id_rules": LOCAL_ID_RULES.get(expected_schema, []),
+            "enum_usage_rules": ENUM_USAGE_RULES,
+            "semantic_validation_rules": STAGE_SEMANTIC_RULES.get(expected_schema, []),
+            "hard_validation_rules": [
+                f"schema_version must be exactly {expected_schema}.",
+                "The JSON object must match output_shape exactly.",
+                "Return the candidate or patch object itself.",
+                "Do not include a complete implementation_plan/v1.",
+                "Do not include forbidden fields.",
+                "Do not include any fields not shown in output_shape.",
+                "Reference IDs must come from the context legal ID universe; only fields listed in local_id_rules may introduce new candidate-local IDs.",
+                "If information is insufficient, add unresolved_questions instead of inventing facts.",
+            ],
+        }
+    )
     return [
         {
             "role": "system",
@@ -589,6 +679,7 @@ def _stage_messages(
                 f"{JSON_ONLY_RULES} "
                 f"Return JSON matching {expected_schema}. "
                 "Return only the current stage candidate or patch. "
+                "For repair patch prompts, return only the small patch object and never return a full candidate. "
                 "Never return a complete implementation_plan/v1. "
                 "Never output code. "
                 "Do not invent protocol facts or reference identifiers outside the provided legal ID universe. "
@@ -597,32 +688,7 @@ def _stage_messages(
         },
         {
             "role": "user",
-            "content": _compact(
-                {
-                    "prompt_name": prompt_name,
-                    "prompt_version": PROMPT_REGISTRY[prompt_name],
-                    "task": task,
-                    "output_schema": expected_schema,
-                    "output_shape": output_shape(expected_schema),
-                    "forbidden_fields": forbidden_fields,
-                    "validator_after_output": validator,
-                    context_key: context,
-                    "id_reference_rules": ID_REFERENCE_RULES,
-                    "local_id_rules": LOCAL_ID_RULES.get(expected_schema, []),
-                    "enum_usage_rules": ENUM_USAGE_RULES,
-                    "semantic_validation_rules": STAGE_SEMANTIC_RULES.get(expected_schema, []),
-                    "hard_validation_rules": [
-                        f"schema_version must be exactly {expected_schema}.",
-                        "The JSON object must match output_shape exactly.",
-                        "Return the candidate or patch object itself.",
-                        "Do not include a complete implementation_plan/v1.",
-                        "Do not include forbidden fields.",
-                        "Do not include any fields not shown in output_shape.",
-                        "Reference IDs must come from the context legal ID universe; only fields listed in local_id_rules may introduce new candidate-local IDs.",
-                        "If information is insufficient, add unresolved_questions instead of inventing facts.",
-                    ],
-                }
-            ),
+            "content": _compact(payload),
         },
     ]
 
@@ -663,10 +729,22 @@ def type_inventory_candidate_messages(context: dict[str, Any]) -> list[dict[str,
     )
 
 
+def type_filling_candidate_messages(context: dict[str, Any]) -> list[dict[str, str]]:
+    return _stage_messages(
+        prompt_name="type_filling_candidate_prompt",
+        task="Fill deterministic type planning slots and propose justified optional module-local type expansions. Return only type_filling_candidate/v1.",
+        context_key="type_filling_context",
+        context=context,
+        expected_schema="type_filling_candidate/v1",
+        forbidden_fields=["type_id", "function_id", "signature", "input_contract", "output_contract", "state_access", "wire_mapping", "access_paths", "calls_allowed", "file_id", "dependency_graph", "code"],
+        validator="validate_type_filling_candidate",
+    )
+
+
 def type_inventory_repair_patch_messages(context: dict[str, Any]) -> list[dict[str, str]]:
     return _stage_messages(
         prompt_name="type_inventory_repair_patch_prompt",
-        task="Patch one module's accepted type inventory by adding missing types or repairing boundaries, references, ownership, and lifecycle. Return only a type_inventory_repair_patch/v1 object.",
+        task="Patch one module's type inventory with a small validator-targeted repair. Preserve useful content, fix only failure_context errors, and return only a type_inventory_repair_patch/v1 object.",
         context_key="type_inventory_repair_context",
         context=context,
         expected_schema="type_inventory_repair_patch/v1",
@@ -687,10 +765,26 @@ def function_inventory_candidate_messages(context: dict[str, Any]) -> list[dict[
     )
 
 
+def function_annotation_candidate_messages(context: dict[str, Any]) -> list[dict[str, str]]:
+    return _stage_messages(
+        prompt_name="function_annotation_candidate_prompt",
+        task=(
+            "Annotate deterministic function planning seeds and propose only budgeted, necessary module-local helpers. "
+            "Respect function_planning_space.function_budget, which is calibrated from specs-example function counts, "
+            "and return only function_annotation_candidate/v1."
+        ),
+        context_key="function_annotation_context",
+        context=context,
+        expected_schema="function_annotation_candidate/v1",
+        forbidden_fields=["function_id", "signature", "input_contract", "output_contract", "state_access", "wire_mapping", "access_paths", "calls_allowed", "dependency_graph", "file_id", "code"],
+        validator="validate_function_annotation_candidate",
+    )
+
+
 def function_inventory_repair_patch_messages(context: dict[str, Any]) -> list[dict[str, str]]:
     return _stage_messages(
         prompt_name="function_inventory_repair_patch_prompt",
-        task="Patch one module's accepted function inventory by adding missing internal helpers or splitting coarse responsibilities. Return only a function_inventory_repair_patch/v1 object; do not rewrite the full inventory.",
+        task="Patch one module's function inventory with a small validator- or decomposition-targeted repair. Preserve useful content and return only a function_inventory_repair_patch/v1 object; do not rewrite the full inventory.",
         context_key="function_inventory_repair_context",
         context=context,
         expected_schema="function_inventory_repair_patch/v1",
@@ -702,7 +796,7 @@ def function_inventory_repair_patch_messages(context: dict[str, Any]) -> list[di
 def function_signature_patch_messages(context: dict[str, Any]) -> list[dict[str, str]]:
     return _stage_messages(
         prompt_name="function_signature_patch_prompt",
-        task="Patch complete C signatures and signature_dependencies for the current function batch.",
+        task="Patch complete C signatures and signature_dependencies for the current function batch using only the scoped signature context.",
         context_key="function_signature_context",
         context=context,
         expected_schema="function_signature_patch/v1",
@@ -714,7 +808,7 @@ def function_signature_patch_messages(context: dict[str, Any]) -> list[dict[str,
 def function_behavior_contract_patch_messages(context: dict[str, Any]) -> list[dict[str, str]]:
     return _stage_messages(
         prompt_name="function_behavior_contract_patch_prompt",
-        task="Patch behavior contracts, state/resource access, internal type refs, and service requirements for the current function batch. Do not generate call edges.",
+        task="Patch concise behavior contracts, state/resource access, internal type refs, and service requirements for the current function batch using only the scoped behavior context.",
         context_key="function_behavior_context",
         context=context,
         expected_schema="function_behavior_contract_patch/v1",

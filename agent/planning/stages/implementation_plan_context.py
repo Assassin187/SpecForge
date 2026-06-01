@@ -607,7 +607,7 @@ def derive_type_generation_targets(draft: dict[str, Any], module_artifact: dict[
 
 def _type_base_name(type_name: str) -> str:
     base = str(type_name).strip().removeprefix("struct ").removesuffix("_t")
-    for suffix in ("_fn", "_callback", "_callbacks", "_buffer", "_bytes"):
+    for suffix in ("_fn", "_callback", "_callbacks"):
         if base.endswith(suffix):
             base = base[: -len(suffix)]
     return base or str(type_name).strip().replace(" ", "_")
@@ -623,6 +623,11 @@ def _has_owned_pointer_field(type_item: dict[str, Any]) -> bool:
     return False
 
 
+def _is_non_function_lifecycle_name(name: Any) -> bool:
+    key = _safe_id(str(name))
+    return key in {"caller", "external", "application", "app", "user", "callee", "owner", "runtime", "system"} or key.endswith("_caller") or key.endswith("_application")
+
+
 def _obligation_names(type_item: dict[str, Any], action: str) -> list[str]:
     lifecycle = type_item.get("lifecycle", {}) if isinstance(type_item.get("lifecycle"), dict) else {}
     if action in {"create", "initialize"}:
@@ -635,7 +640,9 @@ def _obligation_names(type_item: dict[str, Any], action: str) -> list[str]:
     names = [
         str(name)
         for name in explicit
-        if str(name).strip() and not (module_id != "broker_app" and "_broker_" in str(name))
+        if str(name).strip()
+        and not _is_non_function_lifecycle_name(name)
+        and not (module_id != "broker_app" and "_broker_" in str(name))
     ]
     if names:
         return sorted(set(names))
@@ -824,6 +831,127 @@ def _callable_functions(draft: dict[str, Any], module_id: str) -> list[dict[str,
     return result
 
 
+def _module_artifact_for_id(draft: dict[str, Any], module_id: str) -> dict[str, Any]:
+    return next(
+        (
+            item
+            for item in draft.get("module_artifacts", [])
+            if isinstance(item, dict) and str(item.get("module_id", "")) == module_id
+        ),
+        {"module_id": module_id, "artifacts": []},
+    )
+
+
+def _module_summary(draft: dict[str, Any], module_id: str) -> dict[str, Any]:
+    module = _module_artifact_for_id(draft, module_id)
+    return {
+        "module_id": module_id,
+        "role": str(module.get("role", "")),
+        "dependencies": [str(item) for item in module.get("dependencies", []) if str(item).strip()],
+        "artifacts": [
+            {"kind": item.get("kind"), "name": item.get("name"), "role": item.get("role")}
+            for item in module.get("artifacts", [])
+            if isinstance(item, dict)
+        ],
+    }
+
+
+def _module_canonical_types(draft: dict[str, Any], module_id: str) -> list[dict[str, Any]]:
+    return [
+        item
+        for item in draft.get("canonical_types", [])
+        if isinstance(item, dict) and str(item.get("owner_module_id", item.get("module_id", ""))) == module_id
+    ]
+
+
+def _provider_public_api_summary(draft: dict[str, Any], module_id: str) -> list[dict[str, Any]]:
+    module = _module_artifact_for_id(draft, module_id)
+    provider_modules, _ = _provider_consumer_modules(draft, module)
+    provider_ids = {str(item.get("module_id", "")) for item in provider_modules}
+    return [
+        {
+            "function_id": item.get("function_id"),
+            "name": item.get("name"),
+            "module_id": item.get("module_id"),
+            "function_kind": item.get("function_kind"),
+            "api_surface": item.get("api_surface"),
+            "signature": item.get("signature", {}),
+        }
+        for item in draft.get("function_contracts", [])
+        if isinstance(item, dict)
+        and str(item.get("module_id", "")) in provider_ids
+        and (bool(item.get("exported")) or str(item.get("api_surface", "")) == "public" or str(item.get("visibility", "")) == "public")
+    ]
+
+
+def _provider_public_types_for_module(draft: dict[str, Any], module_id: str) -> list[dict[str, Any]]:
+    module = _module_artifact_for_id(draft, module_id)
+    provider_modules, _ = _provider_consumer_modules(draft, module)
+    return _public_provider_types(draft, provider_modules, None)
+
+
+def _scoped_type_ids(draft: dict[str, Any], module_id: str, provider_public_types: list[dict[str, Any]]) -> list[str]:
+    refs = {
+        str(item.get("type_id", ""))
+        for item in [*_module_canonical_types(draft, module_id), *_module_type_inventory(draft, module_id)]
+        if isinstance(item, dict) and str(item.get("type_id", "")).strip()
+    }
+    refs.update(
+        str(type_item.get("type_id", ""))
+        for group in provider_public_types
+        for type_item in group.get("types", [])
+        if isinstance(type_item, dict) and str(type_item.get("type_id", "")).strip()
+    )
+    return sorted(refs)
+
+
+def _scoped_signature_legal_ids(draft: dict[str, Any], module_id: str, functions: list[dict[str, Any]], provider_public_types: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "module_ids": [str(item.get("module_id", "")) for item in draft.get("module_artifacts", []) if isinstance(item, dict)],
+        "type_ids": _scoped_type_ids(draft, module_id, provider_public_types),
+        "system_type_ids": SYSTEM_TYPE_IDS,
+        "function_ids": [str(item.get("function_id", "")) for item in functions if isinstance(item, dict)],
+    }
+
+
+def _module_state_access_policy(draft: dict[str, Any], module_id: str) -> dict[str, Any]:
+    own: list[str] = []
+    external: list[str] = []
+    for item in draft.get("state_design", []):
+        if not isinstance(item, dict):
+            continue
+        state_id = str(item.get("state_id", "")).strip()
+        if not state_id:
+            continue
+        if str(item.get("owner_module_id", "")) == module_id:
+            own.append(state_id)
+        else:
+            external.append(state_id)
+    return {"writable_state_ids": own, "read_only_external_state_ids": external}
+
+
+def _module_resource_refs(draft: dict[str, Any], module_id: str) -> list[dict[str, Any]]:
+    return [
+        item
+        for item in draft.get("resource_lifecycle", [])
+        if isinstance(item, dict) and str(item.get("owner_module_id", "")) == module_id
+    ]
+
+
+def _scoped_behavior_legal_ids(draft: dict[str, Any], module_id: str, functions: list[dict[str, Any]], provider_public_api: list[dict[str, Any]]) -> dict[str, Any]:
+    state_policy = _module_state_access_policy(draft, module_id)
+    provider_public_types = _provider_public_types_for_module(draft, module_id)
+    return {
+        "module_ids": [str(item.get("module_id", "")) for item in draft.get("module_artifacts", []) if isinstance(item, dict)],
+        "function_ids": [str(item.get("function_id", "")) for item in functions if isinstance(item, dict)],
+        "provider_public_function_ids": [str(item.get("function_id", "")) for item in provider_public_api if str(item.get("function_id", "")).strip()],
+        "state_ids": [*state_policy["writable_state_ids"], *state_policy["read_only_external_state_ids"]],
+        "error_ids": [str(item.get("error_id", "")) for item in draft.get("error_strategy", []) if isinstance(item, dict)],
+        "type_ids": _scoped_type_ids(draft, module_id, provider_public_types),
+        "system_type_ids": SYSTEM_TYPE_IDS,
+    }
+
+
 def build_core_design_context(
     planning_ir: dict[str, Any],
     profile: dict[str, Any],
@@ -883,6 +1011,162 @@ def _module_type_inventory(draft: dict[str, Any], module_id: str) -> list[dict[s
     ]
 
 
+def _candidate_items(candidate: dict[str, Any]) -> list[dict[str, Any]]:
+    if isinstance(candidate.get("types"), list):
+        return [item for item in candidate.get("types", []) if isinstance(item, dict)]
+    if isinstance(candidate.get("functions"), list):
+        return [item for item in candidate.get("functions", []) if isinstance(item, dict)]
+    return []
+
+
+def _public_item_names(items: list[dict[str, Any]]) -> list[str]:
+    result: list[str] = []
+    for item in items:
+        if (
+            str(item.get("visibility", "")).lower() == "public"
+            or str(item.get("api_surface", "")).lower() == "public"
+            or bool(item.get("exported"))
+        ):
+            name = str(item.get("name", "")).strip()
+            if name:
+                result.append(name)
+    return result
+
+
+_REPAIR_RELEVANT_WARNING_CODES = {
+    "under_decomposed_inventory",
+    "coarse_function_should_split",
+    "missing_function_family",
+    "missing_dispatch_boundary",
+    "missing_cleanup_for_resource_owner",
+    "missing_parser_or_serializer_helpers",
+}
+
+
+def _compact_diagnostic_item(item: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "level": str(item.get("level", "error")),
+        "code": str(item.get("code", "")),
+        "message": str(item.get("message", "")),
+        "path": item.get("path"),
+    }
+
+
+def _repair_relevant_diagnostics(diagnostics: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    for item in diagnostics:
+        if not isinstance(item, dict):
+            continue
+        level = str(item.get("level", "error"))
+        code = str(item.get("code", ""))
+        if level == "error" or code in _REPAIR_RELEVANT_WARNING_CODES:
+            result.append(_compact_diagnostic_item(item))
+    return result
+
+
+def _repair_target_errors(diagnostics: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    errors = [item for item in _repair_relevant_diagnostics(diagnostics) if item.get("level") == "error"]
+    if not errors:
+        errors = _repair_relevant_diagnostics(diagnostics)
+    seen: set[tuple[str, Any]] = set()
+    result: list[dict[str, Any]] = []
+    for item in errors:
+        key = (str(item.get("code", "")), item.get("path"))
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(item)
+        if len(result) >= 8:
+            break
+    return result
+
+
+def _stable_content_to_preserve(candidate: dict[str, Any]) -> list[dict[str, Any]]:
+    preserved: list[dict[str, Any]] = []
+    if isinstance(candidate.get("types"), list):
+        for item in candidate.get("types", []):
+            if not isinstance(item, dict):
+                continue
+            preserved.append(
+                {
+                    "type_id": str(item.get("type_id", "")),
+                    "name": str(item.get("name", "")),
+                    "module_id": str(item.get("module_id", "")),
+                    "kind": str(item.get("kind", "")),
+                    "visibility": str(item.get("visibility", "")),
+                    "defined_in": str(item.get("defined_in", "")),
+                }
+            )
+    if isinstance(candidate.get("functions"), list):
+        for item in candidate.get("functions", []):
+            if not isinstance(item, dict):
+                continue
+            preserved.append(
+                {
+                    "function_id": str(item.get("function_id", "")),
+                    "name": str(item.get("name", "")),
+                    "module_id": str(item.get("module_id", "")),
+                    "visibility": str(item.get("visibility", "")),
+                    "api_surface": str(item.get("api_surface", "")),
+                    "exported": bool(item.get("exported", False)),
+                    "public_api_role": str(item.get("public_api_role", "")),
+                }
+            )
+    return [item for item in preserved if item.get("name")]
+
+
+def build_inventory_failure_context(
+    *,
+    stage: str,
+    module_id: str,
+    candidate_attempt: int,
+    repair_attempt: int,
+    candidate: dict[str, Any],
+    diagnostics: list[dict[str, Any]],
+    previous_repair_failures: list[dict[str, Any]] | None = None,
+    max_retries: int = 2,
+    max_repairs: int = 4,
+    remaining_retries: int | None = None,
+    remaining_repairs: int | None = None,
+    failed_patch_summary: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    items = _candidate_items(candidate)
+    repair_relevant = _repair_relevant_diagnostics(diagnostics)
+    return {
+        "stage": stage,
+        "module_id": module_id,
+        "candidate_attempt": candidate_attempt,
+        "repair_attempt": repair_attempt,
+        "current_candidate_summary": {
+            "schema_version": str(candidate.get("schema_version", "")),
+            "candidate_id": str(candidate.get("candidate_id", "")),
+            "module_id": str(candidate.get("module_id", "")),
+            "item_count": len(items),
+            "item_names": [str(item.get("name", "")) for item in items if str(item.get("name", "")).strip()],
+            "public_item_names": _public_item_names(items),
+            "assumptions_count": len(candidate.get("assumptions", [])) if isinstance(candidate.get("assumptions"), list) else 0,
+            "unresolved_questions_count": len(candidate.get("unresolved_questions", [])) if isinstance(candidate.get("unresolved_questions"), list) else 0,
+        },
+        "validator_errors": repair_relevant,
+        "repair_target_errors": _repair_target_errors(diagnostics),
+        "stable_content_to_preserve": _stable_content_to_preserve(candidate),
+        "attempt_budget": {
+            "max_retries": max_retries,
+            "max_repairs": max_repairs,
+            "remaining_retries": max_retries if remaining_retries is None else remaining_retries,
+            "remaining_repairs": max_repairs if remaining_repairs is None else remaining_repairs,
+        },
+        "previous_repair_failures": previous_repair_failures or [],
+        "failed_patch_summary": failed_patch_summary if failed_patch_summary is not None else previous_repair_failures or [],
+        "repair_contract": {
+            "mode": "small_patch_only",
+            "preserve_valid_content": True,
+            "do_not_rewrite_candidate": True,
+            "only_fix_listed_validator_errors": True,
+        },
+    }
+
+
 def _provider_consumer_modules(draft: dict[str, Any], module_artifact: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     module_id = str(module_artifact.get("module_id", ""))
     modules = [item for item in draft.get("module_artifacts", []) if isinstance(item, dict)]
@@ -898,6 +1182,8 @@ def _provider_consumer_modules(draft: dict[str, Any], module_artifact: dict[str,
 
 def _type_seed_kind(name: str, role: str, target_kind: str = "") -> str:
     text = f"{name} {role} {target_kind}".lower()
+    if "connection" in text and name.endswith("_t"):
+        return "opaque_handle"
     if target_kind == "packet_enum" or "enum" in text or "packet_type" in text:
         return "enum"
     if target_kind == "owned_buffer" or any(word in text for word in ("bytes", "buffer")):
@@ -941,6 +1227,8 @@ def _is_internal_connection_seed(name: str, role: str) -> bool:
 
 
 def _is_internal_connection_public_surface(type_item: dict[str, Any]) -> bool:
+    if str(type_item.get("kind", "")) == "opaque_handle":
+        return False
     name = str(type_item.get("name", ""))
     text = " ".join(
         [
@@ -959,8 +1247,10 @@ def _artifact_is_public_type_seed(protocol: str, module_id: str, artifact: dict[
     name = str(artifact.get("name", "")).strip()
     role = str(artifact.get("role", "")).strip()
     text = f"{module_id} {name} {role}".lower()
-    if not name or _is_internal_connection_seed(name, role):
+    if not name:
         return False
+    if _is_internal_connection_seed(name, role):
+        return name.endswith("_t") and "private" not in text and "internal" not in text
     module_handle = name == f"{protocol}_{_safe_id(module_id)}_t"
     if module_handle or any(word in text for word in ("public", "opaque", "handle")):
         return True
@@ -1073,8 +1363,12 @@ def build_type_inventory_context(draft: dict[str, Any], module_artifact: dict[st
     module_id = str(module_artifact.get("module_id", ""))
     provider_modules, consumers = _provider_consumer_modules(draft, module_artifact)
     provider_public_types = _public_provider_types(draft, provider_modules, planning_ir)
+    from .inventory_planning_space import build_type_planning_space
+
+    type_planning_space = build_type_planning_space(draft, module_artifact, planning_ir)
     return {
-        "schema_version": "type_inventory_context/v1",
+        "schema_version": "type_filling_context/v1",
+        "type_planning_space": type_planning_space,
         "module_artifact": module_artifact,
         "current_module_artifacts": module_artifact.get("artifacts", []),
         "global_module_artifacts_reference": [
@@ -1120,18 +1414,31 @@ def build_type_inventory_repair_context(
     module_artifact: dict[str, Any],
     candidate: dict[str, Any],
     diagnostics: list[dict[str, Any]],
+    *,
+    failure_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     context = build_type_inventory_context(draft, module_artifact)
+    module_id = str(module_artifact.get("module_id", ""))
     context.update(
         {
             "schema_version": "type_inventory_repair_context/v1",
             "current_candidate": candidate,
-            "triggering_diagnostics": diagnostics,
+            "failure_context": failure_context
+            or build_inventory_failure_context(
+                stage="5.4a_type_inventory",
+                module_id=module_id,
+                candidate_attempt=1,
+                repair_attempt=1,
+                candidate=candidate,
+                diagnostics=diagnostics,
+            ),
+            "triggering_diagnostics": [_compact_diagnostic_item(item) for item in diagnostics if isinstance(item, dict)],
             "patch_merge_rules": [
                 "added_types are appended to current_candidate.types for this module only.",
                 "type_id and name must not duplicate any existing or newly added type.",
                 "updated_types may not rename a type or change its module_id/kind.",
-                "Prefer patch repair over regenerating the whole candidate.",
+                "Repair is a small patch only; never regenerate or rewrite the whole candidate.",
+                "Only fix the listed failure_context.validator_errors.",
                 "After merge, the result must validate as type_inventory_candidate/v1.",
             ],
         }
@@ -1142,8 +1449,12 @@ def build_type_inventory_repair_context(
 def build_function_inventory_context(draft: dict[str, Any], module_artifact: dict[str, Any]) -> dict[str, Any]:
     module_id = str(module_artifact.get("module_id", ""))
     provider_modules, consumers = _provider_consumer_modules(draft, module_artifact)
+    from .inventory_planning_space import build_function_planning_space
+
+    function_planning_space = build_function_planning_space(draft, module_artifact)
     context = {
-        "schema_version": "function_inventory_context/v1",
+        "schema_version": "function_annotation_context/v1",
+        "function_planning_space": function_planning_space,
         "module_artifact": module_artifact,
         "current_module_artifacts": module_artifact.get("artifacts", []),
         "global_module_artifacts_reference": [
@@ -1177,7 +1488,11 @@ def build_function_inventory_context(draft: dict[str, Any], module_artifact: dic
         "core_design_summary": _accepted_summary(draft),
         "legal_id_universe": _legal_ids_from_draft(draft),
     }
-    context["decomposition_context"] = select_top_decomposition_hints(module_artifact, context, max_hints=3)
+    context["decomposition_context"] = function_planning_space.get("source_context", {}).get("decomposition_context", {})
+    if isinstance(context["function_planning_space"].get("source_context"), dict):
+        compact_decomposition = dict(context["function_planning_space"]["source_context"].get("decomposition_context", {}))
+        compact_decomposition.pop("selected_decomposition_hints", None)
+        context["function_planning_space"]["source_context"]["decomposition_context"] = compact_decomposition
     return context
 
 
@@ -1189,8 +1504,10 @@ def build_function_inventory_repair_context(
     diagnostics: list[dict[str, Any]],
     *,
     repair_mode: str,
+    failure_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     context = build_function_inventory_context(draft, module_artifact)
+    module_id = str(module_artifact.get("module_id", ""))
     missing_families = [
         {
             "rule_id": rule.get("rule_id", ""),
@@ -1212,15 +1529,26 @@ def build_function_inventory_repair_context(
             "schema_version": "function_inventory_repair_context/v1",
             "repair_mode": repair_mode,
             "current_candidate": candidate,
+            "failure_context": failure_context
+            or build_inventory_failure_context(
+                stage="5.4b_function_inventory",
+                module_id=module_id,
+                candidate_attempt=1,
+                repair_attempt=1,
+                candidate=candidate,
+                diagnostics=diagnostics,
+            ),
             "coverage_report": coverage_report,
             "missing_function_families": missing_families,
             "coarse_functions": coarse_functions,
-            "triggering_diagnostics": diagnostics,
+            "triggering_diagnostics": [_compact_diagnostic_item(item) for item in diagnostics if isinstance(item, dict)],
             "patch_merge_rules": [
                 "added_functions are appended to current_candidate.functions for this module only.",
                 "function_id and name must not duplicate any existing or newly added function.",
                 "updated_functions may only change purpose, grouping_hint, or status.",
                 "Do not delete, rename, or change identity/public API fields of existing functions.",
+                "Repair is a small patch only; never regenerate or rewrite the whole candidate.",
+                "Only fix the listed failure_context.validator_errors or the listed decomposition gaps.",
                 "After merge, the result must validate as function_inventory_candidate/v2.",
             ],
         }
@@ -1229,20 +1557,23 @@ def build_function_inventory_repair_context(
 
 
 def build_function_signature_context(draft: dict[str, Any], module_id: str, functions: list[dict[str, Any]], *, batch_index: int, batch_size: int) -> dict[str, Any]:
+    provider_public_types = _provider_public_types_for_module(draft, module_id)
     return {
         "schema_version": "function_signature_context/v1",
         "module_id": module_id,
         "batch": {"index": batch_index, "size": batch_size},
         "functions": functions,
         "required_update_skeleton": _signature_update_skeleton(functions),
+        "module_summary": _module_summary(draft, module_id),
         "current_module_type_inventory": _module_type_inventory(draft, module_id),
-        "module_artifacts": draft.get("module_artifacts", []),
-        "core_design_summary": _accepted_summary(draft),
-        "legal_id_universe": _legal_ids_from_draft(draft),
+        "current_module_canonical_types": _module_canonical_types(draft, module_id),
+        "provider_public_types": provider_public_types,
+        "legal_id_universe": _scoped_signature_legal_ids(draft, module_id, functions, provider_public_types),
     }
 
 
 def build_function_behavior_context(draft: dict[str, Any], module_id: str, functions: list[dict[str, Any]], constraints: dict[str, Any], *, batch_index: int, batch_size: int) -> dict[str, Any]:
+    provider_public_api = _provider_public_api_summary(draft, module_id)
     return {
         "schema_version": "function_behavior_context/v1",
         "module_id": module_id,
@@ -1254,10 +1585,12 @@ def build_function_behavior_context(draft: dict[str, Any], module_id: str, funct
             "cross_module_only": True,
             "provider_own_responsibility": "do_not_emit_service_requirement",
         },
-        "module_artifacts": draft.get("module_artifacts", []),
-        "core_design_summary": _accepted_summary(draft),
+        "module_summary": _module_summary(draft, module_id),
+        "module_state_access_policy": _module_state_access_policy(draft, module_id),
+        "module_resource_refs": _module_resource_refs(draft, module_id),
+        "provider_public_api_summary": provider_public_api,
         "engineering_constraints": _constraints(constraints),
-        "legal_id_universe": _legal_ids_from_draft(draft) | {"constraint_ids": [item["constraint_id"] for item in _constraints(constraints)]},
+        "legal_id_universe": _scoped_behavior_legal_ids(draft, module_id, functions, provider_public_api) | {"constraint_ids": [item["constraint_id"] for item in _constraints(constraints)]},
     }
 
 

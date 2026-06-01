@@ -25,7 +25,8 @@ Planning Agent 运行时强制使用 LLM。LLM 不是可选增强，而是对应
 - 如果 LLM 无输出、输出不是 JSON、schema 不合法或规则校验失败，会把失败原因追加到下一次 prompt 中重试。
 - Protocol Profile 阶段最多重试 3 次；仍失败则报错退出。
 - Architecture Search 每轮并发请求 3 个候选策略；高温轮失败后进入低温轮，仍无合法候选则报错退出。
-- Implementation Plan Synthesis 使用 staged hybrid 模式：LLM 只生成当前子步骤 candidate/patch；不合法时使用该子步骤的 deterministic fallback，并继续由 validator/merger 审核。
+- Implementation Plan Synthesis 使用 staged hybrid 模式：LLM 只生成当前子步骤 candidate/patch；多数子步骤不合法时使用 deterministic fallback。
+- 5.4a/5.4b 采用 controlled inventory：deterministic planning space 先生成 slots/seeds，LLM 只做 semantic filling/annotation 和 optional proposal，deterministic reconciliation 生成最终 inventory；只做 JSON retry，不再走旧 repair patch/full retry/quality repair 主流程。
 
 每个 LLM stage 的 temperature、top_p、max_completion_tokens、max_retries 和 enable_thinking 可以在 `agent/planning/config.py` 的 `default_llm_stage_configs()` 中集中调整。可用 stage key 包括 `protocol_profile`、`architecture_candidate_high_variance`、`architecture_candidate_low_variance`、`architecture_ranking`、`implementation_plan_5_1` 到 `implementation_plan_5_6`（含 `implementation_plan_5_4a` 到 `implementation_plan_5_4g`）。
 
@@ -154,7 +155,7 @@ LLM 参与：
 输出：
 
 - `_step_logs/004_protocol_profile.json`
-- `_step_logs/004_protocol_profile_patch_candidate.json`
+- `_agent_logs/004_protocol_profile_patch_candidate.json`
 
 具体操作：
 
@@ -173,7 +174,7 @@ LLM 参与：
 - 构造 profile patch prompt，允许 LLM 只提交 `protocol_profile_patch_candidate`。
 - 对 LLM patch 做确定性校验，禁止新增协议事实、非法 capability、非法 surface 或越权字段。
 - 将合法 patch 应用到 baseline profile；若 patch 后 profile 仍不合法，则把失败原因带入下一次 prompt。
-- 写入 patch candidate 与最终 `_step_logs/004_protocol_profile.json`。
+- 写入 patch candidate 到 `_agent_logs/`，写入最终 `_step_logs/004_protocol_profile.json`。
 - 校验 enum、capability 覆盖和 traceability。
 
 LLM 参与：
@@ -279,14 +280,23 @@ LLM 参与：
 - `_step_logs/007_5_3_module_artifacts_candidate.json`
 - `_validation_reports/007_5_3_module_artifacts_validation_report.json`
 - `_step_logs/007_5_4a_type_inventory_candidate.json`
+- `_step_logs/007_5_4a_type_planning_space__<module>.json`
+- `_step_logs/007_5_4a_type_reconciliation_report__<module>.json`
+- `_step_logs/007_5_4a_type_inventory_diagnostics__<module>.json`
+- `_step_logs/007_5_4a_type_obligations__<module>.json`
 - `_validation_reports/007_5_4a_type_inventory_validation_report.json`
 - `_step_logs/007_5_4b_function_inventory_candidate.json`
+- `_step_logs/007_5_4b_function_planning_space__<module>.json`
+- `_step_logs/007_5_4b_function_reconciliation_report__<module>.json`
+- `_step_logs/007_5_4b_function_inventory_diagnostics__<module>.json`
 - `_validation_reports/007_5_4b_function_inventory_validation_report.json`
-- `_step_logs/007_5_4c_function_signature_patch.json`
+- `_agent_logs/007_5_4a_type_inventory_attempt_summary.json`
+- `_agent_logs/007_5_4b_function_inventory_attempt_summary.json`
+- `_agent_logs/007_5_4c_function_signature_patch.json`
 - `_validation_reports/007_5_4c_function_signature_validation_report.json`
-- `_step_logs/007_5_4d_function_behavior_contract_patch.json`
+- `_agent_logs/007_5_4d_function_behavior_contract_patch.json`
 - `_validation_reports/007_5_4d_function_behavior_validation_report.json`
-- `_step_logs/007_5_4e_wire_access_binding_patch.json`
+- `_agent_logs/007_5_4e_wire_access_binding_patch.json`
 - `_validation_reports/007_5_4e_wire_access_binding_validation_report.json`
 - `_step_logs/007_5_4f_calls_allowed_candidate.json`
 - `_validation_reports/007_5_4f_calls_allowed_validation_report.json`
@@ -294,7 +304,7 @@ LLM 参与：
 - `_validation_reports/007_5_5_file_layout_validation_report.json`
 - `_step_logs/007_5_4g_runtime_entrypoint_candidate.json`
 - `_validation_reports/007_5_4g_runtime_entrypoint_validation_report.json`
-- `_step_logs/007_5_6_dependency_repair_patch.json`（仅 dependency validation 失败时）
+- `_agent_logs/007_5_6_dependency_repair_patch.json`（仅 dependency validation 失败时）
 - `_validation_reports/007_5_6_dependency_repair_validation_report.json`（仅 dependency validation 失败时）
 
 具体操作：
@@ -321,37 +331,43 @@ LLM 参与：
   - 将合法 candidate merge 为最终 `module_artifacts`。
   - 若 LLM candidate 不合法，使用 `fallback_module_artifacts`。
 
-**有多少模块就调用多少次llm，每次的重试上限是 3**
-- 5.4a 按 module 逐个生成 type inventory：
-  - 覆盖 5.3 `TYPE` artifacts，并可补充 internal state、config、callback、event、view、owned buffer、result、enum、bitflag 等 API 边界所需类型。
-  - 写入 `type_inventory`，public/public_header 类型同步到 `canonical_types`，供 signature 与 file/spec lowering 复用。
-  - pointer/string/buffer 字段必须说明 ownership/lifetime；owned 类型必须说明 free/destroy 路径。
-  - 每个 module candidate 独立校验、独立 fallback、逐步 merge 到 draft。
+**5.4a/5.4b 有多少 module 就并行运行多少组 controlled inventory；LLM 是局部 semantic proposal generator，不直接决定最终 ID、visibility、ownership 或 coverage。**
 
-- 5.4b 按 module 逐个生成 function inventory：
-  - 只允许在已存在 module 内创建 function id。
-  - 覆盖 parser、serializer、handler、resource lifecycle、public API 等 function kind。
-  - 优先复用 5.4a 的 type inventory，不为 `TYPE` artifacts 生成函数。
-  - `coder_function_type` 只使用 `ALGORITHM` / `EVENT` / `ENTRYPOINT`；handler 不自动等于 `EVENT`。
-  - 只有后续 behavior patch 能补齐 coder EVENT 所需 trigger/precondition/state_change/response/event_type 等字段时，才保留 `EVENT`，否则 lowering 为 `ALGORITHM`。
-  - 每个 module candidate 独立校验、独立 fallback、逐步 merge 到 draft。
+- 5.4a 按 module 构建 type planning space，再生成 type inventory：
+  - `build_type_planning_space()` 从 5.3 `TYPE` seeds、core design、message/field indexes、handler/resource/state 信息和 module ownership 派生 mandatory/derived/recommended type slots。
+  - LLM prompt 输入是 planning space，输出 `type_filling_candidate/v1`，只允许填 slot semantic、field/enum/callback details、ownership/lifetime、assumptions/unresolved questions，并提出 optional module-local type proposals。
+  - 只做 JSON retry；如果 LLM 没返回合法 JSON 或 candidate shape 不合法，使用 empty semantic candidate 进入 deterministic reconciliation。
+  - `reconcile_type_filling_candidate()` 固定 required slot 的 `type_id/name/module_id/kind/visibility/defined_in`，吸收合法语义字段，normalize optional proposals，去重，检查 public/private boundary，提取 lifecycle obligations。
+  - `validate_type_inventory_candidate()` 阻断 unknown type refs、public type 泄漏 private type、missing mandatory coverage、owned/resource/container type 缺 release path 等 coder-breaking 问题。
+  - quality/richness 问题写入 diagnostics 和 validation report，不触发旧 repair/quality repair。
+  - public/public_header 类型通过 `merge_type_inventory()` 同步到 `canonical_types`。
 
-- 5.4c 按 module 逐个补全 C signature；module 内 function 数量超过 8 时按 batch=8 分批：
+- 5.4b 按 module 构建 function planning space，再生成 function inventory：
+  - `build_function_planning_space()` 从 5.3 `FUNC` seeds、accepted 5.4a type inventory、lifecycle/type obligations、handler matrix、message decode/encode capability 和 module ownership 派生 mandatory/obligation/handler/parser_serializer seeds。
+  - LLM prompt 输入是 planning space，输出 `function_annotation_candidate/v1`，只允许 annotate required seeds，并提出 optional module-local helper proposals。
+  - LLM 不允许删除、重命名、改 module、改 visibility 或改 required seed identity；也不生成 signature、behavior、wire mapping、calls_allowed、file layout、dependency graph 或代码。
+  - `reconcile_function_annotation_candidate()` 保留 required seeds，normalize optional helpers，去重，校验 refs/boundary，并记录 accepted/rejected optional counts。
+  - `validate_function_inventory_candidate()` 阻断 missing FUNC coverage、uncovered lifecycle obligation、missing handler/parser/serializer entry、unknown refs、invalid coder function type 和 public API inconsistency。
+  - 聚合后执行 `reconcile_type_inventory_function_refs()`，把 5.4a type lifecycle refs 对齐到已接受的 lifecycle/API functions。
+
+- 5.4c 按 module 补全 C signature；module 内 function 数量超过 12 时按 batch=12 分批：
   - 写入 `signature` 与 `signature_dependencies`。
   - 不允许修改 5.4b 的函数集合、函数名或 API surface。
   - `type_ref` 只能引用 canonical `type_ids` 或 C/POSIX/network `system_type_ids`，禁止把 state/message/field id 当作 type。
   - 参数 `ownership` 使用 coder 可识别枚举：`BORROWED`、`OWNED`、`OWNED_BY_CALLER`、`TRANSFER`、`SHARED`、`UNKNOWN`。
   - 参数同时保留 planning 用的 `direction` 与 `passing_mode`，用于区分 by-value、pointer、out-param 等 C 调用形态。
   - 不合法时使用 deterministic signature fallback。
+  - patch artifact 写入 `_agent_logs/`，validation report 仍写入 `_validation_reports/`。
 
-- 5.4d 按 module 逐个补全 behavior/internal dependency contract；module 内 function 数量超过 4 时按 batch=4 分批：
+- 5.4d 按 module 补全 behavior/internal dependency contract；module 内 function 数量超过 8 时按 batch=8 分批：
   - 写入 `behavior_contract`、`error_behavior`、`state_access`、`resource_access`、`internal_type_refs`、`service_requirements`。
-  - `behavior_contract` 显式保存 preconditions、postconditions、idempotent、thread_safety；这些字段由 Step 8 lowering 为 coder `CONTRACT`。
+  - `behavior_contract` 显式保存 preconditions、postconditions、idempotent、thread_safety；这些字段由 Coder-Compatible Specs Compilation lowering 为 coder `CONTRACT`。
   - `logic_kind=EVENT` 时必须同时提供完整 `event_contract`；否则 merger/fallback 保守降级为 `LOGIC`。
   - `service_requirements` 按 `external_runtime_service` / `cross_module_service` / `owned_responsibility` 分类；只有跨 module 服务进入 5.4f call planning。
   - 不允许修改 signature，也不直接生成 call edge。
   - 旧 `input_contract` / `output_contract` 由 5.4c signature 与 5.4d behavior 兼容生成。
   - 不合法时使用 deterministic behavior fallback。
+  - patch artifact 写入 `_agent_logs/`。
 
 - 5.4e 生成 wire/access binding patch：
   - 将 wire fields 绑定到 parser/serializer/handler function。
@@ -360,6 +376,7 @@ LLM 参与：
   - `wire_mapping_entries` 必须包含可 lowering 为 coder `PACKET/WIRE_FIELD/STRATEGY` 的字段；不能只保存 planning id。
   - 不允许新增 function 或修改 signature。
   - 不合法时使用 deterministic wire/access fallback。
+  - patch artifact 写入 `_agent_logs/`。
 
 - 5.4f 按 module 逐个生成 `calls_allowed` candidate；module 内 function 数量超过 4 时按 batch=4 分批：
   - 将 5.4d 的 `cross_module_service` requirements 解析为 concrete call edges。
@@ -378,9 +395,9 @@ LLM 参与：
   - 不合法时使用 deterministic file layout fallback。
 
 - 5.6 由规则层从 `signature_dependencies`、`state/resource access`、`calls_allowed` 和 `imports_allowed` 派生最终 `dependency_graph`。
-- 若 dependency validation 失败，执行一次 LLM dependency repair patch；repair 后仍失败则使用 deterministic dependency fallback。
+- 若 dependency validation 失败，执行一次 LLM dependency repair patch；repair patch 写入 `_agent_logs/`，repair 后仍失败则使用 deterministic dependency fallback。
 - 写入最终 `_step_logs/007_implementation_plan.json`，再运行 full implementation plan validator 与 dependency graph validator。
-- 每个子步骤的 candidate/patch 都会写入对应 validation report；只有通过 stage validator 的输出才会被 merger 写入 draft。
+- 每个子步骤都会写入对应 validation report；阶段产物保留在 `_step_logs/`，LLM patch/attempt summary 保留在 `_agent_logs/`。
 
 LLM 参与：
 
@@ -390,13 +407,14 @@ LLM 参与：
 - LLM 不允许输出代码。
 - LLM 不允许引入不存在的协议事实。
 - LLM 不允许直接生成最终 `dependency_graph`。
-- LLM candidate/patch 不合法时带原因重试，最多 3 次；仍失败则使用该子步骤 deterministic fallback。
+- 5.4a/5.4b：LLM 只生成 filling/annotation candidate；JSON 非法只做 JSON retry；机械一致性由 deterministic reconciliation 处理；不再触发旧 repair patch/full retry/quality repair。
+- 其他 staged hybrid 子步骤：LLM candidate/patch 不合法时带原因重试，最多 3 次；仍失败则使用该子步骤 deterministic fallback。
 
-### Step 6: Dependency Derivation & Validation
+### Implementation Plan 尾部: Dependency Derivation & Validation
 
 输入：
 
-- `implementation_plan.json`
+- 已 merge 完成的 implementation plan draft
 
 输出：
 
@@ -408,13 +426,15 @@ LLM 参与：
 - 从 `file_layout.files[*].imports_allowed` 派生 file/module dependency edges。
 - 从 `function_contracts[*].calls_allowed` 派生 function/file/module dependency edges。
 - 校验 dependency graph 不引用不存在的 module/file/function。
-- 当前最终 dependency graph 由规则层派生，不由 LLM 直接生成。
+- 当前最终 dependency graph 在写出 `_step_logs/007_implementation_plan.json` 之前派生并校验。
+- LLM 不直接生成 dependency graph；只有 validation 失败时，5.6 才允许一次 `dependency_repair_patch`，再由 deterministic code 重新派生。
 
 LLM 参与：
 
-- 当前实现不参与。
+- 不直接参与 dependency graph 生成。
+- 仅 dependency validation 失败时参与 repair patch proposal。
 
-### Step 7: Spec Blueprint Lowering
+### Step 6: Spec Blueprint Lowering
 
 输入：
 
@@ -437,7 +457,7 @@ LLM 参与：
 - 该阶段禁止 LLM。
 - 信息缺失或 blueprint 偷增工程语义时直接失败。
 
-### Step 8: Coder-Compatible Specs Compilation
+### Step 7: Coder-Compatible Specs Compilation
 
 输入：
 
@@ -468,7 +488,7 @@ LLM 参与：
 - 该阶段禁止 LLM。
 - specs 内容必须来自 spec blueprint，不能由 compiler 新增工程语义。
 
-### Step 9: Planning Validation Report
+### Step 8: Planning Validation Report
 
 输入：
 
@@ -504,7 +524,13 @@ agent/planning/out/<protocol>/<target_slug>/<timestamp>/
 ```text
 <run>/
 ├── _agent_logs/
-│   └── 000_stage_events.log
+│   ├── 000_stage_events.log
+│   ├── 004_protocol_profile_patch_candidate.json
+│   ├── 007_5_4a_type_inventory_attempt_summary.json
+│   ├── 007_5_4b_function_inventory_attempt_summary.json
+│   ├── 007_5_4c_function_signature_patch.json
+│   ├── 007_5_4d_function_behavior_contract_patch.json
+│   └── 007_5_4e_wire_access_binding_patch.json
 ├── _step_logs/
 │   ├── 000_planning_run_manifest.json
 │   ├── 003_planning_ir.json
@@ -518,10 +544,14 @@ agent/planning/out/<protocol>/<target_slug>/<timestamp>/
 │   ├── 007_5_2_core_design_candidate.json
 │   ├── 007_5_3_module_artifacts_candidate.json
 │   ├── 007_5_4a_type_inventory_candidate.json
+│   ├── 007_5_4a_type_planning_space__<module>.json
+│   ├── 007_5_4a_type_reconciliation_report__<module>.json
+│   ├── 007_5_4a_type_inventory_diagnostics__<module>.json
+│   ├── 007_5_4a_type_obligations__<module>.json
 │   ├── 007_5_4b_function_inventory_candidate.json
-│   ├── 007_5_4c_function_signature_patch.json
-│   ├── 007_5_4d_function_behavior_contract_patch.json
-│   ├── 007_5_4e_wire_access_binding_patch.json
+│   ├── 007_5_4b_function_planning_space__<module>.json
+│   ├── 007_5_4b_function_reconciliation_report__<module>.json
+│   ├── 007_5_4b_function_inventory_diagnostics__<module>.json
 │   ├── 007_5_4f_calls_allowed_candidate.json
 │   ├── 007_5_5_file_layout_candidate.json
 │   ├── 007_5_4g_runtime_entrypoint_candidate.json
@@ -548,8 +578,10 @@ agent/planning/out/<protocol>/<target_slug>/<timestamp>/
 启用 LLM 时，还可能生成：
 
 ```text
-<run>/_step_logs/004_protocol_profile_patch_candidate.json
-<run>/_step_logs/007_5_6_dependency_repair_patch.json
+<run>/_agent_logs/007_5_4c_function_signature_patch__<module>__batch_<n>.json
+<run>/_agent_logs/007_5_4d_function_behavior_contract_patch__<module>__batch_<n>.json
+<run>/_agent_logs/007_5_4e_wire_access_binding_patch.json
+<run>/_agent_logs/007_5_6_dependency_repair_patch.json
 <run>/_validation_reports/007_5_6_dependency_repair_validation_report.json
 ```
 
@@ -558,11 +590,11 @@ agent/planning/out/<protocol>/<target_slug>/<timestamp>/
 ```text
 [agent.planning] stage=protocol_profile build start
 [agent.planning] stage=architecture generation_request=1 strategy=capability_clustered temperature=0.7 start
-[agent.planning] stage=implementation_plan substage=5.4a_type_inventory:semantic_core llm_attempt=1 prompt=type_inventory_candidate_prompt start
-[agent.planning] stage=implementation_plan substage=5.4a_type_inventory:semantic_core llm_attempt=1 accepted
+[agent.planning] stage=implementation_plan substage=5.4a_type_inventory:semantic_core llm_attempt=1 candidate_attempt=1 json_attempt=1 mode=candidate prompt=type_filling_candidate_prompt event=request_sent
+[agent.planning] stage=implementation_plan substage=5.4b_function_inventory:semantic_core llm_attempt=1 candidate_attempt=1 json_attempt=1 mode=candidate prompt=function_annotation_candidate_prompt event=request_sent
 ```
 
-每次 LLM attempt 的 metadata 和 raw response 会写入 `_agent_logs/`，用于排查 JSON 解析失败、输出截断和 validation rejection。
+每次 LLM attempt 的 metadata、rejection reason、patch candidate、controlled inventory attempt summary 会写入 `_agent_logs/`，用于排查 JSON 解析失败、输出截断和 validation rejection。`_step_logs/` 只保留阶段产物和 deterministic sidecar，例如 planning space、reconciliation report、diagnostics、最终 candidate 和最终 plan。
 
 `013_token_usage_summary.json` 会统计所有 LLM attempt 的 token 用量，并按阶段汇总：
 
@@ -672,7 +704,7 @@ python3 -m agent planning plan \
 
 如果不想使用自动选择的最近一次 run，可以用 `--resume-source-dir <previous_run_dir>` 明确指定继承来源；该目录必须包含 `_step_logs/`，并通过当前 facts/target 的 hash 和 compatibility 校验。
 
-运行需要环境变量 `ALI_API`。Protocol Profile 和 Architecture 属于 mandatory LLM 阶段，无法获得合法输出会失败退出；Implementation Plan Synthesis 属于 staged hybrid 阶段，子步骤 LLM 输出不合法时使用 deterministic fallback 继续推进。
+运行需要环境变量 `ALI_API`。Protocol Profile 和 Architecture 属于 mandatory LLM 路径，无法在 retry 预算内获得合法输出会失败退出。5.4a/5.4b 会强制发起 LLM semantic filling/annotation 请求，但 LLM JSON 耗尽后可通过 deterministic empty candidate + reconciliation 继续；若最终 inventory validator 仍有 blocking error，则当前 planning 失败。其他 Implementation Plan 子步骤输出不合法时使用 deterministic fallback 继续推进。
 
 ### 验证已有输出目录
 
