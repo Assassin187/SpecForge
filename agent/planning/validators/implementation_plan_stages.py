@@ -1699,6 +1699,7 @@ def validate_function_behavior_contract_patch(patch: dict[str, Any], draft: dict
     error_ids = _error_ids(draft)
     capability_ids = set(draft.get("traceability", {}).get("required_capabilities", []))
     target_ids = _batch_function_ids(patch, "function_behavior_updates")
+    unresolved_targets = _unresolved_targets(patch)
     if expected_function_ids is not None and target_ids != expected_function_ids:
         diagnostics.append(PlanningDiagnostic("error", "behavior_batch_coverage_mismatch", "behavior patch must update exactly the current batch functions", path))
     seen: set[str] = set()
@@ -1729,6 +1730,10 @@ def validate_function_behavior_contract_patch(patch: dict[str, Any], draft: dict
             ]
             if missing:
                 diagnostics.append(PlanningDiagnostic("error", "incomplete_event_contract", f"function '{function_id}' EVENT contract is missing: {', '.join(missing)}", path))
+            contract = update.get("contract", {})
+            invariants = [item for item in contract.get("invariants_used", []) if str(item).strip()] if isinstance(contract, dict) else []
+            if not invariants and function_id not in unresolved_targets:
+                diagnostics.append(PlanningDiagnostic("warning", "behavior_missing_invariants", f"EVENT function '{function_id}' should declare coder-facing invariants or an unresolved question", path))
         for state in update["state_access"]:
             state_id = state["state_id"]
             if state_id not in state_ids:
@@ -1981,6 +1986,27 @@ def validate_file_layout_candidate(candidate: dict[str, Any], draft: dict[str, A
                 diagnostics.append(PlanningDiagnostic("error", "private_function_exported_in_header", f"private/static function '{function_id}' must not appear in header exports", path))
         if assignment["visibility"] in {"private", "static"} and declaration_file_id:
             diagnostics.append(PlanningDiagnostic("error", "private_function_exposed_in_header", f"private/static function '{function_id}' must not be exposed in a FILE_SPEC header", path))
+    files_by_module: dict[str, list[dict[str, Any]]] = {}
+    functions_by_module: dict[str, list[dict[str, Any]]] = {}
+    for file_item in candidate["files"]:
+        files_by_module.setdefault(str(file_item.get("module_id", "")), []).append(file_item)
+    for function in functions.values():
+        functions_by_module.setdefault(str(function.get("module_id", "")), []).append(function)
+    for module_id, module_functions in sorted(functions_by_module.items()):
+        module_files = files_by_module.get(module_id, [])
+        kinds = {str(function.get("function_kind", "")) for function in module_functions if str(function.get("function_kind", "")).strip()}
+        public_count = sum(1 for function in module_functions if _is_public_function(function))
+        private_count = len(module_functions) - public_count
+        non_trivial = len(module_functions) >= 6 and (len(kinds) >= 3 or (public_count > 0 and private_count > 0))
+        if non_trivial and len(module_files) == 1:
+            diagnostics.append(
+                PlanningDiagnostic(
+                    "warning",
+                    "mechanical_single_file_module_layout",
+                    f"non-trivial module '{module_id}' has {len(module_functions)} functions across {len(kinds)} function kinds but only one source_header_pair",
+                    path,
+                )
+            )
     return diagnostics
 
 

@@ -24,7 +24,7 @@ reconciler 与 validator 负责。
 1. `build_type_planning_space(draft, module_artifact, planning_ir, profile, constraints)`
    为每个 module 编译 deterministic type planning space。
 2. Orchestrator 写入
-   `_step_logs/007_5_4a_type_planning_space__<module>.json`，并把 planning space 放入
+   `_agent_logs/007_5_4a_type_planning_space__<module>.json`，并把 planning space 放入
    `type_filling_candidate_prompt` context。
 3. LLM 返回 `type_filling_candidate/v1`，只能填 slot semantics、fields、
    enum_values、callback_signature、ownership/lifetime、lifecycle notes，并提出
@@ -120,20 +120,26 @@ reconciler 与 validator 负责。
 
 5.4a 保持最终 artifact 名称，并新增 sidecar：
 
-- `_step_logs/007_5_4a_type_planning_space__<module>.json`
-- `_step_logs/007_5_4a_type_reconciliation_report__<module>.json`
-- `_step_logs/007_5_4a_type_inventory_diagnostics__<module>.json`
-- `_step_logs/007_5_4a_type_obligations__<module>.json`
-- `_step_logs/007_5_4a_type_inventory_candidate__<module>.json`
+- `_agent_logs/007_5_4a_type_planning_space__<module>.json`
+- `_agent_logs/007_5_4a_type_reconciliation_report__<module>.json`
+- `_agent_logs/007_5_4a_type_inventory_diagnostics__<module>.json`
+- `_agent_logs/007_5_4a_type_obligations__<module>.json`
+- `_agent_logs/007_5_4a_type_inventory_candidate__<module>.json`
 - `_validation_reports/007_5_4a_type_inventory_validation_report__<module>.json`
 
 5.4b 保持最终 artifact 名称，并新增 sidecar：
 
-- `_step_logs/007_5_4b_function_planning_space__<module>.json`
-- `_step_logs/007_5_4b_function_reconciliation_report__<module>.json`
-- `_step_logs/007_5_4b_function_inventory_diagnostics__<module>.json`
-- `_step_logs/007_5_4b_function_inventory_candidate__<module>.json`
+- `_agent_logs/007_5_4b_function_planning_space__<module>.json`
+- `_agent_logs/007_5_4b_function_reconciliation_report__<module>.json`
+- `_agent_logs/007_5_4b_function_inventory_diagnostics__<module>.json`
+- `_agent_logs/007_5_4b_function_inventory_candidate__<module>.json`
 - `_validation_reports/007_5_4b_function_inventory_validation_report__<module>.json`
+
+aggregate function inventory 完成后会运行 `5.4a.1_function_symbol_repair`。该 deterministic
+子阶段只修复全局重复的 C-facing function `name`：public/exported API symbol 保持不变，
+internal/helper/lifecycle duplicate 按 owning module/type lifecycle 改名，并同步 type
+inventory lifecycle/related function refs。修复报告写入
+`_agent_logs/007_5_4a_function_symbol_repair_report.json`。
 
 两个阶段的 attempt summary 使用 `controlled_inventory_attempt_summary/v1`，记录
 JSON retry、accepted_by、optional accepted/rejected counts。`full_retry_count` 与

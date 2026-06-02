@@ -23,8 +23,7 @@ LLM_PARTICIPATION_MATRIX = [
     {"stage": "5.4 Type and Function Contract Planning", "llm_mode": "candidate_patch_generator", "role": "type/function inventory/detail/wire/call planner", "is_final": False, "fallback": "deterministic conservative type and function contracts"},
     {"stage": "5.5 File Layout Planning", "llm_mode": "candidate_generator", "role": "source_header_pair layout planner", "is_final": False, "fallback": "deterministic source/header pairs"},
     {"stage": "5.6 Dependency Derivation & Repair", "llm_mode": "optional_repair_assistant", "role": "dependency input repair assistant", "is_final": False, "fallback": "rule-derived graph; invalid edges removed or reported"},
-    {"stage": "Spec Blueprint Lowering", "llm_mode": "none", "role": "", "is_final": False, "fallback": "stop on lowering errors"},
-    {"stage": "Coder-Compatible Specs Compilation", "llm_mode": "none", "role": "", "is_final": False, "fallback": "stop on compile errors"},
+    {"stage": "Coder Specs Compilation", "llm_mode": "none", "role": "", "is_final": False, "fallback": "stop on compile errors"},
     {"stage": "Planning Validation Report", "llm_mode": "advisory", "role": "validator explanation assistant", "is_final": False, "fallback": "machine report; advisory text must not change pass/fail"},
 ]
 

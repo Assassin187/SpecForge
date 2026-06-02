@@ -54,11 +54,18 @@ RECOMMENDED_FAMILY_PRIORITY = {
     "create_configure_start_run_stop_destroy": 0,
     "lifecycle_control": 1,
     "feed_or_parse_entry": 2,
+    "primitive_reader_or_tokenizer": 2,
+    "frame_boundary_detection": 2,
     "encode_or_response_entry": 3,
+    "primitive_writer": 3,
+    "buffer_size_or_allocation_helper": 3,
     "state_transition_handler": 4,
+    "connection_io": 4,
+    "session_registry": 4,
     "message_or_command_specific_parser": 5,
     "message_or_response_specific_encoder": 6,
     "lookup_or_match": 7,
+    "topic_tree_mutation": 7,
     "protocol_error_handling": 8,
     "error_response_helper": 9,
     "encoded_buffer_cleanup": 10,
@@ -759,9 +766,10 @@ def _function_budget(
     }
 
 
-def _recommended_priority(seed: dict[str, Any]) -> tuple[int, str]:
+def _recommended_priority(seed: dict[str, Any]) -> tuple[int, int, str]:
     family = str(seed.get("family", ""))
-    return (RECOMMENDED_FAMILY_PRIORITY.get(family, 50), str(seed.get("name", "")))
+    source_priority = 0 if str(seed.get("source_kind", "")) == "engineering_role_helper" else 1
+    return (RECOMMENDED_FAMILY_PRIORITY.get(family, 50), source_priority, str(seed.get("name", "")))
 
 
 def _family_kind(family: str) -> str:
@@ -781,6 +789,98 @@ def _family_kind(family: str) -> str:
     return "internal_helper"
 
 
+def _module_function_prefix(protocol: str, module_id: str) -> str:
+    safe_module = _safe_id(module_id)
+    if safe_module.startswith(f"{protocol}_"):
+        return safe_module
+    return f"{protocol}_{safe_module}" if safe_module else protocol
+
+
+def _c_symbol(value: str) -> bool:
+    if not value or not (value[0].isalpha() or value[0] == "_"):
+        return False
+    return all(char.isalnum() or char == "_" for char in value)
+
+
+def _obligation_function_name(protocol: str, module_id: str, obligation: dict[str, Any], raw_name: str) -> str:
+    name = raw_name.strip()
+    if _c_symbol(name) and ":" not in name:
+        return name
+    type_name = _safe_id(str(obligation.get("type_name", "")))
+    reason = " ".join([str(obligation.get("obligation_id", "")), str(obligation.get("reason", "")), name]).lower()
+    action = "destroy" if any(word in reason for word in ("destroy", "free", "cleanup", "release")) else "create"
+    if type_name.endswith("_t"):
+        type_name = type_name[:-2]
+    if type_name.startswith(f"{protocol}_"):
+        return f"{type_name}_{action}"
+    return f"{_module_function_prefix(protocol, module_id)}_{action}"
+
+
+def _role_specific_helper_seed_specs(module_id: str, prefix: str, module_artifact: dict[str, Any], owned_caps: list[str], *, owns_decode: bool, owns_encode: bool, guarded_by_codec_provider: bool) -> list[dict[str, Any]]:
+    text = _module_text(module_artifact)
+    specs: list[tuple[str, str, str, str, str]] = []
+    if owns_decode and not guarded_by_codec_provider:
+        specs.extend(
+            [
+                ("read_u16", "parser", "primitive_reader_or_tokenizer", "Read a two-byte network-order integer from the decoder cursor.", "codec_primitive_reader"),
+                ("read_string", "parser", "primitive_reader_or_tokenizer", "Read an MQTT-style length-prefixed UTF-8 string from the decoder cursor.", "codec_string_reader"),
+                ("try_parse_remaining_length", "parser", "frame_boundary_detection", "Parse the variable-length Remaining Length field and detect incomplete or malformed frames.", "codec_remaining_length_reader"),
+            ]
+        )
+    if owns_encode and not guarded_by_codec_provider:
+        specs.extend(
+            [
+                ("put_u16", "serializer", "primitive_writer", "Write a two-byte network-order integer into the encoder buffer.", "codec_primitive_writer"),
+                ("remaining_length_bytes", "serializer", "buffer_size_or_allocation_helper", "Compute the MQTT Remaining Length encoded byte sequence size.", "codec_remaining_length_writer"),
+            ]
+        )
+    if _is_transport_only_module(module_artifact, owned_caps):
+        specs.extend(
+            [
+                ("connection_read", "internal_helper", "connection_io", "Read available bytes from a connection into its receive buffer.", "network_connection_read"),
+                ("connection_send", "internal_helper", "connection_io", "Queue or write outbound bytes for a connection.", "network_connection_send"),
+                ("connection_flush", "internal_helper", "connection_io", "Flush pending outbound bytes while preserving partial-write state.", "network_connection_flush"),
+            ]
+        )
+    if any(term in text for term in ("session", "session_manager", "client registry", "state_machine")):
+        specs.extend(
+            [
+                ("session_manager_add", "internal_helper", "session_registry", "Add or replace a session entry in the session manager.", "session_manager_add"),
+                ("session_manager_get", "internal_helper", "session_registry", "Look up an active session entry by client identifier.", "session_manager_get"),
+                ("session_manager_remove", "internal_helper", "session_registry", "Remove a session entry and preserve cleanup ownership.", "session_manager_remove"),
+            ]
+        )
+    if any(term in text for term in ("topic", "subscription", "routing", "router", "message_router")):
+        specs.extend(
+            [
+                ("topic_match", "internal_helper", "lookup_or_match", "Match a topic name against a subscription filter.", "topic_match"),
+                ("entry_remove_sid", "internal_helper", "topic_tree_mutation", "Remove a subscriber/session identifier from a topic tree entry.", "topic_entry_remove_sid"),
+            ]
+        )
+    if any(term in text for term in ("broker", "server", "client", "app", "role_composition", "semantic_dispatch", "callback")):
+        specs.extend(
+            [
+                ("handle_packet", "handler", "handler_helpers", "Dispatch a decoded packet to the broker/session/routing operation for its packet type.", "broker_handle_packet"),
+                ("on_data_cb", "handler", "handler_helpers", "Adapt a network data callback into packet decode and broker dispatch.", "broker_on_data_cb"),
+            ]
+        )
+    return [
+        _function_seed(
+            module_id=module_id,
+            seed_class="recommended",
+            source_kind="engineering_role_helper",
+            source_id=f"role_helper:{module_id}:{source_id}",
+            name=f"{prefix}_{suffix}",
+            function_kind=kind,
+            purpose=purpose,
+            capability_ids=owned_caps[:1],
+            trace_ref_keys=[_decision_ref("function_slot", module_id, "role_helper", source_id)],
+            family=family,
+        )
+        for suffix, kind, family, purpose, source_id in specs
+    ]
+
+
 def build_function_planning_space(
     draft: dict[str, Any],
     module_artifact: dict[str, Any],
@@ -790,7 +890,7 @@ def build_function_planning_space(
 ) -> dict[str, Any]:
     module_id = str(module_artifact.get("module_id", ""))
     protocol = _protocol_prefix(draft)
-    prefix = f"{protocol}_{_safe_id(module_id)}"
+    prefix = _module_function_prefix(protocol, module_id)
     owned_caps = [str(cap) for cap in module_artifact.get("owned_capabilities", []) if str(cap).strip()]
     mandatory: list[dict[str, Any]] = []
     for artifact in module_artifact.get("artifacts", []):
@@ -830,7 +930,7 @@ def build_function_planning_space(
                 seed_class="obligation",
                 source_kind="type_obligation",
                 source_id=str(obligation.get("obligation_id", "")),
-                name=names[0],
+                name=_obligation_function_name(protocol, module_id, obligation, names[0]),
                 function_kind=kind,
                 purpose=f"Satisfy type obligation {obligation.get('obligation_id')}: {obligation.get('reason')}",
                 capability_ids=owned_caps[:1],
@@ -1058,6 +1158,17 @@ def build_function_planning_space(
                     family=family_text,
                 )
             )
+    recommended.extend(
+        _role_specific_helper_seed_specs(
+            module_id,
+            prefix,
+            module_artifact,
+            owned_caps,
+            owns_decode=owns_decode,
+            owns_encode=owns_encode,
+            guarded_by_codec_provider=guarded_by_codec_provider,
+        )
+    )
 
     recommended = sorted(_dedupe_function_seeds(recommended), key=_recommended_priority)[:max_recommended_seed_count]
     function_budget["max_recommended_seed_count"] = max_recommended_seed_count

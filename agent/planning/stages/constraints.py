@@ -112,7 +112,7 @@ def activate_constraints(protocol_profile: dict[str, Any]) -> dict[str, Any]:
             obligation="Each public type and shared state object must have one canonical owner.",
             severity="high",
             rationale="Coder-compatible specs must avoid duplicate public type definitions.",
-            validation_rule="spec blueprint and file specs must not duplicate public type owners",
+            validation_rule="compiled specs must not duplicate public type owners",
         )
     )
     return {

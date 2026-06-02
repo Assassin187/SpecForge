@@ -8,6 +8,8 @@ from ..artifact_io import safe_slug, write_json
 from ..schemas.coder_manifest import SCHEMA_VERSION as CODER_MANIFEST_SCHEMA_VERSION
 from .coder_spec_lowering import (
     _canonical_field_type,
+    callback_signature_for_coder,
+    canonical_function_symbol,
     canonical_type_symbol,
     default_handle_type,
     extract_c_signature_type_refs,
@@ -29,7 +31,6 @@ from .coder_spec_lowering import (
     normalize_data_visibility_for_coder,
     normalize_function_type_for_coder,
     sidecar_payload,
-    signature_raw,
 )
 
 
@@ -51,14 +52,14 @@ def _is_source_only_entrypoint(file_item: dict[str, Any]) -> bool:
 
 
 def _function_trace_id(file_trace_id: str, function: dict[str, Any]) -> str:
-    return f"{file_trace_id}/{function.get('name', 'function')}"
+    return f"{file_trace_id}/{safe_slug(canonical_function_symbol(function))}"
 
 
 def _header_interface(function: dict[str, Any]) -> dict[str, Any]:
-    signature = function.get("signature", {}) if isinstance(function.get("signature"), dict) else {}
+    signature = lower_signature_for_coder(function)
     return {
-        "SIGNATURE": signature_raw(signature),
-        "NAME": str(function.get("name", signature.get("name", ""))),
+        "SIGNATURE": signature["RAW"],
+        "NAME": signature["NAME"],
         "KIND": "FUNC",
         "FUNCTION_TYPE": normalize_function_type_for_coder(function),
         "ROLE": str(function.get("purpose", "")) or "Public function.",
@@ -67,11 +68,11 @@ def _header_interface(function: dict[str, Any]) -> dict[str, Any]:
 
 
 def _source_interface(function: dict[str, Any], trace_id: str, *, public: bool = False) -> dict[str, Any]:
-    signature = function.get("signature", {}) if isinstance(function.get("signature"), dict) else {}
+    signature = lower_signature_for_coder(function)
     return {
         "TRACE_ID": trace_id,
-        "SIGNATURE": signature_raw(signature),
-        "NAME": str(function.get("name", signature.get("name", ""))),
+        "SIGNATURE": signature["RAW"],
+        "NAME": signature["NAME"],
         "KIND": "FUNC",
         "FUNCTION_TYPE": normalize_function_type_for_coder(function),
         "ROLE": str(function.get("purpose", "")) or "Implemented function.",
@@ -82,11 +83,12 @@ def _source_interface(function: dict[str, Any], trace_id: str, *, public: bool =
 
 def _public_signature_unresolved(function: dict[str, Any]) -> list[dict[str, Any]]:
     signature = function.get("signature", {}) if isinstance(function.get("signature"), dict) else {}
-    missing = [
-        key
-        for key in ("raw", "name", "return_type")
-        if not str(signature.get(key, "")).strip()
-    ]
+    lowered = lower_signature_for_coder(function)
+    missing = []
+    if lowered["NAME"] == "unnamed":
+        missing.append("name")
+    if not str(signature.get("return_type") or signature.get("RETURN") or "").strip():
+        missing.append("return_type")
     for param in signature.get("params", []) if isinstance(signature.get("params"), list) else []:
         if not isinstance(param, dict) or not str(param.get("name", "")).strip() or not str(param.get("type", "")).strip():
             missing.append("params")
@@ -133,10 +135,23 @@ def _add_unresolved(unresolved: list[dict[str, Any]], *, kind: str, module_id: s
     )
 
 
-def _module_dependencies_from_graph(spec_blueprint: dict[str, Any], module_ids: list[str]) -> dict[str, set[str]]:
+def _plan_modules(implementation_plan: dict[str, Any]) -> list[dict[str, Any]]:
+    return [item for item in implementation_plan.get("module_artifacts", []) if isinstance(item, dict)]
+
+
+def _plan_files(implementation_plan: dict[str, Any]) -> list[dict[str, Any]]:
+    file_layout = implementation_plan.get("file_layout", {}) if isinstance(implementation_plan.get("file_layout"), dict) else {}
+    return [item for item in file_layout.get("files", []) if isinstance(item, dict)]
+
+
+def _plan_functions(implementation_plan: dict[str, Any]) -> list[dict[str, Any]]:
+    return [item for item in implementation_plan.get("function_contracts", []) if isinstance(item, dict)]
+
+
+def _module_dependencies_from_plan(implementation_plan: dict[str, Any], module_ids: list[str]) -> dict[str, set[str]]:
     known = set(module_ids)
     deps: dict[str, set[str]] = {module_id: set() for module_id in module_ids}
-    graph = spec_blueprint.get("dependency_graph", {})
+    graph = implementation_plan.get("dependency_graph", {})
     edges = graph.get("module_edges", []) if isinstance(graph, dict) else []
     for edge in edges if isinstance(edges, list) else []:
         if not isinstance(edge, dict):
@@ -146,6 +161,53 @@ def _module_dependencies_from_graph(spec_blueprint: dict[str, Any], module_ids: 
         if source in known and target in known and source != target:
             deps.setdefault(source, set()).add(target)
     return deps
+
+
+def _compiler_sidecar_source(
+    implementation_plan: dict[str, Any],
+    modules: list[dict[str, Any]],
+    files: list[dict[str, Any]],
+    functions: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        **implementation_plan,
+        "modules": modules,
+        "files": files,
+        "functions": functions,
+    }
+
+
+def _file_trace_id(protocol: str, file_item: dict[str, Any]) -> str:
+    module_id = safe_slug(str(file_item.get("module_id") or "module"))
+    file_id = safe_slug(str(file_item.get("file_id") or "file"))
+    return f"{safe_slug(protocol)}/{module_id}/{file_id}"
+
+
+def _implemented_ids(file_item: dict[str, Any]) -> set[str]:
+    values: list[Any] = []
+    values.extend(file_item.get("implements", []) if isinstance(file_item.get("implements"), list) else [])
+    values.extend(file_item.get("implements_function_ids", []) if isinstance(file_item.get("implements_function_ids"), list) else [])
+    return {str(item).strip() for item in values if str(item).strip()}
+
+
+def _attach_canonical_symbols(functions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    used: set[str] = set()
+    lowered: list[dict[str, Any]] = []
+    for function in functions:
+        item = dict(function)
+        base = canonical_function_symbol(item)
+        symbol = base
+        if symbol in used:
+            module_slug = safe_slug(str(item.get("module_id") or "module")).replace("-", "_")
+            symbol = f"{module_slug}_{base}" if module_slug else base
+        counter = 2
+        while symbol in used:
+            symbol = f"{base}_{counter}"
+            counter += 1
+        item["_coder_symbol"] = symbol
+        used.add(symbol)
+        lowered.append(item)
+    return lowered
 
 
 def _topological_generation_order(module_ids: list[str], deps_by_module: dict[str, set[str]]) -> list[str]:
@@ -173,7 +235,13 @@ def _topological_generation_order(module_ids: list[str], deps_by_module: dict[st
     return ordered
 
 
-def _function_spec(function: dict[str, Any], trace_id: str, function_index: dict[str, dict[str, Any]], access_by_id: dict[str, dict[str, Any]]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+def _function_spec(
+    function: dict[str, Any],
+    trace_id: str,
+    function_index: dict[str, dict[str, Any]],
+    access_by_id: dict[str, dict[str, Any]],
+    access_by_field: dict[str, dict[str, Any]],
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     unresolved: list[dict[str, Any]] = []
     function_type, body_key, body = lower_event_or_logic_for_coder(function)
     call_contracts: list[dict[str, Any]] = []
@@ -202,12 +270,15 @@ def _function_spec(function: dict[str, Any], trace_id: str, function_index: dict
     for item in function.get("wire_mapping", []) if isinstance(function.get("wire_mapping"), list) else []:
         if not isinstance(item, dict):
             continue
-        access = access_by_id.get(str(item.get("access_path_id", "")), {})
+        field_id = str(item.get("field_id", "")).strip()
+        access = access_by_id.get(str(item.get("access_path_id", "")), {}) or access_by_field.get(field_id, {})
         packet = str(item.get("message", "")).strip()
         wire_field = str(item.get("field", "") or item.get("wire_field", "") or item.get("field_id", "")).strip()
         if not packet or not wire_field:
             continue
-        target = str(item.get("target_path") or access.get("path") or "").strip()
+        access_path = str(access.get("path") or "").strip()
+        target_path = str(item.get("target_path") or "").strip()
+        target = access_path if access_path and (not target_path or target_path == "buffer" or str(item.get("direction", "")).strip() == "serialize") else target_path or access_path
         strategy = str(item.get("strategy") or "").strip()
         mapping = {
             "PACKET": packet,
@@ -320,6 +391,8 @@ def _data_declarations(
                     if str(item.get("name", "")).strip()
                 ],
             }
+        elif kind == "callback_type":
+            declaration["TYPE_SPEC"] = {"TYPE_KIND": "CALLBACK", "CALLBACK_SIGNATURE": callback_signature_for_coder(type_item, name)}
         elif kind == "alias":
             declaration["TYPE_SPEC"] = {"TYPE_KIND": "ALIAS", "ALIAS_OF": str(type_item.get("ownership_lifetime") or "uint8_t")}
         elif target_public:
@@ -446,23 +519,24 @@ def _data_declarations(
     return header_data, source_data
 
 
-def compile_spec_bundle(spec_blueprint: dict[str, Any], output_dir: str | Path) -> tuple[dict[str, Any], Path]:
+def compile_spec_bundle(implementation_plan: dict[str, Any], output_dir: str | Path) -> tuple[dict[str, Any], Path]:
     root = Path(output_dir)
     spec_root = root / "spec_bundle"
     if spec_root.exists():
         shutil.rmtree(spec_root)
     spec_root.mkdir(parents=True, exist_ok=True)
 
-    protocol_meta = lower_protocol_meta_for_coder(spec_blueprint)
+    protocol_meta = lower_protocol_meta_for_coder(implementation_plan)
     protocol = str(protocol_meta["NAME"])
-    modules = [item for item in spec_blueprint.get("modules", []) if isinstance(item, dict)]
-    files = [item for item in spec_blueprint.get("files", []) if isinstance(item, dict)]
-    functions = [item for item in spec_blueprint.get("functions", []) if isinstance(item, dict)]
-    access_path_table = [item for item in spec_blueprint.get("access_path_table", []) if isinstance(item, dict)]
-    canonical_types = [item for item in spec_blueprint.get("canonical_types", []) if isinstance(item, dict)]
-    type_inventory = [item for item in spec_blueprint.get("type_inventory", []) if isinstance(item, dict)]
+    modules = _plan_modules(implementation_plan)
+    files = _plan_files(implementation_plan)
+    functions = _attach_canonical_symbols(_plan_functions(implementation_plan))
+    access_path_table = [item for item in implementation_plan.get("access_path_table", []) if isinstance(item, dict)]
+    canonical_types = [item for item in implementation_plan.get("canonical_types", []) if isinstance(item, dict)]
+    type_inventory = [item for item in implementation_plan.get("type_inventory", []) if isinstance(item, dict)]
     canonical_type_index = _canonical_type_index(canonical_types)
     access_by_id = {str(item.get("access_path_id", "")): item for item in access_path_table if str(item.get("access_path_id", "")).strip()}
+    access_by_field = {str(item.get("field_id", "")): item for item in access_path_table if str(item.get("field_id", "")).strip()}
     functions_by_file: dict[str, list[dict[str, Any]]] = {}
     for function in functions:
         functions_by_file.setdefault(str(function.get("file_id", "")), []).append(function)
@@ -470,7 +544,7 @@ def compile_spec_bundle(spec_blueprint: dict[str, Any], output_dir: str | Path) 
     file_by_id = {str(item.get("file_id", "")): item for item in files}
     module_by_id = {str(item.get("module_id", "")): item for item in modules if str(item.get("module_id", "")).strip()}
     module_ids = [str(item.get("module_id", "")) for item in modules if str(item.get("module_id", "")).strip()]
-    deps_by_module = _module_dependencies_from_graph(spec_blueprint, module_ids)
+    deps_by_module = _module_dependencies_from_plan(implementation_plan, module_ids)
     generation_order = _topological_generation_order(module_ids, deps_by_module)
     file_spec_paths: list[str] = []
     function_spec_paths: list[str] = []
@@ -478,10 +552,11 @@ def compile_spec_bundle(spec_blueprint: dict[str, Any], output_dir: str | Path) 
     unresolved_lowering: list[dict[str, Any]] = []
     for file_item in files:
         file_id = str(file_item.get("file_id", "file"))
-        file_trace_id = str(file_item.get("trace_id", "")).strip() or str(file_id).removeprefix("file:").replace(":", "_")
+        file_trace_id = _file_trace_id(protocol, file_item)
         module_id = str(file_item.get("module_id", "module"))
         module_item = module_by_id.get(module_id, {})
-        file_functions = functions_by_file.get(file_id, [])
+        implemented_ids = _implemented_ids(file_item)
+        file_functions = [function for function in functions_by_file.get(file_id, []) if not implemented_ids or str(function.get("function_id", "")) in implemented_ids]
         imported_headers = [
             str(file_by_id[target].get("header_path", ""))
             for target in file_item.get("imports_allowed", [])
@@ -512,10 +587,10 @@ def compile_spec_bundle(spec_blueprint: dict[str, Any], output_dir: str | Path) 
             source_interfaces.append(_source_interface(function, function_trace_id, public=is_public))
             if is_public:
                 header_interfaces.append(_header_interface(function))
-            function_spec, unresolved = _function_spec(function, function_trace_id, function_index, access_by_id)
+            function_spec, unresolved = _function_spec(function, function_trace_id, function_index, access_by_id, access_by_field)
             unresolved_lowering.extend(unresolved)
             spec_dir = spec_root / spec_stem
-            fn_slug = safe_slug(str(function.get("name", "function")))
+            fn_slug = safe_slug(canonical_function_symbol(function))
             fn_filename = f"{fn_slug}_function_spec.json" if fn_slug == spec_stem.name else f"{fn_slug}_spec.json"
             fn_path = write_json(spec_dir / fn_filename, function_spec)
             function_spec_paths.append(str(fn_path))
@@ -594,19 +669,19 @@ def compile_spec_bundle(spec_blueprint: dict[str, Any], output_dir: str | Path) 
         "PROTOCOL": protocol_meta,
         "MODULES": module_entries,
         "GENERATION_ORDER": generation_order
-        or [str(item) for item in spec_blueprint.get("generation_order", []) if str(item).strip()]
+        or [str(item) for item in implementation_plan.get("module_generation_order", []) if str(item).strip()]
         or module_ids,
         "CONSISTENCY_RULES": [
             {"ID": "C1", "RULE": "file_function_trace_ids_must_match", "DOC_REF": []},
             {"ID": "C2", "RULE": "public_functions_declared_in_headers", "DOC_REF": []},
             *[
                 {"ID": str(item.get("id", "")), "RULE": str(item.get("rule", "")), "DOC_REF": lower_doc_ref(item)}
-                for item in spec_blueprint.get("module_consistency_rules", [])
+                for item in implementation_plan.get("module_consistency_rules", [])
                 if isinstance(item, dict) and str(item.get("id", "")).strip() and str(item.get("rule", "")).strip()
             ],
         ],
     }
-    forbidden = lower_forbidden_symbols_for_coder(spec_blueprint.get("forbidden_symbols", []))
+    forbidden = lower_forbidden_symbols_for_coder(implementation_plan.get("forbidden_symbols", []))
     if forbidden:
         module_spec["FORBIDDEN_SYMBOLS"] = forbidden
     if all_public_symbols:
@@ -619,7 +694,7 @@ def compile_spec_bundle(spec_blueprint: dict[str, Any], output_dir: str | Path) 
                 module_spec["PUBLIC_SYMBOLS"].append(item)
     module_spec_path = write_json(spec_root / f"{safe_slug(protocol)}_module_spec.json", module_spec)
 
-    traceability_sidecar, decisions_sidecar, refs_sidecar = sidecar_payload(spec_blueprint, unresolved_lowering)
+    traceability_sidecar, decisions_sidecar, refs_sidecar = sidecar_payload(_compiler_sidecar_source(implementation_plan, modules, files, functions), unresolved_lowering)
     write_json(spec_root / "planning_traceability.json", traceability_sidecar)
     write_json(spec_root / "planning_decisions.json", decisions_sidecar)
     write_json(spec_root / "planning_ir_refs.json", refs_sidecar)

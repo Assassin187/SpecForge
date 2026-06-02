@@ -30,6 +30,8 @@ Planning Agent 运行时强制使用 LLM。LLM 不是可选增强，而是对应
 
 每个 LLM stage 的 temperature、top_p、max_completion_tokens、max_retries 和 enable_thinking 可以在 `agent/planning/config.py` 的 `default_llm_stage_configs()` 中集中调整。可用 stage key 包括 `protocol_profile`、`architecture_candidate_high_variance`、`architecture_candidate_low_variance`、`architecture_ranking`、`implementation_plan_5_1`、`implementation_plan_5_2a`、`implementation_plan_5_2b`、`implementation_plan_5_3`、`implementation_plan_5_4a` 到 `implementation_plan_5_4e`、`implementation_plan_5_5a`、`implementation_plan_5_5b`、`implementation_plan_5_6` 和 `implementation_plan_5_7`。旧 stage key 仍可作为 config override 兼容别名。
 
+第五阶段中已经按 module 切分后的 function-batch 子阶段，可以通过 `PlanningConfig.module_scoped_batch_sizes` 调整 batch size。当前只允许配置 `implementation_plan_5_4b`、`implementation_plan_5_4c` 和 `implementation_plan_5_4e`；默认值分别为 `32`、`8`、`16`。非 module-scoped batch 阶段不能配置 batch size。
+
 ## 中间阶段续跑
 
 `plan` 支持从顶层阶段续跑：
@@ -49,20 +51,19 @@ python3 -m agent.planning plan \
 - `architecture`
 - `implementation_plan`
 - `implementation_plan_5_1`（别名：`5.1` / `implementation_plan_skeleton`）
-- `implementation_plan_5_2a`（别名：`5.2a` / `core_design`）
-- `implementation_plan_5_2b`（别名：`5.2` / `5.2b` / `module_artifacts`）
+- `implementation_plan_5_2a`（别名：`5.2` / `5.2a` / `core_design`）
+- `implementation_plan_5_2b`（别名：`5.2b` / `module_artifacts`）
 - `implementation_plan_5_3`（别名：`5.3` / `type_inventory`）
-- `implementation_plan_5_4a`（别名：`5.4a` / `function_inventory`）
+- `implementation_plan_5_4a`（别名：`5.4` / `5.4a` / `function_inventory`）
 - `implementation_plan_5_4b`（别名：`5.4b` / `function_signatures`）
 - `implementation_plan_5_4c`（别名：`5.4c` / `function_behavior`）
 - `implementation_plan_5_4d`（别名：`5.4d` / `wire_access_binding`）
-- `implementation_plan_5_4e`（别名：`5.4` / `5.4e` / `calls_allowed` / `call_contracts`）
-- `implementation_plan_5_5a`（别名：`5.5a` / `file_layout`）
-- `implementation_plan_5_5b`（别名：`5.5` / `5.5b` / `runtime_entrypoint`）
+- `implementation_plan_5_4e`（别名：`5.4e` / `calls_allowed` / `call_contracts`）
+- `implementation_plan_5_5a`（别名：`5.5` / `5.5a` / `file_layout`）
+- `implementation_plan_5_5b`（别名：`5.5b` / `runtime_entrypoint`）
 - `implementation_plan_5_6`（别名：`5.6` / `dependency_repair`）
 - `implementation_plan_5_7`（别名：`5.7` / `spec_readiness`）
-- `spec_blueprint`
-- `specs_compile`
+- `specs_compile`（别名：`6` / `coder_specs_compile`）
 
 启用续跑时，Planning Agent 会在当前 facts/target 对应的默认输出根中寻找最近一次 run，校验指定阶段之前所需的中间产物、输入文件 hash 和 compatibility versions，然后把继承产物写入新的 run 目录。指定阶段本身会重新执行；`implementation_plan_5_x` 会继承并 merge 之前的 Step 5 子阶段 artifact，然后从指定子阶段继续。
 
@@ -281,15 +282,17 @@ LLM 参与：
 - `_step_logs/007_5_2b_module_artifacts_candidate.json`
 - `_validation_reports/007_5_2b_module_artifacts_validation_report.json`
 - `_step_logs/007_5_3_type_data_inventory_candidate.json`
-- `_step_logs/007_5_3_type_data_planning_space__<module>.json`
-- `_step_logs/007_5_3_type_data_reconciliation_report__<module>.json`
-- `_step_logs/007_5_3_type_data_inventory_diagnostics__<module>.json`
-- `_step_logs/007_5_3_type_data_obligations__<module>.json`
+- `_agent_logs/007_5_3_type_data_planning_space__<module>.json`
+- `_agent_logs/007_5_3_type_data_reconciliation_report__<module>.json`
+- `_agent_logs/007_5_3_type_data_inventory_diagnostics__<module>.json`
+- `_agent_logs/007_5_3_type_data_obligations__<module>.json`
+- `_agent_logs/007_5_3_type_data_inventory_candidate__<module>.json`
 - `_validation_reports/007_5_3_type_data_inventory_validation_report.json`
 - `_step_logs/007_5_4a_function_inventory_candidate.json`
-- `_step_logs/007_5_4a_function_inventory_planning_space__<module>.json`
-- `_step_logs/007_5_4a_function_inventory_reconciliation_report__<module>.json`
-- `_step_logs/007_5_4a_function_inventory_diagnostics__<module>.json`
+- `_agent_logs/007_5_4a_function_inventory_planning_space__<module>.json`
+- `_agent_logs/007_5_4a_function_inventory_reconciliation_report__<module>.json`
+- `_agent_logs/007_5_4a_function_inventory_diagnostics__<module>.json`
+- `_agent_logs/007_5_4a_function_inventory_candidate__<module>.json`
 - `_validation_reports/007_5_4a_function_inventory_validation_report.json`
 - `_agent_logs/007_5_3_type_data_attempt_summary.json`
 - `_agent_logs/007_5_4a_function_inventory_attempt_summary.json`
@@ -313,7 +316,7 @@ LLM 参与：
 - 5.1 由规则层生成 `implementation_plan/v1` skeleton：
   - 固定 `source_artifacts` / `source_artifact_refs`。
   - 建立 `id_namespace`，包括 module、capability、constraint、field、function/file id pattern。
-  - 建立 `validation_targets`，明确 capability coverage、handler coverage、wire field coverage、dependency derivation only 和 blueprint no-new-semantics。
+  - 建立 `validation_targets`，明确 capability coverage、handler coverage、wire field coverage、dependency derivation only 和 specs compile no-new-semantics。
   - 初始化空 `module_artifacts`、core design、function contracts、file layout、wire/access mapping 和 `dependency_graph=null`。
   - 建立 `deterministic_indexes`，供后续子步骤 validator 和 fallback 使用。
 
@@ -350,18 +353,18 @@ LLM 参与：
   - `reconcile_function_annotation_candidate()` 保留 required seeds，normalize optional helpers，去重，校验 refs/boundary，并记录 accepted/rejected optional counts。
   - `validate_function_inventory_candidate()` 阻断 missing FUNC coverage、uncovered lifecycle obligation、missing handler/parser/serializer entry、unknown refs、invalid coder function type 和 public API inconsistency。
   - 聚合后执行 `reconcile_type_inventory_function_refs()`，把 5.3 type lifecycle refs 对齐到已接受的 lifecycle/API functions。
+  - 随后执行 `5.4a.1_function_symbol_repair`，保留 public/exported API symbol，并 deterministic 重命名 internal duplicate C-facing function name；修复报告写入 `_agent_logs/007_5_4a_function_symbol_repair_report.json`。
 
-- 5.4b 按 module 补全 C signature；module 内 function 数量超过 32 时按 batch=32 分批：
+- 5.4b 按 module 补全 C signature；默认 batch size 为 `PlanningConfig.module_scoped_batch_sizes["implementation_plan_5_4b"] == 32`：
   - 写入 `signature` 与 `signature_dependencies`。
   - 不允许修改 5.4a 的函数集合、函数名或 API surface。
   - `type_ref` 只能引用 canonical `type_ids` 或 C/POSIX/network `system_type_ids`，禁止把 state/message/field id 当作 type。
-  - 参数 `ownership` 使用 coder 可识别枚举：`BORROWED`、`OWNED`、`OWNED_BY_CALLER`、`TRANSFER`、`SHARED`、`UNKNOWN`。
-  - 参数同时保留 planning 用的 `direction` 与 `passing_mode`，用于区分 by-value、pointer、out-param 等 C 调用形态。
-  - prompt 使用 compact signature context 与 specs-example 风格约束，减少 token 并提升 Coder-facing signature 质量。
+  - prompt 使用 compact signature context、`required_update_skeleton` 与 `signature_normalization_policy`，LLM 只做 return/parameter/type exposure 的语义设计。
+  - `normalize_function_signature_patch()` 在 validator 前 canonicalize batch coverage、`storage_class/raw`、param ownership/passing mode、dependency scope、system owner 与 private source dependencies。
   - 不合法时使用 deterministic signature fallback。
   - aggregate patch artifact 写入 `_step_logs/`，batch patch artifact 写入 `_agent_logs/`，validation report 仍写入 `_validation_reports/`。
 
-- 5.4c 按 module 补全 behavior/internal dependency contract；module 内 function 数量超过 8 时按 batch=8 分批：
+- 5.4c 按 module 补全 behavior/internal dependency contract；默认 batch size 为 `PlanningConfig.module_scoped_batch_sizes["implementation_plan_5_4c"] == 8`：
   - 写入 `behavior_contract`、`error_behavior`、`state_access`、`resource_access`、`internal_type_refs`、`service_requirements`。
   - `behavior_contract` 显式保存 preconditions、postconditions、idempotent、thread_safety；这些字段由 Coder-Compatible Specs Compilation lowering 为 coder `CONTRACT`。
   - `logic_kind=EVENT` 时必须同时提供完整 `event_contract`；否则 merger/fallback 保守降级为 `LOGIC`。
@@ -380,9 +383,10 @@ LLM 参与：
   - 不合法时使用 deterministic wire/access fallback。
   - patch artifact 写入 `_agent_logs/`。
 
-- 5.4e 按 module 逐个生成 `calls_allowed` / call contracts candidate；module 内 function 数量超过 4 时按 batch=4 分批：
+- 5.4e 按 module 逐个生成 `calls_allowed` / call contracts candidate；默认 batch size 为 `PlanningConfig.module_scoped_batch_sizes["implementation_plan_5_4e"] == 16`：
   - 将 5.4c 的 `cross_module_service` requirements 解析为 concrete call edges。
   - 只允许引用已存在 function ids。
+  - context 提供 `required_call_update_skeleton`、`expected_cross_module_service_requirements` 与 provider candidates；`normalize_calls_allowed_candidate()` 在 validator 前丢弃 batch 外 caller/非法 edge，补齐缺失 caller，并自动闭合 unresolved service ids。
   - batch candidate 只覆盖当前 caller function 集合，聚合后再做全局 coverage 与 cycle 校验。
   - 校验跨 module 调用不能违反 selected architecture policy。
   - 禁止 self-call 和 prohibited cycle；无法解析的 service requirement 写入 unresolved。
@@ -439,49 +443,35 @@ LLM 参与：
 - 不直接参与 dependency graph 生成。
 - 仅 dependency validation 失败时参与 repair patch proposal；5.7 readiness validation 不调用 LLM。
 
-### Step 6: Spec Blueprint Lowering
+### Step 6: Coder Specs Compilation
 
 输入：
 
-- `implementation_plan.json`
-
-输出：
-
-- `_step_logs/010_spec_blueprint.json`
-
-具体操作：
-
-- 将 implementation plan 机械展开为 spec blueprint。
-- 归一化 module/file/function trace ids。
-- 透传 constraints、traceability、wire mapping、access path、dependency graph。
-- 校验 blueprint 没有新增 module/file/function。
-
-LLM 参与：
-
-- 不参与。
-- 该阶段禁止 LLM。
-- 信息缺失或 blueprint 偷增工程语义时直接失败。
-
-### Step 7: Coder-Compatible Specs Compilation
-
-输入：
-
-- `spec_blueprint.json`
+- `007_implementation_plan.json`
+- `007_5_5a_file_layout_candidate.json`
+- `007_5_5b_runtime_entrypoint_candidate.json`
+- `008_dependency_validation_report.json`
 
 输出：
 
 - `spec_bundle/`
 - `coder_manifest.json`
+- `_step_logs/013_token_usage_summary.json`
+- `_validation_reports/014_planning_validation_report.json`
+- `planning_traceability.json`
+- `planning_decisions.json`
+- `planning_ir_refs.json`
 
 具体操作：
 
-- 从 spec blueprint 确定性编译当前 Coder Agent 可读取的 specs。
+- 直接从 Step 5 implementation plan 编译当前 Coder Agent 可读取的 specs。
 - 通过 deterministic lowering 层把 planning IR 字段转换为 coder spec dialect；compiler 不允许把 planning-only 字段直接塞进 strict specs。
+- 从 `file_layout.files[*]` 生成多个 `FILE_SPEC`。
+- 从 implemented functions 生成多个 `FUNCTION_SPEC`。
 - 生成一个 `PROTOCOL_MODULE_SPEC`。
-- 生成多个 `FILE_SPEC`。
-- 生成多个 `FUNCTION_SPEC`。
+- 对非法 planning function name 执行 canonical C symbol lowering，并用 structured signature 重建 `RAW`。
 - 生成 `coder_manifest.json` 作为索引和审计文件。
-- 可生成非 `*_spec.json` sidecar，例如 `planning_traceability.json`、`planning_decisions.json`、`planning_ir_refs.json`，用于保存 traceability、capability/state/call planning 信息。
+- 生成非 `*_spec.json` sidecar，例如 `planning_traceability.json`、`planning_decisions.json`、`planning_ir_refs.json`，用于保存 traceability、capability/state/call planning 信息。
 - strict specs 中不得出现 coder schema 不允许的顶层字段，例如 `TRACEABILITY`、`CAPABILITY_IDS`、`STATE_ACCESS`、`CALLS_ALLOWED`。
 - 先用 `specs-example/specs_schema/*.json` 做 strict JSON Schema validation，再调用当前 Coder loader 做兼容性验证：
   - `agent.planning.validators.coder_schema.validate_coder_spec_bundle_against_schema()`
@@ -491,7 +481,7 @@ LLM 参与：
 
 - 不参与。
 - 该阶段禁止 LLM。
-- specs 内容必须来自 spec blueprint，不能由 compiler 新增工程语义。
+- specs 内容必须来自 Step 5 implementation plan，不能由 compiler 新增工程语义。
 
 ### Step 8: Planning Validation Report
 
@@ -532,9 +522,20 @@ agent/planning/out/<protocol>/<target_slug>/<timestamp>/
 │   ├── 000_stage_events.log
 │   ├── 004_protocol_profile_patch_candidate.json
 │   ├── 007_5_3_type_data_attempt_summary.json
+│   ├── 007_5_3_type_data_planning_space__<module>.json
+│   ├── 007_5_3_type_data_reconciliation_report__<module>.json
+│   ├── 007_5_3_type_data_inventory_diagnostics__<module>.json
+│   ├── 007_5_3_type_data_obligations__<module>.json
+│   ├── 007_5_3_type_data_inventory_candidate__<module>.json
 │   ├── 007_5_4a_function_inventory_attempt_summary.json
+│   ├── 007_5_4a_function_inventory_planning_space__<module>.json
+│   ├── 007_5_4a_function_inventory_reconciliation_report__<module>.json
+│   ├── 007_5_4a_function_inventory_diagnostics__<module>.json
+│   ├── 007_5_4a_function_inventory_candidate__<module>.json
+│   ├── 007_5_4a_function_symbol_repair_report.json
 │   ├── 007_5_4b_function_signature_patch__<module>__batch_<n>.json
-│   └── 007_5_4c_function_behavior_contract_patch__<module>__batch_<n>.json
+│   ├── 007_5_4c_function_behavior_contract_patch__<module>__batch_<n>.json
+│   └── 007_5_4e_function_call_contracts_candidate__<module>__batch_<n>.json
 ├── _step_logs/
 │   ├── 000_planning_run_manifest.json
 │   ├── 003_planning_ir.json
@@ -548,14 +549,7 @@ agent/planning/out/<protocol>/<target_slug>/<timestamp>/
 │   ├── 007_5_2a_core_design_candidate.json
 │   ├── 007_5_2b_module_artifacts_candidate.json
 │   ├── 007_5_3_type_data_inventory_candidate.json
-│   ├── 007_5_3_type_data_planning_space__<module>.json
-│   ├── 007_5_3_type_data_reconciliation_report__<module>.json
-│   ├── 007_5_3_type_data_inventory_diagnostics__<module>.json
-│   ├── 007_5_3_type_data_obligations__<module>.json
 │   ├── 007_5_4a_function_inventory_candidate.json
-│   ├── 007_5_4a_function_inventory_planning_space__<module>.json
-│   ├── 007_5_4a_function_inventory_reconciliation_report__<module>.json
-│   ├── 007_5_4a_function_inventory_diagnostics__<module>.json
 │   ├── 007_5_4b_function_signature_patch.json
 │   ├── 007_5_4c_function_behavior_contract_patch.json
 │   ├── 007_5_4d_function_wire_access_binding_patch.json
@@ -563,7 +557,6 @@ agent/planning/out/<protocol>/<target_slug>/<timestamp>/
 │   ├── 007_5_5a_file_layout_candidate.json
 │   ├── 007_5_5b_runtime_entrypoint_candidate.json
 │   ├── 007_implementation_plan.json
-│   ├── 010_spec_blueprint.json
 │   └── 013_token_usage_summary.json
 ├── _validation_reports/
 │   ├── 007_5_2a_core_design_validation_report.json

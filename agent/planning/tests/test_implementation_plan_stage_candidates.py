@@ -13,6 +13,7 @@ from agent.planning.adapters.target_profile import load_target_profile
 from agent.planning.config import PlanningConfig
 from agent.planning.orchestrator import PlanningAgent
 from agent.planning.prompts.templates import (
+    architecture_ranking_messages,
     calls_allowed_candidate_messages,
     core_design_candidate_messages,
     dependency_repair_patch_messages,
@@ -28,7 +29,7 @@ from agent.planning.prompts.templates import (
     type_inventory_repair_patch_messages,
     wire_access_binding_patch_messages,
 )
-from agent.planning.stages.architecture import build_architecture_candidates, select_architecture
+from agent.planning.stages.architecture import build_architecture_candidates, deterministic_architecture_ranking, select_architecture
 from agent.planning.stages.constraints import activate_constraints
 from agent.planning.stages.implementation_plan import build_implementation_plan
 from agent.planning.stages.implementation_plan_context import (
@@ -66,8 +67,12 @@ from agent.planning.stages.implementation_plan_merger import (
     fallback_runtime_entrypoint,
     fallback_type_inventory,
     fallback_wire_access_binding,
+    normalize_calls_allowed_aggregate,
+    normalize_calls_allowed_candidate,
+    normalize_function_signature_patch,
     apply_function_inventory_repair_patch,
     apply_type_inventory_repair_patch,
+    repair_function_inventory_symbols,
     merge_calls_allowed,
     merge_core_design,
     merge_file_layout,
@@ -188,6 +193,7 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
         self.assertGreaterEqual(plan_source.count("_run_controlled_inventory_candidate("), 2)
         self.assertIn("type_filling_candidate_prompt", plan_source)
         self.assertIn("function_annotation_candidate_prompt", plan_source)
+        self.assertLess(plan_source.index("repair_function_inventory_symbols"), plan_source.index("function_signature_patch_prompt"))
 
     def _fixtures(self, tmp: Path):
         facts = ROOT / "agent" / "facts" / "gold_facts" / "mqtt_min" / "protocol_facts.json"
@@ -251,6 +257,217 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             "final_draft": final_draft,
             "repair": repair,
         }
+
+    def test_architecture_ranking_fallback_prefers_engineering_boundaries(self) -> None:
+        profile = {
+            "required_capabilities": [
+                {"capability_id": "transport_io"},
+                {"capability_id": "message_decode"},
+                {"capability_id": "message_encode"},
+                {"capability_id": "session_state"},
+                {"capability_id": "routing_index"},
+                {"capability_id": "semantic_dispatch"},
+                {"capability_id": "role_composition"},
+            ]
+        }
+        minimal = {
+            "candidate_id": "minimal_scope",
+            "modules": [
+                {
+                    "module_id": "runtime_core",
+                    "name": "runtime_core",
+                    "responsibilities": ["transport, codec, session, and routing catch-all"],
+                    "owned_capabilities": ["transport_io", "message_decode", "message_encode", "session_state", "routing_index"],
+                    "state_owned": ["connection_state", "session_state"],
+                    "dependency_hints": [],
+                },
+                {
+                    "module_id": "broker",
+                    "name": "broker",
+                    "responsibilities": ["broker dispatch and role composition"],
+                    "owned_capabilities": ["semantic_dispatch", "role_composition"],
+                    "state_owned": [],
+                    "dependency_hints": ["runtime_core"],
+                },
+            ],
+        }
+        layered = {
+            "candidate_id": "capability_clustered",
+            "modules": [
+                {"module_id": "network", "name": "network", "responsibilities": ["TCP epoll connection runtime"], "owned_capabilities": ["transport_io"], "state_owned": ["connection_state"], "dependency_hints": []},
+                {"module_id": "mqtt_codec", "name": "mqtt_codec", "responsibilities": ["packet data model, decoder, encoder"], "owned_capabilities": ["message_decode", "message_encode"], "state_owned": [], "dependency_hints": []},
+                {"module_id": "session", "name": "session", "responsibilities": ["session state manager"], "owned_capabilities": ["session_state"], "state_owned": ["session_state"], "dependency_hints": []},
+                {"module_id": "topic_router", "name": "topic_router", "responsibilities": ["topic tree and routing dispatch"], "owned_capabilities": ["routing_index"], "state_owned": ["subscription_index"], "dependency_hints": ["session"]},
+                {"module_id": "broker_app", "name": "broker_app", "responsibilities": ["broker lifecycle and packet dispatch"], "owned_capabilities": ["semantic_dispatch", "role_composition"], "state_owned": [], "dependency_hints": ["network", "mqtt_codec", "session", "topic_router"]},
+            ],
+        }
+        ranking = deterministic_architecture_ranking({"schema_version": "architecture_candidates/v1", "candidates": [minimal, layered]}, profile)
+        self.assertEqual(ranking["selected_candidate_id"], "capability_clustered")
+        self.assertGreater(
+            ranking["scores"][0]["dimension_scores"]["cohesion"],
+            next(item for item in ranking["scores"] if item["candidate_id"] == "minimal_scope")["dimension_scores"]["cohesion"],
+        )
+
+        prompt_payload = json.loads(architecture_ranking_messages({}, {"candidates": [minimal, layered]})[1]["content"])
+        rules_text = "\n".join(prompt_payload["application_protocol_engineering_experience"])
+        self.assertIn("source/header boundaries", rules_text)
+        self.assertIn("minimal_scope", rules_text)
+
+    def test_function_symbol_repair_renames_internal_duplicate_and_updates_type_refs(self) -> None:
+        public_codec = _inventory_function("mqtt_encoder_encode", "codec", function_id="fn:codec:mqtt_encoder_encode", kind="serializer", public=True)
+        internal_network = _inventory_function("mqtt_encoder_encode", "network", function_id="fn:network:mqtt_encoder_encode", kind="resource_lifecycle", public=False)
+        candidate = {
+            "schema_version": "function_inventory_candidate/v2",
+            "candidate_id": "candidate:function_inventory:all_modules",
+            "producer": {"stage": "test", "prompt_name": "test", "prompt_version": "test"},
+            "module_id": "all_modules",
+            "functions": [copy.deepcopy(public_codec), copy.deepcopy(internal_network)],
+            "assumptions": [],
+            "unresolved_questions": [],
+        }
+        draft = {
+            "protocol_name": "mqtt",
+            "module_artifacts": [{"module_id": "codec"}, {"module_id": "network"}],
+            "function_contracts": [copy.deepcopy(public_codec), copy.deepcopy(internal_network)],
+            "type_inventory": [
+                {
+                    "type_id": "type:network:mqtt_network_encode_buffer_t",
+                    "name": "mqtt_network_encode_buffer_t",
+                    "module_id": "network",
+                    "visibility": "module_internal",
+                    "defined_in": "internal_header",
+                    "lifecycle": {"created_by": ["mqtt_encoder_encode"], "initialized_by": ["mqtt_encoder_encode"], "destroyed_by": [], "freed_by": ["mqtt_network_encode_buffer_free"]},
+                    "related_functions": ["mqtt_encoder_encode"],
+                }
+            ],
+        }
+        self.assertTrue(_has(validate_function_inventory_candidate(candidate, draft["module_artifacts"], draft, {}, {}), "duplicate_function_name"))
+        repaired_draft, repaired_candidate, report = repair_function_inventory_symbols(draft, candidate)
+        self.assertFalse(_has(validate_function_inventory_candidate(repaired_candidate, draft["module_artifacts"], repaired_draft, {}, {}), "duplicate_function_name"))
+        repaired_network = next(item for item in repaired_candidate["functions"] if item["function_id"] == "fn:network:mqtt_encoder_encode")
+        self.assertEqual(repaired_network["name"], "mqtt_network_encode_buffer_create")
+        lifecycle = repaired_draft["type_inventory"][0]["lifecycle"]
+        self.assertEqual(lifecycle["created_by"], ["mqtt_network_encode_buffer_create"])
+        self.assertEqual(lifecycle["initialized_by"], ["mqtt_network_encode_buffer_create"])
+        self.assertEqual(report["renamed_functions"][0]["function_id"], "fn:network:mqtt_encoder_encode")
+
+    def test_signature_normalizer_canonicalizes_mechanical_fields(self) -> None:
+        function = _inventory_function("mqtt_codec_helper", "codec", function_id="fn:codec:mqtt_codec_helper", kind="resource_lifecycle", public=False)
+        draft = {
+            "protocol_name": "mqtt",
+            "module_artifacts": [{"module_id": "codec"}],
+            "function_contracts": [copy.deepcopy(function)],
+            "canonical_types": [],
+            "type_inventory": [
+                {
+                    "type_id": "type:codec:mqtt_codec_private_t",
+                    "name": "mqtt_codec_private_t",
+                    "module_id": "codec",
+                    "visibility": "module_internal",
+                    "defined_in": "internal_header",
+                }
+            ],
+        }
+        candidate = {
+            "schema_version": "function_signature_patch/v1",
+            "patch_id": "patch:test",
+            "producer": {"stage": "test", "prompt_name": "function_signature_patch_prompt", "prompt_version": "test"},
+            "module_id": "codec",
+            "batch": {"index": 0, "size": 1},
+            "function_signature_updates": [
+                {
+                    "function_id": "fn:codec:mqtt_codec_helper",
+                    "signature": {
+                        "raw": "int mqtt_codec_helper(mqtt_codec_private_t value, size_t len)",
+                        "name": "mqtt_codec_helper",
+                        "storage_class": "none",
+                        "return_type": "int",
+                        "params": [
+                            {"name": "value", "type": "mqtt_codec_private_t", "type_ref": "type:codec:mqtt_codec_private_t", "direction": "in", "nullable": False, "ownership": "BY_VALUE", "passing_mode": "by_value"},
+                            {"name": "len", "type": "size_t", "type_ref": "size_t", "direction": "in", "nullable": False, "ownership": "BORROWED", "passing_mode": "by_value"},
+                        ],
+                    },
+                    "signature_dependencies": [
+                        {"symbol_name": "mqtt_codec_private_t", "symbol_kind": "type", "type_ref": "type:codec:mqtt_codec_private_t", "owner_module_id": "codec", "dependency_scope": "internal_header", "reason": "private helper input"},
+                        {"symbol_name": "size_t", "symbol_kind": "system_type", "type_ref": "size_t", "owner_module_id": "system", "dependency_scope": "header", "reason": "length"},
+                    ],
+                    "interface_type_declarations": [],
+                    "trace_ref_keys": [],
+                    "status": "inferred",
+                }
+            ],
+            "assumptions": [],
+            "unresolved_questions": [],
+        }
+        normalized, stats = normalize_function_signature_patch(candidate, draft, "codec", [function], batch_index=0, batch_size=1)
+        update = normalized["function_signature_updates"][0]
+        self.assertEqual(update["signature"]["storage_class"], "static")
+        self.assertTrue(update["signature"]["raw"].startswith("static "))
+        self.assertEqual(update["signature"]["params"][0]["ownership"], "UNKNOWN")
+        self.assertEqual(update["signature"]["params"][0]["passing_mode"], "by_value")
+        self.assertEqual(update["signature_dependencies"][0]["dependency_scope"], "source")
+        self.assertEqual(update["signature_dependencies"][1]["owner_module_id"], "")
+        self.assertGreater(stats["signature_param_ownership_normalized"], 0)
+        self.assertFalse(validate_function_signature_patch(normalized, draft, {"fn:codec:mqtt_codec_helper"}))
+
+    def test_calls_normalizer_fills_batch_and_closes_service_requirements(self) -> None:
+        caller = _inventory_function("mqtt_network_cleanup_session", "network", function_id="fn:network:mqtt_network_cleanup_session", public=False)
+        caller["service_requirements"] = [{"service_requirement_id": "svc:network:session_cleanup", "requirement_kind": "cross_module_service"}]
+        missing_caller = _inventory_function("mqtt_network_bind_connection", "network", function_id="fn:network:mqtt_network_bind_connection", public=False)
+        missing_caller["service_requirements"] = [{"service_requirement_id": "svc:network:session_bind", "requirement_kind": "cross_module_service"}]
+        session_api = _inventory_function("mqtt_session_cleanup", "session", function_id="fn:session:mqtt_session_cleanup", public=True)
+        private_router = _inventory_function("mqtt_router_cleanup", "router", function_id="fn:router:mqtt_router_cleanup", public=False)
+        draft = {
+            "module_artifacts": [{"module_id": "network"}, {"module_id": "session"}, {"module_id": "router"}],
+            "function_contracts": [caller, missing_caller, session_api, private_router],
+        }
+        fallback = fallback_calls_allowed(draft, [caller, missing_caller], batch_index=0, batch_size=2)
+        candidate = {
+            "schema_version": "calls_allowed_candidate/v2",
+            "candidate_id": "candidate:test",
+            "producer": {"stage": "test", "prompt_name": "calls_allowed_candidate_prompt", "prompt_version": "test"},
+            "call_updates": [
+                {
+                    "caller_function_id": "fn:network:mqtt_network_cleanup_session",
+                    "calls_allowed": [
+                        {"callee_function_id": "fn:network:mqtt_network_cleanup_session", "call_kind": "cleanup", "required": True, "service_requirement_ids": [], "call_reason": "self should drop", "param_bindings": [], "return_binding": {"policy": "ignore", "target_ref": "", "cleanup_function_id": "none"}, "failure_behavior": "ignore", "trace_ref_keys": [], "status": "inferred"},
+                        {"callee_function_id": "fn:router:mqtt_router_cleanup", "call_kind": "cleanup_and_return", "required": True, "service_requirement_ids": [], "call_reason": "private cross module should drop", "param_bindings": [], "return_binding": {"policy": "ignore", "target_ref": "", "cleanup_function_id": "none"}, "failure_behavior": "ignore", "trace_ref_keys": [], "status": "inferred"},
+                        {"callee_function_id": "fn:session:mqtt_session_cleanup", "call_kind": "cleanup", "required": True, "service_requirement_ids": ["svc:network:session_cleanup", "svc:wrong"], "call_reason": "delegate cleanup", "param_bindings": [], "return_binding": {"policy": "ignore", "target_ref": "", "cleanup_function_id": "none"}, "failure_behavior": "ignore", "trace_ref_keys": [], "status": "inferred"},
+                    ],
+                },
+                {"caller_function_id": "fn:extra:outside", "calls_allowed": []},
+            ],
+            "unresolved_service_requirements": [],
+            "assumptions": [],
+            "unresolved_questions": [],
+        }
+        normalized, stats = normalize_calls_allowed_candidate(
+            candidate,
+            draft,
+            {"fn:network:mqtt_network_cleanup_session", "fn:network:mqtt_network_bind_connection"},
+            {"svc:network:session_cleanup", "svc:network:session_bind"},
+            {"fn:session:mqtt_session_cleanup"},
+            fallback,
+        )
+        self.assertEqual({item["caller_function_id"] for item in normalized["call_updates"]}, {"fn:network:mqtt_network_cleanup_session", "fn:network:mqtt_network_bind_connection"})
+        cleanup_update = next(item for item in normalized["call_updates"] if item["caller_function_id"] == "fn:network:mqtt_network_cleanup_session")
+        self.assertEqual(len(cleanup_update["calls_allowed"]), 1)
+        edge = cleanup_update["calls_allowed"][0]
+        self.assertEqual(edge["call_kind"], "error_handling")
+        self.assertEqual(edge["return_binding"]["cleanup_function_id"], "")
+        self.assertEqual(edge["service_requirement_ids"], ["svc:network:session_cleanup"])
+        self.assertEqual(normalized["unresolved_service_requirements"], ["svc:network:session_bind"])
+        self.assertGreater(stats["out_of_batch_call_updates_dropped"], 0)
+        self.assertFalse(
+            validate_calls_allowed_candidate(
+                normalized,
+                draft,
+                {"architecture": {"modules": draft["module_artifacts"]}},
+                expected_caller_ids={"fn:network:mqtt_network_cleanup_session", "fn:network:mqtt_network_bind_connection"},
+                expected_service_requirement_ids={"svc:network:session_cleanup", "svc:network:session_bind"},
+                callable_function_ids={"fn:session:mqtt_session_cleanup"},
+            )
+        )
 
     def _provider_seed_draft(self) -> tuple[dict, dict, dict, dict]:
         network = {
@@ -338,7 +555,7 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             self.assertFalse(validate_function_behavior_contract_patch(items["behavior"], draft, constraints))
             self.assertFalse(validate_wire_access_binding_patch(items["wire"], draft, planning_ir))
             self.assertFalse(validate_calls_allowed_candidate(items["calls"], draft, selected))
-            self.assertFalse(validate_file_layout_candidate(items["layout"], draft))
+            self.assertFalse(_has_error(validate_file_layout_candidate(items["layout"], draft)))
             self.assertFalse(validate_runtime_entrypoint_candidate(items["runtime"], draft))
             self.assertFalse(validate_dependency_repair_patch(items["repair"], draft))
 
@@ -2261,6 +2478,30 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
         candidate = reconcile_function_annotation_candidate(space, None)["candidate"]
         self.assertFalse(_has_error(validate_function_inventory_candidate(candidate, [codec], draft, profile, planning_ir)))
 
+    def test_mqtt_codec_planning_space_uses_concrete_helpers_without_double_prefix(self) -> None:
+        planning_ir = self._minimal_mqtt_message_ir()
+        codec = {
+            "module_id": "mqtt_codec",
+            "name": "mqtt_codec",
+            "role": "MQTT packet model decoder encoder",
+            "dependencies": [],
+            "artifacts": [
+                {"name": "mqtt_decode", "kind": "FUNC", "role": "Decode MQTT packet bytes"},
+                {"name": "mqtt_encode", "kind": "FUNC", "role": "Encode MQTT packet bytes"},
+            ],
+            "state_owned": [],
+            "owned_capabilities": ["message_decode", "message_encode"],
+            "files": [],
+            "doc_ref": [],
+        }
+        draft = {"protocol_name": "mqtt", "module_artifacts": [codec], "handler_matrix": [], "traceability": {"required_capabilities": ["message_decode", "message_encode"]}, "type_inventory": [], "canonical_types": []}
+        space = build_function_planning_space(draft, codec, planning_ir)
+        names = {seed["name"] for group in ("parser_serializer_function_seeds", "recommended_function_families") for seed in space[group]}
+        self.assertFalse(any(name.startswith("mqtt_mqtt_codec_") for name in names))
+        self.assertTrue(any("read_u16" in name for name in names))
+        self.assertTrue(any("read_string" in name for name in names))
+        self.assertTrue(any("remaining_length" in name for name in names))
+
     def test_function_reconciler_accepts_selected_concrete_optional_families(self) -> None:
         module = {
             "module_id": "router",
@@ -2462,11 +2703,14 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             self.assertIn("global_public_symbol_names", signature_context)
             self.assertNotIn("current_module_type_inventory", signature_context)
             self.assertIn("module_state_access_policy", behavior_context)
+            self.assertIn("allowed_required_capability_ids", behavior_context["service_requirement_policy"])
 
             signature_payload = json.loads(function_signature_patch_messages(signature_context)[1]["content"])
             behavior_payload = json.loads(function_behavior_contract_patch_messages(behavior_context)[1]["content"])
             self.assertIn("scoped signature context", signature_payload["task"])
             self.assertIn("scoped behavior context", behavior_payload["task"])
+            self.assertIn("do not resolve service requirements into concrete call edges", behavior_payload["task"])
+            self.assertTrue(any("memory_allocation" in item for item in behavior_payload["semantic_validation_rules"]))
             self.assertNotIn("function_contracts", json.dumps(signature_payload["function_signature_context"], ensure_ascii=False))
             self.assertNotIn("function_contracts", json.dumps(behavior_payload["function_behavior_context"], ensure_ascii=False))
 
@@ -2738,11 +2982,16 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             first_module = draft["module_artifacts"][0]
             first_module_id = str(first_module["module_id"])
             first_functions = [item for item in draft["function_contracts"] if item.get("module_id") == first_module_id][:4]
+            annotation_context = {
+                "schema_version": "function_annotation_context/v1",
+                "function_planning_space": build_function_planning_space(draft, first_module, planning_ir, profile, constraints),
+            }
             prompt_payloads = [
                 json.loads(core_design_candidate_messages(build_core_design_context(planning_ir, profile, constraints, selected))[1]["content"]),
                 json.loads(module_artifacts_candidate_messages(build_module_artifact_context(draft, profile, constraints, selected))[1]["content"]),
                 json.loads(type_inventory_candidate_messages(build_type_inventory_context(draft, first_module))[1]["content"]),
                 json.loads(function_inventory_candidate_messages(build_function_inventory_context(draft, first_module))[1]["content"]),
+                json.loads(function_annotation_candidate_messages(annotation_context)[1]["content"]),
                 json.loads(function_signature_patch_messages(build_function_signature_context(draft, first_module_id, first_functions, batch_index=0, batch_size=8))[1]["content"]),
                 json.loads(function_behavior_contract_patch_messages(build_function_behavior_context(draft, first_module_id, first_functions, constraints, batch_index=0, batch_size=4))[1]["content"]),
                 json.loads(wire_access_binding_patch_messages(build_wire_access_binding_context(draft, planning_ir))[1]["content"]),
@@ -2756,6 +3005,7 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
                 self.assertIn("id_reference_rules", payload)
                 self.assertIn("enum_usage_rules", payload)
                 self.assertTrue(payload["semantic_validation_rules"])
+            payload_by_schema = {payload["output_schema"]: payload for payload in prompt_payloads}
             joined_rules = "\n".join(
                 rule
                 for payload in prompt_payloads
@@ -2765,10 +3015,16 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             self.assertIn("mandatory seeds", joined_rules)
             self.assertIn("signature.name must match the existing function name", joined_rules)
             self.assertIn("service_requirements may describe needed operations", joined_rules)
+            self.assertIn("concrete implementation boundaries", joined_rules)
+            self.assertIn("invariants_used should name concrete invariants", joined_rules)
+            self.assertIn("role-aware units", joined_rules)
             self.assertIn("Parser and serializer functions must not write state", joined_rules)
             self.assertIn("exports_type_ids may contain only canonical type IDs", joined_rules)
             self.assertIn("entrypoint_signature should normally be int main", joined_rules)
             self.assertIn("must be copied exactly from legal_id_universe.file_ids or files[].file_id", joined_rules)
+            self.assertIn("behavior_quality_policy", payload_by_schema["function_behavior_contract_patch/v1"]["function_behavior_context"])
+            self.assertIn("module_file_layout_summaries", payload_by_schema["file_layout_candidate/v2"]["file_layout_context"])
+            self.assertTrue(payload_by_schema["file_layout_candidate/v2"]["file_layout_context"]["file_split_policy"]["split_by_role_when_non_trivial"])
 
     def test_valid_candidate_merges_and_invalid_candidate_is_not_merged(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:
@@ -2800,6 +3056,81 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             for file_item in draft["file_layout"]["files"]:
                 self.assertFalse(file_item["file_id"].startswith("header:"))
                 self.assertTrue(set(file_item["imports_allowed"]).issubset(final_file_ids))
+
+    def test_file_layout_allows_multiple_source_header_pairs_per_module_and_warns_on_mechanical_layout(self) -> None:
+        functions = [
+            _inventory_function("mqtt_packet_free", "codec", function_id="fn:codec:packet_free", kind="resource_lifecycle", public=True),
+            _inventory_function("mqtt_decode", "codec", function_id="fn:codec:decode", kind="parser", public=True),
+            _inventory_function("mqtt_codec_read_u16", "codec", function_id="fn:codec:read_u16", kind="parser", public=False),
+            _inventory_function("mqtt_codec_read_string", "codec", function_id="fn:codec:read_string", kind="parser", public=False),
+            _inventory_function("mqtt_encode", "codec", function_id="fn:codec:encode", kind="serializer", public=True),
+            _inventory_function("mqtt_codec_put_u16", "codec", function_id="fn:codec:put_u16", kind="serializer", public=False),
+        ]
+        draft = {
+            "module_artifacts": [{"module_id": "codec", "role": "packet model decoder encoder", "owned_capabilities": ["message_decode", "message_encode"], "dependencies": []}],
+            "function_contracts": functions,
+            "canonical_types": [],
+            "type_inventory": [],
+        }
+
+        def file_item(source: str, exports: list[str], implements: list[str], imports: list[str] | None = None) -> dict:
+            return {
+                "file_id": f"file:{source.removesuffix('.c')}",
+                "source_path": source,
+                "header_path": source.removesuffix(".c") + ".h",
+                "module_id": "codec",
+                "kind": "source_header_pair",
+                "responsibility": source,
+                "exports_function_ids": exports,
+                "implements_function_ids": implements,
+                "exports_type_ids": [],
+                "imports_allowed": imports or [],
+                "trace_ref_keys": [],
+                "status": "inferred",
+            }
+
+        files = [
+            file_item("codec/packet.c", ["fn:codec:packet_free"], ["fn:codec:packet_free"]),
+            file_item("codec/decoder.c", ["fn:codec:decode"], ["fn:codec:decode", "fn:codec:read_u16", "fn:codec:read_string"], ["file:codec/packet"]),
+            file_item("codec/encoder.c", ["fn:codec:encode"], ["fn:codec:encode", "fn:codec:put_u16"], ["file:codec/packet"]),
+        ]
+        assignments = []
+        for file in files:
+            for function_id in file["implements_function_ids"]:
+                function = next(item for item in functions if item["function_id"] == function_id)
+                public = function.get("exported")
+                assignments.append(
+                    {
+                        "function_id": function_id,
+                        "implementation_file_id": file["file_id"],
+                        "declaration_file_id": file["file_id"] if public else "",
+                        "visibility": "public" if public else "internal",
+                        "reason": "clustered by codec role",
+                        "status": "inferred",
+                    }
+                )
+        layout = {
+            "schema_version": "file_layout_candidate/v2",
+            "candidate_id": "candidate:test:layout",
+            "producer": {"stage": "5.5a_file_layout", "prompt_name": "file_layout_candidate_prompt", "prompt_version": "test"},
+            "files": files,
+            "function_file_assignments": assignments,
+            "assumptions": [],
+            "unresolved_questions": [],
+        }
+        self.assertFalse(validate_file_layout_candidate(layout, draft))
+
+        single_file = copy.deepcopy(layout)
+        single_file["files"] = [file_item("codec/codec.c", ["fn:codec:packet_free", "fn:codec:decode", "fn:codec:encode"], [function["function_id"] for function in functions])]
+        for assignment in single_file["function_file_assignments"]:
+            assignment["implementation_file_id"] = "file:codec/codec"
+            if assignment["declaration_file_id"]:
+                assignment["declaration_file_id"] = "file:codec/codec"
+        self.assertTrue(_has(validate_file_layout_candidate(single_file, draft), "mechanical_single_file_module_layout"))
+
+        context = build_file_layout_context(draft, {}, {})
+        self.assertIn("module_file_layout_summaries", context)
+        self.assertIn("decoder", context["module_file_layout_summaries"][0]["recommended_file_units"])
 
     def test_signature_validator_allows_system_types_and_rejects_wrong_namespace_refs(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:
@@ -2842,6 +3173,7 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
     def test_behavior_service_requirements_are_classified(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:
             _, _, constraints, _, draft, _, items = self._fixtures(Path(raw_tmp))
+            draft.setdefault("traceability", {})["required_capabilities"] = ["transport_io"]
             behavior = copy.deepcopy(items["behavior"])
             behavior["function_behavior_updates"][0]["service_requirements"] = [
                 {
@@ -2864,8 +3196,71 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
                 },
             ]
             self.assertFalse(validate_function_behavior_contract_patch(behavior, draft, constraints))
+            behavior["function_behavior_updates"][0]["service_requirements"][0]["required_capability_ids"] = ["memory_allocation"]
+            self.assertTrue(_has(validate_function_behavior_contract_patch(behavior, draft, constraints), "unknown_service_requirement_capability"))
+            behavior["function_behavior_updates"][0]["service_requirements"][0]["required_capability_ids"] = ["transport_io"]
+            self.assertFalse(validate_function_behavior_contract_patch(behavior, draft, constraints))
             behavior["function_behavior_updates"][0]["service_requirements"][0].pop("requirement_kind")
             self.assertTrue(_has(validate_function_behavior_contract_patch(behavior, draft, constraints), "missing_required_field"))
+
+    def test_event_behavior_contract_preserves_coder_event_type_and_warns_on_missing_invariants(self) -> None:
+        event_function = _inventory_function("mqtt_network_on_data_cb", "network", function_id="fn:network:on_data_cb", kind="handler", public=False, purpose="Handle readable connection callback")
+        draft = {
+            "module_artifacts": [{"module_id": "network"}],
+            "function_contracts": [event_function],
+            "state_design": [],
+            "error_strategy": [],
+            "traceability": {"required_capabilities": []},
+        }
+        update = {
+            "function_id": event_function["function_id"],
+            "contract": {
+                "input": "Connection pointer and readable event payload.",
+                "action": "Read bytes from the connection and dispatch complete frames to protocol handling.",
+                "output": "Returns callback status through the event response path.",
+                "preconditions": ["connection fd is readable"],
+                "postconditions": ["input buffer position advances"],
+                "invariants_used": ["connection fd ownership remains with network module"],
+                "idempotent": False,
+                "thread_safety": "single_thread_only",
+            },
+            "event_contract": {
+                "trigger": "epoll readable event",
+                "precondition": "connection is open",
+                "input": "fd readable notification",
+                "action": "read and dispatch received bytes",
+                "state_change": "receive buffer may grow or compact",
+                "response": "continue, close, or return error",
+                "event_type": "ON_DATA",
+            },
+            "error_behavior": {"error_ids": [], "propagation": "return_code", "recovery": "close_connection", "return_policy": "status_code"},
+            "state_access": [],
+            "resource_access": [],
+            "internal_type_refs": [],
+            "service_requirements": [],
+            "logic_kind": "EVENT",
+            "forbidden_symbols": [],
+            "trace_ref_keys": [],
+            "status": "inferred",
+        }
+        patch_candidate = {
+            "schema_version": "function_behavior_contract_patch/v1",
+            "patch_id": "patch:test:event",
+            "producer": {"stage": "5.4c_behavior_contract", "prompt_name": "function_behavior_contract_patch_prompt", "prompt_version": "test"},
+            "module_id": "network",
+            "batch": {"index": 0, "size": 1},
+            "function_behavior_updates": [copy.deepcopy(update)],
+            "assumptions": [],
+            "unresolved_questions": [],
+        }
+        self.assertFalse(validate_function_behavior_contract_patch(patch_candidate, draft, {}))
+        merged = merge_function_behavior(draft, patch_candidate)
+        merged_function = merged["function_contracts"][0]
+        self.assertEqual(merged_function["logic_kind"], "EVENT")
+        self.assertEqual(merged_function["coder_function_type"], "EVENT")
+
+        patch_candidate["function_behavior_updates"][0]["contract"]["invariants_used"] = []
+        self.assertTrue(_has(validate_function_behavior_contract_patch(patch_candidate, draft, {}), "behavior_missing_invariants"))
 
     def test_calls_allowed_scoped_validation_and_callable_filtering(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:
@@ -2941,6 +3336,162 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
                 )
             )
 
+    def test_calls_allowed_context_and_aggregate_normalizer_break_reciprocal_lifecycle_cycle(self) -> None:
+        public_close = _inventory_function(
+            "mqtt_connection_close",
+            "network",
+            function_id="fn:network:mqtt_connection_close",
+            kind="public_api",
+            public=True,
+            purpose="Terminate client connection",
+        )
+        internal_close = _inventory_function(
+            "mqtt_network_close_connection",
+            "network",
+            function_id="fn:network:mqtt_network_close_connection",
+            kind="resource_lifecycle",
+            public=False,
+            purpose="Close and detach a connection or endpoint record",
+        )
+        draft = {
+            "module_artifacts": [{"module_id": "network"}],
+            "function_contracts": [public_close, internal_close],
+        }
+        selected = {"architecture": {"modules": [{"module_id": "network"}]}}
+        context = build_calls_allowed_context(draft, selected, "network", [public_close, internal_close], batch_index=0, batch_size=16)
+        payload = json.loads(calls_allowed_candidate_messages(context)[1]["content"])
+        self.assertTrue(context["call_graph_direction_hints"])
+        self.assertIn("directed acyclic call contracts", payload["task"])
+        self.assertTrue(any("internal helper -> public/API" in item for item in payload["semantic_validation_rules"]))
+
+        def lifecycle_edge(callee: str) -> dict:
+            edge = _call_edge(callee, [])
+            edge["call_kind"] = "lifecycle"
+            edge["failure_behavior"] = "ignore"
+            return edge
+
+        candidate = {
+            "schema_version": "calls_allowed_candidate/v2",
+            "candidate_id": "candidate:test:cycle",
+            "producer": {"stage": "5.4e_call_contracts", "prompt_name": "calls_allowed_candidate_prompt", "prompt_version": "test"},
+            "call_updates": [
+                {"caller_function_id": public_close["function_id"], "calls_allowed": [lifecycle_edge(internal_close["function_id"])]},
+                {"caller_function_id": internal_close["function_id"], "calls_allowed": [lifecycle_edge(public_close["function_id"])]},
+            ],
+            "unresolved_service_requirements": [],
+            "assumptions": [],
+            "unresolved_questions": [],
+        }
+        self.assertTrue(_has(validate_calls_allowed_candidate(candidate, draft, selected), "calls_allowed_cycle"))
+        normalized, stats = normalize_calls_allowed_aggregate(candidate, draft)
+        self.assertEqual(stats["aggregate_cycle_edges_removed"], 1)
+        self.assertFalse(validate_calls_allowed_candidate(normalized, draft, selected))
+        updates = {item["caller_function_id"]: item for item in normalized["call_updates"]}
+        self.assertEqual([edge["callee_function_id"] for edge in updates[public_close["function_id"]]["calls_allowed"]], [internal_close["function_id"]])
+        self.assertEqual(updates[internal_close["function_id"]]["calls_allowed"], [])
+
+    def test_calls_allowed_aggregate_prefers_route_over_delivery_back_edge(self) -> None:
+        session_process = _inventory_function(
+            "mqtt_session_process_publish",
+            "session",
+            function_id="fn:session:mqtt_session_process_publish",
+            kind="handler",
+            purpose="Process inbound PUBLISH packet for a client session",
+        )
+        session_process["service_requirements"] = [
+            {
+                "service_requirement_id": "sr:session:route_publish",
+                "requirement_kind": "cross_module_service",
+                "operation": "route_message",
+                "expected_inputs": ["session", "publish packet"],
+                "expected_output": "Delivery status",
+                "failure_policy": "return_error",
+            }
+        ]
+        topic_dispatch = _inventory_function(
+            "mqtt_topic_router_dispatch",
+            "topic_router",
+            function_id="fn:topic_router:mqtt_topic_router_dispatch",
+            kind="handler",
+            purpose="Route PUBLISH to subscribers",
+        )
+        topic_dispatch["service_requirements"] = [
+            {
+                "service_requirement_id": "req:topic_router:dispatch:session_delivery",
+                "requirement_kind": "cross_module_service",
+                "operation": "deliver_publish_to_session",
+                "expected_inputs": ["session pointer", "PUBLISH packet"],
+                "expected_output": "Delivery status",
+                "failure_policy": "return_error",
+            }
+        ]
+        draft = {
+            "module_artifacts": [{"module_id": "session"}, {"module_id": "topic_router"}],
+            "function_contracts": [session_process, topic_dispatch],
+        }
+        selected = {"architecture": {"modules": draft["module_artifacts"]}}
+        context = build_calls_allowed_context(draft, selected, "session", [session_process], batch_index=0, batch_size=16)
+        payload = json.loads(calls_allowed_candidate_messages(context)[1]["content"])
+        self.assertTrue(context["service_cycle_risk_hints"])
+        self.assertTrue(any("outbound delivery requirement" in item for item in payload["semantic_validation_rules"]))
+
+        route_edge = _call_edge(topic_dispatch["function_id"], ["sr:session:route_publish"])
+        route_edge["call_reason"] = "Routes PUBLISH packet to matching subscribers"
+        route_edge["status"] = "supported"
+        delivery_edge = _call_edge(session_process["function_id"], ["req:topic_router:dispatch:session_delivery"])
+        delivery_edge["call_reason"] = "Deliver matched PUBLISH to each subscriber session"
+        delivery_edge["status"] = "supported"
+        candidate = {
+            "schema_version": "calls_allowed_candidate/v2",
+            "candidate_id": "candidate:test:publish_cycle",
+            "producer": {"stage": "5.4e_call_contracts", "prompt_name": "calls_allowed_candidate_prompt", "prompt_version": "test"},
+            "call_updates": [
+                {"caller_function_id": session_process["function_id"], "calls_allowed": [route_edge]},
+                {"caller_function_id": topic_dispatch["function_id"], "calls_allowed": [delivery_edge]},
+            ],
+            "unresolved_service_requirements": [],
+            "assumptions": [],
+            "unresolved_questions": [],
+        }
+        self.assertTrue(_has(validate_calls_allowed_candidate(candidate, draft, selected), "calls_allowed_cycle"))
+        normalized, stats = normalize_calls_allowed_aggregate(candidate, draft)
+        self.assertEqual(stats["aggregate_cycle_edges_removed"], 1)
+        self.assertEqual(stats["aggregate_removed_service_requirements_closed"], 1)
+        self.assertFalse(validate_calls_allowed_candidate(normalized, draft, selected))
+        updates = {item["caller_function_id"]: item for item in normalized["call_updates"]}
+        self.assertEqual([edge["callee_function_id"] for edge in updates[session_process["function_id"]]["calls_allowed"]], [topic_dispatch["function_id"]])
+        self.assertEqual(updates[topic_dispatch["function_id"]]["calls_allowed"], [])
+        self.assertEqual(normalized["unresolved_service_requirements"], ["req:topic_router:dispatch:session_delivery"])
+
+    def test_calls_allowed_aggregate_closes_service_ids_removed_with_cycle_edge(self) -> None:
+        alpha = _inventory_function("alpha_route", "alpha", function_id="fn:alpha:alpha_route", kind="handler", purpose="Route request to beta")
+        beta = _inventory_function("beta_route", "beta", function_id="fn:beta:beta_route", kind="handler", purpose="Route request to alpha")
+        alpha["service_requirements"] = [{"service_requirement_id": "srv:alpha:beta", "requirement_kind": "cross_module_service", "operation": "route_beta"}]
+        beta["service_requirements"] = [{"service_requirement_id": "srv:beta:alpha", "requirement_kind": "cross_module_service", "operation": "route_alpha"}]
+        draft = {
+            "module_artifacts": [{"module_id": "alpha"}, {"module_id": "beta"}],
+            "function_contracts": [alpha, beta],
+        }
+        selected = {"architecture": {"modules": draft["module_artifacts"]}}
+        candidate = {
+            "schema_version": "calls_allowed_candidate/v2",
+            "candidate_id": "candidate:test:generic_cycle",
+            "producer": {"stage": "5.4e_call_contracts", "prompt_name": "calls_allowed_candidate_prompt", "prompt_version": "test"},
+            "call_updates": [
+                {"caller_function_id": alpha["function_id"], "calls_allowed": [_call_edge(beta["function_id"], ["srv:alpha:beta"])]},
+                {"caller_function_id": beta["function_id"], "calls_allowed": [_call_edge(alpha["function_id"], ["srv:beta:alpha"])]},
+            ],
+            "unresolved_service_requirements": [],
+            "assumptions": [],
+            "unresolved_questions": [],
+        }
+        normalized, stats = normalize_calls_allowed_aggregate(candidate, draft)
+        self.assertEqual(stats["aggregate_cycle_edges_removed"], 1)
+        self.assertEqual(stats["aggregate_removed_service_requirements_closed"], 1)
+        self.assertFalse(validate_calls_allowed_candidate(normalized, draft, selected))
+        self.assertEqual(len(normalized["unresolved_service_requirements"]), 1)
+        self.assertIn(normalized["unresolved_service_requirements"][0], {"srv:alpha:beta", "srv:beta:alpha"})
+
     def test_calls_allowed_fallback_generates_internal_contracts(self) -> None:
         draft = {
             "module_artifacts": [{"module_id": "codec"}],
@@ -2969,6 +3520,11 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
     def test_wire_access_fallback_keeps_field_specific_targets_and_types(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:
             planning_ir, _, _, _, draft, _, items = self._fixtures(Path(raw_tmp))
+            wire_context = build_wire_access_binding_context(draft, planning_ir)
+            wire_payload = json.loads(wire_access_binding_patch_messages(wire_context)[1]["content"])
+            self.assertEqual(wire_context["wire_binding_policy"]["parser_serializer_access_kind"], "read")
+            self.assertTrue(wire_context["wire_binding_policy"]["required_field_ids"])
+            self.assertTrue(any("access_kind" in item and "read" in item for item in wire_payload["semantic_validation_rules"]))
             wire = items["wire"]
             self.assertFalse(any(entry.get("c_type") == "unknown" for entry in wire["access_path_entries"]))
             connect_entries = [
@@ -3012,6 +3568,14 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             broken = copy.deepcopy(wire)
             broken["access_path_entries"][0]["c_type"] = "unknown"
             self.assertTrue(_has(validate_wire_access_binding_patch(broken, draft, planning_ir), "unknown_coder_access_path_type"))
+
+            broken = copy.deepcopy(wire)
+            broken["access_path_entries"][0]["access_kind"] = "write"
+            self.assertTrue(_has(validate_wire_access_binding_patch(broken, draft, planning_ir), "wire_access_kind_conflict"))
+
+            broken = copy.deepcopy(wire)
+            broken["access_path_entries"][0]["access_kind"] = "read_write"
+            self.assertTrue(_has(validate_wire_access_binding_patch(broken, draft, planning_ir), "wire_access_kind_conflict"))
 
     def test_merge_file_layout_updates_module_files_from_actual_layout(self) -> None:
         draft = {

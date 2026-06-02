@@ -200,7 +200,6 @@ class PlanningCompatibilityDiscoveryTests(unittest.TestCase):
                 "006_architecture_ranking.json",
                 "006_selected_architecture.json",
                 "007_implementation_plan.json",
-                "010_spec_blueprint.json",
                 "013_token_usage_summary.json",
             ):
                 self.assertTrue((result.output_dir / "_step_logs" / filename).exists(), filename)
@@ -267,15 +266,16 @@ class PlanningCompatibilityDiscoveryTests(unittest.TestCase):
                 latest = find_latest_resume_source(facts, target, resumed_dir)
                 self.assertEqual(source_dir, latest)
                 with patch("agent.planning.orchestrator.request_json_candidate", side_effect=AssertionError("resume should not call LLM")):
-                    resumed = PlanningAgent(facts, target, output_dir=resumed_dir).plan(resume_from_stage="specs_compile")
+                    resumed = PlanningAgent(facts, target, output_dir=resumed_dir).plan(resume_from_stage="6")
 
             self.assertTrue(resumed.success, [diag.__dict__ for diag in resumed.diagnostics])
-            self.assertTrue((resumed.output_dir / "_step_logs" / "010_spec_blueprint.json").exists())
+            self.assertFalse((resumed.output_dir / "_step_logs" / "010_spec_blueprint.json").exists())
             self.assertTrue((resumed.output_dir / "spec_bundle").exists())
             manifest = json.loads((resumed.output_dir / "_step_logs" / "000_planning_run_manifest.json").read_text(encoding="utf-8"))
             self.assertEqual(manifest["resume"]["from_stage"], "specs_compile")
             self.assertEqual(Path(manifest["resume"]["source_output_dir"]), source_dir)
-            self.assertIn("spec_blueprint", manifest["resume"]["inherited_artifacts"])
+            self.assertIn("implementation_plan", manifest["resume"]["inherited_artifacts"])
+            self.assertNotIn("spec_blueprint", manifest["resume"]["inherited_artifacts"])
 
     def test_resume_from_explicit_source_dir(self) -> None:
         facts = ROOT / "agent" / "facts" / "gold_facts" / "mqtt_min" / "protocol_facts.json"
@@ -316,7 +316,8 @@ class PlanningCompatibilityDiscoveryTests(unittest.TestCase):
             self.assertTrue(resumed.success, [diag.__dict__ for diag in resumed.diagnostics])
             manifest = json.loads((resumed.output_dir / "_step_logs" / "000_planning_run_manifest.json").read_text(encoding="utf-8"))
             self.assertEqual(Path(manifest["resume"]["source_output_dir"]), source_dir)
-            self.assertIn("spec_blueprint", manifest["resume"]["inherited_artifacts"])
+            self.assertIn("implementation_plan", manifest["resume"]["inherited_artifacts"])
+            self.assertNotIn("spec_blueprint", manifest["resume"]["inherited_artifacts"])
 
     def test_resume_source_dir_requires_step_logs(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:

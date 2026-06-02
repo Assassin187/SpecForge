@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import inspect
 import json
 import re
 import tempfile
@@ -15,14 +16,12 @@ from agent.planning.diagnostics import PlanningDiagnostic
 from agent.planning.orchestrator import PlanningAgent, STEP_FILENAMES, request_architecture_json_candidate
 from agent.planning.prompts.templates import architecture_candidate_messages, core_design_candidate_messages
 from agent.planning.stages.architecture import build_architecture_candidates, build_architecture_context, select_architecture
-from agent.planning.stages.blueprint import build_spec_blueprint
 from agent.planning.stages.constraints import activate_constraints
 from agent.planning.stages.implementation_plan import build_implementation_plan
 from agent.planning.stages.implementation_plan_context import build_core_design_context
 from agent.planning.stages.implementation_plan_merger import fallback_function_inventory, fallback_type_inventory
 from agent.planning.stages.protocol_profile import build_protocol_profile
 from agent.planning.validators.architecture import validate_architecture_candidates
-from agent.planning.validators.blueprint import validate_spec_blueprint
 from agent.planning.validators.implementation_plan import validate_implementation_plan
 
 
@@ -260,6 +259,24 @@ def _fallback_inventory_candidate(prompt_name: str, messages: list[dict[str, str
 
 
 class PlanningValidatorTests(unittest.TestCase):
+    def test_module_scoped_batch_sizes_are_configurable_only_for_module_substages(self) -> None:
+        config = PlanningConfig(module_scoped_batch_sizes={"implementation_plan_5_4c": 2})
+        self.assertEqual(config.module_scoped_batch_size_for("implementation_plan_5_4b"), 32)
+        self.assertEqual(config.module_scoped_batch_size_for("implementation_plan_5_4c"), 2)
+        self.assertEqual(config.module_scoped_batch_size_for("implementation_plan_5_4e"), 16)
+        self.assertTrue(config.llm_stage_config("implementation_plan_5_5a").enable_thinking)
+        with self.assertRaises(ValueError):
+            PlanningConfig(module_scoped_batch_sizes={"implementation_plan_5_4d": 2})
+        with self.assertRaises(ValueError):
+            PlanningConfig(module_scoped_batch_sizes={"implementation_plan_5_4e": 0})
+        with self.assertRaises(ValueError):
+            config.module_scoped_batch_size_for("implementation_plan_5_3")
+
+        plan_source = inspect.getsource(PlanningAgent.plan)
+        self.assertIn('module_scoped_batch_size_for("implementation_plan_5_4b")', plan_source)
+        self.assertIn('module_scoped_batch_size_for("implementation_plan_5_4c")', plan_source)
+        self.assertIn('module_scoped_batch_size_for("implementation_plan_5_4e")', plan_source)
+
     def test_architecture_validator_rejects_uncovered_capability(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:
             _, profile, constraints, candidates, _, _ = _build_artifacts(Path(raw_tmp))
@@ -301,16 +318,6 @@ class PlanningValidatorTests(unittest.TestCase):
                     function["wire_mapping"] = [item for item in function.get("wire_mapping", []) if item.get("field_id") != removed["field_id"]]
             diags = validate_implementation_plan(broken, profile=profile, planning_ir=planning_ir)
             self.assertTrue(any(diag.code == "uncovered_wire_field" for diag in diags), [diag.__dict__ for diag in diags])
-
-    def test_blueprint_validator_rejects_added_function(self) -> None:
-        with tempfile.TemporaryDirectory() as raw_tmp:
-            _, _, _, _, _, implementation_plan = _build_artifacts(Path(raw_tmp))
-            blueprint = build_spec_blueprint(implementation_plan)
-            added = copy.deepcopy(blueprint["functions"][0])
-            added["function_id"] = "fn:file:rogue"
-            blueprint["functions"].append(added)
-            diags = validate_spec_blueprint(blueprint, implementation_plan)
-            self.assertTrue(any(diag.code == "blueprint_added_function" for diag in diags), [diag.__dict__ for diag in diags])
 
     def test_architecture_context_is_compact_and_prompt_marks_hints_non_binding(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:
@@ -532,8 +539,8 @@ class PlanningValidatorTests(unittest.TestCase):
             self.assertTrue((step_logs / STEP_FILENAMES["module_artifacts_candidate"]).exists())
             plan = json.loads((step_logs / STEP_FILENAMES["implementation_plan"]).read_text(encoding="utf-8"))
             module_count = len(plan["module_artifacts"])
-            type_inventory_files = sorted(step_logs.glob("007_5_3_type_data_inventory_candidate__*.json"))
-            inventory_files = sorted(step_logs.glob("007_5_4a_function_inventory_candidate__*.json"))
+            type_inventory_files = sorted(agent_logs.glob("007_5_3_type_data_inventory_candidate__*.json"))
+            inventory_files = sorted(agent_logs.glob("007_5_4a_function_inventory_candidate__*.json"))
             signature_files = sorted(agent_logs.glob("007_5_4b_function_signature_patch__*.json"))
             behavior_files = sorted(agent_logs.glob("007_5_4c_function_behavior_contract_patch__*.json"))
             calls_batch_files = sorted(agent_logs.glob("007_5_4e_function_call_contracts_candidate__*.json"))
@@ -542,6 +549,10 @@ class PlanningValidatorTests(unittest.TestCase):
             self.assertGreaterEqual(len(signature_files), module_count)
             self.assertGreaterEqual(len(behavior_files), module_count)
             self.assertGreaterEqual(len(calls_batch_files), module_count)
+            self.assertFalse(list(step_logs.glob("007_5_3_type_data_inventory_candidate__*.json")))
+            self.assertFalse(list(step_logs.glob("007_5_3_type_data_planning_space__*.json")))
+            self.assertFalse(list(step_logs.glob("007_5_4a_function_inventory_candidate__*.json")))
+            self.assertFalse(list(step_logs.glob("007_5_4a_function_inventory_planning_space__*.json")))
             self.assertFalse(list(step_logs.glob("007_5_4e_function_call_contracts_candidate__*.json")))
             self.assertGreaterEqual(calls.count("function_annotation_candidate_prompt"), module_count)
             self.assertEqual(calls.count("function_inventory_repair_patch_prompt"), 0)

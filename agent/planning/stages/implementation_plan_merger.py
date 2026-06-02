@@ -133,7 +133,7 @@ def build_plan_skeleton(
             "handler_coverage": True,
             "wire_field_coverage": True,
             "dependency_derivation_only": True,
-            "blueprint_no_new_engineering_semantics": True,
+            "specs_compile_no_new_engineering_semantics": True,
         },
         "module_artifacts": [],
         "canonical_types": [],
@@ -734,8 +734,25 @@ def _module_functions(draft: dict[str, Any], module_id: str, functions: list[dic
     return [item for item in source if isinstance(item, dict) and str(item.get("module_id")) == module_id]
 
 
+def _function_is_public(function: dict[str, Any]) -> bool:
+    return bool(function.get("exported")) or str(function.get("api_surface", "")).lower() == "public" or str(function.get("visibility", "")).lower() == "public"
+
+
+def _source_local_function(function: dict[str, Any]) -> bool:
+    return not _function_is_public(function)
+
+
+def _type_is_public(type_item: dict[str, Any]) -> bool:
+    return str(type_item.get("visibility", "")) == "public" and str(type_item.get("defined_in", "")) == "public_header"
+
+
 def _known_type_refs(draft: dict[str, Any]) -> set[str]:
-    return {str(item.get("type_id", "")) for item in draft.get("canonical_types", []) if isinstance(item, dict)} | set(SYSTEM_TYPE_IDS)
+    return {
+        str(item.get("type_id", ""))
+        for key in ("canonical_types", "type_inventory")
+        for item in draft.get(key, [])
+        if isinstance(item, dict)
+    } | set(SYSTEM_TYPE_IDS)
 
 
 def _normalize_type_ref(value: Any, c_type: Any, known: set[str]) -> str:
@@ -765,11 +782,156 @@ def _service_requirement_ids(functions: list[dict[str, Any]]) -> list[str]:
     return sorted(set(result))
 
 
+def _unique_function_name(base: str, used: set[str]) -> str:
+    candidate = base
+    index = 2
+    while candidate in used:
+        candidate = f"{base}_{index}"
+        index += 1
+    used.add(candidate)
+    return candidate
+
+
+def _preferred_lifecycle_repair_name(type_item: dict[str, Any], old_name: str) -> str:
+    lifecycle = type_item.get("lifecycle", {}) if isinstance(type_item.get("lifecycle"), dict) else {}
+    type_base = _safe_id(str(type_item.get("name", "")).removeprefix("struct ").removesuffix("_t"))
+    if not type_base:
+        return ""
+    if old_name in [str(item) for item in lifecycle.get("created_by", [])]:
+        return f"{type_base}_create"
+    if old_name in [str(item) for item in lifecycle.get("initialized_by", [])]:
+        return f"{type_base}_init"
+    if old_name in [str(item) for item in lifecycle.get("freed_by", [])]:
+        return f"{type_base}_free"
+    if old_name in [str(item) for item in lifecycle.get("destroyed_by", [])]:
+        return f"{type_base}_destroy"
+    if old_name in [str(item) for item in type_item.get("related_functions", [])]:
+        return f"{type_base}_helper"
+    return ""
+
+
+def _fallback_repair_name(protocol: str, module_id: str, old_name: str) -> str:
+    prefix = f"{_safe_id(protocol)}_{_safe_id(module_id)}"
+    safe_old = _safe_id(old_name)
+    if safe_old.startswith(f"{prefix}_"):
+        return safe_old
+    protocol_prefix = f"{_safe_id(protocol)}_"
+    if safe_old.startswith(protocol_prefix):
+        return f"{prefix}_{safe_old[len(protocol_prefix):]}"
+    return f"{prefix}_{safe_old}"
+
+
+def _replace_type_function_refs(type_item: dict[str, Any], old_name: str, new_name: str) -> bool:
+    changed = False
+    lifecycle = type_item.get("lifecycle", {}) if isinstance(type_item.get("lifecycle"), dict) else {}
+    for action in ("created_by", "initialized_by", "destroyed_by", "freed_by"):
+        values = lifecycle.get(action, [])
+        if not isinstance(values, list):
+            continue
+        repaired = [new_name if str(item) == old_name else item for item in values]
+        if repaired != values:
+            lifecycle[action] = repaired
+            changed = True
+    if isinstance(type_item.get("lifecycle"), dict):
+        type_item["lifecycle"] = lifecycle
+    related = type_item.get("related_functions", [])
+    if isinstance(related, list):
+        repaired = [new_name if str(item) == old_name else item for item in related]
+        if repaired != related:
+            type_item["related_functions"] = repaired
+            changed = True
+    return changed
+
+
+def repair_function_inventory_symbols(draft: dict[str, Any], candidate: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    result_draft = deepcopy(draft)
+    result_candidate = deepcopy(candidate)
+    candidate_functions = [item for item in result_candidate.get("functions", []) if isinstance(item, dict)]
+    draft_functions_by_id = {
+        str(item.get("function_id", "")): item
+        for item in result_draft.get("function_contracts", [])
+        if isinstance(item, dict)
+    }
+    used_names = {str(item.get("name", "")) for item in candidate_functions if str(item.get("name", "")).strip()}
+    by_name: dict[str, list[dict[str, Any]]] = {}
+    for function in candidate_functions:
+        name = str(function.get("name", "")).strip()
+        if name:
+            by_name.setdefault(name, []).append(function)
+    report = {
+        "schema_version": "function_symbol_repair_report/v1",
+        "stage": "5.4a.1_function_symbol_repair",
+        "renamed_functions": [],
+        "preserved_public_symbols": [],
+        "unrepaired_duplicates": [],
+        "reason": "deterministic repair for globally duplicated C-facing function names before signature planning",
+    }
+    protocol = str(result_draft.get("protocol_name", "protocol"))
+    type_inventory = [item for item in result_draft.get("type_inventory", []) if isinstance(item, dict)]
+    for name, duplicates in sorted(by_name.items()):
+        if len(duplicates) < 2:
+            continue
+        public = [item for item in duplicates if _function_is_public(item)]
+        preserve = public[0] if public else duplicates[0]
+        report["preserved_public_symbols"].append(
+            {
+                "function_id": preserve.get("function_id", ""),
+                "name": name,
+                "reason": "public/exported API kept" if _function_is_public(preserve) else "first internal symbol kept",
+            }
+        )
+        for function in duplicates:
+            if function is preserve:
+                continue
+            if _function_is_public(function):
+                report["unrepaired_duplicates"].append(
+                    {
+                        "function_id": function.get("function_id", ""),
+                        "name": name,
+                        "reason": "duplicate public/exported API symbol was not renamed deterministically",
+                    }
+                )
+                continue
+            module_id = str(function.get("module_id", ""))
+            preferred = ""
+            for type_item in type_inventory:
+                if str(type_item.get("module_id", "")) != module_id:
+                    continue
+                preferred = preferred or _preferred_lifecycle_repair_name(type_item, name)
+            preferred = preferred or _fallback_repair_name(protocol, module_id, name)
+            new_name = _unique_function_name(preferred, used_names)
+            function["name"] = new_name
+            draft_function = draft_functions_by_id.get(str(function.get("function_id", "")))
+            if draft_function is not None:
+                draft_function["name"] = new_name
+                signature = draft_function.get("signature", {})
+                if isinstance(signature, dict) and signature.get("name") == name:
+                    signature["name"] = new_name
+                    raw = str(signature.get("raw", ""))
+                    if raw:
+                        signature["raw"] = raw.replace(name, new_name, 1)
+            touched_types = []
+            for type_item in type_inventory:
+                if str(type_item.get("module_id", "")) == module_id and _replace_type_function_refs(type_item, name, new_name):
+                    touched_types.append(str(type_item.get("type_id", "")))
+            report["renamed_functions"].append(
+                {
+                    "function_id": function.get("function_id", ""),
+                    "old_name": name,
+                    "new_name": new_name,
+                    "module_id": module_id,
+                    "updated_type_refs": touched_types,
+                    "reason": "non-public duplicate renamed with owner/type-derived symbol",
+                }
+            )
+    return result_draft, result_candidate, report
+
+
 def fallback_function_signatures(draft: dict[str, Any], module_id: str, functions: list[dict[str, Any]] | None = None, *, batch_index: int = 0, batch_size: int = 0) -> dict[str, Any]:
     updates = []
     for function in _module_functions(draft, module_id, functions):
         signature, params, _return_type = _default_signature(function, module_id, str(draft.get("protocol_name", "protocol")))
-        storage_class = "static" if str(function.get("visibility", "")).lower() == "static" else "none"
+        storage_class = "static" if _source_local_function(function) else "none"
         raw = signature["raw"]
         if storage_class == "static" and not raw.startswith("static "):
             raw = f"static {raw}"
@@ -810,6 +972,170 @@ def fallback_function_signatures(draft: dict[str, Any], module_id: str, function
         "assumptions": [],
         "unresolved_questions": [],
     }
+
+
+def _valid_signature_param(param: dict[str, Any], known_type_refs: set[str]) -> dict[str, Any]:
+    c_type = str(param.get("type", "")).strip()
+    ownership = normalize_param_ownership_for_coder(param.get("ownership"))
+    passing_mode = str(param.get("passing_mode", "")).strip() or ("by_pointer" if "*" in c_type else "by_value")
+    return {
+        "name": str(param.get("name", "")).strip(),
+        "type": c_type,
+        "type_ref": _normalize_type_ref(param.get("type_ref", ""), c_type, known_type_refs),
+        "direction": str(param.get("direction", "")).strip() or "in",
+        "nullable": bool(param.get("nullable", False)),
+        "ownership": ownership,
+        "passing_mode": passing_mode,
+    }
+
+
+def _raw_with_storage(raw: str, name: str, fallback_raw: str, storage_class: str) -> str:
+    raw = raw.strip().rstrip(";")
+    if not raw or name not in raw:
+        raw = fallback_raw.strip().rstrip(";")
+    if storage_class == "static":
+        raw = raw.removeprefix("static ").strip()
+        return f"static {raw}" if raw else raw
+    return raw.removeprefix("static ").strip()
+
+
+def _type_by_id(draft: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    return {
+        str(item.get("type_id", "")): item
+        for key in ("canonical_types", "type_inventory")
+        for item in draft.get(key, [])
+        if isinstance(item, dict) and str(item.get("type_id", "")).strip()
+    }
+
+
+def _normalize_signature_dependencies(dependencies: Any, draft: dict[str, Any], module_id: str, is_public: bool, known_type_refs: set[str], stats: dict[str, int]) -> list[dict[str, Any]]:
+    if not isinstance(dependencies, list):
+        return []
+    module_ids = {str(item.get("module_id", "")) for item in draft.get("module_artifacts", []) if isinstance(item, dict)}
+    types = _type_by_id(draft)
+    result = []
+    for raw_dep in dependencies:
+        if not isinstance(raw_dep, dict):
+            continue
+        symbol_name = str(raw_dep.get("symbol_name", "")).strip()
+        type_ref = _normalize_type_ref(raw_dep.get("type_ref", ""), symbol_name, known_type_refs)
+        symbol_kind = str(raw_dep.get("symbol_kind", "")).strip()
+        if symbol_kind not in {"type", "opaque_handle", "callback_type", "system_type"}:
+            symbol_kind = "system_type" if type_ref in SYSTEM_TYPE_IDS or symbol_name in SYSTEM_TYPE_IDS else "type"
+            stats["signature_dependency_symbol_kind_normalized"] += 1
+        owner = str(raw_dep.get("owner_module_id", "")).strip()
+        if symbol_kind == "system_type":
+            if owner:
+                stats["signature_dependency_owner_normalized"] += 1
+            owner = ""
+        elif owner not in module_ids:
+            owner = str(types.get(type_ref, {}).get("module_id") or module_id)
+            stats["signature_dependency_owner_normalized"] += 1
+        scope = str(raw_dep.get("dependency_scope", "")).strip()
+        if scope not in {"header", "source"}:
+            scope = "source"
+            stats["signature_dependency_scope_normalized"] += 1
+        if not is_public and type_ref in types and not _type_is_public(types[type_ref]) and scope == "header":
+            scope = "source"
+            stats["private_header_dependency_lowered"] += 1
+        result.append(
+            {
+                "symbol_name": symbol_name,
+                "symbol_kind": symbol_kind,
+                "type_ref": type_ref,
+                "owner_module_id": owner,
+                "dependency_scope": scope,
+                "reason": str(raw_dep.get("reason", "")).strip(),
+            }
+        )
+    return result
+
+
+def normalize_function_signature_patch(
+    candidate: dict[str, Any],
+    draft: dict[str, Any],
+    module_id: str,
+    functions: list[dict[str, Any]],
+    *,
+    batch_index: int = 0,
+    batch_size: int = 0,
+) -> tuple[dict[str, Any], dict[str, int]]:
+    stats = {
+        "missing_signature_updates_filled": 0,
+        "out_of_batch_signature_updates_dropped": 0,
+        "signature_storage_normalized": 0,
+        "signature_param_ownership_normalized": 0,
+        "signature_dependency_scope_normalized": 0,
+        "signature_dependency_symbol_kind_normalized": 0,
+        "signature_dependency_owner_normalized": 0,
+        "private_header_dependency_lowered": 0,
+    }
+    fallback = fallback_function_signatures(draft, module_id, functions, batch_index=batch_index, batch_size=batch_size)
+    expected_ids = [str(item.get("function_id", "")) for item in functions if isinstance(item, dict)]
+    functions_by_id = {str(item.get("function_id", "")): item for item in functions if isinstance(item, dict)}
+    fallback_updates = {str(item.get("function_id", "")): item for item in fallback.get("function_signature_updates", []) if isinstance(item, dict)}
+    candidate_updates = {
+        str(item.get("function_id", "")): item
+        for item in candidate.get("function_signature_updates", [])
+        if isinstance(item, dict) and str(item.get("function_id", "")) in functions_by_id
+    }
+    stats["out_of_batch_signature_updates_dropped"] = max(0, len(candidate.get("function_signature_updates", []) if isinstance(candidate.get("function_signature_updates"), list) else []) - len(candidate_updates))
+    known_type_refs = _known_type_refs(draft)
+    updates = []
+    for function_id in expected_ids:
+        base = deepcopy(fallback_updates[function_id])
+        incoming = candidate_updates.get(function_id)
+        if incoming is None:
+            stats["missing_signature_updates_filled"] += 1
+            updates.append(base)
+            continue
+        function = functions_by_id[function_id]
+        is_public = _function_is_public(function)
+        base_signature = base["signature"]
+        incoming_signature = incoming.get("signature", {}) if isinstance(incoming.get("signature"), dict) else {}
+        merged_signature = deepcopy(base_signature)
+        merged_signature.update({key: value for key, value in incoming_signature.items() if key in {"raw", "return_type", "params"}})
+        merged_signature["name"] = str(function.get("name", ""))
+        storage_class = "none" if is_public else "static"
+        if merged_signature.get("storage_class") != storage_class or (storage_class == "static" and not str(merged_signature.get("raw", "")).strip().startswith("static ")):
+            stats["signature_storage_normalized"] += 1
+        merged_signature["storage_class"] = storage_class
+        merged_signature["raw"] = _raw_with_storage(str(merged_signature.get("raw", "")), merged_signature["name"], str(base_signature.get("raw", "")), storage_class)
+        incoming_params = incoming_signature.get("params", [])
+        if not isinstance(incoming_params, list):
+            incoming_params = base_signature.get("params", [])
+        params = []
+        for param in incoming_params:
+            if not isinstance(param, dict):
+                continue
+            before = str(param.get("ownership", ""))
+            normalized = _valid_signature_param(param, known_type_refs)
+            if before and before != normalized["ownership"] and before not in {"BORROWED", "OWNED", "OWNED_BY_CALLER", "TRANSFER", "SHARED", "UNKNOWN"}:
+                stats["signature_param_ownership_normalized"] += 1
+            params.append(normalized)
+        merged_signature["params"] = params or base_signature.get("params", [])
+        update = {
+            "function_id": function_id,
+            "signature": merged_signature,
+            "signature_dependencies": _normalize_signature_dependencies(incoming.get("signature_dependencies", []), draft, module_id, is_public, known_type_refs, stats),
+            "interface_type_declarations": incoming.get("interface_type_declarations", []) if isinstance(incoming.get("interface_type_declarations"), list) else [],
+            "trace_ref_keys": incoming.get("trace_ref_keys", base.get("trace_ref_keys", [])) if isinstance(incoming.get("trace_ref_keys", []), list) else base.get("trace_ref_keys", []),
+            "status": str(incoming.get("status", base.get("status", "inferred"))) or "inferred",
+        }
+        updates.append(update)
+    result = deepcopy(fallback)
+    result.update(
+        {
+            "patch_id": str(candidate.get("patch_id", fallback.get("patch_id", ""))) or fallback.get("patch_id", ""),
+            "producer": candidate.get("producer", fallback.get("producer", {})) if isinstance(candidate.get("producer"), dict) else fallback.get("producer", {}),
+            "module_id": module_id,
+            "batch": {"index": batch_index, "size": batch_size or len(updates)},
+            "function_signature_updates": updates,
+            "assumptions": candidate.get("assumptions", []) if isinstance(candidate.get("assumptions"), list) else [],
+            "unresolved_questions": candidate.get("unresolved_questions", []) if isinstance(candidate.get("unresolved_questions"), list) else [],
+        }
+    )
+    return result, stats
 
 
 def merge_function_signatures(draft: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
@@ -928,6 +1254,8 @@ def merge_function_behavior(draft: dict[str, Any], patch: dict[str, Any]) -> dic
         event_contract = function.get("event_contract", {})
         event_complete = isinstance(event_contract, dict) and all(str(event_contract.get(key, "")).strip() for key in ("trigger", "precondition", "input", "action", "state_change", "response", "event_type"))
         function["logic_kind"] = "EVENT" if update["logic_kind"] == "EVENT" and event_complete else "LOGIC"
+        if function["logic_kind"] == "EVENT":
+            function["coder_function_type"] = "EVENT"
         function["forbidden_symbols"] = update["forbidden_symbols"]
     result.setdefault("unresolved_questions", []).extend(patch.get("unresolved_questions", []))
     result.setdefault("accepted_stage_artifacts", []).append("5.4d_behavior_contract")
@@ -1281,6 +1609,333 @@ def fallback_calls_allowed(draft: dict[str, Any], functions: list[dict[str, Any]
         "assumptions": [],
         "unresolved_questions": [],
     }
+
+
+def _valid_call_kind(value: Any) -> str:
+    text = str(value or "").strip()
+    if text in {"cleanup", "cleanup_and_return"}:
+        return "error_handling"
+    if text in {"service_requirement", "parser_delegate", "serializer_delegate", "handler_dispatch", "state_access", "lifecycle", "error_handling", "utility"}:
+        return text
+    return "utility"
+
+
+def _valid_return_binding(value: Any, functions_by_id: dict[str, dict[str, Any]], stats: dict[str, int]) -> dict[str, str]:
+    binding = value if isinstance(value, dict) else {}
+    policy = str(binding.get("policy", "ignore"))
+    if policy not in {"ignore", "branch_on_bool", "return_to_caller", "store_then_cleanup", "out_param"}:
+        policy = "ignore"
+        stats["call_return_binding_normalized"] += 1
+    cleanup = str(binding.get("cleanup_function_id", "")).strip()
+    if cleanup.lower() == "none" or cleanup not in functions_by_id:
+        if cleanup:
+            stats["call_cleanup_binding_normalized"] += 1
+        cleanup = ""
+    return {"policy": policy, "target_ref": str(binding.get("target_ref", "")), "cleanup_function_id": cleanup}
+
+
+def _valid_failure_behavior(value: Any) -> str:
+    text = str(value or "").strip()
+    return text if text in {"close_connection", "return_error", "cleanup_and_return", "ignore"} else "ignore"
+
+
+def _valid_param_bindings(value: Any) -> list[dict[str, str]]:
+    if not isinstance(value, list):
+        return []
+    result = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        result.append(
+            {
+                "param_name": str(item.get("param_name", "")),
+                "value_ref": str(item.get("value_ref", "")),
+                "ownership": str(item.get("ownership", "")),
+                "nullability": str(item.get("nullability", "")),
+            }
+        )
+    return result
+
+
+def normalize_calls_allowed_candidate(
+    candidate: dict[str, Any],
+    draft: dict[str, Any],
+    expected_caller_ids: set[str],
+    expected_service_requirement_ids: set[str],
+    callable_function_ids: set[str],
+    fallback: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, int]]:
+    stats = {
+        "missing_call_updates_filled": 0,
+        "out_of_batch_call_updates_dropped": 0,
+        "invalid_call_edges_dropped": 0,
+        "call_kind_normalized": 0,
+        "call_cleanup_binding_normalized": 0,
+        "call_return_binding_normalized": 0,
+        "service_requirements_closed": 0,
+    }
+    functions_by_id = {
+        str(item.get("function_id", "")): item
+        for item in draft.get("function_contracts", [])
+        if isinstance(item, dict) and str(item.get("function_id", "")).strip()
+    }
+    fallback_updates = {
+        str(item.get("caller_function_id", "")): deepcopy(item)
+        for item in fallback.get("call_updates", [])
+        if isinstance(item, dict)
+    }
+    incoming_updates = candidate.get("call_updates", []) if isinstance(candidate.get("call_updates"), list) else []
+    grouped: dict[str, dict[str, Any]] = {}
+    for update in incoming_updates:
+        if not isinstance(update, dict):
+            continue
+        caller = str(update.get("caller_function_id", ""))
+        if caller not in expected_caller_ids:
+            stats["out_of_batch_call_updates_dropped"] += 1
+            continue
+        grouped[caller] = update
+    updates = []
+    resolved_service_ids: set[str] = set()
+    for caller in sorted(expected_caller_ids):
+        base = fallback_updates.get(caller, {"caller_function_id": caller, "calls_allowed": []})
+        incoming = grouped.get(caller)
+        if incoming is None:
+            stats["missing_call_updates_filled"] += 1
+            raw_edges = base.get("calls_allowed", [])
+        else:
+            raw_edges = incoming.get("calls_allowed", [])
+        caller_fn = functions_by_id.get(caller, {})
+        edges = []
+        raw_edge_items = raw_edges if isinstance(raw_edges, list) else []
+        for raw_edge in raw_edge_items:
+            if not isinstance(raw_edge, dict):
+                stats["invalid_call_edges_dropped"] += 1
+                continue
+            callee = str(raw_edge.get("callee_function_id", ""))
+            callee_fn = functions_by_id.get(callee)
+            if not callee_fn or callee == caller:
+                stats["invalid_call_edges_dropped"] += 1
+                continue
+            cross_module = str(callee_fn.get("module_id", "")) != str(caller_fn.get("module_id", ""))
+            private_callee = str(callee_fn.get("visibility", "")).lower() in {"private", "static"} or str(callee_fn.get("api_surface", "")).lower() in {"private_helper", "static_helper"}
+            if cross_module and (private_callee or callee not in callable_function_ids):
+                stats["invalid_call_edges_dropped"] += 1
+                continue
+            call_kind = _valid_call_kind(raw_edge.get("call_kind"))
+            if call_kind != str(raw_edge.get("call_kind", "")):
+                stats["call_kind_normalized"] += 1
+            service_ids = [
+                str(item)
+                for item in raw_edge.get("service_requirement_ids", [])
+                if str(item) in expected_service_requirement_ids
+            ] if isinstance(raw_edge.get("service_requirement_ids", []), list) else []
+            resolved_service_ids.update(service_ids)
+            edges.append(
+                {
+                    "callee_function_id": callee,
+                    "call_kind": call_kind,
+                    "required": bool(raw_edge.get("required", False)),
+                    "service_requirement_ids": service_ids,
+                    "call_reason": str(raw_edge.get("call_reason", "")),
+                    "param_bindings": _valid_param_bindings(raw_edge.get("param_bindings", [])),
+                    "return_binding": _valid_return_binding(raw_edge.get("return_binding", {}), functions_by_id, stats),
+                    "failure_behavior": _valid_failure_behavior(raw_edge.get("failure_behavior", "ignore")),
+                    "trace_ref_keys": raw_edge.get("trace_ref_keys", []) if isinstance(raw_edge.get("trace_ref_keys", []), list) else [],
+                    "status": str(raw_edge.get("status", "inferred")) if str(raw_edge.get("status", "inferred")) in {"supported", "inferred", "assumed", "unresolved"} else "inferred",
+                }
+            )
+        updates.append({"caller_function_id": caller, "calls_allowed": edges})
+    candidate_unresolved = {
+        str(item)
+        for item in candidate.get("unresolved_service_requirements", [])
+        if str(item) in expected_service_requirement_ids
+    } if isinstance(candidate.get("unresolved_service_requirements", []), list) else set()
+    unresolved = sorted((candidate_unresolved | (expected_service_requirement_ids - resolved_service_ids)) - resolved_service_ids)
+    stats["service_requirements_closed"] = len(expected_service_requirement_ids - resolved_service_ids - candidate_unresolved)
+    return (
+        {
+            "schema_version": "calls_allowed_candidate/v2",
+            "candidate_id": str(candidate.get("candidate_id", fallback.get("candidate_id", ""))) or fallback.get("candidate_id", ""),
+            "producer": candidate.get("producer", fallback.get("producer", {})) if isinstance(candidate.get("producer"), dict) else fallback.get("producer", {}),
+            "call_updates": updates,
+            "unresolved_service_requirements": unresolved,
+            "assumptions": candidate.get("assumptions", []) if isinstance(candidate.get("assumptions"), list) else [],
+            "unresolved_questions": candidate.get("unresolved_questions", []) if isinstance(candidate.get("unresolved_questions"), list) else [],
+        },
+        stats,
+    )
+
+
+def _call_edge_records(candidate: dict[str, Any]) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    for update in candidate.get("call_updates", []):
+        if not isinstance(update, dict):
+            continue
+        caller = str(update.get("caller_function_id", ""))
+        for edge in update.get("calls_allowed", []):
+            if not isinstance(edge, dict):
+                continue
+            callee = str(edge.get("callee_function_id", ""))
+            if caller and callee:
+                records.append({"caller": caller, "callee": callee, "update": update, "edge": edge})
+    return records
+
+
+def _service_requirements_by_id(functions_by_id: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    return {
+        str(requirement.get("service_requirement_id", "")): requirement
+        for function in functions_by_id.values()
+        for requirement in function.get("service_requirements", [])
+        if isinstance(requirement, dict) and str(requirement.get("service_requirement_id", "")).strip()
+    }
+
+
+def _call_function_text(function: dict[str, Any]) -> str:
+    values = [
+        function.get("function_id", ""),
+        function.get("name", ""),
+        function.get("purpose", ""),
+        function.get("function_kind", ""),
+    ]
+    for key in ("behavior_contract", "event_contract"):
+        value = function.get(key, {})
+        if isinstance(value, dict):
+            values.extend(value.get(field, "") for field in ("input", "action", "output", "response", "state_change", "event_type"))
+    return " ".join(str(value) for value in values).lower()
+
+
+def _call_edge_text(record: dict[str, Any], functions_by_id: dict[str, dict[str, Any]], requirements_by_id: dict[str, dict[str, Any]]) -> str:
+    edge = record["edge"]
+    values = [
+        record.get("caller", ""),
+        record.get("callee", ""),
+        edge.get("call_kind", ""),
+        edge.get("call_reason", ""),
+    ]
+    for requirement_id in edge.get("service_requirement_ids", []):
+        requirement = requirements_by_id.get(str(requirement_id), {})
+        values.extend([requirement_id, requirement.get("operation", "")])
+        values.extend(requirement.get("expected_inputs", []))
+    return " ".join(str(value) for value in values).lower()
+
+
+def _has_any_token(text: str, tokens: set[str]) -> bool:
+    return any(token in text for token in tokens)
+
+
+def _reverse_cycle_record(record: dict[str, Any], cycle: list[dict[str, Any]]) -> dict[str, Any] | None:
+    for other in cycle:
+        if other is not record and other.get("caller") == record.get("callee") and other.get("callee") == record.get("caller"):
+            return other
+    return None
+
+
+def _find_call_cycle(candidate: dict[str, Any]) -> list[dict[str, Any]]:
+    adjacency: dict[str, list[dict[str, Any]]] = {}
+    for record in _call_edge_records(candidate):
+        adjacency.setdefault(record["caller"], []).append(record)
+    visited: set[str] = set()
+    active: dict[str, int] = {}
+    stack: list[dict[str, Any]] = []
+
+    def visit(node: str) -> list[dict[str, Any]]:
+        active[node] = len(stack)
+        for record in adjacency.get(node, []):
+            callee = record["callee"]
+            if callee in active:
+                return stack[active[callee]:] + [record]
+            if callee in visited:
+                continue
+            stack.append(record)
+            cycle = visit(callee)
+            if cycle:
+                return cycle
+            stack.pop()
+        active.pop(node, None)
+        visited.add(node)
+        return []
+
+    for node in sorted(adjacency):
+        if node in visited:
+            continue
+        cycle = visit(node)
+        if cycle:
+            return cycle
+    return []
+
+
+def _cycle_break_score(record: dict[str, Any], functions_by_id: dict[str, dict[str, Any]], requirements_by_id: dict[str, dict[str, Any]], cycle: list[dict[str, Any]]) -> tuple[int, str, str]:
+    caller = functions_by_id.get(record["caller"], {})
+    callee = functions_by_id.get(record["callee"], {})
+    edge = record["edge"]
+    same_module = str(caller.get("module_id", "")) == str(callee.get("module_id", ""))
+    caller_local = not _function_is_public(caller)
+    callee_public = _function_is_public(callee)
+    score = 0
+    if same_module and caller_local and callee_public:
+        score -= 100
+    reverse = _reverse_cycle_record(record, cycle)
+    if reverse is not None:
+        edge_text = _call_edge_text(record, functions_by_id, requirements_by_id)
+        reverse_text = _call_edge_text(reverse, functions_by_id, requirements_by_id)
+        callee_text = _call_function_text(callee)
+        if (
+            _has_any_token(edge_text, {"deliver", "delivery", "callback"})
+            and _has_any_token(callee_text, {"process", "handle_in", "inbound", "route", "dispatch"})
+            and _has_any_token(reverse_text, {"route", "routing", "dispatch"})
+        ):
+            score -= 150
+    if str(edge.get("status", "")).lower() in {"inferred", "assumed"}:
+        score -= 20
+    if not edge.get("service_requirement_ids"):
+        score -= 10
+    if str(edge.get("call_kind", "")) in {"lifecycle", "error_handling", "utility"}:
+        score -= 5
+    if not bool(edge.get("required", False)):
+        score -= 1
+    return (score, record["caller"], record["callee"])
+
+
+def normalize_calls_allowed_aggregate(candidate: dict[str, Any], draft: dict[str, Any]) -> tuple[dict[str, Any], dict[str, int]]:
+    result = deepcopy(candidate)
+    stats = {"aggregate_cycle_edges_removed": 0, "aggregate_removed_service_requirements_closed": 0}
+    functions_by_id = {
+        str(item.get("function_id", "")): item
+        for item in draft.get("function_contracts", [])
+        if isinstance(item, dict) and str(item.get("function_id", "")).strip()
+    }
+    requirements_by_id = _service_requirements_by_id(functions_by_id)
+    removed_service_ids: set[str] = set()
+    for _ in range(100):
+        cycle = _find_call_cycle(result)
+        if not cycle:
+            break
+        remove_record = min(cycle, key=lambda record: _cycle_break_score(record, functions_by_id, requirements_by_id, cycle))
+        calls = remove_record["update"].get("calls_allowed", [])
+        if isinstance(calls, list) and remove_record["edge"] in calls:
+            removed_service_ids.update(str(item) for item in remove_record["edge"].get("service_requirement_ids", []) if str(item).strip())
+            calls.remove(remove_record["edge"])
+            stats["aggregate_cycle_edges_removed"] += 1
+            continue
+        break
+    if removed_service_ids:
+        known_service_ids = set(_service_requirement_ids(list(functions_by_id.values())))
+        resolved_service_ids = {
+            str(item)
+            for record in _call_edge_records(result)
+            for item in record["edge"].get("service_requirement_ids", [])
+            if str(item).strip()
+        }
+        unresolved_service_ids = {
+            str(item)
+            for item in result.get("unresolved_service_requirements", [])
+            if str(item).strip()
+        }
+        closed = sorted((removed_service_ids & known_service_ids) - resolved_service_ids - unresolved_service_ids)
+        if closed:
+            result["unresolved_service_requirements"] = sorted(unresolved_service_ids | set(closed))
+            stats["aggregate_removed_service_requirements_closed"] = len(closed)
+    return result, stats
 
 
 def merge_calls_allowed(draft: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any]:

@@ -82,6 +82,28 @@ def is_c_symbol(name: str) -> bool:
     return bool(C_SYMBOL_RE.fullmatch(name.strip()))
 
 
+def canonical_c_symbol(value: Any, *, default: str = "unnamed") -> str:
+    text = str(value or "").strip()
+    if is_c_symbol(text):
+        return text
+    candidate = safe_slug(text).replace("-", "_").replace(".", "_").replace("/", "_").replace("\\", "_")
+    candidate = re.sub(r"[^A-Za-z0-9_]+", "_", candidate).strip("_")
+    if not candidate:
+        candidate = default
+    if candidate[0].isdigit():
+        candidate = f"fn_{candidate}"
+    return candidate if is_c_symbol(candidate) else default
+
+
+def canonical_function_symbol(function: dict[str, Any]) -> str:
+    signature = function.get("signature", {}) if isinstance(function.get("signature"), dict) else {}
+    raw_name = function.get("_coder_symbol") or function.get("name") or signature.get("name")
+    if is_c_symbol(str(raw_name or "")):
+        return str(raw_name).strip()
+    function_id_tail = str(function.get("function_id") or "").rsplit(":", 1)[-1]
+    return canonical_c_symbol(function_id_tail or raw_name, default="unnamed")
+
+
 def is_artifact_name_for_coder(name: str) -> bool:
     text = name.strip()
     if not is_c_symbol(text):
@@ -192,6 +214,22 @@ def canonical_type_symbol(type_item: dict[str, Any]) -> str:
     return str(type_item.get("c_symbol") or type_item.get("c_type_name") or type_item.get("name", "")).strip()
 
 
+def callback_signature_for_coder(type_item: dict[str, Any], name: str) -> str:
+    callback = type_item.get("callback_signature", {}) if isinstance(type_item.get("callback_signature"), dict) else {}
+    params = callback.get("params", [])
+    rendered_params = "void"
+    if isinstance(params, list) and params:
+        rendered = []
+        for index, param in enumerate(params):
+            if not isinstance(param, dict):
+                continue
+            param_name = canonical_c_symbol(param.get("name"), default=f"param_{index + 1}")
+            rendered.append(f"{param.get('type') or 'void'} {param_name}".strip())
+        if rendered:
+            rendered_params = ", ".join(rendered)
+    return f"{callback.get('return_type') or 'void'} (*{name})({rendered_params})"
+
+
 def _canonical_field_type(value: Any) -> str:
     text = str(value or "").strip()
     lowered = text.lower()
@@ -244,6 +282,8 @@ def lower_canonical_type_to_header_data(type_item: dict[str, Any]) -> dict[str, 
                 if str(field.get("field_name", "")).strip()
             ],
         }
+    elif kind == "callback_type":
+        declaration["TYPE_SPEC"] = {"TYPE_KIND": "CALLBACK", "CALLBACK_SIGNATURE": callback_signature_for_coder(type_item, name)}
     elif kind == "alias":
         declaration["TYPE_SPEC"] = {"TYPE_KIND": "ALIAS", "ALIAS_OF": str(type_item.get("alias_of") or type_item.get("base_type") or "uint8_t")}
     else:
@@ -276,12 +316,12 @@ def is_public_interface_function(function: dict[str, Any], file_item: dict[str, 
     return False
 
 
-def lower_protocol_meta_for_coder(spec_blueprint: dict[str, Any]) -> dict[str, Any]:
-    protocol_metadata = spec_blueprint.get("protocol_metadata", {}) if isinstance(spec_blueprint.get("protocol_metadata"), dict) else {}
-    protocol_facts = spec_blueprint.get("protocol_facts", {}) if isinstance(spec_blueprint.get("protocol_facts"), dict) else {}
+def lower_protocol_meta_for_coder(planning_source: dict[str, Any]) -> dict[str, Any]:
+    protocol_metadata = planning_source.get("protocol_metadata", {}) if isinstance(planning_source.get("protocol_metadata"), dict) else {}
+    protocol_facts = planning_source.get("protocol_facts", {}) if isinstance(planning_source.get("protocol_facts"), dict) else {}
     fact_meta = protocol_facts.get("protocol_meta", {}) if isinstance(protocol_facts.get("protocol_meta"), dict) else {}
-    target_profile = spec_blueprint.get("target_profile", {}) if isinstance(spec_blueprint.get("target_profile"), dict) else {}
-    target_directives = spec_blueprint.get("target_directives_ref", {}).get("directives", {}) if isinstance(spec_blueprint.get("target_directives_ref"), dict) else {}
+    target_profile = planning_source.get("target_profile", {}) if isinstance(planning_source.get("target_profile"), dict) else {}
+    target_directives = planning_source.get("target_directives_ref", {}).get("directives", {}) if isinstance(planning_source.get("target_directives_ref"), dict) else {}
 
     def directive_value(name: str) -> Any:
         return _nested_value(target_directives, (name, "value"))
@@ -292,7 +332,7 @@ def lower_protocol_meta_for_coder(spec_blueprint: dict[str, Any]) -> dict[str, A
         protocol_metadata.get("protocol_name"),
         target_profile.get("protocol_name"),
         directive_value("protocol_name"),
-        spec_blueprint.get("protocol_name"),
+        planning_source.get("protocol_name"),
         "UNSPECIFIED_PROTOCOL",
     )
     version = _first_text(
@@ -316,7 +356,7 @@ def lower_protocol_meta_for_coder(spec_blueprint: dict[str, Any]) -> dict[str, A
         _role_values(target_profile.get("enabled_roles")),
         _role_values(directive_value("target_role")),
         _role_values(directive_value("enabled_roles")),
-        _role_values(spec_blueprint.get("roles")),
+        _role_values(planning_source.get("roles")),
         _role_values(protocol_metadata.get("roles")),
         _role_values(fact_meta.get("roles")),
     ):
@@ -351,31 +391,50 @@ def normalize_function_type_for_coder(function: dict[str, Any]) -> str:
     return "ALGORITHM"
 
 
-def signature_raw(signature: dict[str, Any]) -> str:
-    raw = str(signature.get("raw", "")).strip()
-    if raw:
-        return raw
+def _storage_prefix(function: dict[str, Any], signature: dict[str, Any]) -> str:
+    storage = str(signature.get("storage_class") or function.get("storage_class") or "").strip().lower()
+    raw = str(signature.get("raw") or "").lstrip().lower()
+    if storage == "static" or raw.startswith("static "):
+        return "static "
+    return ""
+
+
+def _render_signature_params(signature: dict[str, Any]) -> tuple[str, list[dict[str, Any]]]:
     params = signature.get("params", [])
-    rendered = ", ".join(f"{item.get('type', 'void')} {item.get('name', '')}".strip() for item in params) if isinstance(params, list) and params else "void"
-    return f"{signature.get('return_type', 'int')} {signature.get('name', 'unnamed')}({rendered})"
+    lowered: list[dict[str, Any]] = []
+    if isinstance(params, list):
+        for index, param in enumerate(params):
+            if not isinstance(param, dict):
+                continue
+            name = canonical_c_symbol(param.get("name"), default=f"param_{index + 1}")
+            lowered.append(
+                {
+                    "TYPE": str(param.get("type") or "void"),
+                    "NAME": name,
+                    "NULLABLE": bool(param.get("nullable", False)),
+                    "OWNERSHIP": normalize_param_ownership_for_coder(param.get("ownership")),
+                }
+            )
+    rendered = ", ".join(f"{item['TYPE']} {item['NAME']}".strip() for item in lowered) if lowered else "void"
+    return rendered, lowered
+
+
+def signature_raw(signature: dict[str, Any], *, name: str | None = None, function: dict[str, Any] | None = None) -> str:
+    function = function or {}
+    symbol = canonical_c_symbol(name or signature.get("name"), default="unnamed")
+    rendered, _ = _render_signature_params(signature)
+    return f"{_storage_prefix(function, signature)}{signature.get('return_type') or signature.get('RETURN') or 'int'} {symbol}({rendered})"
 
 
 def lower_signature_for_coder(function: dict[str, Any]) -> dict[str, Any]:
     signature = function.get("signature", {}) if isinstance(function.get("signature"), dict) else {}
+    name = canonical_function_symbol(function)
+    _, params = _render_signature_params(signature)
     return {
-        "RAW": signature_raw(signature),
-        "NAME": str(function.get("name") or signature.get("name") or "unnamed"),
+        "RAW": signature_raw(signature, name=name, function=function),
+        "NAME": name,
         "RETURN": str(signature.get("return_type") or signature.get("RETURN") or "int"),
-        "PARAMS": [
-            {
-                "TYPE": str(param.get("type", "void")),
-                "NAME": str(param.get("name", "")),
-                "NULLABLE": bool(param.get("nullable", False)),
-                "OWNERSHIP": normalize_param_ownership_for_coder(param.get("ownership")),
-            }
-            for param in signature.get("params", [])
-            if isinstance(param, dict)
-        ],
+        "PARAMS": params,
     }
 
 
@@ -484,12 +543,12 @@ def lower_call_contract_for_coder(edge: dict[str, Any], function_index: dict[str
     callee = function_index.get(str(edge.get("callee_function_id", "")))
     if not callee:
         return None
-    signature = callee.get("signature", {}) if isinstance(callee.get("signature"), dict) else {}
+    signature = lower_signature_for_coder(callee)
     return {
-        "NAME": str(callee.get("name", signature.get("name", ""))),
-        "SIGNATURE": signature_raw(signature),
+        "NAME": signature["NAME"],
+        "SIGNATURE": signature["RAW"],
         "PARAMS": edge.get("param_bindings", []) if isinstance(edge.get("param_bindings"), list) else [],
-        "RETURN": str(signature.get("return_type", "")),
+        "RETURN": str(signature.get("RETURN", "")),
         "FAILURE": str(edge.get("failure_behavior", "")),
     }
 
@@ -512,7 +571,7 @@ def lower_rely_for_coder(function: dict[str, Any], function_index: dict[str, dic
         callee = function_index.get(str(edge.get("callee_function_id", "")))
         if not callee:
             continue
-        funcs.append({"NAME": str(callee.get("name", "")), "KIND": "CALL", "ROLE": str(edge.get("call_reason", ""))})
+        funcs.append({"NAME": canonical_function_symbol(callee), "KIND": "CALL", "ROLE": str(edge.get("call_reason", ""))})
     return {"STRUCT": structs, "FUNC": funcs, "VAR": []}
 
 
@@ -576,12 +635,12 @@ def merge_coder_artifacts(*artifact_lists: list[dict[str, str]]) -> list[dict[st
     return result
 
 
-def sidecar_payload(spec_blueprint: dict[str, Any], unresolved_lowering: list[dict[str, Any]]) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+def sidecar_payload(planning_source: dict[str, Any], unresolved_lowering: list[dict[str, Any]]) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     traceability = {"schema_version": "planning_traceability/v1", "items": {}}
     decisions = {"schema_version": "planning_decisions/v1", "items": {}}
     refs = {"schema_version": "planning_ir_refs/v1", "items": {}, "unresolved_lowering": unresolved_lowering}
     for collection in ("modules", "files", "functions"):
-        for item in spec_blueprint.get(collection, []) if isinstance(spec_blueprint.get(collection), list) else []:
+        for item in planning_source.get(collection, []) if isinstance(planning_source.get(collection), list) else []:
             if not isinstance(item, dict):
                 continue
             key = str(item.get("trace_id") or item.get("function_id") or item.get("file_id") or item.get("module_id") or "")
@@ -602,7 +661,7 @@ def sidecar_payload(spec_blueprint: dict[str, Any], unresolved_lowering: list[di
                 "service_requirements": item.get("service_requirements", []),
             }
             refs["items"][key] = {
-                "name": item.get("name", ""),
+                "name": canonical_function_symbol(item) if item.get("function_id") else item.get("name", ""),
                 "function_id": item.get("function_id", ""),
                 "file_id": item.get("file_id", ""),
                 "module_id": item.get("module_id", ""),

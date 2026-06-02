@@ -31,7 +31,6 @@ from .prompts.templates import (
     wire_access_binding_patch_messages,
 )
 from .stages.architecture import build_architecture_context, deterministic_architecture_ranking, select_architecture
-from .stages.blueprint import build_spec_blueprint
 from .stages.constraints import activate_constraints
 from .stages.dependencies import build_dependency_validation_report
 from .stages.implementation_plan_context import (
@@ -76,6 +75,10 @@ from .stages.implementation_plan_merger import (
     merge_runtime_entrypoint,
     merge_type_inventory,
     merge_wire_access_binding,
+    normalize_calls_allowed_aggregate,
+    normalize_calls_allowed_candidate,
+    normalize_function_signature_patch,
+    repair_function_inventory_symbols,
     reconcile_type_inventory_function_refs,
 )
 from .stages.preflight import build_manifest, validate_input_paths
@@ -83,7 +86,6 @@ from .stages.protocol_profile import apply_protocol_profile_patch_candidate, bui
 from .stages.specs_compiler import compile_spec_bundle
 from .token_usage import TokenUsageTracker
 from .validators.architecture import validate_architecture_candidates, validate_architecture_ranking, validate_selected_architecture
-from .validators.blueprint import validate_spec_blueprint
 from .validators.coder_compat import validate_coder_compatibility
 from .validators.constraints import validate_constraints
 from .validators.dependencies import validate_dependency_graph
@@ -166,7 +168,6 @@ STEP_FILENAMES = {
     "dependency_repair_validation_report": "007_5_6_dependency_repair_validation_report.json",
     "implementation_plan": "007_implementation_plan.json",
     "dependency_validation_report": "008_dependency_validation_report.json",
-    "spec_blueprint": "010_spec_blueprint.json",
     "token_usage_summary": "013_token_usage_summary.json",
     "planning_validation_report": "014_planning_validation_report.json",
 }
@@ -221,7 +222,6 @@ TOP_LEVEL_RESUME_STAGES = (
     "engineering_constraints",
     "architecture",
     "implementation_plan",
-    "spec_blueprint",
     "specs_compile",
 )
 IMPLEMENTATION_PLAN_RESUME_STAGES = (
@@ -244,8 +244,8 @@ RESUME_STAGE_ALIASES = {
     "5.1": "implementation_plan_5_1",
     "5.1_plan_skeleton": "implementation_plan_5_1",
     "implementation_plan_skeleton": "implementation_plan_5_1",
-    "5.2": "implementation_plan_5_2b",
-    "5.2_module_spec": "implementation_plan_5_2b",
+    "5.2": "implementation_plan_5_2a",
+    "5.2_module_spec": "implementation_plan_5_2a",
     "5.2a": "implementation_plan_5_2a",
     "5.2a_core_design": "implementation_plan_5_2a",
     "core_design": "implementation_plan_5_2a",
@@ -257,8 +257,8 @@ RESUME_STAGE_ALIASES = {
     "module_artifacts": "implementation_plan_5_2b",
     "type_inventory": "implementation_plan_5_3",
     "5.4a_type_inventory": "implementation_plan_5_3",
-    "5.4": "implementation_plan_5_4e",
-    "5.4_function_spec": "implementation_plan_5_4e",
+    "5.4": "implementation_plan_5_4a",
+    "5.4_function_spec": "implementation_plan_5_4a",
     "5.4a": "implementation_plan_5_4a",
     "5.4a_function_inventory": "implementation_plan_5_4a",
     "5.4b": "implementation_plan_5_4b",
@@ -280,8 +280,8 @@ RESUME_STAGE_ALIASES = {
     "5.4f_call_planning": "implementation_plan_5_4e",
     "calls_allowed": "implementation_plan_5_4e",
     "call_contracts": "implementation_plan_5_4e",
-    "5.5": "implementation_plan_5_5b",
-    "5.5_file_spec": "implementation_plan_5_5b",
+    "5.5": "implementation_plan_5_5a",
+    "5.5_file_spec": "implementation_plan_5_5a",
     "5.5a": "implementation_plan_5_5a",
     "5.5a_file_layout": "implementation_plan_5_5a",
     "5.5_file_layout": "implementation_plan_5_5a",
@@ -297,6 +297,9 @@ RESUME_STAGE_ALIASES = {
     "5.7": "implementation_plan_5_7",
     "5.7_spec_readiness": "implementation_plan_5_7",
     "spec_readiness": "implementation_plan_5_7",
+    "6": "specs_compile",
+    "6_specs_compile": "specs_compile",
+    "coder_specs_compile": "specs_compile",
 }
 RESUME_STAGE_OPTIONS = tuple(dict.fromkeys((*RESUME_STAGES, *RESUME_STAGE_ALIASES)))
 STOP_AFTER_STAGE_OPTIONS = RESUME_STAGE_OPTIONS
@@ -394,14 +397,6 @@ _RESUME_REQUIRED_KEYS = {
     "implementation_plan_5_5b": _IMPLEMENTATION_PLAN_5_5B_PREFIX_KEYS,
     "implementation_plan_5_6": _IMPLEMENTATION_PLAN_5_6_PREFIX_KEYS,
     "implementation_plan_5_7": _IMPLEMENTATION_PLAN_5_7_PREFIX_KEYS,
-    "spec_blueprint": (
-        "planning_ir",
-        "protocol_profile",
-        "engineering_constraints",
-        *_ARCHITECTURE_ARTIFACT_KEYS,
-        "implementation_plan",
-        "dependency_validation_report",
-    ),
     "specs_compile": (
         "planning_ir",
         "protocol_profile",
@@ -409,7 +404,6 @@ _RESUME_REQUIRED_KEYS = {
         *_ARCHITECTURE_ARTIFACT_KEYS,
         "implementation_plan",
         "dependency_validation_report",
-        "spec_blueprint",
     ),
 }
 
@@ -1022,8 +1016,6 @@ def validate_resume_prefix(
         dependency_report = artifacts.get("dependency_validation_report")
         if isinstance(dependency_report, dict) and dependency_report.get("status") == "failed":
             diagnostics.append(PlanningDiagnostic("error", "resume_dependency_validation_failed", "Resume source dependency validation report is failed", str(artifact_paths["dependency_validation_report"])))
-    if isinstance(artifacts.get("spec_blueprint"), dict) and isinstance(artifacts.get("implementation_plan"), dict):
-        diagnostics.extend(validate_spec_blueprint(artifacts["spec_blueprint"], artifacts["implementation_plan"], path=str(artifact_paths["spec_blueprint"])))
     return artifacts, artifact_paths, diagnostics
 
 
@@ -1929,26 +1921,26 @@ class PlanningAgent:
                         result,
                         candidate_log_prefix="type_inventory_candidate",
                     )
-                    planning_space_path = store.write_step_json(
+                    planning_space_path = store.write_agent_json(
                         _suffixed_step_filename(STEP_FILENAMES["type_planning_space"], module_id),
                         result.get("planning_space", {}),
                     )
                     reconciliation = result.get("reconciliation", {})
                     type_candidate = result.get("accepted") or reconciliation.get("candidate", {})
                     type_candidate_diags = result["accepted_diags"]
-                    reconciliation_path = store.write_step_json(
+                    reconciliation_path = store.write_agent_json(
                         _suffixed_step_filename(STEP_FILENAMES["type_reconciliation_report"], module_id),
                         reconciliation.get("reconciliation_report", {}),
                     )
-                    diagnostics_path = store.write_step_json(
+                    diagnostics_path = store.write_agent_json(
                         _suffixed_step_filename(STEP_FILENAMES["type_inventory_diagnostics"], module_id),
                         {"schema_version": "inventory_diagnostics/v1", "stage": stage_label, "diagnostics": reconciliation.get("diagnostics", [])},
                     )
-                    obligations_path = store.write_step_json(
+                    obligations_path = store.write_agent_json(
                         _suffixed_step_filename(STEP_FILENAMES["type_obligations"], module_id),
                         reconciliation.get("type_obligations", {}),
                     )
-                    candidate_path = store.write_step_json(_suffixed_step_filename(STEP_FILENAMES["type_inventory_candidate"], module_id), type_candidate)
+                    candidate_path = store.write_agent_json(_suffixed_step_filename(STEP_FILENAMES["type_inventory_candidate"], module_id), type_candidate)
                     report_path = store.write_step_json(
                         _suffixed_step_filename(STEP_FILENAMES["type_inventory_validation_report"], module_id),
                         validation_report(
@@ -2106,15 +2098,15 @@ class PlanningAgent:
                         continue
                     log_key = f"function_inventory_candidate_{safe_slug(module_id)}"
                     store.write_agent_log(f"{log_key}_decomposition_coverage_report", str(result.get("coverage_report", {})))
-                    planning_space_path = store.write_step_json(
+                    planning_space_path = store.write_agent_json(
                         _suffixed_step_filename(STEP_FILENAMES["function_planning_space"], module_id),
                         result.get("planning_space", {}),
                     )
-                    reconciliation_path = store.write_step_json(
+                    reconciliation_path = store.write_agent_json(
                         _suffixed_step_filename(STEP_FILENAMES["function_reconciliation_report"], module_id),
                         reconciliation.get("reconciliation_report", {}),
                     )
-                    diagnostics_path = store.write_step_json(
+                    diagnostics_path = store.write_agent_json(
                         _suffixed_step_filename(STEP_FILENAMES["function_inventory_diagnostics"], module_id),
                         {
                             "schema_version": "inventory_diagnostics/v1",
@@ -2123,7 +2115,7 @@ class PlanningAgent:
                             "decomposition_coverage": result.get("coverage_report", {}),
                         },
                     )
-                    candidate_path = store.write_step_json(_suffixed_step_filename(STEP_FILENAMES["function_inventory_candidate"], module_id), inventory_candidate)
+                    candidate_path = store.write_agent_json(_suffixed_step_filename(STEP_FILENAMES["function_inventory_candidate"], module_id), inventory_candidate)
                     report_path = store.write_step_json(
                         _suffixed_step_filename(STEP_FILENAMES["function_inventory_validation_report"], module_id),
                         validation_report(
@@ -2159,6 +2151,10 @@ class PlanningAgent:
                 if inventory_stage_failed:
                     return finish_early("implementation_plan_5_4a")
                 draft = reconcile_type_inventory_function_refs(draft)
+                draft, inventory_aggregate, symbol_repair_report = repair_function_inventory_symbols(draft, inventory_aggregate)
+                symbol_repair_report_path = store.write_agent_json("007_5_4a_function_symbol_repair_report.json", symbol_repair_report)
+                artifact_paths["function_symbol_repair_report"] = symbol_repair_report_path
+                draft = reconcile_type_inventory_function_refs(draft)
                 inventory_diags = validate_function_inventory_candidate(inventory_aggregate, draft.get("module_artifacts", []), draft, profile, planning_ir)
                 inventory_path = store.write_step_json(STEP_FILENAMES["function_inventory_candidate"], inventory_aggregate)
                 artifact_paths["function_inventory_candidate"] = inventory_path
@@ -2166,6 +2162,7 @@ class PlanningAgent:
                 artifact_paths["function_inventory_validation_report"] = inventory_report_path
                 if has_errors(inventory_diags):
                     diagnostics.extend(inventory_diags)
+                    return finish_early("implementation_plan_5_4a")
             else:
                 inventory_aggregate = inherited_stage_candidate(
                     stage_label="5.4a_function_inventory:all_modules",
@@ -2195,7 +2192,7 @@ class PlanningAgent:
                 for module in list(draft.get("module_artifacts", [])):
                     module_id = str(module.get("module_id", ""))
                     module_functions = [item for item in draft.get("function_contracts", []) if isinstance(item, dict) and str(item.get("module_id")) == module_id]
-                    signature_batch_size = 32
+                    signature_batch_size = self.config.module_scoped_batch_size_for("implementation_plan_5_4b")
                     batches = [module_functions[index:index + signature_batch_size] for index in range(0, len(module_functions), signature_batch_size)] or [[]]
                     for batch_index, batch in enumerate(batches):
                         expected_ids = {str(item.get("function_id", "")) for item in batch if isinstance(item, dict)}
@@ -2209,6 +2206,14 @@ class PlanningAgent:
                             report_key="function_signature_validation_report",
                             fallback=fallback_function_signatures(draft, module_id, batch, batch_index=batch_index, batch_size=signature_batch_size),
                             validator=lambda candidate, ids=expected_ids: validate_function_signature_patch(candidate, draft, ids),
+                            normalizer=lambda candidate, module_id=module_id, batch=batch, batch_index=batch_index, batch_size=signature_batch_size: normalize_function_signature_patch(
+                                candidate,
+                                draft,
+                                module_id,
+                                batch,
+                                batch_index=batch_index,
+                                batch_size=batch_size,
+                            ),
                             step_log_suffix=f"{module_id}__batch_{batch_index}",
                         )
                         signature_aggregate["function_signature_updates"].extend(signature_patch.get("function_signature_updates", []))
@@ -2248,13 +2253,14 @@ class PlanningAgent:
                     "assumptions": [],
                     "unresolved_questions": [],
                 }
+                behavior_batch_size = self.config.module_scoped_batch_size_for("implementation_plan_5_4c")
                 for module in list(draft.get("module_artifacts", [])):
                     module_id = str(module.get("module_id", ""))
                     module_functions = [item for item in draft.get("function_contracts", []) if isinstance(item, dict) and str(item.get("module_id")) == module_id]
-                    batches = [module_functions[index:index + 8] for index in range(0, len(module_functions), 8)] or [[]]
+                    batches = [module_functions[index:index + behavior_batch_size] for index in range(0, len(module_functions), behavior_batch_size)] or [[]]
                     for batch_index, batch in enumerate(batches):
                         expected_ids = {str(item.get("function_id", "")) for item in batch if isinstance(item, dict)}
-                        behavior_context = build_function_behavior_context(draft, module_id, batch, constraints, batch_index=batch_index, batch_size=8)
+                        behavior_context = build_function_behavior_context(draft, module_id, batch, constraints, batch_index=batch_index, batch_size=behavior_batch_size)
                         behavior_patch = stage_candidate(
                             stage_label=f"5.4c_behavior_contract:{module_id}:{batch_index}",
                             thinking_stage="implementation_plan_5_4c",
@@ -2262,7 +2268,7 @@ class PlanningAgent:
                             messages=function_behavior_contract_patch_messages(behavior_context),
                             candidate_key="function_behavior_patch",
                             report_key="function_behavior_validation_report",
-                            fallback=fallback_function_behavior(draft, module_id, batch, batch_index=batch_index, batch_size=8),
+                            fallback=fallback_function_behavior(draft, module_id, batch, batch_index=batch_index, batch_size=behavior_batch_size),
                             validator=lambda candidate, ids=expected_ids: validate_function_behavior_contract_patch(candidate, draft, constraints, ids),
                             normalizer=lambda candidate: normalize_function_behavior_contract_patch(candidate, draft, constraints),
                             step_log_suffix=f"{module_id}__batch_{batch_index}",
@@ -2325,10 +2331,11 @@ class PlanningAgent:
                     "assumptions": [],
                     "unresolved_questions": [],
                 }
+                calls_batch_size = self.config.module_scoped_batch_size_for("implementation_plan_5_4e")
                 for module in list(draft.get("module_artifacts", [])):
                     module_id = str(module.get("module_id", ""))
                     module_functions = [item for item in draft.get("function_contracts", []) if isinstance(item, dict) and str(item.get("module_id")) == module_id]
-                    batches = [module_functions[index:index + 4] for index in range(0, len(module_functions), 4)] or [[]]
+                    batches = [module_functions[index:index + calls_batch_size] for index in range(0, len(module_functions), calls_batch_size)] or [[]]
                     for batch_index, batch in enumerate(batches):
                         expected_ids = {str(item.get("function_id", "")) for item in batch if isinstance(item, dict)}
                         expected_service_ids = {
@@ -2339,8 +2346,9 @@ class PlanningAgent:
                             and str(requirement.get("requirement_kind", "cross_module_service")) == "cross_module_service"
                             and str(requirement.get("service_requirement_id", ""))
                         }
-                        calls_context = build_calls_allowed_context(draft, selected_architecture, module_id, batch, batch_index=batch_index, batch_size=4)
+                        calls_context = build_calls_allowed_context(draft, selected_architecture, module_id, batch, batch_index=batch_index, batch_size=calls_batch_size)
                         callable_ids = {str(item.get("function_id", "")) for item in calls_context.get("callable_functions", []) if isinstance(item, dict)}
+                        calls_fallback = fallback_calls_allowed(draft, batch, batch_index=batch_index, batch_size=calls_batch_size)
                         calls_candidate = stage_candidate(
                             stage_label=f"5.4e_call_contracts:{module_id}:{batch_index}",
                             thinking_stage="implementation_plan_5_4e",
@@ -2348,7 +2356,7 @@ class PlanningAgent:
                             messages=calls_allowed_candidate_messages(calls_context),
                             candidate_key="calls_allowed_candidate",
                             report_key="calls_allowed_validation_report",
-                            fallback=fallback_calls_allowed(draft, batch, batch_index=batch_index, batch_size=4),
+                            fallback=calls_fallback,
                             validator=lambda candidate, ids=expected_ids, service_ids=expected_service_ids, call_ids=callable_ids: validate_calls_allowed_candidate(
                                 candidate,
                                 draft,
@@ -2357,6 +2365,14 @@ class PlanningAgent:
                                 expected_service_requirement_ids=service_ids,
                                 callable_function_ids=call_ids,
                             ),
+                            normalizer=lambda candidate, ids=expected_ids, service_ids=expected_service_ids, call_ids=callable_ids, fallback=calls_fallback: normalize_calls_allowed_candidate(
+                                candidate,
+                                draft,
+                                ids,
+                                service_ids,
+                                call_ids,
+                                fallback,
+                            ),
                             step_log_suffix=f"{module_id}__batch_{batch_index}",
                         )
                         calls_aggregate["call_updates"].extend(calls_candidate.get("call_updates", []))
@@ -2364,6 +2380,12 @@ class PlanningAgent:
                         calls_aggregate["assumptions"].extend(calls_candidate.get("assumptions", []))
                         calls_aggregate["unresolved_questions"].extend(calls_candidate.get("unresolved_questions", []))
                 calls_aggregate["unresolved_service_requirements"] = sorted({str(item) for item in calls_aggregate["unresolved_service_requirements"] if str(item)})
+                calls_aggregate, aggregate_call_stats = normalize_calls_allowed_aggregate(calls_aggregate, draft)
+                if any(aggregate_call_stats.values()):
+                    store.log_event(
+                        "stage=implementation_plan substage=5.4e_call_contracts:all_modules normalized "
+                        + " ".join(f"{key}={value}" for key, value in sorted(aggregate_call_stats.items()) if value)
+                    )
                 calls_diags = validate_calls_allowed_candidate(calls_aggregate, draft, selected_architecture)
                 calls_path = store.write_step_json(STEP_FILENAMES["calls_allowed_candidate"], calls_aggregate)
                 artifact_paths["calls_allowed_candidate"] = calls_path
@@ -2486,40 +2508,9 @@ class PlanningAgent:
         if _should_stop_after("implementation_plan", stop_after_stage) or _should_stop_after("implementation_plan_5_7", stop_after_stage):
             return finish_early(stop_after_stage or "implementation_plan")
 
-        if _stage_should_run("spec_blueprint", resume_from_stage):
-            store.log_event("stage=spec_blueprint lower start")
-            spec_blueprint = build_spec_blueprint(implementation_plan)
-            spec_blueprint_path = store.write_step_json(STEP_FILENAMES["spec_blueprint"], spec_blueprint)
-            artifact_paths["spec_blueprint"] = spec_blueprint_path
-            diagnostics.extend(validate_spec_blueprint(spec_blueprint, implementation_plan, path=str(spec_blueprint_path)))
-            if has_errors(diagnostics):
-                status = "failed"
-                report = _validation_report(status=status, diagnostics=diagnostics, artifact_paths=artifact_paths)
-                report_path = store.write_step_json(STEP_FILENAMES["planning_validation_report"], report)
-                artifact_paths["planning_validation_report"] = report_path
-                _write_manifest(
-                    store=store,
-                    facts_path=self.facts_path,
-                    target_profile_path=self.target_profile_path,
-                    config=self.config,
-                    status=status,
-                    diagnostics=diagnostics,
-                    artifact_paths=artifact_paths,
-                    failure={"stage": "spec_blueprint", "code": "validation_errors"},
-                )
-                store.log_event(f"stage=spec_blueprint lower done status={status}")
-                return PlanningResult(False, self.output_dir, diagnostics, artifact_paths)
-            store.log_event("stage=spec_blueprint lower done")
-
-        else:
-            spec_blueprint = inherited_artifacts["spec_blueprint"]
-            store.log_event("stage=spec_blueprint resume inherited")
-        if _should_stop_after("spec_blueprint", stop_after_stage):
-            return finish_early("spec_blueprint")
-
         if _stage_should_run("specs_compile", resume_from_stage):
             store.log_event("stage=specs_compile start")
-            coder_manifest, coder_manifest_path = compile_spec_bundle(spec_blueprint, self.output_dir)
+            coder_manifest, coder_manifest_path = compile_spec_bundle(implementation_plan, self.output_dir)
             artifact_paths["coder_manifest"] = coder_manifest_path
             spec_root = Path(coder_manifest["spec_root"])
             artifact_paths["spec_bundle"] = spec_root
@@ -2572,7 +2563,6 @@ def verify_output_dir(output_dir: str | Path) -> PlanningResult:
         "selected_architecture": root / "_step_logs" / STEP_FILENAMES["selected_architecture"],
         "implementation_plan": root / "_step_logs" / STEP_FILENAMES["implementation_plan"],
         "dependency_validation_report": validation_reports / STEP_FILENAMES["dependency_validation_report"],
-        "spec_blueprint": root / "_step_logs" / STEP_FILENAMES["spec_blueprint"],
         "token_usage_summary": root / "_step_logs" / STEP_FILENAMES["token_usage_summary"],
         "coder_manifest": root / "coder_manifest.json",
         "spec_bundle": root / "spec_bundle",
@@ -2613,14 +2603,6 @@ def verify_output_dir(output_dir: str | Path) -> PlanningResult:
         if profile is not None and planning_ir is not None:
             diagnostics.extend(validate_full_implementation_plan(implementation_plan, profile=profile, planning_ir=planning_ir, path=str(artifact_paths["implementation_plan"])))
         diagnostics.extend(validate_dependency_graph(implementation_plan, path=str(artifact_paths["implementation_plan"])))
-        if "spec_blueprint" in artifact_paths:
-            diagnostics.extend(
-                validate_spec_blueprint(
-                    read_json(artifact_paths["spec_blueprint"]),
-                    implementation_plan,
-                    path=str(artifact_paths["spec_blueprint"]),
-                )
-            )
     if "spec_bundle" in artifact_paths:
         diagnostics.extend(validate_coder_compatibility(artifact_paths["spec_bundle"]))
     return PlanningResult(not has_errors(diagnostics), root, diagnostics, artifact_paths)

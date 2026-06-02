@@ -43,6 +43,97 @@ def _candidate_owned_capabilities(candidate: dict[str, Any]) -> set[str]:
     }
 
 
+def _candidate_dependency_edges(candidate: dict[str, Any]) -> list[tuple[str, str]]:
+    modules = candidate.get("modules", []) if isinstance(candidate, dict) else []
+    module_ids = {str(module.get("module_id", "")) for module in modules if isinstance(module, dict)}
+    edges: list[tuple[str, str]] = []
+    for module in modules:
+        if not isinstance(module, dict):
+            continue
+        consumer = str(module.get("module_id", ""))
+        for dependency in module.get("dependency_hints", []):
+            provider = str(dependency.get("module_id", dependency)) if isinstance(dependency, dict) else str(dependency)
+            if consumer and provider and provider in module_ids and provider != consumer:
+                edges.append((consumer, provider))
+    return edges
+
+
+def _has_cycle(nodes: set[str], edges: list[tuple[str, str]]) -> bool:
+    adjacency: dict[str, list[str]] = {node: [] for node in nodes}
+    for consumer, provider in edges:
+        adjacency.setdefault(consumer, []).append(provider)
+        adjacency.setdefault(provider, [])
+    visiting: set[str] = set()
+    visited: set[str] = set()
+
+    def visit(node: str) -> bool:
+        if node in visiting:
+            return True
+        if node in visited:
+            return False
+        visiting.add(node)
+        for next_node in adjacency.get(node, []):
+            if visit(next_node):
+                return True
+        visiting.remove(node)
+        visited.add(node)
+        return False
+
+    return any(visit(node) for node in nodes)
+
+
+def _architecture_module_text(module: dict[str, Any]) -> str:
+    return " ".join(
+        [
+            str(module.get("module_id", "")),
+            str(module.get("name", "")),
+            " ".join(str(item) for item in module.get("responsibilities", [])),
+            " ".join(str(item) for item in module.get("owned_capabilities", [])),
+            " ".join(str(item) for item in module.get("state_owned", [])),
+        ]
+    ).lower()
+
+
+def _engineering_groups_for_module(module: dict[str, Any]) -> set[str]:
+    text = _architecture_module_text(module)
+    groups: set[str] = set()
+    if any(term in text for term in ("transport", "runtime", "network", "socket", "tcp", "udp", "epoll", "connection", "accept", "fd", "io")):
+        groups.add("transport_runtime")
+    if any(term in text for term in ("codec", "decode", "encode", "parser", "serializer", "framing", "packet", "wire", "canonical_type", "data model", "payload")):
+        groups.add("codec_data_model")
+    if any(term in text for term in ("session", "state_machine", "state machine", "resource", "registry", "manager", "lifecycle", "keepalive")):
+        groups.add("session_resource")
+    if any(term in text for term in ("routing", "route", "router", "topic", "subscription", "semantic_dispatch", "dispatch")):
+        groups.add("routing_dispatch")
+    if any(term in text for term in ("broker", "server", "client", "app", "role_composition", "orchestration", "entrypoint")):
+        groups.add("broker_app")
+    if any(term in text for term in ("timer", "timeout", "retry", "error", "failure")):
+        groups.add("timing_error")
+    return groups
+
+
+def _expected_engineering_groups(required_capabilities: set[str]) -> set[str]:
+    text = " ".join(sorted(required_capabilities)).lower()
+    groups: set[str] = set()
+    if any(term in text for term in ("transport", "runtime", "connection", "io", "socket", "epoll")):
+        groups.add("transport_runtime")
+    if any(term in text for term in ("decode", "encode", "codec", "framing", "canonical", "message")):
+        groups.add("codec_data_model")
+    if any(term in text for term in ("session", "state", "resource", "lifecycle")):
+        groups.add("session_resource")
+    if any(term in text for term in ("routing", "route", "topic", "subscription", "dispatch", "semantic")):
+        groups.add("routing_dispatch")
+    if any(term in text for term in ("role", "broker", "server", "client", "app")):
+        groups.add("broker_app")
+    if any(term in text for term in ("timer", "timing", "timeout", "error", "failure")):
+        groups.add("timing_error")
+    return groups or {"transport_runtime", "codec_data_model", "session_resource", "broker_app"}
+
+
+def _bounded_score(value: float) -> int:
+    return max(0, min(10, int(round(value))))
+
+
 def _field_refs(field: Any) -> dict[str, Any]:
     if not isinstance(field, dict):
         return {"source_fact_count": 0, "target_directive_count": 0, "evidence_refs": []}
@@ -305,15 +396,65 @@ def build_architecture_candidates(
 
 def deterministic_architecture_ranking(candidates: dict[str, Any], profile: dict[str, Any], *, warning: str | None = None) -> dict[str, Any]:
     required = set(_capability_ids(profile))
+    expected_groups = _expected_engineering_groups(required)
     scored: list[tuple[float, dict[str, Any]]] = []
+    dimensions_by_candidate: dict[str, dict[str, int]] = {}
     for candidate in candidates.get("candidates", []):
         modules = candidate.get("modules", []) if isinstance(candidate, dict) else []
         covered = _candidate_owned_capabilities(candidate)
         support_count = sum(1 for module in modules if isinstance(module, dict) and module.get("support_module"))
         module_count = len(modules) if isinstance(modules, list) else 0
         coverage_score = 10 if required <= covered else int(10 * len(required & covered) / max(len(required), 1))
-        simplicity_score = max(0, 10 - abs(module_count - 5))
-        total = coverage_score * 4 + simplicity_score - support_count
+        module_groups = [_engineering_groups_for_module(module) for module in modules if isinstance(module, dict)]
+        covered_groups = {group for groups in module_groups for group in groups}
+        group_score = 10 * len(expected_groups & covered_groups) / max(len(expected_groups), 1)
+        overloaded = sum(1 for groups in module_groups if len(groups) > 2)
+        boundary_score = _bounded_score(group_score - overloaded * 1.5 - max(0, len(expected_groups) - module_count) * 1.5)
+        state_refs = [
+            str(state)
+            for module in modules
+            if isinstance(module, dict)
+            for state in module.get("state_owned", [])
+            if str(state).strip()
+        ]
+        duplicate_state_count = len(state_refs) - len(set(state_refs))
+        ownership_score = _bounded_score(10 - duplicate_state_count * 2 - overloaded)
+        nodes = {str(module.get("module_id", "")) for module in modules if isinstance(module, dict) and str(module.get("module_id", "")).strip()}
+        edges = _candidate_dependency_edges(candidate)
+        acyclicity_score = 10 if not _has_cycle(nodes, edges) else 0
+        testability_score = _bounded_score(boundary_score - support_count + min(2, module_count // 4))
+        target_min = min(8, max(4, len(expected_groups)))
+        target_max = min(10, max(target_min + 2, len(expected_groups) + 2))
+        if target_min <= module_count <= target_max:
+            simplicity_score = 9
+        elif module_count < target_min:
+            simplicity_score = _bounded_score(9 - (target_min - module_count) * 2)
+        else:
+            simplicity_score = _bounded_score(9 - (module_count - target_max))
+        constraint_score = 8 if required <= covered else 5
+        coupling_score = _bounded_score(acyclicity_score - max(0, len(edges) - max(module_count, 1)) * 0.5)
+        target_scope_score = _bounded_score((coverage_score + boundary_score + simplicity_score) / 3)
+        dimensions = {
+            "capability_coverage": coverage_score,
+            "constraint_satisfaction": constraint_score,
+            "cohesion": boundary_score,
+            "coupling": coupling_score,
+            "acyclicity": acyclicity_score,
+            "state_ownership_clarity": ownership_score,
+            "testability": testability_score,
+            "implementation_simplicity": simplicity_score,
+            "target_scope_fit": target_scope_score,
+        }
+        total = (
+            coverage_score * 4
+            + boundary_score * 2
+            + ownership_score * 1.5
+            + acyclicity_score * 1.5
+            + testability_score
+            + simplicity_score
+            - support_count * 2
+        )
+        dimensions_by_candidate[str(candidate.get("candidate_id", ""))] = dimensions
         scored.append((total, candidate))
     scored.sort(key=lambda item: item[0], reverse=True)
     selected = scored[0][1] if scored else {}
@@ -323,25 +464,15 @@ def deterministic_architecture_ranking(candidates: dict[str, Any], profile: dict
             {
                 "candidate_id": str(candidate.get("candidate_id", "")),
                 "total_score": total,
-                "dimension_scores": {
-                    "capability_coverage": 10 if required <= _candidate_owned_capabilities(candidate) else 0,
-                    "constraint_satisfaction": 8,
-                    "cohesion": 7,
-                    "coupling": 7,
-                    "acyclicity": 7,
-                    "state_ownership_clarity": 7,
-                    "testability": 7,
-                    "implementation_simplicity": max(0, 10 - abs(len(candidate.get("modules", [])) - 5)),
-                    "target_scope_fit": 7,
-                },
-                "strengths": ["Deterministic fallback ranking based on coverage and module count."],
+                "dimension_scores": dimensions_by_candidate.get(str(candidate.get("candidate_id", "")), {}),
+                "strengths": ["Deterministic fallback ranking based on capability coverage, engineering boundaries, ownership, acyclicity, and testability."],
                 "weaknesses": [],
                 "risks": [],
             }
             for total, candidate in scored
         ],
         "selected_candidate_id": str(selected.get("candidate_id", "")),
-        "selection_rationale": "Deterministic ranking fallback selected the highest coverage-oriented candidate.",
+        "selection_rationale": "Deterministic ranking fallback selected the candidate with the clearest implementable engineering boundaries among capability-covering options.",
         "ranking_warnings": [warning] if warning else [],
         "fallback_used": True,
     }

@@ -1,11 +1,11 @@
-# 5.4b 到 5.7 的 Pre-Blueprint 实际运行流程
+# 5.4b 到 5.7 的 Pre-Specs 实际运行流程
 
 本文记录当前代码中 Implementation Plan Synthesis 从 `5.4b` 到进入
-`Spec Blueprint Lowering` 之前的实际运行过程。范围从
+`Coder Specs Compilation` 之前的实际运行过程。范围从
 `implementation_plan_5_4b` 开始，经过 `5.4c`、`5.4d`、`5.4e`、`5.5a`、
 `5.5b`、`5.6`、`5.7`，到写出 `007_implementation_plan.json` 与
 `008_dependency_validation_report.json` 为止，不包含后续
-`build_spec_blueprint()` lowering。
+`compile_spec_bundle()` specs compilation。
 
 ## 代码入口与公共机制
 
@@ -16,7 +16,8 @@
 - `5.2a` core design；
 - `5.2b` module artifacts；
 - `5.3` type/data inventory；
-- `5.4a` function inventory，并执行过 `reconcile_type_inventory_function_refs()`。
+- `5.4a` function inventory，并执行过 `reconcile_type_inventory_function_refs()` 与
+  `5.4a.1_function_symbol_repair`。
 
 从 `5.4b` 开始，各子阶段主要使用同一个 `stage_candidate()` helper：
 
@@ -72,6 +73,7 @@ module 遍历 `draft["module_artifacts"]`，再筛选属于该 module 的
 - `batch.index` 与 `batch.size`；
 - 当前 batch 的 compact `functions` summary；
 - `required_update_skeleton`，由 function 列表派生，约束必须更新哪些 function；
+- `signature_normalization_policy`；
 - `module_summary`；
 - `signature_type_table`，包含当前 module 与 provider 的 compact type symbol table；
 - provider public types；
@@ -90,6 +92,11 @@ buffer/cursor/out-param 形态，避免无依据的 generic `void*`。
 validator 是 `validate_function_signature_patch(candidate, draft, expected_ids)`。也就是
 LLM patch 只能覆盖当前 batch 的 expected function ids，且必须满足当前 draft 的合法
 type/ref 约束。
+
+validator 前会先运行 `normalize_function_signature_patch()`。它以 deterministic fallback
+为 skeleton，丢弃 batch 外 update，补齐缺失 update，并 canonicalize `storage_class/raw`、
+param ownership/passing mode、dependency scope、system owner 与 private source dependency。
+因此 prompt 重点描述语义签名设计，而不是枚举和 storage class 的机械修补。
 
 ### Fallback
 
@@ -306,7 +313,7 @@ service requirements，避免为了连通调用关系而发明不存在的 funct
 ### 输入
 
 `5.4e` 在 signatures、behavior contracts、wire binding 都稳定后运行。它按 module
-遍历 functions，batch size 固定为 4。
+遍历 functions，batch size 固定为 16。
 
 每个 batch 先从 function 的 `service_requirements` 中收集 expected service ids，只包括：
 
@@ -322,6 +329,10 @@ service requirements，避免为了连通调用关系而发明不存在的 funct
 - 当前 scoped functions 的 `service_requirements`；
 - 当前 module 可调用的 `callable_functions`；
 - `required_call_update_caller_ids`；
+- `required_call_update_skeleton`；
+- `expected_cross_module_service_requirements`；
+- `candidate_provider_functions`；
+- `normalization_policy`；
 - `module_artifacts`；
 - `architecture_policy`，其中 `forbidden_cycles = True`；
 - `legal_id_universe`。
@@ -341,9 +352,14 @@ expected_caller_ids, expected_service_requirement_ids, callable_function_ids)`�
 
 这会把当前 batch 的 caller ids、service ids 和 callable function ids 作为局部硬约束。
 
+validator 前会先运行 `normalize_calls_allowed_candidate()`。它以 deterministic skeleton
+保证每个 expected caller 都有 update，丢弃 batch 外 caller、unknown/self/private
+cross-module/out-of-callable callee，归一 cleanup binding，并把未 resolved 的 expected
+service ids 自动放入 `unresolved_service_requirements`。
+
 ### Fallback
 
-fallback 是 `fallback_calls_allowed(draft, batch, batch_index, batch_size=4)`。它非常保守：
+fallback 是 `fallback_calls_allowed(draft, batch, batch_index, batch_size=16)`。它非常保守：
 
 - handler 允许调用同 module 的 state_machine/resource_lifecycle helpers；
 - public_api 允许调用同 module 的 parser 与 handler；
@@ -522,7 +538,7 @@ fallback 是 `fallback_runtime_entrypoint(draft)`：
 
 `5.6` 把前面阶段产生的 calls、file assignments、imports 与 visibility 降低成 final
 dependency graph，并对 invalid dependency inputs 做受限 repair。它是进入
-`Spec Blueprint Lowering` 前的结构一致性关口：如果 call graph、file layout 或 import
+`Coder Specs Compilation` 前的结构一致性关口：如果 call graph、file layout 或 import
 policy 之间存在冲突，`5.6` 会优先通过局部 repair 修正输入；仍无法修复时才使用 deterministic
 last resort 移除无效 dependency inputs 并记录 unresolved questions。这个阶段不让 LLM
 直接编造最终 dependency graph，而是保持 dependency graph 由 deterministic derivation 生成。
@@ -621,11 +637,11 @@ imports，只为每个 dependency error 生成 `mark_unresolved` repair action�
 - `build_dependency_validation_report(implementation_plan, dependency_diags)`。
 
 如果任何 accumulated diagnostics 中存在 error，Planning Agent 写出 failed
-`014_planning_validation_report.json` 与 failed manifest，并在进入 Spec Blueprint
-Lowering 前停止。只有 implementation plan 与 dependency graph 都通过，才会记录
+`014_planning_validation_report.json` 与 failed manifest，并在进入 Coder Specs
+Compilation 前停止。只有 implementation plan 与 dependency graph 都通过，才会记录
 `stage=implementation_plan substage=5.7_spec_readiness_validation build done` 与
 `stage=implementation_plan build done`，并进入下一阶段
-`stage=spec_blueprint lower start`。
+`stage=specs_compile start`。
 
 ## Artifact 位置汇总
 
@@ -653,9 +669,9 @@ Lowering 前停止。只有 implementation plan 与 dependency graph 都通过�
 | 5.6 repair, conditional | `_agent_logs/007_5_6_dependency_repair_patch.json` | `_validation_reports/007_5_6_dependency_repair_validation_report.json` |
 | final implementation plan | `_step_logs/007_implementation_plan.json` | `_validation_reports/008_dependency_validation_report.json` |
 
-## 进入 Spec Blueprint Lowering 的前置条件
+## 进入 Coder Specs Compilation 的前置条件
 
-进入 `Spec Blueprint Lowering` 前，必须满足：
+进入 `Coder Specs Compilation` 前，必须满足：
 
 - `007_implementation_plan.json` 已写出；
 - `008_dependency_validation_report.json` 已写出；
@@ -663,12 +679,12 @@ Lowering 前停止。只有 implementation plan 与 dependency graph 都通过�
 - full implementation plan validation 通过；
 - dependency graph validation 通过。
 
-此时 `Spec Blueprint Lowering` 才会执行：
+此时 `Coder Specs Compilation` 才会执行：
 
-`spec_blueprint = build_spec_blueprint(implementation_plan)`。
+`compile_spec_bundle(implementation_plan, output_dir)`。
 
 也就是说，5.4b 到 5.7 的职责是把 function inventory 逐步降低为 coder 可用的
 implementation-oriented plan，包括 signatures、behavior、wire mapping、call graph
 inputs、file layout、runtime entrypoint 和 derived dependency graph；而
-`Spec Blueprint Lowering` 只消费已经通过 validation 的 final implementation plan，不再
+`Coder Specs Compilation` 只消费已经通过 validation 的 final implementation plan，不再
 补充这些工程语义。

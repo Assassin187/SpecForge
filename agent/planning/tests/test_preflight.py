@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 from agent.planning.cli import build_parser
-from agent.planning.orchestrator import PlanningAgent
+from agent.planning.orchestrator import PlanningAgent, normalize_resume_stage, normalize_stop_after_stage
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -79,8 +79,35 @@ class PlanningPreflightTests(unittest.TestCase):
         )
         self.assertEqual(args.resume_from_stage, "5.4d")
         self.assertEqual(args.stop_after_stage, "architecture")
+        args = parser.parse_args(
+            [
+                "plan",
+                "--facts",
+                "facts.json",
+                "--target-profile",
+                "target.json",
+                "--resume-from-stage",
+                "6",
+                "--stop-after-stage",
+                "6",
+            ]
+        )
+        self.assertEqual(args.resume_from_stage, "6")
+        self.assertEqual(args.stop_after_stage, "6")
         with self.assertRaises(SystemExit):
             parser.parse_args(["plan", "--facts", "facts.json", "--target-profile", "target.json", "--resume-from-stage", "bad"])
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["plan", "--facts", "facts.json", "--target-profile", "target.json", "--resume-from-stage", "7"])
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["plan", "--facts", "facts.json", "--target-profile", "target.json", "--resume-from-stage", "spec_blueprint"])
+
+    def test_stage_aliases_normalize_to_resume_targets(self) -> None:
+        self.assertEqual(normalize_resume_stage("5.2"), "implementation_plan_5_2a")
+        self.assertEqual(normalize_resume_stage("5.3"), "implementation_plan_5_3")
+        self.assertEqual(normalize_resume_stage("5.4"), "implementation_plan_5_4a")
+        self.assertEqual(normalize_resume_stage("5.5"), "implementation_plan_5_5a")
+        self.assertEqual(normalize_resume_stage("6"), "specs_compile")
+        self.assertEqual(normalize_stop_after_stage("6"), "specs_compile")
 
 
 if __name__ == "__main__":
