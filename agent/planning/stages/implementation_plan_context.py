@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import re
 from typing import Any
 
 from .implementation_plan import _capability_refs, _compressed_refs, _field_value, _handler_surfaces, _safe_id, _surface_units, _target_directives, _wire_fields
@@ -772,6 +773,135 @@ def _accepted_summary(draft: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _clip_strings(values: Any, limit: int = 8) -> list[str]:
+    return [str(item) for item in values if str(item).strip()][:limit] if isinstance(values, list) else []
+
+
+def _compact_seed(item: dict[str, Any]) -> dict[str, Any]:
+    result = dict(item)
+    for key, limit in (("trace_ref_keys", 8), ("source_refs", 8), ("covers_field_ids", 12)):
+        if key in result:
+            result[key] = _clip_strings(result.get(key, []), limit)
+    return result
+
+
+def _compact_module_artifact_ref(module: dict[str, Any]) -> dict[str, Any]:
+    result = {
+        "module_id": module.get("module_id"),
+        "role": module.get("role"),
+        "dependencies": module.get("dependencies", []),
+        "artifacts": [
+            {"kind": item.get("kind"), "name": item.get("name"), "role": item.get("role")}
+            for item in module.get("artifacts", [])
+            if isinstance(item, dict)
+        ],
+    }
+    if isinstance(module.get("public_types"), list):
+        result["public_types"] = [_compact_signature_type(item) for item in module["public_types"] if isinstance(item, dict)]
+    return result
+
+
+def compact_type_filling_context(context: dict[str, Any]) -> dict[str, Any]:
+    space = context.get("type_planning_space", {}) if isinstance(context.get("type_planning_space"), dict) else {}
+    allowed = space.get("allowed_type_refs", {}) if isinstance(space.get("allowed_type_refs"), dict) else {}
+    compact_space = {
+        "schema_version": space.get("schema_version", "type_planning_space/v1"),
+        "module_id": space.get("module_id", ""),
+        "mandatory_type_slots": [_compact_seed(item) for item in space.get("mandatory_type_slots", []) if isinstance(item, dict)],
+        "derived_type_slots": [_compact_seed(item) for item in space.get("derived_type_slots", []) if isinstance(item, dict)],
+        "recommended_type_slots": [_compact_seed(item) for item in space.get("recommended_type_slots", []) if isinstance(item, dict)],
+        "allowed_type_refs": {
+            "local_slots": allowed.get("local_slots", []),
+            "provider_public_types": [_compact_signature_type(item) for item in allowed.get("provider_public_types", []) if isinstance(item, dict)],
+            "canonical_public_types": [_compact_signature_type(item) for item in allowed.get("canonical_public_types", []) if isinstance(item, dict)],
+            "system_types": allowed.get("system_types", SYSTEM_TYPE_IDS),
+        },
+        "forbidden_type_refs": space.get("forbidden_type_refs", []),
+        "optional_expansion_policy": space.get("optional_expansion_policy", {}),
+        "source_context": {
+            "module_ownership": space.get("source_context", {}).get("module_ownership", {})
+            if isinstance(space.get("source_context"), dict)
+            else {}
+        },
+        "richness_diagnostics": space.get("richness_diagnostics", []),
+    }
+    result = dict(context)
+    result["type_planning_space"] = compact_space
+    if isinstance(result.get("module_artifact"), dict):
+        result["module_artifact"] = _compact_module_artifact_ref(result["module_artifact"])
+    module_ref = result.get("module_artifact") if isinstance(result.get("module_artifact"), dict) else {}
+    result["current_module_artifacts"] = module_ref.get("artifacts", [])
+    result["global_module_artifacts_reference"] = [
+        _compact_module_artifact_ref(item) for item in context.get("global_module_artifacts_reference", []) if isinstance(item, dict)
+    ]
+    result["provider_module_artifacts"] = [
+        _compact_module_artifact_ref(item) for item in context.get("provider_module_artifacts", []) if isinstance(item, dict)
+    ]
+    result["provider_public_types"] = [
+        {
+            "module_id": group.get("module_id"),
+            "types": [_compact_signature_type(item) for item in group.get("types", []) if isinstance(item, dict)],
+        }
+        for group in context.get("provider_public_types", [])
+        if isinstance(group, dict)
+    ]
+    result["consumer_module_artifact_dependencies"] = [
+        _compact_module_artifact_ref(item) for item in context.get("consumer_module_artifact_dependencies", []) if isinstance(item, dict)
+    ]
+    result.pop("type_generation_targets", None)
+    result.pop("core_design_summary", None)
+    return result
+
+
+def compact_function_annotation_context(context: dict[str, Any]) -> dict[str, Any]:
+    space = context.get("function_planning_space", {}) if isinstance(context.get("function_planning_space"), dict) else {}
+    source_context = space.get("source_context", {}) if isinstance(space.get("source_context"), dict) else {}
+    decomposition = source_context.get("decomposition_context", {}) if isinstance(source_context.get("decomposition_context"), dict) else {}
+    compact_space = {
+        "schema_version": space.get("schema_version", "function_planning_space/v1"),
+        "module_id": space.get("module_id", ""),
+        "function_budget": space.get("function_budget", {}),
+        "mandatory_function_seeds": [_compact_seed(item) for item in space.get("mandatory_function_seeds", []) if isinstance(item, dict)],
+        "obligation_function_seeds": [_compact_seed(item) for item in space.get("obligation_function_seeds", []) if isinstance(item, dict)],
+        "handler_function_seeds": [_compact_seed(item) for item in space.get("handler_function_seeds", []) if isinstance(item, dict)],
+        "parser_serializer_function_seeds": [_compact_seed(item) for item in space.get("parser_serializer_function_seeds", []) if isinstance(item, dict)],
+        "recommended_function_families": [_compact_seed(item) for item in space.get("recommended_function_families", []) if isinstance(item, dict)],
+        "legal_refs": space.get("legal_refs", {}),
+        "optional_expansion_policy": space.get("optional_expansion_policy", {}),
+        "source_context": {
+            "target_role": source_context.get("target_role", ""),
+            "global_service_flow_hints": source_context.get("global_service_flow_hints", []),
+            "wire_field_count": source_context.get("wire_field_count", 0),
+            "decomposition_context": {
+                "selected_rule_ids": decomposition.get("selected_rule_ids", []),
+                "expected_function_families_by_rule": decomposition.get("expected_function_families_by_rule", {}),
+                "recommended_concrete_slots_by_rule": decomposition.get("recommended_concrete_slots_by_rule", {}),
+                "evidence_summary": decomposition.get("evidence_summary", []),
+            },
+        },
+        "richness_diagnostics": space.get("richness_diagnostics", []),
+    }
+    result = dict(context)
+    result["function_planning_space"] = compact_space
+    if isinstance(result.get("module_artifact"), dict):
+        result["module_artifact"] = _compact_module_artifact_ref(result["module_artifact"])
+    module_ref = result.get("module_artifact") if isinstance(result.get("module_artifact"), dict) else {}
+    result["current_module_artifacts"] = module_ref.get("artifacts", [])
+    result["global_module_artifacts_reference"] = [
+        _compact_module_artifact_ref(item) for item in context.get("global_module_artifacts_reference", []) if isinstance(item, dict)
+    ]
+    result["provider_module_artifacts"] = [
+        _compact_module_artifact_ref(item) for item in context.get("provider_module_artifacts", []) if isinstance(item, dict)
+    ]
+    result["consumer_module_artifact_dependencies"] = [
+        _compact_module_artifact_ref(item) for item in context.get("consumer_module_artifact_dependencies", []) if isinstance(item, dict)
+    ]
+    result["current_module_type_inventory"] = [_compact_signature_type(item) for item in context.get("current_module_type_inventory", []) if isinstance(item, dict)]
+    result["type_obligations"] = [_compact_seed(item) for item in context.get("type_obligations", []) if isinstance(item, dict)]
+    result.pop("core_design_summary", None)
+    return result
+
+
 def _signature_update_skeleton(functions: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [
         {
@@ -791,15 +921,7 @@ def _behavior_update_skeleton(functions: list[dict[str, Any]]) -> list[dict[str,
     return [
         {
             "function_id": item.get("function_id"),
-            "contract": item.get("behavior_contract", {}),
-            "error_behavior": item.get("error_behavior", {}),
-            "state_access": item.get("state_access", []),
-            "resource_access": item.get("resource_access", []),
-            "internal_type_refs": item.get("internal_type_refs", []),
-            "service_requirements": [],
-            "logic_kind": item.get("logic_kind", ""),
-            "forbidden_symbols": item.get("forbidden_symbols", []),
-            "trace_ref_keys": item.get("traceability", {}).get("decision_ids", []),
+            "trace_ref_keys": _clip_strings(item.get("traceability", {}).get("decision_ids", []), 8),
             "status": "inferred",
         }
         for item in functions
@@ -824,8 +946,11 @@ def _callable_functions(draft: dict[str, Any], module_id: str) -> list[dict[str,
                     "module_id": function.get("module_id"),
                     "visibility": function.get("visibility"),
                     "api_surface": function.get("api_surface"),
+                    "purpose": function.get("purpose", ""),
                     "function_kind": function.get("function_kind"),
+                    "logic_kind": function.get("logic_kind", ""),
                     "signature": function.get("signature", {}),
+                    "behavior_contract": function.get("behavior_contract", {}),
                 }
             )
     return result
@@ -884,10 +1009,163 @@ def _provider_public_api_summary(draft: dict[str, Any], module_id: str) -> list[
     ]
 
 
+def _provider_public_behavior_api_summary(draft: dict[str, Any], module_id: str) -> list[dict[str, Any]]:
+    return [
+        {
+            "function_id": item.get("function_id"),
+            "name": item.get("name"),
+            "module_id": item.get("module_id"),
+            "function_kind": item.get("function_kind"),
+            "api_surface": item.get("api_surface"),
+        }
+        for item in _provider_public_api_summary(draft, module_id)
+    ]
+
+
 def _provider_public_types_for_module(draft: dict[str, Any], module_id: str) -> list[dict[str, Any]]:
     module = _module_artifact_for_id(draft, module_id)
     provider_modules, _ = _provider_consumer_modules(draft, module)
     return _public_provider_types(draft, provider_modules, None)
+
+
+def _compact_signature_function(function: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "function_id": function.get("function_id"),
+        "name": function.get("name"),
+        "module_id": function.get("module_id"),
+        "function_kind": function.get("function_kind"),
+        "coder_function_type": function.get("coder_function_type"),
+        "visibility": function.get("visibility"),
+        "api_surface": function.get("api_surface"),
+        "exported": function.get("exported"),
+        "public_api_role": function.get("public_api_role"),
+        "purpose": function.get("purpose"),
+        "capability_ids": function.get("capability_ids", []),
+        "covers_handler_ids": function.get("covers_handler_ids", []),
+        "covers_message_ids": function.get("covers_message_ids", []),
+        "covers_field_ids": function.get("covers_field_ids", []),
+        "trace_ref_keys": function.get("traceability", {}).get("decision_ids", []),
+    }
+
+
+def _compact_signature_type(type_item: dict[str, Any]) -> dict[str, Any]:
+    callback = type_item.get("callback_signature", {}) if isinstance(type_item.get("callback_signature"), dict) else {}
+    return {
+        "type_id": type_item.get("type_id"),
+        "name": type_item.get("name"),
+        "kind": type_item.get("kind"),
+        "module_id": type_item.get("module_id"),
+        "visibility": type_item.get("visibility"),
+        "defined_in": type_item.get("defined_in"),
+        "lifecycle": type_item.get("lifecycle", {}),
+        "callback_signature": callback,
+    }
+
+
+def _compact_behavior_function(function: dict[str, Any]) -> dict[str, Any]:
+    return {
+        **_compact_signature_function(function),
+        "signature": function.get("signature", {}),
+        "behavior_contract": function.get("behavior_contract", {}),
+        "error_behavior": function.get("error_behavior", {}),
+        "state_access": function.get("state_access", []),
+        "resource_access": function.get("resource_access", []),
+        "internal_type_refs": function.get("internal_type_refs", []),
+        "logic_kind": function.get("logic_kind", ""),
+    }
+
+
+def _compact_access_type(type_item: dict[str, Any]) -> dict[str, Any]:
+    result = _compact_signature_type(type_item)
+    result["fields"] = [
+        {
+            "field_name": field.get("field_name"),
+            "field_type": field.get("field_type"),
+            "type_ref": field.get("type_ref"),
+            "variants": field.get("variants", []),
+        }
+        for field in type_item.get("fields", [])
+        if isinstance(field, dict)
+    ]
+    result["enum_values"] = [
+        {"name": item.get("name"), "value": item.get("value"), "role": item.get("role")}
+        for item in type_item.get("enum_values", [])
+        if isinstance(item, dict)
+    ]
+    return result
+
+
+def _compact_call_function(function: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "function_id": function.get("function_id"),
+        "name": function.get("name"),
+        "module_id": function.get("module_id"),
+        "visibility": function.get("visibility"),
+        "api_surface": function.get("api_surface"),
+        "purpose": function.get("purpose", ""),
+        "function_kind": function.get("function_kind"),
+        "logic_kind": function.get("logic_kind", ""),
+        "signature": function.get("signature", {}),
+        "behavior_contract": function.get("behavior_contract", {}),
+        "wire_mapping": function.get("wire_mapping", []),
+        "access_paths": function.get("access_paths", []),
+        "state_access": function.get("state_access", []),
+        "resource_access": function.get("resource_access", []),
+        "service_requirements": [requirement for requirement in function.get("service_requirements", []) if isinstance(requirement, dict)],
+    }
+
+
+def _signature_type_table(draft: dict[str, Any], module_id: str, provider_public_types: list[dict[str, Any]]) -> dict[str, Any]:
+    provider_types = [
+        _compact_signature_type(type_item)
+        for group in provider_public_types
+        for type_item in group.get("types", [])
+        if isinstance(type_item, dict)
+    ]
+    return {
+        "current_module_types": [_compact_signature_type(item) for item in _module_type_inventory(draft, module_id)],
+        "current_module_canonical_types": [_compact_signature_type(item) for item in _module_canonical_types(draft, module_id)],
+        "provider_public_types": provider_types,
+    }
+
+
+def _global_public_symbol_names(draft: dict[str, Any], *, exclude_module_id: str) -> list[str]:
+    names = {
+        str(item.get("name", "")).strip()
+        for item in draft.get("function_contracts", [])
+        if isinstance(item, dict)
+        and str(item.get("module_id", "")) != exclude_module_id
+        and (
+            bool(item.get("exported"))
+            or str(item.get("api_surface", "")).lower() == "public"
+            or str(item.get("visibility", "")).lower() == "public"
+        )
+        and str(item.get("name", "")).strip()
+    }
+    return sorted(names)
+
+
+def _signature_style_guide(protocol: str, module_id: str) -> dict[str, Any]:
+    prefix = f"{_safe_id(protocol)}_{_safe_id(module_id)}"
+    return {
+        "raw_format": "no trailing semicolon; include static only for private source-local helpers",
+        "public_symbol_policy": "public names should already be protocol/module-prefixed and globally unique",
+        "lifecycle_patterns": [
+            f"{prefix}_create(config/context params when needed) -> public opaque handle pointer or status",
+            f"{prefix}_start(handle) -> bool/int status when a separate start phase exists",
+            f"{prefix}_run(handle) or {prefix}_serve(handle) -> event loop status",
+            f"{prefix}_destroy(handle) -> void",
+        ],
+        "codec_patterns": [
+            "decoder feed: const uint8_t* buffer, size_t buffer_len, size_t* consumed, packet callback/out param",
+            "primitive reader: const uint8_t* body, size_t body_len, size_t* pos, typed out param",
+            "encoder: semantic packet fields or const packet*, owned bytes/result out param",
+        ],
+        "callback_patterns": [
+            "callback registration should carry the module handle when callbacks are instance-scoped",
+            "use void* user/context for caller-owned callback state",
+        ],
+    }
 
 
 def _scoped_type_ids(draft: dict[str, Any], module_id: str, provider_public_types: list[dict[str, Any]]) -> list[str]:
@@ -950,6 +1228,136 @@ def _scoped_behavior_legal_ids(draft: dict[str, Any], module_id: str, functions:
         "type_ids": _scoped_type_ids(draft, module_id, provider_public_types),
         "system_type_ids": SYSTEM_TYPE_IDS,
     }
+
+
+def _signature_type_refs(value: Any) -> set[str]:
+    refs: set[str] = set()
+    if isinstance(value, dict):
+        type_ref = normalize_system_type_ref(value.get("type_ref", ""))
+        if type_ref:
+            refs.add(type_ref)
+        for item in value.values():
+            refs.update(_signature_type_refs(item))
+    elif isinstance(value, list):
+        for item in value:
+            refs.update(_signature_type_refs(item))
+    return refs
+
+
+def _behavior_type_ids(draft: dict[str, Any], module_id: str, functions: list[dict[str, Any]]) -> list[str]:
+    type_ids = _signature_type_refs([function.get("signature", {}) for function in functions if isinstance(function, dict)])
+    provider_public_types = _provider_public_types_for_module(draft, module_id)
+    type_ids.update(
+        str(item.get("type_id", ""))
+        for item in [*_module_canonical_types(draft, module_id), *_module_type_inventory(draft, module_id)]
+        if isinstance(item, dict)
+        and str(item.get("type_id", "")).strip()
+        and str(item.get("visibility", "")).lower() in {"public", "internal", "module_internal"}
+    )
+    type_ids.update(
+        str(type_item.get("type_id", ""))
+        for group in provider_public_types
+        for type_item in group.get("types", [])
+        if isinstance(type_item, dict) and str(type_item.get("type_id", "")).strip()
+    )
+    return sorted(type_id for type_id in type_ids if type_id)
+
+
+def _behavior_constraints(constraints: dict[str, Any], functions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    batch_capabilities = {
+        str(capability)
+        for function in functions
+        if isinstance(function, dict)
+        for capability in function.get("capability_ids", [])
+        if str(capability).strip()
+    }
+    result = []
+    for constraint in _constraints(constraints):
+        affected = {str(item) for item in constraint.get("affected_capabilities", []) if str(item).strip()}
+        if not affected or affected & batch_capabilities:
+            result.append(constraint)
+    return result
+
+
+def _scoped_behavior_legal_ids_for_batch(draft: dict[str, Any], module_id: str, functions: list[dict[str, Any]], provider_public_api: list[dict[str, Any]]) -> dict[str, Any]:
+    state_policy = _module_state_access_policy(draft, module_id)
+    return {
+        "module_ids": [str(item.get("module_id", "")) for item in draft.get("module_artifacts", []) if isinstance(item, dict)],
+        "function_ids": [str(item.get("function_id", "")) for item in functions if isinstance(item, dict)],
+        "provider_public_function_ids": [str(item.get("function_id", "")) for item in provider_public_api if str(item.get("function_id", "")).strip()],
+        "state_ids": [*state_policy["writable_state_ids"], *state_policy["read_only_external_state_ids"]],
+        "error_ids": [str(item.get("error_id", "")) for item in draft.get("error_strategy", []) if isinstance(item, dict)],
+        "type_ids": _behavior_type_ids(draft, module_id, functions),
+        "system_type_ids": SYSTEM_TYPE_IDS,
+    }
+
+
+def _slug_identifier(value: Any) -> str:
+    text = re.sub(r"[^A-Za-z0-9]+", "_", str(value or "").strip()).strip("_").lower()
+    return text or "unknown"
+
+
+def normalize_function_behavior_contract_patch(candidate: dict[str, Any], draft: dict[str, Any], constraints: dict[str, Any] | None = None) -> tuple[dict[str, Any], dict[str, int]]:
+    result = deepcopy(candidate)
+    stats = {"enum_fixes": 0, "state_owner_fixes": 0}
+    functions = {str(item.get("function_id", "")): item for item in draft.get("function_contracts", []) if isinstance(item, dict)}
+    state_owner = {str(item.get("state_id", "")): str(item.get("owner_module_id", "")) for item in draft.get("state_design", []) if isinstance(item, dict)}
+    updates = result.get("function_behavior_updates", [])
+    if not isinstance(updates, list):
+        return result, stats
+    for update in updates:
+        if not isinstance(update, dict):
+            continue
+        error_behavior = update.get("error_behavior")
+        if isinstance(error_behavior, dict) and error_behavior.get("recovery") == "log_only":
+            error_behavior["recovery"] = "none"
+            stats["enum_fixes"] += 1
+        service_requirements = update.get("service_requirements")
+        if not isinstance(service_requirements, list):
+            continue
+        for requirement in service_requirements:
+            if isinstance(requirement, dict) and requirement.get("failure_policy") == "log_only":
+                requirement["failure_policy"] = "ignore"
+                stats["enum_fixes"] += 1
+        function_id = str(update.get("function_id", ""))
+        function = functions.get(function_id, {})
+        function_module = str(function.get("module_id", ""))
+        state_access = update.get("state_access", [])
+        if not isinstance(state_access, list):
+            continue
+        normalized_state_access = []
+        for access in state_access:
+            if not isinstance(access, dict):
+                normalized_state_access.append(access)
+                continue
+            state_id = str(access.get("state_id", ""))
+            owner = state_owner.get(state_id, "")
+            access_kind = str(access.get("access_kind", ""))
+            external_write = owner and owner != function_module and access_kind in {"write", "read_write"}
+            if not external_write:
+                normalized_state_access.append(access)
+                continue
+            if access_kind == "read_write":
+                updated_access = dict(access)
+                updated_access["access_kind"] = "read"
+                updated_access["reason"] = f"{updated_access.get('reason', '').strip()} Cross-module mutation is requested through a service requirement.".strip()
+                normalized_state_access.append(updated_access)
+            requirement_id = f"svc:req:{_slug_identifier(function_id)}:state:{_slug_identifier(state_id)}"
+            if not any(isinstance(item, dict) and item.get("service_requirement_id") == requirement_id for item in service_requirements):
+                service_requirements.append(
+                    {
+                        "service_requirement_id": requirement_id,
+                        "requirement_kind": "cross_module_service",
+                        "operation": f"request owner module '{owner}' to mutate state '{state_id}'",
+                        "required_capability_ids": function.get("capability_ids", []) if isinstance(function, dict) else [],
+                        "expected_inputs": [state_id],
+                        "expected_output": "status",
+                        "failure_policy": "return_error",
+                    }
+                )
+            stats["state_owner_fixes"] += 1
+        update["state_access"] = normalized_state_access
+    return result, stats
 
 
 def build_core_design_context(
@@ -1558,27 +1966,30 @@ def build_function_inventory_repair_context(
 
 def build_function_signature_context(draft: dict[str, Any], module_id: str, functions: list[dict[str, Any]], *, batch_index: int, batch_size: int) -> dict[str, Any]:
     provider_public_types = _provider_public_types_for_module(draft, module_id)
+    protocol = str(draft.get("protocol_name", "protocol"))
     return {
         "schema_version": "function_signature_context/v1",
         "module_id": module_id,
         "batch": {"index": batch_index, "size": batch_size},
-        "functions": functions,
+        "functions": [_compact_signature_function(item) for item in functions if isinstance(item, dict)],
         "required_update_skeleton": _signature_update_skeleton(functions),
         "module_summary": _module_summary(draft, module_id),
-        "current_module_type_inventory": _module_type_inventory(draft, module_id),
-        "current_module_canonical_types": _module_canonical_types(draft, module_id),
+        "signature_type_table": _signature_type_table(draft, module_id, provider_public_types),
         "provider_public_types": provider_public_types,
+        "global_public_symbol_names": _global_public_symbol_names(draft, exclude_module_id=module_id),
+        "signature_style_guide": _signature_style_guide(protocol, module_id),
         "legal_id_universe": _scoped_signature_legal_ids(draft, module_id, functions, provider_public_types),
     }
 
 
 def build_function_behavior_context(draft: dict[str, Any], module_id: str, functions: list[dict[str, Any]], constraints: dict[str, Any], *, batch_index: int, batch_size: int) -> dict[str, Any]:
-    provider_public_api = _provider_public_api_summary(draft, module_id)
+    provider_public_api = _provider_public_behavior_api_summary(draft, module_id)
+    scoped_constraints = _behavior_constraints(constraints, functions)
     return {
         "schema_version": "function_behavior_context/v1",
         "module_id": module_id,
         "batch": {"index": batch_index, "size": batch_size},
-        "functions": functions,
+        "functions": [_compact_behavior_function(item) for item in functions if isinstance(item, dict)],
         "required_update_skeleton": _behavior_update_skeleton(functions),
         "service_requirement_policy": {
             "external_runtime_examples": ["socket", "accept", "read", "write", "close", "epoll", "malloc", "free", "timer"],
@@ -1589,24 +2000,27 @@ def build_function_behavior_context(draft: dict[str, Any], module_id: str, funct
         "module_state_access_policy": _module_state_access_policy(draft, module_id),
         "module_resource_refs": _module_resource_refs(draft, module_id),
         "provider_public_api_summary": provider_public_api,
-        "engineering_constraints": _constraints(constraints),
-        "legal_id_universe": _scoped_behavior_legal_ids(draft, module_id, functions, provider_public_api) | {"constraint_ids": [item["constraint_id"] for item in _constraints(constraints)]},
+        "engineering_constraints": scoped_constraints,
+        "legal_id_universe": _scoped_behavior_legal_ids_for_batch(draft, module_id, functions, provider_public_api) | {"constraint_ids": [item["constraint_id"] for item in scoped_constraints]},
     }
 
 
 def build_wire_access_binding_context(draft: dict[str, Any], planning_ir: dict[str, Any]) -> dict[str, Any]:
+    codec_and_handler_functions = [
+        _compact_behavior_function(item)
+        for item in draft.get("function_contracts", [])
+        if isinstance(item, dict) and item.get("function_kind") in {"parser", "serializer", "handler"}
+    ]
     return {
         "schema_version": "wire_access_binding_context/v1",
-        "codec_and_handler_functions": [
-            item
-            for item in _accepted_summary(draft)["function_contracts"]
-            if item.get("function_kind") in {"parser", "serializer", "handler"}
-        ],
+        "codec_and_handler_functions": codec_and_handler_functions,
         "field_summaries": _field_summaries(planning_ir),
         "state_design": draft.get("state_design", []),
-        "function_summary": _accepted_summary(draft)["function_contracts"],
-        "legal_id_universe": _legal_ids_from_draft(draft)
-        | {
+        "access_target_types": [_compact_access_type(item) for item in draft.get("type_inventory", []) if isinstance(item, dict)],
+        "legal_id_universe": {
+            "function_ids": [str(item.get("function_id", "")) for item in codec_and_handler_functions if str(item.get("function_id", "")).strip()],
+            "state_ids": [str(item.get("state_id", "")) for item in draft.get("state_design", []) if isinstance(item, dict)],
+            "type_ids": [str(item.get("type_id", "")) for item in draft.get("type_inventory", []) if isinstance(item, dict)],
             "message_ids": [item["message_id"] for item in _message_summaries(planning_ir)],
             "field_ids": [item["field_id"] for item in _field_summaries(planning_ir)],
         },
@@ -1629,17 +2043,37 @@ def build_calls_allowed_context(
         "schema_version": "calls_allowed_context/v1",
         "module_id": current_module,
         "batch": {"index": batch_index, "size": batch_size} if batch_index is not None else {},
-        "function_summary": _accepted_summary(draft)["function_contracts"],
+        "callers": [_compact_call_function(item) for item in scoped_functions if isinstance(item, dict)],
         "service_requirements": [
-            {"function_id": item.get("function_id"), "service_requirements": item.get("service_requirements", [])}
+            {
+                "function_id": item.get("function_id"),
+                "cross_module_service_requirements": [
+                    requirement
+                    for requirement in _compact_call_function(item).get("service_requirements", [])
+                    if isinstance(requirement, dict) and str(requirement.get("requirement_kind", "cross_module_service")) == "cross_module_service"
+                ],
+                "external_runtime_service_requirements": [
+                    requirement
+                    for requirement in _compact_call_function(item).get("service_requirements", [])
+                    if isinstance(requirement, dict) and str(requirement.get("requirement_kind", "")) == "external_runtime_service"
+                ],
+            }
             for item in draft.get("function_contracts", [])
             if isinstance(item, dict) and (not scoped_ids or str(item.get("function_id", "")) in scoped_ids)
         ],
         "callable_functions": _callable_functions(draft, current_module) if current_module else [],
         "required_call_update_caller_ids": sorted(scoped_ids),
-        "module_artifacts": draft.get("module_artifacts", []),
         "architecture_policy": {"selected_modules": _selected_modules(selected_architecture), "forbidden_cycles": True},
-        "legal_id_universe": _legal_ids_from_draft(draft),
+        "legal_id_universe": {
+            "function_ids": sorted(
+                {
+                    str(item.get("function_id", ""))
+                    for item in [*scoped_functions, *(_callable_functions(draft, current_module) if current_module else [])]
+                    if isinstance(item, dict) and str(item.get("function_id", "")).strip()
+                }
+            ),
+            "module_ids": [str(item.get("module_id", "")) for item in draft.get("module_artifacts", []) if isinstance(item, dict)],
+        },
     }
 
 

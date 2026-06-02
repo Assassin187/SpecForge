@@ -8,8 +8,8 @@ from typing import Any
 from openai import OpenAI, OpenAIError
 
 
-# FIXED_MODEL = "qwen3-max-2026-01-23"
-FIXED_MODEL = "qwen3.7-max-2026-05-20"
+FIXED_MODEL = "qwen3-max-2026-01-23"
+# FIXED_MODEL = "qwen3.7-max-2026-05-20"
 QWEN_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 DEFAULT_RETRY_ATTEMPTS = 10
 DEFAULT_RETRY_DELAY = 2

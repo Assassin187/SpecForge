@@ -204,16 +204,22 @@ def _function_spec(function: dict[str, Any], trace_id: str, function_index: dict
             continue
         access = access_by_id.get(str(item.get("access_path_id", "")), {})
         packet = str(item.get("message", "")).strip()
-        wire_field = str(item.get("field", "") or item.get("field_id", "")).strip()
+        wire_field = str(item.get("field", "") or item.get("wire_field", "") or item.get("field_id", "")).strip()
         if not packet or not wire_field:
             continue
+        target = str(item.get("target_path") or access.get("path") or "").strip()
+        strategy = str(item.get("strategy") or "").strip()
         mapping = {
             "PACKET": packet,
             "WIRE_FIELD": wire_field,
-            "STRATEGY": "store_in_field" if access.get("path") else "parse_and_skip",
+            "STRATEGY": strategy or ("store_in_field" if access.get("path") else "parse_and_skip"),
         }
-        if access.get("path"):
-            mapping["TARGET"] = str(access["path"])
+        if target:
+            mapping["TARGET"] = target
+        if str(item.get("source_expr", "")).strip():
+            mapping["SOURCE"] = str(item.get("source_expr", "")).strip()
+        if str(item.get("rule", "")).strip():
+            mapping["RULE"] = str(item.get("rule", "")).strip()
         wire_mappings.append(mapping)
 
     spec = {
@@ -579,7 +585,7 @@ def compile_spec_bundle(spec_blueprint: dict[str, Any], output_dir: str | Path) 
                 "ROLE": str(module.get("role", "")) or "Planning module.",
                 "DEPENDENCIES": sorted(set(str(dep) for dep in module.get("dependencies", []) if str(dep).strip()) | deps_by_module.get(module_id, set())),
                 "ARTIFACTS": artifacts,
-                "FILES": planned_files or lowered_files,
+                "FILES": lowered_files or planned_files,
                 "DOC_REF": lower_doc_ref(module),
             }
         )

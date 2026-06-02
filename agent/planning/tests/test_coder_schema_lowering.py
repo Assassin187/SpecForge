@@ -240,6 +240,84 @@ class CoderSchemaLoweringTests(unittest.TestCase):
             self.assertIn(("zapline_runtime_t", "TYPE"), artifact_keys)
             self.assertIn(("zapline_runtime_run", "FUNC"), artifact_keys)
 
+    def test_function_wire_mapping_lowers_rule_and_source(self) -> None:
+        blueprint = copy.deepcopy(_zap_blueprint())
+        blueprint["access_path_table"] = [
+            {
+                "access_path_id": "access:opcode",
+                "path": "frame.opcode",
+                "field_id": "field:opcode",
+                "owner_module_id": "framing",
+                "c_type": "uint8_t",
+                "role": "Frame opcode target.",
+            }
+        ]
+        blueprint["functions"][0]["access_paths"] = ["access:opcode"]
+        blueprint["functions"][0]["wire_mapping"] = [
+            {
+                "mapping_id": "wire:opcode",
+                "field_id": "field:opcode",
+                "message": "ZapFrame",
+                "field": "opcode",
+                "access_path_id": "access:opcode",
+                "strategy": "store_in_field",
+                "target_path": "frame.opcode",
+                "source_expr": "input[0]",
+                "rule": "opcode byte maps directly to frame.opcode",
+            }
+        ]
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(blueprint, Path(raw_tmp))
+            diagnostics = validate_coder_spec_bundle_against_schema(manifest["spec_root"])
+            self.assertFalse([diag.__dict__ for diag in diagnostics if diag.level == "error"])
+            function_specs = []
+            for path in Path(manifest["spec_root"]).rglob("*_spec.json"):
+                raw = json.loads(path.read_text(encoding="utf-8"))
+                if raw.get("KIND") == "FUNCTION_SPEC":
+                    function_specs.append(raw)
+            mapping = next(item for spec in function_specs for item in spec.get("WIRE_MAPPING", []))
+            self.assertEqual(mapping["STRATEGY"], "store_in_field")
+            self.assertEqual(mapping["TARGET"], "frame.opcode")
+            self.assertEqual(mapping["SOURCE"], "input[0]")
+            self.assertEqual(mapping["RULE"], "opcode byte maps directly to frame.opcode")
+
+    def test_module_files_prefer_actual_file_layout_over_seed_files(self) -> None:
+        blueprint = copy.deepcopy(_zap_blueprint())
+        blueprint["modules"][0]["files"] = ["stale/framing.h", "stale/framing.c"]
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(blueprint, Path(raw_tmp))
+            module_spec = json.loads(Path(manifest["module_spec_path"]).read_text(encoding="utf-8"))
+            self.assertEqual(module_spec["MODULES"][0]["FILES"], ["zapline/framing/framing.h", "zapline/framing/framing.c"])
+            bundle = load_spec_bundle_from_root(manifest["spec_root"])
+            self.assertEqual(bundle.modules_in_order[0].files, ["zapline/framing/framing.h", "zapline/framing/framing.c"])
+
+    def test_internal_call_contract_lowers_to_function_spec(self) -> None:
+        blueprint = copy.deepcopy(_zap_blueprint())
+        blueprint["functions"][0]["call_contracts"] = [
+            {
+                "callee_function_id": "func:framing:crc",
+                "call_kind": "utility",
+                "required": False,
+                "service_requirement_ids": [],
+                "call_reason": "Use internal checksum helper.",
+                "param_bindings": [],
+                "return_binding": {"policy": "use_return_value", "target_ref": "crc", "cleanup_function_id": ""},
+                "failure_behavior": "return_error",
+            }
+        ]
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(blueprint, Path(raw_tmp))
+            diagnostics = validate_coder_spec_bundle_against_schema(manifest["spec_root"])
+            self.assertFalse([diag.__dict__ for diag in diagnostics if diag.level == "error"])
+            function_specs = []
+            for path in Path(manifest["spec_root"]).rglob("*_spec.json"):
+                raw = json.loads(path.read_text(encoding="utf-8"))
+                if raw.get("KIND") == "FUNCTION_SPEC":
+                    function_specs.append(raw)
+            function_spec = next(item for item in function_specs if item["SIGNATURE"]["NAME"] == "zapline_frame_encode")
+            self.assertEqual(function_spec["CALL_CONTRACTS"][0]["NAME"], "zapline_crc_update")
+            self.assertEqual(function_spec["RELY"]["FUNC"][0]["NAME"], "zapline_crc_update")
+
     def test_dependency_graph_lowers_to_module_dependencies_and_order(self) -> None:
         blueprint = copy.deepcopy(_zap_blueprint())
         blueprint["modules"].append(

@@ -758,7 +758,7 @@ def _service_requirement_ids(functions: list[dict[str, Any]]) -> list[str]:
         for requirement in function.get("service_requirements", []):
             if (
                 isinstance(requirement, dict)
-                and str(requirement.get("requirement_kind", "cross_module_service")) in {"cross_module_service", "external_runtime_service"}
+                and str(requirement.get("requirement_kind", "cross_module_service")) == "cross_module_service"
                 and str(requirement.get("service_requirement_id", "")).strip()
             ):
                 result.append(str(requirement["service_requirement_id"]))
@@ -769,13 +769,17 @@ def fallback_function_signatures(draft: dict[str, Any], module_id: str, function
     updates = []
     for function in _module_functions(draft, module_id, functions):
         signature, params, _return_type = _default_signature(function, module_id, str(draft.get("protocol_name", "protocol")))
+        storage_class = "static" if str(function.get("visibility", "")).lower() == "static" else "none"
+        raw = signature["raw"]
+        if storage_class == "static" and not raw.startswith("static "):
+            raw = f"static {raw}"
         updates.append(
             {
                 "function_id": function.get("function_id"),
                 "signature": {
-                    "raw": signature["raw"],
+                    "raw": raw,
                     "name": signature["name"],
-                    "storage_class": "static" if str(function.get("visibility")) == "static" else "none",
+                    "storage_class": storage_class,
                     "return_type": signature["return_type"],
                     "params": [
                         {
@@ -1037,6 +1041,49 @@ def fallback_wire_access_binding(draft: dict[str, Any], planning_ir: dict[str, A
     }
 
 
+def _wire_entry_value(entry: dict[str, Any], key: str) -> str:
+    value = entry.get(key, "")
+    return str(value).strip() if value is not None else ""
+
+
+def _parse_wire_forbidden_symbol(value: Any) -> tuple[str, dict[str, str]] | None:
+    text = str(value).strip()
+    parts = text.split("|", 3)
+    if len(parts) != 4 or not all(part.strip() for part in parts[:3]):
+        return None
+    function_id, kind, name, reason = (part.strip() for part in parts)
+    return function_id, {"NAME": name, "KIND": kind, "REASON": reason or "Forbidden by wire/access binding."}
+
+
+def _append_unique_forbidden_symbol(function: dict[str, Any], symbol: dict[str, str]) -> None:
+    key = (symbol.get("NAME", ""), symbol.get("KIND", ""), symbol.get("REASON", ""))
+    existing = {
+        (
+            str(item.get("NAME") or item.get("name") or ""),
+            str(item.get("KIND") or item.get("kind") or ""),
+            str(item.get("REASON") or item.get("reason") or ""),
+        )
+        for item in function.get("forbidden_symbols", [])
+        if isinstance(item, dict)
+    }
+    if key not in existing:
+        function.setdefault("forbidden_symbols", []).append(symbol)
+
+
+def _unresolved_wire_forbidden_symbol(result: dict[str, Any], index: int, raw_value: Any, function_id: str = "") -> None:
+    result.setdefault("unresolved_questions", []).append(
+        {
+            "question_id": f"q:wire_forbidden_symbol:{index}",
+            "target_kind": "function",
+            "target_id": function_id,
+            "question": f"Unable to attach forbidden symbol '{raw_value}' from wire_access_binding_patch to a known function.",
+            "unresolved_reason": "Expected '<function_id>|<KIND>|<NAME>|<REASON>' with an existing function_id.",
+            "blocking": False,
+            "trace_ref_keys": [],
+        }
+    )
+
+
 def merge_wire_access_binding(draft: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
     result = deepcopy(draft)
     entries = [item for item in patch.get("wire_mapping_entries", []) if isinstance(item, dict)]
@@ -1059,11 +1106,18 @@ def merge_wire_access_binding(draft: dict[str, Any], patch: dict[str, Any]) -> d
                 "parser_function_id": "",
                 "serializer_function_id": "",
                 "access_path_id": "",
+                "strategy": _wire_entry_value(entry, "strategy"),
+                "target_path": _wire_entry_value(entry, "target_path"),
+                "source_expr": _wire_entry_value(entry, "source_expr"),
+                "rule": _wire_entry_value(entry, "rule"),
+                "mapping_role": _wire_entry_value(entry, "mapping_role"),
                 "source_fact_ids": entry.get("trace_ref_keys", []),
             },
         )
         access_id = access_by_function_field.get((str(entry.get("function_id", "")), field_id), {}).get("access_path_id", "")
         current["access_path_id"] = access_id or current["access_path_id"]
+        for key in ("strategy", "target_path", "source_expr", "rule", "mapping_role"):
+            current[key] = current.get(key) or _wire_entry_value(entry, key)
         if entry.get("direction") == "parse":
             current["parser_function_id"] = entry.get("function_id", "")
         elif entry.get("direction") == "serialize":
@@ -1094,12 +1148,28 @@ def merge_wire_access_binding(draft: dict[str, Any], patch: dict[str, Any]) -> d
                     "field": entry_by_id.get(wire_id, {}).get("wire_field") or entry_by_id.get(wire_id, {}).get("field_id", ""),
                     "direction": entry_by_id.get(wire_id, {}).get("direction", ""),
                     "access_path_id": access_by_function_field.get((str(function.get("function_id", "")), str(entry_by_id.get(wire_id, {}).get("field_id", ""))), {}).get("access_path_id", ""),
+                    "strategy": _wire_entry_value(entry_by_id.get(wire_id, {}), "strategy"),
+                    "target_path": _wire_entry_value(entry_by_id.get(wire_id, {}), "target_path"),
+                    "source_expr": _wire_entry_value(entry_by_id.get(wire_id, {}), "source_expr"),
+                    "rule": _wire_entry_value(entry_by_id.get(wire_id, {}), "rule"),
+                    "mapping_role": _wire_entry_value(entry_by_id.get(wire_id, {}), "mapping_role"),
                 }
                 for wire_id in update.get("wire_mapping_ids", [])
             ]
             function["access_paths"] = update.get("access_path_ids", [])
+    for index, value in enumerate(patch.get("forbidden_symbols", [])):
+        parsed = _parse_wire_forbidden_symbol(value)
+        if not parsed:
+            _unresolved_wire_forbidden_symbol(result, index, value)
+            continue
+        function_id, symbol = parsed
+        function = functions_by_id.get(function_id)
+        if not function:
+            _unresolved_wire_forbidden_symbol(result, index, value, function_id)
+            continue
+        _append_unique_forbidden_symbol(function, symbol)
     result.setdefault("unresolved_questions", []).extend(patch.get("unresolved_questions", []))
-    result.setdefault("accepted_stage_artifacts", []).append("5.4e_wire_access_binding")
+    result.setdefault("accepted_stage_artifacts", []).append("5.4d_wire_access_binding")
     return result
 
 
@@ -1107,45 +1177,105 @@ def fallback_calls_allowed(draft: dict[str, Any], functions: list[dict[str, Any]
     functions = functions if functions is not None else [item for item in draft.get("function_contracts", []) if isinstance(item, dict)]
     by_module_kind: dict[tuple[str, str], list[str]] = {}
     all_functions = [item for item in draft.get("function_contracts", []) if isinstance(item, dict)]
+    by_id = {str(item.get("function_id", "")): item for item in all_functions}
     for function in all_functions:
         by_module_kind.setdefault((str(function.get("module_id", "")), str(function.get("function_kind", ""))), []).append(str(function.get("function_id", "")))
+
+    def module_functions(module_id: str) -> list[dict[str, Any]]:
+        return [item for item in all_functions if str(item.get("module_id", "")) == module_id]
+
+    def named(module_id: str, *needles: str, helper_only: bool = False) -> list[str]:
+        result: list[str] = []
+        for item in module_functions(module_id):
+            helper_like = (
+                str(item.get("function_kind", "")) in {"internal_helper", "helper", "utility", "validator", "resource_lifecycle"}
+                or str(item.get("api_surface", "")) in {"private_helper", "static_helper"}
+            )
+            if helper_only and not helper_like:
+                continue
+            text = f"{item.get('name', '')} {item.get('purpose', '')}".lower()
+            if any(needle in text for needle in needles):
+                result.append(str(item.get("function_id", "")))
+        return result
+
+    def dedupe(values: list[str], caller_id: str, limit: int = 4) -> list[str]:
+        result: list[str] = []
+        for value in values:
+            if value and value != caller_id and value not in result:
+                result.append(value)
+            if len(result) >= limit:
+                break
+        return result
+
+    def edge_for(caller_kind: str, callee_id: str) -> dict[str, Any]:
+        callee_kind = str(by_id.get(callee_id, {}).get("function_kind", ""))
+        call_kind = "utility"
+        if caller_kind == "parser":
+            call_kind = "parser_delegate"
+        elif caller_kind == "serializer":
+            call_kind = "serializer_delegate"
+        elif caller_kind == "handler":
+            call_kind = "serializer_delegate" if callee_kind == "serializer" else "handler_dispatch"
+        elif callee_kind in {"resource_lifecycle", "lifecycle"}:
+            call_kind = "lifecycle"
+        if any(word in str(by_id.get(callee_id, {}).get("name", "")).lower() for word in ("cleanup", "free", "destroy", "close", "release", "deinit")):
+            call_kind = "error_handling"
+        return {
+            "callee_function_id": callee_id,
+            "call_kind": call_kind,
+            "required": False,
+            "service_requirement_ids": [],
+            "call_reason": "deterministic conservative internal call contract fallback",
+            "param_bindings": [],
+            "return_binding": {"policy": "ignore", "target_ref": "", "cleanup_function_id": ""},
+            "failure_behavior": "ignore",
+            "trace_ref_keys": [],
+            "status": "inferred",
+        }
+
     updates = []
     for function in functions:
         module_id = str(function.get("module_id", ""))
         kind = str(function.get("function_kind", ""))
-        helpers = by_module_kind.get((module_id, "state_machine"), []) + by_module_kind.get((module_id, "resource_lifecycle"), [])
-        calls: list[str] = []
+        caller_id = str(function.get("function_id", ""))
+        private_helpers = [
+            str(item.get("function_id", ""))
+            for item in module_functions(module_id)
+            if str(item.get("function_kind", "")) in {"internal_helper", "helper", "utility", "validator"}
+            or (
+                str(item.get("api_surface", "")) in {"private_helper", "static_helper"}
+                and str(item.get("function_kind", "")) not in {"parser", "serializer", "handler", "public_api"}
+            )
+        ]
+        cleanup_helpers = named(module_id, "cleanup", "free", "destroy", "close", "release", "deinit", helper_only=True)
+        calls: list[str]
         if kind == "handler":
-            calls = helpers[:3]
+            calls = dedupe(
+                by_module_kind.get((module_id, "serializer"), [])
+                + by_module_kind.get((module_id, "state_machine"), [])
+                + by_module_kind.get((module_id, "resource_lifecycle"), [])
+                + private_helpers
+                + cleanup_helpers,
+                caller_id,
+            )
         elif kind == "public_api":
-            calls = by_module_kind.get((module_id, "parser"), [])[:1] + by_module_kind.get((module_id, "handler"), [])[:1]
-        elif kind in {"parser", "serializer"}:
+            calls = dedupe(by_module_kind.get((module_id, "parser"), []) + by_module_kind.get((module_id, "serializer"), []) + by_module_kind.get((module_id, "handler"), []), caller_id)
+        elif kind == "parser":
+            calls = dedupe(named(module_id, "read", "decode", "parse", "validate", "check", helper_only=True) + private_helpers + cleanup_helpers, caller_id)
+        elif kind == "serializer":
+            calls = dedupe(named(module_id, "write", "encode", "serialize", "emit", "append", helper_only=True) + private_helpers + cleanup_helpers, caller_id)
+        else:
             calls = []
         updates.append(
             {
                 "caller_function_id": function.get("function_id"),
-                "calls_allowed": [
-                    {
-                        "callee_function_id": call,
-                        "call_kind": "utility" if kind not in {"handler", "public_api"} else "handler_dispatch",
-                        "required": False,
-                        "service_requirement_ids": [],
-                        "call_reason": "deterministic conservative fallback",
-                        "param_bindings": [],
-                        "return_binding": {"policy": "ignore", "target_ref": "", "cleanup_function_id": ""},
-                        "failure_behavior": "ignore",
-                        "trace_ref_keys": [],
-                        "status": "inferred",
-                    }
-                    for call in calls
-                    if call and call != function.get("function_id")
-                ],
+                "calls_allowed": [edge_for(kind, call) for call in calls],
             }
         )
     return {
         "schema_version": "calls_allowed_candidate/v2",
         "candidate_id": "candidate:calls_allowed:deterministic",
-        "producer": _producer("5.4f_call_planning", "calls_allowed_candidate_prompt"),
+        "producer": _producer("5.4e_call_contracts", "calls_allowed_candidate_prompt"),
         "call_updates": updates,
         "unresolved_service_requirements": _service_requirement_ids(functions),
         "assumptions": [],
@@ -1162,7 +1292,7 @@ def merge_calls_allowed(draft: dict[str, Any], candidate: dict[str, Any]) -> dic
             function["calls_allowed"] = [edge["callee_function_id"] for edge in update.get("calls_allowed", [])]
             function["call_contracts"] = update.get("calls_allowed", [])
     result.setdefault("unresolved_questions", []).extend(candidate.get("unresolved_questions", []))
-    result.setdefault("accepted_stage_artifacts", []).append("5.4f_call_planning")
+    result.setdefault("accepted_stage_artifacts", []).append("5.4e_call_contracts")
     return result
 
 
@@ -1247,6 +1377,15 @@ def merge_file_layout(draft: dict[str, Any], candidate: dict[str, Any]) -> dict[
             if isinstance(item, dict)
         ]
     }
+    paths_by_module: dict[str, list[str]] = {}
+    for item in result["file_layout"]["files"]:
+        module_id = str(item.get("module_id", ""))
+        for path in (item.get("header_path", ""), item.get("source_path", "")):
+            if module_id and str(path).strip() and str(path) not in paths_by_module.setdefault(module_id, []):
+                paths_by_module[module_id].append(str(path))
+    for module in result.get("module_artifacts", []):
+        if isinstance(module, dict) and str(module.get("module_id", "")) in paths_by_module:
+            module["files"] = paths_by_module[str(module.get("module_id", ""))]
     assignments = {str(item.get("function_id")): item for item in candidate.get("function_file_assignments", []) if isinstance(item, dict)}
     for function in result.get("function_contracts", []):
         assignment = assignments.get(str(function.get("function_id")))

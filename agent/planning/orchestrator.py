@@ -46,6 +46,9 @@ from .stages.implementation_plan_context import (
     build_runtime_entrypoint_context,
     build_type_inventory_context,
     build_wire_access_binding_context,
+    compact_function_annotation_context,
+    compact_type_filling_context,
+    normalize_function_behavior_contract_patch,
 )
 from .stages.inventory_planning_space import build_function_planning_space, build_type_planning_space
 from .stages.inventory_reconciliation import reconcile_function_annotation_candidate, reconcile_type_filling_candidate
@@ -130,6 +133,45 @@ STEP_FILENAMES = {
     "architecture_ranking": "006_architecture_ranking.json",
     "selected_architecture": "006_selected_architecture.json",
     "implementation_plan_skeleton": "007_5_1_plan_skeleton.json",
+    "core_design_candidate": "007_5_2a_core_design_candidate.json",
+    "core_design_validation_report": "007_5_2a_core_design_validation_report.json",
+    "module_artifacts_candidate": "007_5_2b_module_artifacts_candidate.json",
+    "module_artifacts_validation_report": "007_5_2b_module_artifacts_validation_report.json",
+    "type_planning_space": "007_5_3_type_data_planning_space.json",
+    "type_inventory_candidate": "007_5_3_type_data_inventory_candidate.json",
+    "type_inventory_validation_report": "007_5_3_type_data_inventory_validation_report.json",
+    "type_reconciliation_report": "007_5_3_type_data_reconciliation_report.json",
+    "type_inventory_diagnostics": "007_5_3_type_data_inventory_diagnostics.json",
+    "type_obligations": "007_5_3_type_data_obligations.json",
+    "type_inventory_attempt_summary": "007_5_3_type_data_attempt_summary.json",
+    "function_planning_space": "007_5_4a_function_inventory_planning_space.json",
+    "function_inventory_candidate": "007_5_4a_function_inventory_candidate.json",
+    "function_inventory_validation_report": "007_5_4a_function_inventory_validation_report.json",
+    "function_reconciliation_report": "007_5_4a_function_inventory_reconciliation_report.json",
+    "function_inventory_diagnostics": "007_5_4a_function_inventory_diagnostics.json",
+    "function_inventory_attempt_summary": "007_5_4a_function_inventory_attempt_summary.json",
+    "function_signature_patch": "007_5_4b_function_signature_patch.json",
+    "function_signature_validation_report": "007_5_4b_function_signature_validation_report.json",
+    "function_behavior_patch": "007_5_4c_function_behavior_contract_patch.json",
+    "function_behavior_validation_report": "007_5_4c_function_behavior_validation_report.json",
+    "wire_access_binding_patch": "007_5_4d_function_wire_access_binding_patch.json",
+    "wire_access_binding_validation_report": "007_5_4d_function_wire_access_binding_validation_report.json",
+    "calls_allowed_candidate": "007_5_4e_function_call_contracts_candidate.json",
+    "calls_allowed_validation_report": "007_5_4e_function_call_contracts_validation_report.json",
+    "file_layout_candidate": "007_5_5a_file_layout_candidate.json",
+    "file_layout_validation_report": "007_5_5a_file_layout_validation_report.json",
+    "runtime_entrypoint_candidate": "007_5_5b_runtime_entrypoint_candidate.json",
+    "runtime_entrypoint_validation_report": "007_5_5b_runtime_entrypoint_validation_report.json",
+    "dependency_repair_patch": "007_5_6_dependency_repair_patch.json",
+    "dependency_repair_validation_report": "007_5_6_dependency_repair_validation_report.json",
+    "implementation_plan": "007_implementation_plan.json",
+    "dependency_validation_report": "008_dependency_validation_report.json",
+    "spec_blueprint": "010_spec_blueprint.json",
+    "token_usage_summary": "013_token_usage_summary.json",
+    "planning_validation_report": "014_planning_validation_report.json",
+}
+
+LEGACY_STEP_FILENAMES = {
     "core_design_candidate": "007_5_2_core_design_candidate.json",
     "core_design_validation_report": "007_5_2_core_design_validation_report.json",
     "module_artifacts_candidate": "007_5_3_module_artifacts_candidate.json",
@@ -155,27 +197,22 @@ STEP_FILENAMES = {
     "wire_access_binding_validation_report": "007_5_4e_wire_access_binding_validation_report.json",
     "calls_allowed_candidate": "007_5_4f_calls_allowed_candidate.json",
     "calls_allowed_validation_report": "007_5_4f_calls_allowed_validation_report.json",
-    "runtime_entrypoint_candidate": "007_5_4g_runtime_entrypoint_candidate.json",
-    "runtime_entrypoint_validation_report": "007_5_4g_runtime_entrypoint_validation_report.json",
     "file_layout_candidate": "007_5_5_file_layout_candidate.json",
     "file_layout_validation_report": "007_5_5_file_layout_validation_report.json",
-    "dependency_repair_patch": "007_5_6_dependency_repair_patch.json",
-    "dependency_repair_validation_report": "007_5_6_dependency_repair_validation_report.json",
-    "implementation_plan": "007_implementation_plan.json",
-    "dependency_validation_report": "008_dependency_validation_report.json",
-    "spec_blueprint": "010_spec_blueprint.json",
-    "token_usage_summary": "013_token_usage_summary.json",
-    "planning_validation_report": "014_planning_validation_report.json",
+    "runtime_entrypoint_candidate": "007_5_4g_runtime_entrypoint_candidate.json",
+    "runtime_entrypoint_validation_report": "007_5_4g_runtime_entrypoint_validation_report.json",
 }
 
 AGENT_LOG_ARTIFACT_KEYS = {
     "protocol_profile_patch_candidate",
     "type_inventory_attempt_summary",
     "function_inventory_attempt_summary",
+    "dependency_repair_patch",
+}
+LEGACY_AGENT_LOG_ARTIFACT_KEYS = {
     "function_signature_patch",
     "function_behavior_patch",
     "wire_access_binding_patch",
-    "dependency_repair_patch",
 }
 
 TOP_LEVEL_RESUME_STAGES = (
@@ -189,56 +226,77 @@ TOP_LEVEL_RESUME_STAGES = (
 )
 IMPLEMENTATION_PLAN_RESUME_STAGES = (
     "implementation_plan_5_1",
-    "implementation_plan_5_2",
+    "implementation_plan_5_2a",
+    "implementation_plan_5_2b",
     "implementation_plan_5_3",
     "implementation_plan_5_4a",
     "implementation_plan_5_4b",
     "implementation_plan_5_4c",
     "implementation_plan_5_4d",
     "implementation_plan_5_4e",
-    "implementation_plan_5_4f",
-    "implementation_plan_5_5",
-    "implementation_plan_5_4g",
+    "implementation_plan_5_5a",
+    "implementation_plan_5_5b",
     "implementation_plan_5_6",
+    "implementation_plan_5_7",
 )
 RESUME_STAGES = (*TOP_LEVEL_RESUME_STAGES, *IMPLEMENTATION_PLAN_RESUME_STAGES)
 RESUME_STAGE_ALIASES = {
     "5.1": "implementation_plan_5_1",
     "5.1_plan_skeleton": "implementation_plan_5_1",
     "implementation_plan_skeleton": "implementation_plan_5_1",
-    "5.2": "implementation_plan_5_2",
-    "5.2_core_design": "implementation_plan_5_2",
-    "core_design": "implementation_plan_5_2",
+    "5.2": "implementation_plan_5_2b",
+    "5.2_module_spec": "implementation_plan_5_2b",
+    "5.2a": "implementation_plan_5_2a",
+    "5.2a_core_design": "implementation_plan_5_2a",
+    "core_design": "implementation_plan_5_2a",
+    "5.2b": "implementation_plan_5_2b",
+    "5.2b_module_artifacts": "implementation_plan_5_2b",
     "5.3": "implementation_plan_5_3",
-    "5.3_module_artifacts": "implementation_plan_5_3",
-    "module_artifacts": "implementation_plan_5_3",
+    "5.3_type_data": "implementation_plan_5_3",
+    "5.3_module_artifacts": "implementation_plan_5_2b",
+    "module_artifacts": "implementation_plan_5_2b",
+    "type_inventory": "implementation_plan_5_3",
+    "5.4a_type_inventory": "implementation_plan_5_3",
+    "5.4": "implementation_plan_5_4e",
+    "5.4_function_spec": "implementation_plan_5_4e",
     "5.4a": "implementation_plan_5_4a",
-    "5.4a_type_inventory": "implementation_plan_5_4a",
-    "type_inventory": "implementation_plan_5_4a",
+    "5.4a_function_inventory": "implementation_plan_5_4a",
     "5.4b": "implementation_plan_5_4b",
-    "5.4b_function_inventory": "implementation_plan_5_4b",
-    "function_inventory": "implementation_plan_5_4b",
+    "5.4b_function_signatures": "implementation_plan_5_4b",
+    "5.4b_function_inventory": "implementation_plan_5_4a",
+    "function_inventory": "implementation_plan_5_4a",
     "5.4c": "implementation_plan_5_4c",
-    "5.4c_signature_planning": "implementation_plan_5_4c",
-    "function_signatures": "implementation_plan_5_4c",
+    "5.4c_behavior_contract": "implementation_plan_5_4c",
+    "5.4c_signature_planning": "implementation_plan_5_4b",
+    "function_signatures": "implementation_plan_5_4b",
     "5.4d": "implementation_plan_5_4d",
-    "5.4d_behavior_contract": "implementation_plan_5_4d",
-    "function_behavior": "implementation_plan_5_4d",
+    "5.4d_wire_access_binding": "implementation_plan_5_4d",
+    "5.4d_behavior_contract": "implementation_plan_5_4c",
+    "function_behavior": "implementation_plan_5_4c",
     "5.4e": "implementation_plan_5_4e",
-    "5.4e_wire_access_binding": "implementation_plan_5_4e",
-    "wire_access_binding": "implementation_plan_5_4e",
-    "5.4f": "implementation_plan_5_4f",
-    "5.4f_call_planning": "implementation_plan_5_4f",
-    "calls_allowed": "implementation_plan_5_4f",
-    "5.5": "implementation_plan_5_5",
-    "5.5_file_layout": "implementation_plan_5_5",
-    "file_layout": "implementation_plan_5_5",
-    "5.4g": "implementation_plan_5_4g",
-    "5.4g_runtime_entrypoint": "implementation_plan_5_4g",
-    "runtime_entrypoint": "implementation_plan_5_4g",
+    "5.4e_call_contracts": "implementation_plan_5_4e",
+    "5.4e_wire_access_binding": "implementation_plan_5_4d",
+    "wire_access_binding": "implementation_plan_5_4d",
+    "5.4f_call_planning": "implementation_plan_5_4e",
+    "calls_allowed": "implementation_plan_5_4e",
+    "call_contracts": "implementation_plan_5_4e",
+    "5.5": "implementation_plan_5_5b",
+    "5.5_file_spec": "implementation_plan_5_5b",
+    "5.5a": "implementation_plan_5_5a",
+    "5.5a_file_layout": "implementation_plan_5_5a",
+    "5.5_file_layout": "implementation_plan_5_5a",
+    "file_layout": "implementation_plan_5_5a",
+    "5.5b": "implementation_plan_5_5b",
+    "5.5b_runtime_entrypoint": "implementation_plan_5_5b",
+    "5.4g_runtime_entrypoint": "implementation_plan_5_5b",
+    "runtime_entrypoint": "implementation_plan_5_5b",
     "5.6": "implementation_plan_5_6",
+    "5.6_dependency_generation": "implementation_plan_5_6",
     "5.6_dependency_repair": "implementation_plan_5_6",
     "dependency_repair": "implementation_plan_5_6",
+    "5.7": "implementation_plan_5_7",
+    "5.7_spec_readiness": "implementation_plan_5_7",
+    "spec_readiness": "implementation_plan_5_7",
 }
 RESUME_STAGE_OPTIONS = tuple(dict.fromkeys((*RESUME_STAGES, *RESUME_STAGE_ALIASES)))
 STOP_AFTER_STAGE_OPTIONS = RESUME_STAGE_OPTIONS
@@ -259,59 +317,63 @@ _IMPLEMENTATION_PLAN_PREFIX_KEYS = (
     "engineering_constraints",
     *_ARCHITECTURE_ARTIFACT_KEYS,
 )
-_IMPLEMENTATION_PLAN_5_2_PREFIX_KEYS = (
+_IMPLEMENTATION_PLAN_5_2A_PREFIX_KEYS = (
     *_IMPLEMENTATION_PLAN_PREFIX_KEYS,
     "implementation_plan_skeleton",
 )
-_IMPLEMENTATION_PLAN_5_3_PREFIX_KEYS = (
-    *_IMPLEMENTATION_PLAN_5_2_PREFIX_KEYS,
+_IMPLEMENTATION_PLAN_5_2B_PREFIX_KEYS = (
+    *_IMPLEMENTATION_PLAN_5_2A_PREFIX_KEYS,
     "core_design_candidate",
     "core_design_validation_report",
 )
-_IMPLEMENTATION_PLAN_5_4A_PREFIX_KEYS = (
-    *_IMPLEMENTATION_PLAN_5_3_PREFIX_KEYS,
+_IMPLEMENTATION_PLAN_5_3_PREFIX_KEYS = (
+    *_IMPLEMENTATION_PLAN_5_2B_PREFIX_KEYS,
     "module_artifacts_candidate",
     "module_artifacts_validation_report",
 )
-_IMPLEMENTATION_PLAN_5_4B_PREFIX_KEYS = (
-    *_IMPLEMENTATION_PLAN_5_4A_PREFIX_KEYS,
+_IMPLEMENTATION_PLAN_5_4A_PREFIX_KEYS = (
+    *_IMPLEMENTATION_PLAN_5_3_PREFIX_KEYS,
     "type_inventory_candidate",
     "type_inventory_validation_report",
 )
-_IMPLEMENTATION_PLAN_5_4C_PREFIX_KEYS = (
-    *_IMPLEMENTATION_PLAN_5_4B_PREFIX_KEYS,
+_IMPLEMENTATION_PLAN_5_4B_PREFIX_KEYS = (
+    *_IMPLEMENTATION_PLAN_5_4A_PREFIX_KEYS,
     "function_inventory_candidate",
     "function_inventory_validation_report",
 )
-_IMPLEMENTATION_PLAN_5_4D_PREFIX_KEYS = (
-    *_IMPLEMENTATION_PLAN_5_4C_PREFIX_KEYS,
+_IMPLEMENTATION_PLAN_5_4C_PREFIX_KEYS = (
+    *_IMPLEMENTATION_PLAN_5_4B_PREFIX_KEYS,
     "function_signature_patch",
     "function_signature_validation_report",
 )
-_IMPLEMENTATION_PLAN_5_4E_PREFIX_KEYS = (
-    *_IMPLEMENTATION_PLAN_5_4D_PREFIX_KEYS,
+_IMPLEMENTATION_PLAN_5_4D_PREFIX_KEYS = (
+    *_IMPLEMENTATION_PLAN_5_4C_PREFIX_KEYS,
     "function_behavior_patch",
     "function_behavior_validation_report",
 )
-_IMPLEMENTATION_PLAN_5_4F_PREFIX_KEYS = (
-    *_IMPLEMENTATION_PLAN_5_4E_PREFIX_KEYS,
+_IMPLEMENTATION_PLAN_5_4E_PREFIX_KEYS = (
+    *_IMPLEMENTATION_PLAN_5_4D_PREFIX_KEYS,
     "wire_access_binding_patch",
     "wire_access_binding_validation_report",
 )
-_IMPLEMENTATION_PLAN_5_5_PREFIX_KEYS = (
-    *_IMPLEMENTATION_PLAN_5_4F_PREFIX_KEYS,
+_IMPLEMENTATION_PLAN_5_5A_PREFIX_KEYS = (
+    *_IMPLEMENTATION_PLAN_5_4E_PREFIX_KEYS,
     "calls_allowed_candidate",
     "calls_allowed_validation_report",
 )
-_IMPLEMENTATION_PLAN_5_4G_PREFIX_KEYS = (
-    *_IMPLEMENTATION_PLAN_5_5_PREFIX_KEYS,
+_IMPLEMENTATION_PLAN_5_5B_PREFIX_KEYS = (
+    *_IMPLEMENTATION_PLAN_5_5A_PREFIX_KEYS,
     "file_layout_candidate",
     "file_layout_validation_report",
 )
 _IMPLEMENTATION_PLAN_5_6_PREFIX_KEYS = (
-    *_IMPLEMENTATION_PLAN_5_4G_PREFIX_KEYS,
+    *_IMPLEMENTATION_PLAN_5_5B_PREFIX_KEYS,
     "runtime_entrypoint_candidate",
     "runtime_entrypoint_validation_report",
+)
+_IMPLEMENTATION_PLAN_5_7_PREFIX_KEYS = (
+    *_IMPLEMENTATION_PLAN_5_6_PREFIX_KEYS,
+    "implementation_plan",
 )
 _RESUME_REQUIRED_KEYS = {
     "planning_ir": (),
@@ -320,17 +382,18 @@ _RESUME_REQUIRED_KEYS = {
     "architecture": ("planning_ir", "protocol_profile", "engineering_constraints"),
     "implementation_plan": _IMPLEMENTATION_PLAN_PREFIX_KEYS,
     "implementation_plan_5_1": _IMPLEMENTATION_PLAN_PREFIX_KEYS,
-    "implementation_plan_5_2": _IMPLEMENTATION_PLAN_5_2_PREFIX_KEYS,
+    "implementation_plan_5_2a": _IMPLEMENTATION_PLAN_5_2A_PREFIX_KEYS,
+    "implementation_plan_5_2b": _IMPLEMENTATION_PLAN_5_2B_PREFIX_KEYS,
     "implementation_plan_5_3": _IMPLEMENTATION_PLAN_5_3_PREFIX_KEYS,
     "implementation_plan_5_4a": _IMPLEMENTATION_PLAN_5_4A_PREFIX_KEYS,
     "implementation_plan_5_4b": _IMPLEMENTATION_PLAN_5_4B_PREFIX_KEYS,
     "implementation_plan_5_4c": _IMPLEMENTATION_PLAN_5_4C_PREFIX_KEYS,
     "implementation_plan_5_4d": _IMPLEMENTATION_PLAN_5_4D_PREFIX_KEYS,
     "implementation_plan_5_4e": _IMPLEMENTATION_PLAN_5_4E_PREFIX_KEYS,
-    "implementation_plan_5_4f": _IMPLEMENTATION_PLAN_5_4F_PREFIX_KEYS,
-    "implementation_plan_5_5": _IMPLEMENTATION_PLAN_5_5_PREFIX_KEYS,
-    "implementation_plan_5_4g": _IMPLEMENTATION_PLAN_5_4G_PREFIX_KEYS,
+    "implementation_plan_5_5a": _IMPLEMENTATION_PLAN_5_5A_PREFIX_KEYS,
+    "implementation_plan_5_5b": _IMPLEMENTATION_PLAN_5_5B_PREFIX_KEYS,
     "implementation_plan_5_6": _IMPLEMENTATION_PLAN_5_6_PREFIX_KEYS,
+    "implementation_plan_5_7": _IMPLEMENTATION_PLAN_5_7_PREFIX_KEYS,
     "spec_blueprint": (
         "planning_ir",
         "protocol_profile",
@@ -786,18 +849,59 @@ def _should_stop_after(stage: str, stop_after_stage: str | None) -> bool:
 
 def _artifact_path(root: Path, key: str) -> Path:
     filename = STEP_FILENAMES[key]
+    legacy_filename = LEGACY_STEP_FILENAMES.get(key)
+    if key in LEGACY_AGENT_LOG_ARTIFACT_KEYS:
+        preferred = root / "_step_logs" / filename
+        if preferred.exists():
+            return preferred
+        if legacy_filename:
+            legacy_step = root / "_step_logs" / legacy_filename
+            if legacy_step.exists():
+                return legacy_step
+        legacy_agent = root / "_agent_logs" / filename
+        if legacy_agent.exists():
+            return legacy_agent
+        if legacy_filename:
+            legacy_agent_step = root / "_agent_logs" / legacy_filename
+            if legacy_agent_step.exists():
+                return legacy_agent_step
+        return preferred
     if key in AGENT_LOG_ARTIFACT_KEYS:
         preferred = root / "_agent_logs" / filename
         if preferred.exists():
             return preferred
+        if legacy_filename:
+            legacy_agent = root / "_agent_logs" / legacy_filename
+            if legacy_agent.exists():
+                return legacy_agent
         legacy = root / "_step_logs" / filename
-        return legacy if legacy.exists() else preferred
+        if legacy.exists():
+            return legacy
+        if legacy_filename:
+            legacy_step = root / "_step_logs" / legacy_filename
+            if legacy_step.exists():
+                return legacy_step
+        return preferred
     if "validation_report" in filename:
         preferred = root / "_validation_reports" / filename
         if preferred.exists():
             return preferred
+        if legacy_filename:
+            legacy_report = root / "_validation_reports" / legacy_filename
+            if legacy_report.exists():
+                return legacy_report
         legacy = root / "_step_logs" / filename
-        return legacy if legacy.exists() else preferred
+        if legacy.exists():
+            return legacy
+        if legacy_filename:
+            legacy_step = root / "_step_logs" / legacy_filename
+            if legacy_step.exists():
+                return legacy_step
+        return preferred
+    if legacy_filename:
+        legacy = root / "_step_logs" / legacy_filename
+        if legacy.exists():
+            return legacy
     return root / "_step_logs" / filename
 
 
@@ -1578,6 +1682,7 @@ class PlanningAgent:
                 report_key: str,
                 fallback: dict[str, Any],
                 validator,
+                normalizer: Callable[[dict[str, Any]], tuple[dict[str, Any], dict[str, int]]] | None = None,
                 max_attempts: int | None = None,
                 step_log_suffix: str | None = None,
                 record_diagnostics: bool = True,
@@ -1607,6 +1712,12 @@ class PlanningAgent:
                         previous_reasons = _diagnostic_reasons(llm_diags) or ["LLM did not return a JSON object."]
                         store.write_agent_log(f"{log_key}_llm_attempt_{attempt}_rejection", "\n".join(previous_reasons))
                         continue
+                    if normalizer is not None:
+                        candidate, normalization_stats = normalizer(candidate)
+                        nonzero_stats = {key: value for key, value in normalization_stats.items() if value}
+                        if nonzero_stats:
+                            stats_text = " ".join(f"{key}={value}" for key, value in sorted(nonzero_stats.items()))
+                            store.log_event(f"stage=implementation_plan substage={stage_label} llm_attempt={attempt} normalized {stats_text}")
                     candidate_diags = validator(candidate)
                     if stage_passed(candidate_diags):
                         accepted = candidate
@@ -1621,7 +1732,8 @@ class PlanningAgent:
                     accepted = fallback
                     accepted_diags = validator(accepted)
                     store.log_event(f"stage=implementation_plan substage={stage_label} fallback=deterministic")
-                candidate_path = _write_artifact_json(store, candidate_key, _suffixed_step_filename(STEP_FILENAMES[candidate_key], step_log_suffix), accepted)
+                candidate_filename = _suffixed_step_filename(STEP_FILENAMES[candidate_key], step_log_suffix)
+                candidate_path = store.write_agent_json(candidate_filename, accepted) if step_log_suffix else _write_artifact_json(store, candidate_key, candidate_filename, accepted)
                 report_path = store.write_step_json(_suffixed_step_filename(STEP_FILENAMES[report_key], step_log_suffix), validation_report(stage_label, accepted_diags))
                 artifact_key = f"{candidate_key}_{artifact_suffix}" if artifact_suffix else candidate_key
                 artifact_report_key = f"{report_key}_{artifact_suffix}" if artifact_suffix else report_key
@@ -1641,11 +1753,11 @@ class PlanningAgent:
                     store.log_event(f"stage=implementation_plan substage={stage_label} resume inherited")
                 return candidate
 
-            if _implementation_plan_substage_should_run("implementation_plan_5_2", resume_from_stage):
+            if _implementation_plan_substage_should_run("implementation_plan_5_2a", resume_from_stage):
                 core_context = build_core_design_context(planning_ir, profile, constraints, selected_architecture)
                 core_candidate = stage_candidate(
-                    stage_label="5.2_core_design",
-                    thinking_stage="implementation_plan_5_2",
+                    stage_label="5.2a_core_design",
+                    thinking_stage="implementation_plan_5_2a",
                     prompt_name="core_design_candidate_prompt",
                     messages=core_design_candidate_messages(core_context),
                     candidate_key="core_design_candidate",
@@ -1655,19 +1767,19 @@ class PlanningAgent:
                 )
             else:
                 core_candidate = inherited_stage_candidate(
-                    stage_label="5.2_core_design",
+                    stage_label="5.2a_core_design",
                     candidate_key="core_design_candidate",
                     validator=lambda candidate: validate_core_design_candidate(candidate, planning_ir, profile, selected_architecture, constraints),
                 )
             draft = merge_core_design(draft, core_candidate)
-            if _should_stop_after("implementation_plan_5_2", stop_after_stage):
-                return finish_early("implementation_plan_5_2")
+            if _should_stop_after("implementation_plan_5_2a", stop_after_stage):
+                return finish_early("implementation_plan_5_2a")
 
-            if _implementation_plan_substage_should_run("implementation_plan_5_3", resume_from_stage):
+            if _implementation_plan_substage_should_run("implementation_plan_5_2b", resume_from_stage):
                 module_context = build_module_artifact_context(draft, profile, constraints, selected_architecture)
                 module_candidate = stage_candidate(
-                    stage_label="5.3_module_artifacts",
-                    thinking_stage="implementation_plan_5_3",
+                    stage_label="5.2b_module_artifacts",
+                    thinking_stage="implementation_plan_5_2b",
                     prompt_name="module_artifacts_candidate_prompt",
                     messages=module_artifacts_candidate_messages(module_context),
                     candidate_key="module_artifacts_candidate",
@@ -1677,13 +1789,13 @@ class PlanningAgent:
                 )
             else:
                 module_candidate = inherited_stage_candidate(
-                    stage_label="5.3_module_artifacts",
+                    stage_label="5.2b_module_artifacts",
                     candidate_key="module_artifacts_candidate",
                     validator=lambda candidate: validate_module_artifacts_candidate(candidate, selected_architecture, profile, constraints, draft),
                 )
             draft = merge_module_artifacts(draft, module_candidate)
-            if _should_stop_after("implementation_plan_5_3", stop_after_stage):
-                return finish_early("implementation_plan_5_3")
+            if _should_stop_after("implementation_plan_5_2b", stop_after_stage):
+                return finish_early("implementation_plan_5_2b")
 
             def log_controlled_inventory_attempts(
                 result: dict[str, Any],
@@ -1738,12 +1850,12 @@ class PlanningAgent:
                     ],
                 }
 
-            if _implementation_plan_substage_should_run("implementation_plan_5_4a", resume_from_stage):
+            if _implementation_plan_substage_should_run("implementation_plan_5_3", resume_from_stage):
                 type_aggregate = {
                     "schema_version": "type_inventory_candidate/v1",
                     "candidate_id": "candidate:type_inventory:all_modules",
                     "producer": {
-                        "stage": "5.4a_type_inventory",
+                        "stage": "5.3_type_data",
                         "prompt_name": "type_inventory_candidate_prompt",
                         "prompt_version": "aggregate",
                     },
@@ -1764,7 +1876,7 @@ class PlanningAgent:
                         return {
                             "schema_version": "type_filling_candidate/v1",
                             "candidate_id": f"candidate:type_filling:{module_id}",
-                            "producer": {"stage": "5.4a_type_inventory", "prompt_name": "type_filling_candidate_prompt", "prompt_version": "empty"},
+                            "producer": {"stage": "5.3_type_data", "prompt_name": "type_filling_candidate_prompt", "prompt_version": "empty"},
                             "module_id": module_id,
                             "slot_fillings": [],
                             "optional_type_proposals": [],
@@ -1776,12 +1888,12 @@ class PlanningAgent:
                     result = _run_controlled_inventory_candidate(
                         module_index=module_index,
                         module=module,
-                        stage_name="5.4a_type_inventory",
-                        stage_key="implementation_plan_5_4a",
+                        stage_name="5.3_type_data",
+                        stage_key="implementation_plan_5_3",
                         prompt_name="type_filling_candidate_prompt",
-                        messages=type_filling_candidate_messages(context),
-                        request_config=_llm_config_for_stage(self.config, "implementation_plan_5_4a"),
-                        enable_thinking=self.config.llm_enable_thinking_for("implementation_plan_5_4a"),
+                        messages=type_filling_candidate_messages(compact_type_filling_context(context)),
+                        request_config=_llm_config_for_stage(self.config, "implementation_plan_5_3"),
+                        enable_thinking=self.config.llm_enable_thinking_for("implementation_plan_5_3"),
                         empty_llm_candidate=empty_type_filling,
                         validate_llm_candidate=lambda candidate: validate_type_filling_candidate(
                             candidate,
@@ -1840,7 +1952,7 @@ class PlanningAgent:
                     report_path = store.write_step_json(
                         _suffixed_step_filename(STEP_FILENAMES["type_inventory_validation_report"], module_id),
                         validation_report(
-                            f"5.4a_type_inventory:{module_id}",
+                            f"5.3_type_data:{module_id}",
                             type_candidate_diags,
                             quality_diagnostics=reconciliation.get("diagnostics", []),
                             richness_summary=reconciliation.get("reconciliation_report", {}),
@@ -1870,34 +1982,34 @@ class PlanningAgent:
                     store,
                     "type_inventory_attempt_summary",
                     STEP_FILENAMES["type_inventory_attempt_summary"],
-                    inventory_attempt_summary("5.4a_type_inventory", type_results),
+                    inventory_attempt_summary("5.3_type_data", type_results),
                 )
                 artifact_paths["type_inventory_attempt_summary"] = type_attempt_summary_path
                 if type_stage_failed:
-                    return finish_early("implementation_plan_5_4a")
+                    return finish_early("implementation_plan_5_3")
                 type_diags = validate_type_inventory_candidate(type_aggregate, draft.get("module_artifacts", []), draft, profile, planning_ir)
                 type_path = store.write_step_json(STEP_FILENAMES["type_inventory_candidate"], type_aggregate)
                 artifact_paths["type_inventory_candidate"] = type_path
-                type_report_path = store.write_step_json(STEP_FILENAMES["type_inventory_validation_report"], validation_report("5.4a_type_inventory:all_modules", type_diags))
+                type_report_path = store.write_step_json(STEP_FILENAMES["type_inventory_validation_report"], validation_report("5.3_type_data:all_modules", type_diags))
                 artifact_paths["type_inventory_validation_report"] = type_report_path
                 if has_errors(type_diags):
                     diagnostics.extend(type_diags)
             else:
                 type_aggregate = inherited_stage_candidate(
-                    stage_label="5.4a_type_inventory:all_modules",
+                    stage_label="5.3_type_data:all_modules",
                     candidate_key="type_inventory_candidate",
                     validator=lambda candidate: validate_type_inventory_candidate(candidate, draft.get("module_artifacts", []), draft, profile, planning_ir),
                 )
                 draft = merge_type_inventory(draft, type_aggregate)
-            if _should_stop_after("implementation_plan_5_4a", stop_after_stage):
-                return finish_early("implementation_plan_5_4a")
+            if _should_stop_after("implementation_plan_5_3", stop_after_stage):
+                return finish_early("implementation_plan_5_3")
 
-            if _implementation_plan_substage_should_run("implementation_plan_5_4b", resume_from_stage):
+            if _implementation_plan_substage_should_run("implementation_plan_5_4a", resume_from_stage):
                 inventory_aggregate = {
                     "schema_version": "function_inventory_candidate/v2",
                     "candidate_id": "candidate:function_inventory:all_modules",
                     "producer": {
-                        "stage": "5.4b_function_inventory",
+                        "stage": "5.4a_function_inventory",
                         "prompt_name": "function_inventory_candidate_prompt",
                         "prompt_version": "aggregate",
                     },
@@ -1911,8 +2023,8 @@ class PlanningAgent:
 
                 def request_inventory_candidate(module_index: int, module: dict[str, Any]) -> dict[str, Any]:
                     module_id = str(module.get("module_id", ""))
-                    enable_thinking = self.config.llm_enable_thinking_for("implementation_plan_5_4b")
-                    request_config = _llm_config_for_stage(self.config, "implementation_plan_5_4b")
+                    enable_thinking = self.config.llm_enable_thinking_for("implementation_plan_5_4a")
+                    request_config = _llm_config_for_stage(self.config, "implementation_plan_5_4a")
                     planning_space = build_function_planning_space(inventory_draft, module, planning_ir, profile, constraints)
                     context = build_function_inventory_context(inventory_draft, module)
                     context["function_planning_space"] = planning_space
@@ -1921,7 +2033,7 @@ class PlanningAgent:
                         return {
                             "schema_version": "function_annotation_candidate/v1",
                             "candidate_id": f"candidate:function_annotation:{module_id}",
-                            "producer": {"stage": "5.4b_function_inventory", "prompt_name": "function_annotation_candidate_prompt", "prompt_version": "empty"},
+                            "producer": {"stage": "5.4a_function_inventory", "prompt_name": "function_annotation_candidate_prompt", "prompt_version": "empty"},
                             "module_id": module_id,
                             "seed_annotations": [],
                             "optional_function_proposals": [],
@@ -1933,10 +2045,10 @@ class PlanningAgent:
                     result = _run_controlled_inventory_candidate(
                         module_index=module_index,
                         module=module,
-                        stage_name="5.4b_function_inventory",
-                        stage_key="implementation_plan_5_4b",
+                        stage_name="5.4a_function_inventory",
+                        stage_key="implementation_plan_5_4a",
                         prompt_name="function_annotation_candidate_prompt",
-                        messages=function_annotation_candidate_messages(context),
+                        messages=function_annotation_candidate_messages(compact_function_annotation_context(context)),
                         request_config=request_config,
                         enable_thinking=enable_thinking,
                         empty_llm_candidate=empty_function_annotation,
@@ -1986,7 +2098,7 @@ class PlanningAgent:
                         diagnostics.append(
                             PlanningDiagnostic(
                                 "error",
-                                "implementation_plan_5_4b_missing_candidate",
+                                "implementation_plan_5_4a_missing_candidate",
                                 f"{stage_label} did not produce an accepted candidate.",
                                 stage_label,
                             )
@@ -2041,36 +2153,36 @@ class PlanningAgent:
                     store,
                     "function_inventory_attempt_summary",
                     STEP_FILENAMES["function_inventory_attempt_summary"],
-                    inventory_attempt_summary("5.4b_function_inventory", inventory_results),
+                    inventory_attempt_summary("5.4a_function_inventory", inventory_results),
                 )
                 artifact_paths["function_inventory_attempt_summary"] = inventory_attempt_summary_path
                 if inventory_stage_failed:
-                    return finish_early("implementation_plan_5_4b")
+                    return finish_early("implementation_plan_5_4a")
                 draft = reconcile_type_inventory_function_refs(draft)
                 inventory_diags = validate_function_inventory_candidate(inventory_aggregate, draft.get("module_artifacts", []), draft, profile, planning_ir)
                 inventory_path = store.write_step_json(STEP_FILENAMES["function_inventory_candidate"], inventory_aggregate)
                 artifact_paths["function_inventory_candidate"] = inventory_path
-                inventory_report_path = store.write_step_json(STEP_FILENAMES["function_inventory_validation_report"], validation_report("5.4b_function_inventory:all_modules", inventory_diags))
+                inventory_report_path = store.write_step_json(STEP_FILENAMES["function_inventory_validation_report"], validation_report("5.4a_function_inventory:all_modules", inventory_diags))
                 artifact_paths["function_inventory_validation_report"] = inventory_report_path
                 if has_errors(inventory_diags):
                     diagnostics.extend(inventory_diags)
             else:
                 inventory_aggregate = inherited_stage_candidate(
-                    stage_label="5.4b_function_inventory:all_modules",
+                    stage_label="5.4a_function_inventory:all_modules",
                     candidate_key="function_inventory_candidate",
                     validator=lambda candidate: validate_function_inventory_candidate(candidate, draft.get("module_artifacts", []), draft, profile, planning_ir),
                 )
                 draft = merge_function_inventory(draft, inventory_aggregate)
                 draft = reconcile_type_inventory_function_refs(draft)
-            if _should_stop_after("implementation_plan_5_4b", stop_after_stage):
-                return finish_early("implementation_plan_5_4b")
+            if _should_stop_after("implementation_plan_5_4a", stop_after_stage):
+                return finish_early("implementation_plan_5_4a")
 
-            if _implementation_plan_substage_should_run("implementation_plan_5_4c", resume_from_stage):
+            if _implementation_plan_substage_should_run("implementation_plan_5_4b", resume_from_stage):
                 signature_aggregate = {
                     "schema_version": "function_signature_patch/v1",
                     "patch_id": "patch:function_signatures:all_modules",
                     "producer": {
-                        "stage": "5.4c_signature_planning",
+                        "stage": "5.4b_function_signatures",
                         "prompt_name": "function_signature_patch_prompt",
                         "prompt_version": "aggregate",
                     },
@@ -2083,18 +2195,19 @@ class PlanningAgent:
                 for module in list(draft.get("module_artifacts", [])):
                     module_id = str(module.get("module_id", ""))
                     module_functions = [item for item in draft.get("function_contracts", []) if isinstance(item, dict) and str(item.get("module_id")) == module_id]
-                    batches = [module_functions[index:index + 12] for index in range(0, len(module_functions), 12)] or [[]]
+                    signature_batch_size = 32
+                    batches = [module_functions[index:index + signature_batch_size] for index in range(0, len(module_functions), signature_batch_size)] or [[]]
                     for batch_index, batch in enumerate(batches):
                         expected_ids = {str(item.get("function_id", "")) for item in batch if isinstance(item, dict)}
-                        signature_context = build_function_signature_context(draft, module_id, batch, batch_index=batch_index, batch_size=12)
+                        signature_context = build_function_signature_context(draft, module_id, batch, batch_index=batch_index, batch_size=signature_batch_size)
                         signature_patch = stage_candidate(
-                            stage_label=f"5.4c_signature_planning:{module_id}:{batch_index}",
-                            thinking_stage="implementation_plan_5_4c",
+                            stage_label=f"5.4b_function_signatures:{module_id}:{batch_index}",
+                            thinking_stage="implementation_plan_5_4b",
                             prompt_name="function_signature_patch_prompt",
                             messages=function_signature_patch_messages(signature_context),
                             candidate_key="function_signature_patch",
                             report_key="function_signature_validation_report",
-                            fallback=fallback_function_signatures(draft, module_id, batch, batch_index=batch_index, batch_size=12),
+                            fallback=fallback_function_signatures(draft, module_id, batch, batch_index=batch_index, batch_size=signature_batch_size),
                             validator=lambda candidate, ids=expected_ids: validate_function_signature_patch(candidate, draft, ids),
                             step_log_suffix=f"{module_id}__batch_{batch_index}",
                         )
@@ -2106,26 +2219,26 @@ class PlanningAgent:
                 signature_diags = validate_function_signature_patch(signature_aggregate, draft, {str(item.get("function_id", "")) for item in draft.get("function_contracts", []) if isinstance(item, dict)})
                 signature_path = _write_artifact_json(store, "function_signature_patch", STEP_FILENAMES["function_signature_patch"], signature_aggregate)
                 artifact_paths["function_signature_patch"] = signature_path
-                signature_report_path = store.write_step_json(STEP_FILENAMES["function_signature_validation_report"], validation_report("5.4c_signature_planning:all_modules", signature_diags))
+                signature_report_path = store.write_step_json(STEP_FILENAMES["function_signature_validation_report"], validation_report("5.4b_function_signatures:all_modules", signature_diags))
                 artifact_paths["function_signature_validation_report"] = signature_report_path
                 if has_errors(signature_diags):
                     diagnostics.extend(signature_diags)
             else:
                 signature_aggregate = inherited_stage_candidate(
-                    stage_label="5.4c_signature_planning:all_modules",
+                    stage_label="5.4b_function_signatures:all_modules",
                     candidate_key="function_signature_patch",
                     validator=lambda candidate: validate_function_signature_patch(candidate, draft, {str(item.get("function_id", "")) for item in draft.get("function_contracts", []) if isinstance(item, dict)}),
                 )
                 draft = merge_function_signatures(draft, signature_aggregate)
-            if _should_stop_after("implementation_plan_5_4c", stop_after_stage):
-                return finish_early("implementation_plan_5_4c")
+            if _should_stop_after("implementation_plan_5_4b", stop_after_stage):
+                return finish_early("implementation_plan_5_4b")
 
-            if _implementation_plan_substage_should_run("implementation_plan_5_4d", resume_from_stage):
+            if _implementation_plan_substage_should_run("implementation_plan_5_4c", resume_from_stage):
                 behavior_aggregate = {
                     "schema_version": "function_behavior_contract_patch/v1",
                     "patch_id": "patch:function_behavior:all_modules",
                     "producer": {
-                        "stage": "5.4d_behavior_contract",
+                        "stage": "5.4c_behavior_contract",
                         "prompt_name": "function_behavior_contract_patch_prompt",
                         "prompt_version": "aggregate",
                     },
@@ -2143,14 +2256,15 @@ class PlanningAgent:
                         expected_ids = {str(item.get("function_id", "")) for item in batch if isinstance(item, dict)}
                         behavior_context = build_function_behavior_context(draft, module_id, batch, constraints, batch_index=batch_index, batch_size=8)
                         behavior_patch = stage_candidate(
-                            stage_label=f"5.4d_behavior_contract:{module_id}:{batch_index}",
-                            thinking_stage="implementation_plan_5_4d",
+                            stage_label=f"5.4c_behavior_contract:{module_id}:{batch_index}",
+                            thinking_stage="implementation_plan_5_4c",
                             prompt_name="function_behavior_contract_patch_prompt",
                             messages=function_behavior_contract_patch_messages(behavior_context),
                             candidate_key="function_behavior_patch",
                             report_key="function_behavior_validation_report",
                             fallback=fallback_function_behavior(draft, module_id, batch, batch_index=batch_index, batch_size=8),
                             validator=lambda candidate, ids=expected_ids: validate_function_behavior_contract_patch(candidate, draft, constraints, ids),
+                            normalizer=lambda candidate: normalize_function_behavior_contract_patch(candidate, draft, constraints),
                             step_log_suffix=f"{module_id}__batch_{batch_index}",
                         )
                         behavior_aggregate["function_behavior_updates"].extend(behavior_patch.get("function_behavior_updates", []))
@@ -2161,25 +2275,25 @@ class PlanningAgent:
                 behavior_diags = validate_function_behavior_contract_patch(behavior_aggregate, draft, constraints, {str(item.get("function_id", "")) for item in draft.get("function_contracts", []) if isinstance(item, dict)})
                 behavior_path = _write_artifact_json(store, "function_behavior_patch", STEP_FILENAMES["function_behavior_patch"], behavior_aggregate)
                 artifact_paths["function_behavior_patch"] = behavior_path
-                behavior_report_path = store.write_step_json(STEP_FILENAMES["function_behavior_validation_report"], validation_report("5.4d_behavior_contract:all_modules", behavior_diags))
+                behavior_report_path = store.write_step_json(STEP_FILENAMES["function_behavior_validation_report"], validation_report("5.4c_behavior_contract:all_modules", behavior_diags))
                 artifact_paths["function_behavior_validation_report"] = behavior_report_path
                 if has_errors(behavior_diags):
                     diagnostics.extend(behavior_diags)
             else:
                 behavior_aggregate = inherited_stage_candidate(
-                    stage_label="5.4d_behavior_contract:all_modules",
+                    stage_label="5.4c_behavior_contract:all_modules",
                     candidate_key="function_behavior_patch",
                     validator=lambda candidate: validate_function_behavior_contract_patch(candidate, draft, constraints, {str(item.get("function_id", "")) for item in draft.get("function_contracts", []) if isinstance(item, dict)}),
                 )
                 draft = merge_function_behavior(draft, behavior_aggregate)
-            if _should_stop_after("implementation_plan_5_4d", stop_after_stage):
-                return finish_early("implementation_plan_5_4d")
+            if _should_stop_after("implementation_plan_5_4c", stop_after_stage):
+                return finish_early("implementation_plan_5_4c")
 
-            if _implementation_plan_substage_should_run("implementation_plan_5_4e", resume_from_stage):
+            if _implementation_plan_substage_should_run("implementation_plan_5_4d", resume_from_stage):
                 wire_context = build_wire_access_binding_context(draft, planning_ir)
                 wire_patch = stage_candidate(
-                    stage_label="5.4e_wire_access_binding",
-                    thinking_stage="implementation_plan_5_4e",
+                    stage_label="5.4d_wire_access_binding",
+                    thinking_stage="implementation_plan_5_4d",
                     prompt_name="wire_access_binding_patch_prompt",
                     messages=wire_access_binding_patch_messages(wire_context),
                     candidate_key="wire_access_binding_patch",
@@ -2189,20 +2303,20 @@ class PlanningAgent:
                 )
             else:
                 wire_patch = inherited_stage_candidate(
-                    stage_label="5.4e_wire_access_binding",
+                    stage_label="5.4d_wire_access_binding",
                     candidate_key="wire_access_binding_patch",
                     validator=lambda candidate: validate_wire_access_binding_patch(candidate, draft, planning_ir),
                 )
             draft = merge_wire_access_binding(draft, wire_patch)
-            if _should_stop_after("implementation_plan_5_4e", stop_after_stage):
-                return finish_early("implementation_plan_5_4e")
+            if _should_stop_after("implementation_plan_5_4d", stop_after_stage):
+                return finish_early("implementation_plan_5_4d")
 
-            if _implementation_plan_substage_should_run("implementation_plan_5_4f", resume_from_stage):
+            if _implementation_plan_substage_should_run("implementation_plan_5_4e", resume_from_stage):
                 calls_aggregate = {
                     "schema_version": "calls_allowed_candidate/v2",
                     "candidate_id": "candidate:calls_allowed:all_modules",
                     "producer": {
-                        "stage": "5.4f_call_planning",
+                        "stage": "5.4e_call_contracts",
                         "prompt_name": "calls_allowed_candidate_prompt",
                         "prompt_version": "aggregate",
                     },
@@ -2222,14 +2336,14 @@ class PlanningAgent:
                             for function in batch
                             for requirement in function.get("service_requirements", [])
                             if isinstance(requirement, dict)
-                            and str(requirement.get("requirement_kind", "cross_module_service")) in {"cross_module_service", "external_runtime_service"}
+                            and str(requirement.get("requirement_kind", "cross_module_service")) == "cross_module_service"
                             and str(requirement.get("service_requirement_id", ""))
                         }
                         calls_context = build_calls_allowed_context(draft, selected_architecture, module_id, batch, batch_index=batch_index, batch_size=4)
                         callable_ids = {str(item.get("function_id", "")) for item in calls_context.get("callable_functions", []) if isinstance(item, dict)}
                         calls_candidate = stage_candidate(
-                            stage_label=f"5.4f_call_planning:{module_id}:{batch_index}",
-                            thinking_stage="implementation_plan_5_4f",
+                            stage_label=f"5.4e_call_contracts:{module_id}:{batch_index}",
+                            thinking_stage="implementation_plan_5_4e",
                             prompt_name="calls_allowed_candidate_prompt",
                             messages=calls_allowed_candidate_messages(calls_context),
                             candidate_key="calls_allowed_candidate",
@@ -2253,25 +2367,25 @@ class PlanningAgent:
                 calls_diags = validate_calls_allowed_candidate(calls_aggregate, draft, selected_architecture)
                 calls_path = store.write_step_json(STEP_FILENAMES["calls_allowed_candidate"], calls_aggregate)
                 artifact_paths["calls_allowed_candidate"] = calls_path
-                calls_report_path = store.write_step_json(STEP_FILENAMES["calls_allowed_validation_report"], validation_report("5.4f_call_planning:all_modules", calls_diags))
+                calls_report_path = store.write_step_json(STEP_FILENAMES["calls_allowed_validation_report"], validation_report("5.4e_call_contracts:all_modules", calls_diags))
                 artifact_paths["calls_allowed_validation_report"] = calls_report_path
                 if has_errors(calls_diags):
                     diagnostics.extend(calls_diags)
             else:
                 calls_aggregate = inherited_stage_candidate(
-                    stage_label="5.4f_call_planning:all_modules",
+                    stage_label="5.4e_call_contracts:all_modules",
                     candidate_key="calls_allowed_candidate",
                     validator=lambda candidate: validate_calls_allowed_candidate(candidate, draft, selected_architecture),
                 )
             draft = merge_calls_allowed(draft, calls_aggregate)
-            if _should_stop_after("implementation_plan_5_4f", stop_after_stage):
-                return finish_early("implementation_plan_5_4f")
+            if _should_stop_after("implementation_plan_5_4e", stop_after_stage):
+                return finish_early("implementation_plan_5_4e")
 
-            if _implementation_plan_substage_should_run("implementation_plan_5_5", resume_from_stage):
+            if _implementation_plan_substage_should_run("implementation_plan_5_5a", resume_from_stage):
                 file_context = build_file_layout_context(draft, planning_ir, constraints)
                 file_candidate = stage_candidate(
-                    stage_label="5.5_file_layout",
-                    thinking_stage="implementation_plan_5_5",
+                    stage_label="5.5a_file_layout",
+                    thinking_stage="implementation_plan_5_5a",
                     prompt_name="file_layout_candidate_prompt",
                     messages=file_layout_candidate_messages(file_context),
                     candidate_key="file_layout_candidate",
@@ -2281,19 +2395,19 @@ class PlanningAgent:
                 )
             else:
                 file_candidate = inherited_stage_candidate(
-                    stage_label="5.5_file_layout",
+                    stage_label="5.5a_file_layout",
                     candidate_key="file_layout_candidate",
                     validator=lambda candidate: validate_file_layout_candidate(candidate, draft),
                 )
             draft = merge_file_layout(draft, file_candidate)
-            if _should_stop_after("implementation_plan_5_5", stop_after_stage):
-                return finish_early("implementation_plan_5_5")
+            if _should_stop_after("implementation_plan_5_5a", stop_after_stage):
+                return finish_early("implementation_plan_5_5a")
 
-            if _implementation_plan_substage_should_run("implementation_plan_5_4g", resume_from_stage):
+            if _implementation_plan_substage_should_run("implementation_plan_5_5b", resume_from_stage):
                 runtime_context = build_runtime_entrypoint_context(draft, planning_ir, selected_architecture)
                 runtime_candidate = stage_candidate(
-                    stage_label="5.4g_runtime_entrypoint_candidate",
-                    thinking_stage="implementation_plan_5_4g",
+                    stage_label="5.5b_runtime_entrypoint",
+                    thinking_stage="implementation_plan_5_5b",
                     prompt_name="runtime_entrypoint_candidate_prompt",
                     messages=runtime_entrypoint_candidate_messages(runtime_context),
                     candidate_key="runtime_entrypoint_candidate",
@@ -2303,20 +2417,20 @@ class PlanningAgent:
                 )
             else:
                 runtime_candidate = inherited_stage_candidate(
-                    stage_label="5.4g_runtime_entrypoint_candidate",
+                    stage_label="5.5b_runtime_entrypoint",
                     candidate_key="runtime_entrypoint_candidate",
                     validator=lambda candidate: validate_runtime_entrypoint_candidate(candidate, draft),
                 )
             draft = merge_runtime_entrypoint(draft, runtime_candidate)
-            if _should_stop_after("implementation_plan_5_4g", stop_after_stage):
-                return finish_early("implementation_plan_5_4g")
+            if _should_stop_after("implementation_plan_5_5b", stop_after_stage):
+                return finish_early("implementation_plan_5_5b")
 
             implementation_plan = finalize_dependency_graph(draft)
             dependency_diags = validate_dependency_graph(implementation_plan)
             if _implementation_plan_substage_should_run("implementation_plan_5_6", resume_from_stage) and has_errors(dependency_diags):
                 repair_context = build_dependency_repair_context(draft, _diagnostics_as_dependency_errors(dependency_diags))
                 repair_patch = stage_candidate(
-                    stage_label="5.6_dependency_repair",
+                    stage_label="5.6_dependency_generation",
                     thinking_stage="implementation_plan_5_6",
                     prompt_name="dependency_repair_patch_prompt",
                     messages=dependency_repair_patch_messages(repair_context),
@@ -2334,6 +2448,9 @@ class PlanningAgent:
 
             implementation_plan_path = store.write_step_json(STEP_FILENAMES["implementation_plan"], implementation_plan)
             artifact_paths["implementation_plan"] = implementation_plan_path
+            if _should_stop_after("implementation_plan_5_6", stop_after_stage):
+                return finish_early("implementation_plan_5_6")
+
             plan_diags = validate_full_implementation_plan(implementation_plan, profile=profile, planning_ir=planning_ir, path=str(implementation_plan_path))
             dependency_diags = validate_dependency_graph(implementation_plan, path=str(implementation_plan_path))
             dependency_report = build_dependency_validation_report(implementation_plan, dependency_diags)
@@ -2341,6 +2458,7 @@ class PlanningAgent:
             artifact_paths["dependency_validation_report"] = dependency_report_path
             diagnostics.extend(plan_diags)
             diagnostics.extend(dependency_diags)
+            store.log_event("stage=implementation_plan substage=5.7_spec_readiness_validation build done")
             if has_errors(diagnostics):
                 status = "failed"
                 report = _validation_report(status=status, diagnostics=diagnostics, artifact_paths=artifact_paths)
@@ -2359,11 +2477,13 @@ class PlanningAgent:
                 store.log_event(f"stage=implementation_plan build done status={status}")
                 return PlanningResult(False, self.output_dir, diagnostics, artifact_paths)
             store.log_event("stage=implementation_plan build done")
+            if _should_stop_after("implementation_plan_5_7", stop_after_stage):
+                return finish_early("implementation_plan_5_7")
 
         else:
             implementation_plan = inherited_artifacts["implementation_plan"]
             store.log_event("stage=implementation_plan resume inherited")
-        if _should_stop_after("implementation_plan", stop_after_stage) or _should_stop_after("implementation_plan_5_6", stop_after_stage):
+        if _should_stop_after("implementation_plan", stop_after_stage) or _should_stop_after("implementation_plan_5_7", stop_after_stage):
             return finish_early(stop_after_stage or "implementation_plan")
 
         if _stage_should_run("spec_blueprint", resume_from_stage):

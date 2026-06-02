@@ -479,7 +479,7 @@ class PlanningCompatibilityDiscoveryTests(unittest.TestCase):
             def resumed_request(*, prompt_name, messages, config, temperature=None, enable_thinking=False):
                 resumed_prompts.append(prompt_name)
                 if prompt_name in forbidden:
-                    raise AssertionError(f"{prompt_name} should have been inherited before 5.4e")
+                    raise AssertionError(f"{prompt_name} should have been inherited before 5.4d_wire_access_binding")
                 return None, [], {"mocked": True}
 
             output_root = tmp / "planning_out"
@@ -490,13 +490,13 @@ class PlanningCompatibilityDiscoveryTests(unittest.TestCase):
                     source = PlanningAgent(facts, target, output_dir=source_dir).plan()
                 self.assertTrue(source.success, [diag.__dict__ for diag in source.diagnostics])
                 with patch("agent.planning.orchestrator.request_json_candidate", side_effect=resumed_request):
-                    resumed = PlanningAgent(facts, target, output_dir=resumed_dir).plan(resume_from_stage="5.4e")
+                    resumed = PlanningAgent(facts, target, output_dir=resumed_dir).plan(resume_from_stage="5.4d_wire_access_binding")
 
             self.assertTrue(resumed.success, [diag.__dict__ for diag in resumed.diagnostics])
             self.assertIn("wire_access_binding_patch_prompt", resumed_prompts)
             self.assertIn("function_behavior_patch", resumed.artifact_paths)
             manifest = json.loads((resumed.output_dir / "_step_logs" / "000_planning_run_manifest.json").read_text(encoding="utf-8"))
-            self.assertEqual(manifest["resume"]["from_stage"], "implementation_plan_5_4e")
+            self.assertEqual(manifest["resume"]["from_stage"], "implementation_plan_5_4d")
             self.assertIn("function_behavior_patch", manifest["resume"]["inherited_artifacts"])
             self.assertNotIn("wire_access_binding_patch", manifest["resume"]["inherited_artifacts"])
 

@@ -532,19 +532,22 @@ class PlanningValidatorTests(unittest.TestCase):
             self.assertTrue((step_logs / STEP_FILENAMES["module_artifacts_candidate"]).exists())
             plan = json.loads((step_logs / STEP_FILENAMES["implementation_plan"]).read_text(encoding="utf-8"))
             module_count = len(plan["module_artifacts"])
-            type_inventory_files = sorted(step_logs.glob("007_5_4a_type_inventory_candidate__*.json"))
-            inventory_files = sorted(step_logs.glob("007_5_4b_function_inventory_candidate__*.json"))
-            signature_files = sorted(agent_logs.glob("007_5_4c_function_signature_patch__*.json"))
-            behavior_files = sorted(agent_logs.glob("007_5_4d_function_behavior_contract_patch__*.json"))
+            type_inventory_files = sorted(step_logs.glob("007_5_3_type_data_inventory_candidate__*.json"))
+            inventory_files = sorted(step_logs.glob("007_5_4a_function_inventory_candidate__*.json"))
+            signature_files = sorted(agent_logs.glob("007_5_4b_function_signature_patch__*.json"))
+            behavior_files = sorted(agent_logs.glob("007_5_4c_function_behavior_contract_patch__*.json"))
+            calls_batch_files = sorted(agent_logs.glob("007_5_4e_function_call_contracts_candidate__*.json"))
             self.assertEqual(module_count, len(type_inventory_files))
             self.assertEqual(module_count, len(inventory_files))
             self.assertGreaterEqual(len(signature_files), module_count)
             self.assertGreaterEqual(len(behavior_files), module_count)
+            self.assertGreaterEqual(len(calls_batch_files), module_count)
+            self.assertFalse(list(step_logs.glob("007_5_4e_function_call_contracts_candidate__*.json")))
             self.assertGreaterEqual(calls.count("function_annotation_candidate_prompt"), module_count)
             self.assertEqual(calls.count("function_inventory_repair_patch_prompt"), 0)
             inventory = json.loads((step_logs / STEP_FILENAMES["function_inventory_candidate"]).read_text(encoding="utf-8"))
-            signature = json.loads((agent_logs / STEP_FILENAMES["function_signature_patch"]).read_text(encoding="utf-8"))
-            behavior = json.loads((agent_logs / STEP_FILENAMES["function_behavior_patch"]).read_text(encoding="utf-8"))
+            signature = json.loads((step_logs / STEP_FILENAMES["function_signature_patch"]).read_text(encoding="utf-8"))
+            behavior = json.loads((step_logs / STEP_FILENAMES["function_behavior_patch"]).read_text(encoding="utf-8"))
             inventory_ids = {item["function_id"] for item in inventory["functions"]}
             runtime_functions = [
                 item for item in plan["function_contracts"]
@@ -560,8 +563,8 @@ class PlanningValidatorTests(unittest.TestCase):
             attempt_summary = json.loads((agent_logs / STEP_FILENAMES["function_inventory_attempt_summary"]).read_text(encoding="utf-8"))
             self.assertTrue(all("accepted_by" in module for module in attempt_summary["modules"]))
             self.assertFalse((step_logs / STEP_FILENAMES["function_inventory_attempt_summary"]).exists())
-            self.assertFalse((step_logs / STEP_FILENAMES["function_signature_patch"]).exists())
-            self.assertFalse((step_logs / STEP_FILENAMES["function_behavior_patch"]).exists())
+            self.assertTrue((step_logs / STEP_FILENAMES["function_signature_patch"]).exists())
+            self.assertTrue((step_logs / STEP_FILENAMES["function_behavior_patch"]).exists())
 
     def test_function_inventory_json_retry_exhaustion_uses_controlled_fallback(self) -> None:
         facts = ROOT / "agent" / "facts" / "gold_facts" / "mqtt_min" / "protocol_facts.json"
@@ -585,7 +588,7 @@ class PlanningValidatorTests(unittest.TestCase):
 
             with patch("agent.planning.orchestrator.request_json_candidate", side_effect=fake_request):
                 agent = PlanningAgent(facts, target, output_dir=Path(raw_tmp) / "run", config=PlanningConfig(llm_max_retries=1))
-                result = agent.plan(stop_after_stage="implementation_plan_5_4b")
+                result = agent.plan(stop_after_stage="implementation_plan_5_4a")
 
             self.assertTrue(result.success, [diag.__dict__ for diag in result.diagnostics])
             manifest = json.loads((result.output_dir / "_step_logs" / "000_planning_run_manifest.json").read_text(encoding="utf-8"))

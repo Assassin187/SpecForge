@@ -362,6 +362,22 @@ def _strip_c_type(value: Any) -> str:
     return text
 
 
+def _signature_raw_has_name(raw: str, name: str) -> bool:
+    return bool(name) and re.search(rf"\b{re.escape(name)}\s*\(", raw) is not None
+
+
+def _module_owns_public_lifecycle_name(module_id: str, name: str) -> bool:
+    if not any(name.endswith(suffix) for suffix in ("_create", "_start", "_run", "_serve", "_destroy")):
+        return True
+    normalized_module = _safe_id(module_id)
+    normalized_name = _safe_id(name)
+    if normalized_name.startswith(f"{normalized_module}_"):
+        return True
+    if normalized_module == "broker_app" and normalized_name.startswith("broker_app_"):
+        return True
+    return normalized_module in normalized_name
+
+
 def _module_type_matches(types: list[dict[str, Any]], suggested_name: str, *, kind: str = "", contains: tuple[str, ...] = ()) -> bool:
     suggested_key = normalize_type_key(suggested_name)
     for item in types:
@@ -1596,6 +1612,7 @@ def validate_function_signature_patch(patch: dict[str, Any], draft: dict[str, An
     if expected_function_ids is not None and target_ids != expected_function_ids:
         diagnostics.append(PlanningDiagnostic("error", "signature_batch_coverage_mismatch", "signature patch must update exactly the current batch functions", path))
     seen: set[str] = set()
+    public_signature_names: dict[str, list[str]] = {}
     for update in patch["function_signature_updates"]:
         function_id = update["function_id"]
         function = functions.get(function_id)
@@ -1611,10 +1628,26 @@ def validate_function_signature_patch(patch: dict[str, Any], draft: dict[str, An
             diagnostics.append(PlanningDiagnostic("error", "signature_name_mismatch", f"signature name for '{function_id}' must match inventory name", path))
         if not signature["raw"].strip() or not signature["return_type"].strip():
             diagnostics.append(PlanningDiagnostic("error", "empty_function_signature", f"function '{function_id}' signature is incomplete", path))
+        raw = str(signature.get("raw", "")).strip()
+        storage_class = str(signature.get("storage_class", ""))
+        if raw.endswith(";"):
+            diagnostics.append(PlanningDiagnostic("warning", "signature_raw_trailing_semicolon", f"function '{function_id}' raw signature should omit the trailing semicolon for coder specs style", path))
+        if storage_class == "static" and raw and not raw.startswith("static "):
+            diagnostics.append(PlanningDiagnostic("error", "static_signature_raw_missing_static", f"static function '{function_id}' raw signature must include static storage class", path))
+        if storage_class != "static" and raw.startswith("static "):
+            diagnostics.append(PlanningDiagnostic("error", "nonstatic_signature_raw_has_static", f"non-static function '{function_id}' raw signature must not include static storage class", path))
+        if raw and not _signature_raw_has_name(raw, str(signature.get("name", ""))):
+            diagnostics.append(PlanningDiagnostic("warning", "signature_raw_name_mismatch", f"function '{function_id}' raw signature does not spell the signature name", path))
         if is_public and signature.get("storage_class") == "static":
             diagnostics.append(PlanningDiagnostic("error", "public_function_static_signature", f"public function '{function_id}' must not have static storage class", path))
         if is_public and (not signature["name"].strip() or not signature["raw"].strip() or not signature["return_type"].strip()):
             diagnostics.append(PlanningDiagnostic("error", "public_function_incomplete_signature", f"public function '{function_id}' lacks a lowerable C signature", path))
+        if is_public:
+            public_signature_names.setdefault(str(signature.get("name", "")), []).append(function_id)
+            module_id = str(function.get("module_id", ""))
+            name = str(signature.get("name", ""))
+            if not _module_owns_public_lifecycle_name(module_id, name):
+                diagnostics.append(PlanningDiagnostic("warning", "public_lifecycle_name_crosses_module_boundary", f"public lifecycle function '{name}' does not appear owned by module '{module_id}'", path))
         for param in signature["params"]:
             if is_public and (not str(param.get("name", "")).strip() or not str(param.get("type", "")).strip()):
                 diagnostics.append(PlanningDiagnostic("error", "public_function_incomplete_param", f"public function '{function_id}' has an incomplete signature parameter", path))
@@ -1649,6 +1682,9 @@ def validate_function_signature_patch(patch: dict[str, Any], draft: dict[str, An
             for declaration in update.get("interface_type_declarations", []):
                 if str(declaration.get("visibility", "")).lower() in {"private", "internal"}:
                     diagnostics.append(PlanningDiagnostic("error", "public_signature_uses_private_interface_type", f"public function '{function_id}' exposes private/internal type '{declaration.get('name')}'", path))
+    for name, ids in sorted(public_signature_names.items()):
+        if name and len(ids) > 1:
+            diagnostics.append(PlanningDiagnostic("warning", "duplicate_public_signature_name", f"public C symbol '{name}' appears in multiple signature updates: {', '.join(ids)}", path))
     return diagnostics
 
 
@@ -1821,7 +1857,7 @@ def validate_calls_allowed_candidate(
     target_ids = {str(update.get("caller_function_id", "")) for update in candidate["call_updates"]}
     if expected_caller_ids is not None and target_ids != expected_caller_ids:
         diagnostics.append(PlanningDiagnostic("error", "calls_allowed_batch_coverage_mismatch", "calls_allowed candidate must update exactly the current batch callers", path))
-    service_requirement_ids = expected_service_requirement_ids if expected_service_requirement_ids is not None else _service_requirement_ids(functions, kinds={"cross_module_service", "external_runtime_service"})
+    service_requirement_ids = expected_service_requirement_ids if expected_service_requirement_ids is not None else _service_requirement_ids(functions, kinds={"cross_module_service"})
     unresolved_service_ids = set(candidate.get("unresolved_service_requirements", []))
     resolved_service_ids: set[str] = set()
     edges: list[tuple[str, str]] = []

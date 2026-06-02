@@ -213,9 +213,13 @@ STAGE_SEMANTIC_RULES = {
     "function_signature_patch/v1": [
         "Patch existing function_id values only; never add a new function.",
         "function_signature_updates must include exactly one update for every function in the batch.",
-        "Use only function_signature_context.functions, current_module_type_inventory, provider_public_types, module_summary, and legal_id_universe; omitted global functions are intentionally unavailable.",
+        "Use only the compact function_signature_context: functions, signature_type_table, provider_public_types, module_summary, global_public_symbol_names, signature_style_guide, and legal_id_universe.",
         "Return exactly one function_signature_update for each batch function and no updates for non-batch functions.",
         "signature.name must match the existing function name.",
+        "signature.raw should be a C function declarator without a trailing semicolon, matching specs-example FUNCTION_SPEC SIGNATURE.RAW style.",
+        "Public C symbols must be globally unique. If the existing inventory name is generic or duplicated across modules, preserve signature.name and record an unresolved question instead of inventing an inconsistent raw symbol.",
+        "For public lifecycle APIs, use module-owned protocol-prefixed names already present in the inventory and include concrete context/config parameters needed by the role, such as port, callbacks, user context, or the module handle.",
+        "For parser/serializer helpers, prefer concrete buffer/cursor/out-param shapes like const uint8_t* + length + position + typed out parameter; avoid generic void* packet/message when a public packet or payload type is available.",
         "For exported=true or api_surface=public functions, signature.raw, signature.name, return_type, and every param name/type must be complete enough to lower into a C header declaration.",
         "Public function signatures must not use static storage class and must not expose private/internal-only types except through a public opaque handle.",
         "signature.params[].type is the C spelling; type_ref may use only legal_id_universe.type_ids or legal_id_universe.system_type_ids.",
@@ -232,10 +236,14 @@ STAGE_SEMANTIC_RULES = {
         "function_behavior_updates must include exactly one update for every function in the batch.",
         "Use only the current batch, module_state_access_policy, module_resource_refs, provider_public_api_summary, engineering_constraints, and legal_id_universe.",
         "For exported=true or api_surface=public functions, contract.input, contract.action, contract.output, thread_safety, and error propagation/return policy must be complete enough for coder-facing SOURCE.INTERFACE and FUNCTION_SPEC lowering.",
+        "The current batch function signatures are complete context; use return types and parameters to derive contract.input and contract.output semantics.",
+        "Do not emit behavior updates for non-batch functions.",
         "service_requirements may describe needed operations/capabilities but must not contain callee_function_id.",
         "Use requirement_kind=cross_module_service only when another existing module should provide the operation.",
         "Use requirement_kind=external_runtime_service for socket, epoll, malloc, timer, or OS/runtime operations; do not force those into internal calls.",
         "Do not create service_requirements for a provider function's own owned responsibility.",
+        "error_behavior.recovery must not use log_only; use none, retry, cleanup, reset_state, close_connection, or unknown.",
+        "service_requirements.failure_policy must not use log_only; use ignore, return_error, cleanup_and_return, close_connection, or unknown.",
         "If logic_kind is EVENT, event_contract must fully populate trigger, precondition, input, action, state_change, response, and event_type.",
         "If those EVENT fields are not knowable, use logic_kind LOGIC and keep the event-like intent in contract.action.",
         "state_access.access_kind write or read_write is allowed only when the function's module owns that state. Otherwise use read, omit that state access, or add unresolved_questions.",
@@ -252,14 +260,18 @@ STAGE_SEMANTIC_RULES = {
         "access path entries describe C access expressions for existing fields; do not invent fields.",
         "Each access_path_entry must include a non-empty path and c_type so it can lower to coder PATH/TYPE/ROLE.",
         "Each wire_mapping_entry must include packet_name, wire_field, strategy, target_path, source_expr, and rule for coder lowering.",
+        "forbidden_symbols must stay a string list; when targeting a function, use '<function_id>|<KIND>|<NAME>|<REASON>' so merge can attach it to that function.",
         "Do not add new functions, messages, fields, states, calls, dependency graphs, or code.",
     ],
     "calls_allowed_candidate/v2": [
         "caller_function_id and callee_function_id must come from existing functions.",
         "Do not create self-calls.",
         "Do not call private or static functions across module boundaries.",
-        "Resolve only cross_module_service service_requirements into concrete calls where possible; otherwise use unresolved_service_requirements.",
-        "External runtime service requirements must not become internal call edges.",
+        "Plan complete call contracts for every current-batch caller, including same-module helpers, parser/serializer delegates, handler dispatch, lifecycle helpers, cleanup/error-handling helpers, and cross-module service calls.",
+        "Use same-module private/static helper calls when the caller behavior, signature, wire_mapping, access_paths, state/resource access, or cleanup policy implies a helper relationship.",
+        "Resolve cross_module_service service_requirements into concrete public cross-module calls where possible; otherwise list those requirement IDs in unresolved_service_requirements.",
+        "Non-service inferred calls such as same-module helpers, delegates, lifecycle, and cleanup must use service_requirement_ids=[].",
+        "External runtime service requirements such as socket, epoll, malloc, timer, or OS/runtime operations must not become internal call edges and must not be listed in unresolved_service_requirements.",
         "If callable_functions is present, callee_function_id must come from that list or from a same-module existing function.",
         "The planned calls_allowed graph must avoid prohibited cycles.",
         "Do not generate imports, file graphs, dependency graphs, new functions, or code.",
@@ -274,8 +286,10 @@ STAGE_SEMANTIC_RULES = {
         "Do not generate final dependency_graph, code, protocol handlers, parser/serializer logic, or broker/server/client message processing details.",
     ],
     "file_layout_candidate/v2": [
+        "5.5a is the authority for the actual engineering file layout; use module_artifacts[].files only as seed/reference, not as mandatory final FILES.",
         "Each files[] item is one source_header_pair FILE_SPEC unit with source_path and header_path.",
         "file_id must use the source path without the .c suffix, prefixed with file:, for example file:protocol/module/module.",
+        "A module may be split into multiple source_header_pair units when responsibilities, public APIs, or private helpers are clearer that way.",
         "Do not create separate header or source file items.",
         "Do not add functions; every existing function must have exactly one function_file_assignment.",
         "exports_function_ids is the header declaration intent for public API functions; every exported=true, api_surface=public, or visibility=public function must appear in exactly one exports_function_ids list.",
@@ -732,7 +746,7 @@ def type_inventory_candidate_messages(context: dict[str, Any]) -> list[dict[str,
 def type_filling_candidate_messages(context: dict[str, Any]) -> list[dict[str, str]]:
     return _stage_messages(
         prompt_name="type_filling_candidate_prompt",
-        task="Fill deterministic type planning slots and propose justified optional module-local type expansions. Return only type_filling_candidate/v1.",
+        task="Fill deterministic type planning slots from the compact scoped context and propose only justified module-local optional types. Return only type_filling_candidate/v1.",
         context_key="type_filling_context",
         context=context,
         expected_schema="type_filling_candidate/v1",
@@ -796,7 +810,7 @@ def function_inventory_repair_patch_messages(context: dict[str, Any]) -> list[di
 def function_signature_patch_messages(context: dict[str, Any]) -> list[dict[str, str]]:
     return _stage_messages(
         prompt_name="function_signature_patch_prompt",
-        task="Patch complete C signatures and signature_dependencies for the current function batch using only the scoped signature context.",
+        task="Lower the current function batch into coder-quality C signatures close to specs-example style, using only the compact scoped signature context.",
         context_key="function_signature_context",
         context=context,
         expected_schema="function_signature_patch/v1",
@@ -820,7 +834,7 @@ def function_behavior_contract_patch_messages(context: dict[str, Any]) -> list[d
 def wire_access_binding_patch_messages(context: dict[str, Any]) -> list[dict[str, str]]:
     return _stage_messages(
         prompt_name="wire_access_binding_patch_prompt",
-        task="Bind existing functions to protocol wire fields and access paths.",
+        task="Bind only existing parser, serializer, and handler functions to protocol wire fields and access paths from the scoped context.",
         context_key="wire_access_binding_context",
         context=context,
         expected_schema="wire_access_binding_patch/v2",
@@ -832,7 +846,7 @@ def wire_access_binding_patch_messages(context: dict[str, Any]) -> list[dict[str
 def calls_allowed_candidate_messages(context: dict[str, Any]) -> list[dict[str, str]]:
     return _stage_messages(
         prompt_name="calls_allowed_candidate_prompt",
-        task="Resolve service requirements into concrete calls_allowed edges after signatures, behavior contracts, and wire binding are stable.",
+        task="Plan complete call_contract_planning for the current batch after signatures, behavior contracts, and wire binding are stable.",
         context_key="calls_allowed_context",
         context=context,
         expected_schema="calls_allowed_candidate/v2",
@@ -856,7 +870,7 @@ def runtime_entrypoint_candidate_messages(context: dict[str, Any]) -> list[dict[
 def file_layout_candidate_messages(context: dict[str, Any]) -> list[dict[str, str]]:
     return _stage_messages(
         prompt_name="file_layout_candidate_prompt",
-        task="Plan C source_header_pair file layout and assign existing functions to files.",
+        task="Plan the actual C source_header_pair engineering file layout and assign existing functions to files.",
         context_key="file_layout_context",
         context=context,
         expected_schema="file_layout_candidate/v2",
