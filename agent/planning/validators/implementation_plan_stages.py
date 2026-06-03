@@ -334,8 +334,10 @@ def _type_inventory_name_index(types: list[dict[str, Any]]) -> dict[str, dict[st
             continue
         for value in (item.get("name"), str(item.get("name", "")).removeprefix("struct ")):
             key = normalize_type_key(value)
-            if key:
-                result.setdefault(key, item)
+            if not key:
+                continue
+            if key not in result or (_is_public_type(item) and not _is_public_type(result[key])):
+                result[key] = item
     return result
 
 
@@ -424,7 +426,7 @@ def _field_ownership_requires_release(field: dict[str, Any]) -> bool:
 
 def _type_text_requires_release(type_item: dict[str, Any]) -> bool:
     text = f"{type_item.get('purpose', '')} {type_item.get('ownership_lifetime', '')}".lower()
-    if any(marker in text for marker in ("caller_owned", "owned_by_caller", "caller retains", "borrowed", "not owned")):
+    if any(marker in text for marker in ("caller_owned", "owned_by_caller", "caller retains", "borrowed", "not owned", "owned scalars", "owned scalar", "owned value", "owned values")):
         return False
     return any(marker in text for marker in (" owned", "owns ", "takes ownership", "must free", "cleanup", "release"))
 
@@ -433,12 +435,16 @@ def _type_requires_release_path(type_item: dict[str, Any]) -> bool:
     kind = str(type_item.get("kind", ""))
     if kind == "owned_buffer":
         return True
+    if kind == "result_struct" and _type_text_requires_release(type_item):
+        return True
     fields = [field for field in type_item.get("fields", []) if isinstance(field, dict)]
     if any(_field_ownership_requires_release(field) for field in fields):
         return True
     if any(_field_has_variant_boundary(field) for field in fields) and _type_text_requires_release(type_item):
         return True
-    return kind in {"result_struct", "internal_state", "struct"} and _type_text_requires_release(type_item)
+    if kind == "internal_state":
+        return _type_text_requires_release(type_item) and any(_field_has_variant_boundary(field) or _field_ownership_requires_release(field) for field in fields)
+    return False
 
 
 def _has_release_path(type_item: dict[str, Any]) -> bool:
@@ -1011,7 +1017,6 @@ def validate_type_inventory_candidate(candidate: dict[str, Any], module_artifact
     modules_by_id = _module_by_id(module_artifacts)
     candidate_module_ids = _type_candidate_modules(candidate, module_artifacts)
     types = [item for item in candidate.get("types", []) if isinstance(item, dict)]
-    by_id: dict[str, dict[str, Any]] = {}
     by_name = _type_inventory_name_index(types)
     provider_indexes = {
         module_id: _provider_public_type_reference_indexes(core_design, module_artifacts, module_id, planning_ir)
@@ -1019,13 +1024,20 @@ def validate_type_inventory_candidate(candidate: dict[str, Any], module_artifact
         if module_id in module_ids
     }
     seen_names: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    by_id: dict[str, dict[str, Any]] = {}
+    seen_type_ids: set[str] = set()
+    for type_item in types:
+        type_id = str(type_item.get("type_id", ""))
+        if type_id:
+            by_id.setdefault(type_id, type_item)
     for type_item in types:
         type_id = str(type_item.get("type_id", ""))
         name = str(type_item.get("name", ""))
         module_id = str(type_item.get("module_id", ""))
-        if type_id in by_id:
+        if type_id in seen_type_ids:
             diagnostics.append(PlanningDiagnostic("error", "duplicate_type_inventory_type_id", f"duplicate type_id '{type_id}'", path))
-        by_id[type_id] = type_item
+        if type_id:
+            seen_type_ids.add(type_id)
         name_key = (module_id, normalize_type_key(name))
         existing_same_name = seen_names.get(name_key, [])
         if len(existing_same_name) >= 2 or (existing_same_name and not any(_is_opaque_backing_pair(type_item, existing) for existing in existing_same_name)):

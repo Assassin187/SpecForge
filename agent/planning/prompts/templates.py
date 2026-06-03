@@ -130,6 +130,7 @@ STAGE_SEMANTIC_RULES = {
         "optional_type_proposals are allowed only for justified module-local expansion. Each proposal must include expansion_reason and source_refs tied to message structure, field group, handler boundary, resource lifecycle, error strategy, parser/serializer need, callback/event boundary, coder compatibility, or explicit assumption.",
         "Use only type_planning_space.allowed_type_refs for dependencies and type_ref fields. Never reference provider private types, unrelated module private types, state/message/field ids as type refs, or natural-language type names.",
         "Declare ownership and lifetime for every pointer, string, and buffer field. Owned/resource/container/result types must declare lifecycle cleanup/free intent, but do not generate real function signatures or behavior.",
+        "Scalar/value ownership means the field value belongs to its containing struct; only owned pointer/string/buffer storage requires cleanup/free lifecycle.",
         "Do not generate function inventory, signature, behavior, wire mapping, calls_allowed, file layout, dependency graph, or code.",
     ],
     "type_inventory_repair_patch/v1": [

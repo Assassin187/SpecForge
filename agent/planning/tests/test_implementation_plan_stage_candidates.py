@@ -1431,6 +1431,7 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
                 {
                     "type_id": "type:protocol_codec:mqtt_scalar_packet_t",
                     "name": "mqtt_scalar_packet_t",
+                    "ownership_lifetime": "owned scalars",
                     "fields": [
                         {
                             "field_name": "qos",
@@ -1460,6 +1461,73 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             owned_by_codec["types"][0]["ownership_lifetime"] = "owned strings are released by the packet cleanup path"
             owned_by_codec["types"][0]["purpose"] = "MQTT CONNECT packet owns dynamic string storage."
             self.assertTrue(_has(validate_type_inventory_candidate(owned_by_codec, draft["module_artifacts"], draft, profile, planning_ir), "owned_type_missing_release_path"))
+
+    def test_public_callback_can_reference_same_module_public_opaque_handle(self) -> None:
+        module = {
+            "module_id": "broker_app",
+            "name": "broker_app",
+            "role": "broker application callbacks",
+            "dependencies": [],
+            "artifacts": [],
+        }
+
+        def type_item(type_id: str, name: str, kind: str, visibility: str, defined_in: str, **overrides):
+            item = {
+                "type_id": type_id,
+                "name": name,
+                "module_id": "broker_app",
+                "kind": kind,
+                "visibility": visibility,
+                "defined_in": defined_in,
+                "purpose": name,
+                "fields": [],
+                "enum_values": [],
+                "callback_signature": {"return_type": "", "params": []},
+                "ownership_lifetime": "",
+                "lifecycle": {"created_by": [], "initialized_by": [], "destroyed_by": [], "freed_by": []},
+                "related_functions": [],
+                "dependencies": [],
+                "trace_ref_keys": [],
+                "status": "supported",
+            }
+            item.update(overrides)
+            return item
+
+        candidate = {
+            "schema_version": "type_inventory_candidate/v1",
+            "candidate_id": "candidate:type_inventory:broker_app",
+            "producer": {"stage": "test", "prompt_name": "test", "prompt_version": "test"},
+            "module_id": "broker_app",
+            "types": [
+                type_item(
+                    "type:broker_app:mqtt_broker_app_on_accept_fn",
+                    "mqtt_broker_app_on_accept_fn",
+                    "callback_type",
+                    "public",
+                    "public_header",
+                    callback_signature={
+                        "return_type": "void",
+                        "params": [
+                            {
+                                "name": "broker",
+                                "type": "mqtt_broker_app_t*",
+                                "type_ref": "type:broker_app:mqtt_broker_app_t",
+                                "ownership": "BORROWED",
+                            }
+                        ],
+                    },
+                    ownership_lifetime="borrows broker",
+                    dependencies=["type:broker_app:mqtt_broker_app_t"],
+                ),
+                type_item("type:broker_app:mqtt_broker_app", "struct mqtt_broker_app", "internal_state", "private", "source_file", status="inferred"),
+                type_item("type:broker_app:mqtt_broker_app_t", "mqtt_broker_app_t", "opaque_handle", "public", "public_header"),
+            ],
+            "assumptions": [],
+            "unresolved_questions": [],
+        }
+        diags = validate_type_inventory_candidate(candidate, [module], {"module_artifacts": [module]})
+        self.assertFalse(_has(diags, "public_type_field_uses_private_type"))
+        self.assertFalse(_has(diags, "public_callback_param_uses_private_type"))
 
     def test_network_type_inventory_generates_callback_collection(self) -> None:
         module = {
