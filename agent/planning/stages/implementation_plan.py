@@ -3,10 +3,6 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from ..schemas.implementation_plan import SCHEMA_VERSION
-from .dependencies import derive_dependency_graph
-
-
 def _safe_id(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", str(text).lower()).strip("_") or "x"
 
@@ -140,56 +136,3 @@ def _function_signature(return_type: str, name: str, params: list[dict[str, Any]
         "params": params,
         "raw": f"{return_type} {name}({rendered_params})",
     }
-
-
-def build_implementation_plan(
-    planning_ir: dict[str, Any],
-    profile: dict[str, Any],
-    constraints: dict[str, Any],
-    selected_architecture: dict[str, Any],
-) -> dict[str, Any]:
-    # Compatibility helper for tests and deterministic baselines. The runtime
-    # orchestration performs these stages individually and never asks an LLM for
-    # a monolithic implementation_plan.
-    from .implementation_plan_merger import (
-        fallback_calls_allowed,
-        fallback_core_design,
-        fallback_file_layout,
-        fallback_function_behavior,
-        fallback_function_inventory,
-        fallback_function_signatures,
-        fallback_module_artifacts,
-        fallback_runtime_entrypoint,
-        fallback_type_inventory,
-        fallback_wire_access_binding,
-        finalize_dependency_graph,
-        merge_calls_allowed,
-        merge_core_design,
-        merge_file_layout,
-        merge_function_behavior,
-        merge_function_inventory,
-        merge_function_signatures,
-        merge_module_artifacts,
-        merge_runtime_entrypoint,
-        merge_type_inventory,
-        merge_wire_access_binding,
-        build_plan_skeleton,
-    )
-
-    draft = build_plan_skeleton(planning_ir, profile, constraints, selected_architecture)
-    draft = merge_core_design(draft, fallback_core_design(draft, planning_ir, constraints, selected_architecture, profile))
-    draft = merge_module_artifacts(draft, fallback_module_artifacts(draft, profile, constraints, selected_architecture))
-    for module in list(draft.get("module_artifacts", [])):
-        draft = merge_type_inventory(draft, fallback_type_inventory(draft, module))
-    for module in list(draft.get("module_artifacts", [])):
-        draft = merge_function_inventory(draft, fallback_function_inventory(draft, module))
-    for module in list(draft.get("module_artifacts", [])):
-        module_id = str(module.get("module_id", ""))
-        draft = merge_function_signatures(draft, fallback_function_signatures(draft, module_id))
-    for module in list(draft.get("module_artifacts", [])):
-        draft = merge_function_behavior(draft, fallback_function_behavior(draft, str(module.get("module_id", ""))))
-    draft = merge_wire_access_binding(draft, fallback_wire_access_binding(draft, planning_ir))
-    draft = merge_calls_allowed(draft, fallback_calls_allowed(draft))
-    draft = merge_file_layout(draft, fallback_file_layout(draft))
-    draft = merge_runtime_entrypoint(draft, fallback_runtime_entrypoint(draft))
-    return finalize_dependency_graph(draft)

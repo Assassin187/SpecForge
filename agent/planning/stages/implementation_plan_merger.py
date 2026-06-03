@@ -179,7 +179,7 @@ def fallback_core_design(draft: dict[str, Any], planning_ir: dict[str, Any], con
     return {
         "schema_version": "core_design_candidate/v1",
         "candidate_id": "candidate:core_design:deterministic",
-        "producer": _producer("5.2_core_design", "core_design_candidate_prompt"),
+        "producer": _producer("5.2a_core_design", "core_design_candidate_prompt"),
         "canonical_types": [
             {
                 "type_id": "type:opaque_module_context",
@@ -267,7 +267,7 @@ def merge_core_design(draft: dict[str, Any], candidate: dict[str, Any]) -> dict[
     result["test_plan"] = candidate.get("test_plan_seed", candidate.get("test_plan", []))
     result.setdefault("traceability", {}).update(candidate.get("traceability", {}))
     result.setdefault("unresolved_questions", []).extend(candidate.get("unresolved_questions", []))
-    result.setdefault("accepted_stage_artifacts", []).append("5.2_core_design")
+    result.setdefault("accepted_stage_artifacts", []).append("5.2a_core_design")
     return result
 
 
@@ -399,7 +399,7 @@ def fallback_module_artifacts(draft: dict[str, Any], profile: dict[str, Any], co
     return {
         "schema_version": "module_artifacts_candidate/v1",
         "candidate_id": "candidate:module_artifacts:deterministic",
-        "producer": _producer("5.3_module_artifacts", "module_artifacts_candidate_prompt"),
+        "producer": _producer("5.2b_module_artifacts", "module_artifacts_candidate_prompt"),
         "modules": entries,
         "generation_order": _module_generation_order(modules, dependencies_by_module),
         "consistency_rules": [
@@ -448,16 +448,8 @@ def merge_module_artifacts(draft: dict[str, Any], candidate: dict[str, Any]) -> 
     result["module_consistency_rules"] = deepcopy(candidate.get("consistency_rules", []))
     result["forbidden_symbols"] = deepcopy(candidate.get("forbidden_symbols", []))
     result.setdefault("unresolved_questions", []).extend(candidate.get("unresolved_questions", []))
-    result.setdefault("accepted_stage_artifacts", []).append("5.3_module_artifacts")
+    result.setdefault("accepted_stage_artifacts", []).append("5.2b_module_artifacts")
     return result
-
-
-def fallback_type_inventory(draft: dict[str, Any], module_artifact: dict[str, Any], planning_ir: dict[str, Any] | None = None) -> dict[str, Any]:
-    from .inventory_planning_space import build_type_planning_space
-    from .inventory_reconciliation import reconcile_type_filling_candidate
-
-    space = build_type_planning_space(draft, module_artifact, planning_ir)
-    return reconcile_type_filling_candidate(space, None)["candidate"]
 
 
 def _canonical_kind_for_type_inventory(kind: str) -> str:
@@ -524,7 +516,7 @@ def merge_type_inventory(draft: dict[str, Any], candidate: dict[str, Any]) -> di
             )
             existing_canonical_ids.add(type_id)
     result.setdefault("unresolved_questions", []).extend(candidate.get("unresolved_questions", []))
-    result.setdefault("accepted_stage_artifacts", []).append("5.4a_type_inventory")
+    result.setdefault("accepted_stage_artifacts", []).append("5.3_type_data")
     return result
 
 
@@ -583,7 +575,7 @@ def _add_unresolved_type_function_ref(result: dict[str, Any], type_item: dict[st
             "target_kind": "function",
             "target_id": ref,
             "question": f"Resolve function reference '{ref}' for type '{type_item.get('type_id', type_item.get('name', ''))}'.",
-            "unresolved_reason": "The type lifecycle or related function reference did not match any concrete same-module function inventory entry after 5.4b reconciliation.",
+            "unresolved_reason": "The type lifecycle or related function reference did not match any concrete same-module function inventory entry after 5.4a reconciliation.",
             "blocking": True,
             "trace_ref_keys": [str(type_item.get("type_id", ""))],
         }
@@ -643,34 +635,6 @@ def reconcile_type_inventory_function_refs(draft: dict[str, Any]) -> dict[str, A
     return result
 
 
-def apply_type_inventory_repair_patch(candidate: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
-    result = deepcopy(candidate)
-    by_id = {
-        str(type_item.get("type_id", "")): type_item
-        for type_item in result.get("types", [])
-        if isinstance(type_item, dict)
-    }
-    for update in patch.get("updated_types", []):
-        type_item = by_id.get(str(update.get("type_id", "")))
-        if not type_item:
-            continue
-        for key in ("visibility", "defined_in", "purpose", "fields", "enum_values", "callback_signature", "ownership_lifetime", "lifecycle", "related_functions", "dependencies", "status"):
-            if key in update:
-                type_item[key] = deepcopy(update[key])
-    result.setdefault("types", []).extend(deepcopy(patch.get("added_types", [])))
-    result.setdefault("assumptions", []).extend(deepcopy(patch.get("added_assumptions", [])))
-    result.setdefault("unresolved_questions", []).extend(deepcopy(patch.get("added_unresolved_questions", [])))
-    return result
-
-
-def fallback_function_inventory(draft: dict[str, Any], module_artifact: dict[str, Any]) -> dict[str, Any]:
-    from .inventory_planning_space import build_function_planning_space
-    from .inventory_reconciliation import reconcile_function_annotation_candidate
-
-    space = build_function_planning_space(draft, module_artifact)
-    return reconcile_function_annotation_candidate(space, None)["candidate"]
-
-
 def merge_function_inventory(draft: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any]:
     result = deepcopy(draft)
     existing = {str(item.get("function_id")) for item in result.get("function_contracts", []) if isinstance(item, dict)}
@@ -705,27 +669,7 @@ def merge_function_inventory(draft: dict[str, Any], candidate: dict[str, Any]) -
             result.setdefault("function_contracts", []).append(item)
             existing.add(str(function.get("function_id")))
     result.setdefault("unresolved_questions", []).extend(candidate.get("unresolved_questions", []))
-    result.setdefault("accepted_stage_artifacts", []).append("5.4b_function_inventory")
-    return result
-
-
-def apply_function_inventory_repair_patch(candidate: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
-    result = deepcopy(candidate)
-    by_id = {
-        str(function.get("function_id", "")): function
-        for function in result.get("functions", [])
-        if isinstance(function, dict)
-    }
-    for update in patch.get("updated_functions", []):
-        function = by_id.get(str(update.get("function_id", "")))
-        if not function:
-            continue
-        for key in ("purpose", "grouping_hint", "status"):
-            if key in update:
-                function[key] = update[key]
-    result.setdefault("functions", []).extend(deepcopy(patch.get("added_functions", [])))
-    result.setdefault("assumptions", []).extend(deepcopy(patch.get("added_assumptions", [])))
-    result.setdefault("unresolved_questions", []).extend(deepcopy(patch.get("added_unresolved_questions", [])))
+    result.setdefault("accepted_stage_artifacts", []).append("5.4a_function_inventory")
     return result
 
 
@@ -965,7 +909,7 @@ def fallback_function_signatures(draft: dict[str, Any], module_id: str, function
     return {
         "schema_version": "function_signature_patch/v1",
         "patch_id": f"patch:function_signatures:{module_id}:{batch_index}",
-        "producer": _producer("5.4c_signature_planning", "function_signature_patch_prompt"),
+        "producer": _producer("5.4b_function_signatures", "function_signature_patch_prompt"),
         "module_id": module_id,
         "batch": {"index": batch_index, "size": batch_size or len(updates)},
         "function_signature_updates": updates,
@@ -1173,7 +1117,7 @@ def merge_function_signatures(draft: dict[str, Any], patch: dict[str, Any]) -> d
         function["input_contract"] = {"params": params}
         function["output_contract"] = {"return_type": signature.get("return_type", "")}
     result.setdefault("unresolved_questions", []).extend(patch.get("unresolved_questions", []))
-    result.setdefault("accepted_stage_artifacts", []).append("5.4c_signature_planning")
+    result.setdefault("accepted_stage_artifacts", []).append("5.4b_function_signatures")
     return result
 
 
@@ -1225,7 +1169,7 @@ def fallback_function_behavior(draft: dict[str, Any], module_id: str, functions:
     return {
         "schema_version": "function_behavior_contract_patch/v1",
         "patch_id": f"patch:function_behavior:{module_id}:{batch_index}",
-        "producer": _producer("5.4d_behavior_contract", "function_behavior_contract_patch_prompt"),
+        "producer": _producer("5.4c_behavior_contract", "function_behavior_contract_patch_prompt"),
         "module_id": module_id,
         "batch": {"index": batch_index, "size": batch_size or len(updates)},
         "function_behavior_updates": updates,
@@ -1258,7 +1202,7 @@ def merge_function_behavior(draft: dict[str, Any], patch: dict[str, Any]) -> dic
             function["coder_function_type"] = "EVENT"
         function["forbidden_symbols"] = update["forbidden_symbols"]
     result.setdefault("unresolved_questions", []).extend(patch.get("unresolved_questions", []))
-    result.setdefault("accepted_stage_artifacts", []).append("5.4d_behavior_contract")
+    result.setdefault("accepted_stage_artifacts", []).append("5.4c_behavior_contract")
     return result
 
 
@@ -1359,7 +1303,7 @@ def fallback_wire_access_binding(draft: dict[str, Any], planning_ir: dict[str, A
     return {
         "schema_version": "wire_access_binding_patch/v2",
         "patch_id": "patch:wire_access_binding:deterministic",
-        "producer": _producer("5.4e_wire_access_binding", "wire_access_binding_patch_prompt"),
+        "producer": _producer("5.4d_wire_access_binding", "wire_access_binding_patch_prompt"),
         "wire_mapping_entries": entries,
         "access_path_entries": access,
         "function_binding_updates": list(binding_by_function.values()),
@@ -2002,7 +1946,7 @@ def fallback_file_layout(draft: dict[str, Any]) -> dict[str, Any]:
     return {
         "schema_version": "file_layout_candidate/v2",
         "candidate_id": "candidate:file_layout:deterministic",
-        "producer": _producer("5.5_file_layout", "file_layout_candidate_prompt"),
+        "producer": _producer("5.5a_file_layout", "file_layout_candidate_prompt"),
         "files": files,
         "function_file_assignments": assignments,
         "assumptions": [],
@@ -2048,7 +1992,7 @@ def merge_file_layout(draft: dict[str, Any], candidate: dict[str, Any]) -> dict[
             function["file_id"] = assignment.get("implementation_file_id", "")
             function["declared_in"] = assignment.get("declaration_file_id", "")
     result.setdefault("unresolved_questions", []).extend(candidate.get("unresolved_questions", []))
-    result.setdefault("accepted_stage_artifacts", []).append("5.5_file_layout")
+    result.setdefault("accepted_stage_artifacts", []).append("5.5a_file_layout")
     return result
 
 
@@ -2110,7 +2054,7 @@ def fallback_runtime_entrypoint(draft: dict[str, Any]) -> dict[str, Any]:
     return {
         "schema_version": "runtime_entrypoint_candidate/v1",
         "candidate_id": "candidate:runtime_entrypoint:deterministic",
-        "producer": _producer("5.4g_runtime_entrypoint_candidate", "runtime_entrypoint_candidate_prompt"),
+        "producer": _producer("5.5b_runtime_entrypoint", "runtime_entrypoint_candidate_prompt"),
         "key_flow_module_id": module_id,
         "lifecycle_function_ids": lifecycle,
         "source_path": "main.c",
@@ -2381,7 +2325,7 @@ def merge_runtime_entrypoint(draft: dict[str, Any], candidate: dict[str, Any]) -
         )
     ]
     result.setdefault("unresolved_questions", []).extend(unresolved)
-    result.setdefault("accepted_stage_artifacts", []).append("5.4g_runtime_entrypoint_candidate")
+    result.setdefault("accepted_stage_artifacts", []).append("5.5b_runtime_entrypoint")
     return result
 
 

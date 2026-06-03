@@ -12,12 +12,14 @@ from agent.planning.adapters.facts_input import build_planning_ir
 from agent.planning.adapters.target_profile import load_target_profile
 from agent.planning.config import LLMStageConfig, PlanningConfig
 from agent.planning.orchestrator import PlanningAgent, compare_output_to_reference, find_latest_resume_source, validate_resume_prefix, validate_resume_source_dir
-from agent.planning.stages.architecture import build_architecture_candidates, select_architecture
+from agent.planning.stages.architecture import select_architecture
 from agent.planning.stages.constraints import activate_constraints
-from agent.planning.stages.implementation_plan import build_implementation_plan
-from agent.planning.stages.implementation_plan_merger import fallback_function_inventory, fallback_type_inventory
 from agent.planning.stages.protocol_profile import build_protocol_profile
-from agent.planning.tests.test_validators import _augment_type_candidate, _ensure_type_release_functions
+from agent.planning.tests.current_flow_fixtures import (
+    current_architecture_candidates,
+    current_implementation_plan,
+    current_inventory_prompt_candidate,
+)
 from agent.planning.validators.planning_ir import validate_planning_ir
 
 
@@ -73,34 +75,7 @@ def _noop_profile_patch_candidate() -> dict:
 
 
 def _fallback_inventory_candidate(prompt_name: str, messages: list[dict[str, str]]) -> dict | None:
-    if prompt_name == "type_inventory_candidate_prompt":
-        payload = json.loads(messages[1]["content"])
-        context = payload["type_inventory_context"]
-        draft = {
-            "protocol_name": "mqtt",
-            "module_artifacts": context["global_module_artifacts_reference"],
-            "canonical_types": context.get("canonical_types", []),
-            "state_design": context.get("state_design", []),
-            "resource_lifecycle": context.get("resource_lifecycle", []),
-            "error_strategy": context.get("error_strategy", []),
-            "handler_matrix": context.get("handler_matrix", []),
-        }
-        return _augment_type_candidate(fallback_type_inventory(draft, context["module_artifact"]), context)
-    if prompt_name == "function_inventory_candidate_prompt":
-        payload = json.loads(messages[1]["content"])
-        context = payload["function_inventory_context"]
-        draft = {
-            "protocol_name": "mqtt",
-            "module_artifacts": context["global_module_artifacts_reference"],
-            "type_inventory": context.get("current_module_type_inventory", []),
-            "handler_matrix": context.get("core_design_summary", {}).get("handler_matrix", []),
-            "traceability": {"required_capabilities": context.get("legal_id_universe", {}).get("capability_ids", [])},
-        }
-        return _ensure_type_release_functions(
-            fallback_function_inventory(draft, context["module_artifact"]),
-            context.get("current_module_type_inventory", []),
-        )
-    return None
+    return current_inventory_prompt_candidate(prompt_name, messages)
 
 
 def _ranking_candidate(messages: list[dict[str, str]]) -> dict:
@@ -171,9 +146,9 @@ class PlanningCompatibilityDiscoveryTests(unittest.TestCase):
             self.assertIsNotNone(planning_ir, [diag.__dict__ for diag in ir_diags])
             profile = build_protocol_profile(planning_ir)
             constraints = activate_constraints(profile)
-            architecture_candidates = build_architecture_candidates(planning_ir, profile, constraints)
+            architecture_candidates = current_architecture_candidates(planning_ir, profile, constraints)
             selected_architecture = select_architecture(architecture_candidates, profile)
-            implementation_plan = build_implementation_plan(planning_ir, profile, constraints, selected_architecture)
+            implementation_plan = current_implementation_plan(planning_ir, profile, constraints, selected_architecture)
 
             def fake_request(*, prompt_name, messages, config, temperature=None, enable_thinking=False):
                 if prompt_name == "protocol_profile_patch_prompt":
@@ -242,7 +217,7 @@ class PlanningCompatibilityDiscoveryTests(unittest.TestCase):
             self.assertIsNotNone(planning_ir, [diag.__dict__ for diag in ir_diags])
             profile = build_protocol_profile(planning_ir)
             constraints = activate_constraints(profile)
-            architecture_candidates = build_architecture_candidates(planning_ir, profile, constraints)
+            architecture_candidates = current_architecture_candidates(planning_ir, profile, constraints)
 
             def fake_request(*, prompt_name, messages, config, temperature=None, enable_thinking=False):
                 if prompt_name == "protocol_profile_patch_prompt":
@@ -288,7 +263,7 @@ class PlanningCompatibilityDiscoveryTests(unittest.TestCase):
             self.assertIsNotNone(planning_ir, [diag.__dict__ for diag in ir_diags])
             profile = build_protocol_profile(planning_ir)
             constraints = activate_constraints(profile)
-            architecture_candidates = build_architecture_candidates(planning_ir, profile, constraints)
+            architecture_candidates = current_architecture_candidates(planning_ir, profile, constraints)
 
             def fake_request(*, prompt_name, messages, config, temperature=None, enable_thinking=False):
                 if prompt_name == "protocol_profile_patch_prompt":
@@ -336,7 +311,7 @@ class PlanningCompatibilityDiscoveryTests(unittest.TestCase):
             self.assertIsNotNone(planning_ir, [diag.__dict__ for diag in ir_diags])
             profile = build_protocol_profile(planning_ir)
             constraints = activate_constraints(profile)
-            architecture_candidates = build_architecture_candidates(planning_ir, profile, constraints)
+            architecture_candidates = current_architecture_candidates(planning_ir, profile, constraints)
             thinking_by_prompt: dict[str, list[bool]] = {}
 
             def fake_request(*, prompt_name, messages, config, temperature=None, enable_thinking=False):
@@ -373,7 +348,7 @@ class PlanningCompatibilityDiscoveryTests(unittest.TestCase):
             self.assertIsNotNone(planning_ir, [diag.__dict__ for diag in ir_diags])
             profile = build_protocol_profile(planning_ir)
             constraints = activate_constraints(profile)
-            architecture_candidates = build_architecture_candidates(planning_ir, profile, constraints)
+            architecture_candidates = current_architecture_candidates(planning_ir, profile, constraints)
             thinking_by_prompt: dict[str, list[bool]] = {}
 
             def fake_request(*, prompt_name, messages, config, temperature=None, enable_thinking=False):
@@ -388,8 +363,8 @@ class PlanningCompatibilityDiscoveryTests(unittest.TestCase):
 
             config = PlanningConfig(
                 llm_stage_configs={
-                    "implementation_plan_5_2": LLMStageConfig(enable_thinking=True),
-                    "implementation_plan_5_3": LLMStageConfig(enable_thinking=False),
+                    "implementation_plan_5_2a": LLMStageConfig(enable_thinking=True),
+                    "implementation_plan_5_2b": LLMStageConfig(enable_thinking=False),
                 }
             )
             with patch("agent.planning.orchestrator.request_json_candidate", side_effect=fake_request):
@@ -410,7 +385,7 @@ class PlanningCompatibilityDiscoveryTests(unittest.TestCase):
             self.assertIsNotNone(planning_ir, [diag.__dict__ for diag in ir_diags])
             profile = build_protocol_profile(planning_ir)
             constraints = activate_constraints(profile)
-            architecture_candidates = build_architecture_candidates(planning_ir, profile, constraints)
+            architecture_candidates = current_architecture_candidates(planning_ir, profile, constraints)
             temperature_by_prompt: dict[str, list[float]] = {}
 
             def fake_request(*, prompt_name, messages, config, temperature=None, enable_thinking=False):
@@ -428,8 +403,8 @@ class PlanningCompatibilityDiscoveryTests(unittest.TestCase):
 
             config = PlanningConfig(
                 llm_stage_configs={
-                    "implementation_plan_5_2": LLMStageConfig(temperature=0.61),
-                    "implementation_plan_5_3": LLMStageConfig(temperature=0.19),
+                    "implementation_plan_5_2a": LLMStageConfig(temperature=0.61),
+                    "implementation_plan_5_2b": LLMStageConfig(temperature=0.19),
                 }
             )
             with patch("agent.planning.orchestrator.request_json_candidate", side_effect=fake_request):
@@ -450,7 +425,7 @@ class PlanningCompatibilityDiscoveryTests(unittest.TestCase):
             self.assertIsNotNone(planning_ir, [diag.__dict__ for diag in ir_diags])
             profile = build_protocol_profile(planning_ir)
             constraints = activate_constraints(profile)
-            architecture_candidates = build_architecture_candidates(planning_ir, profile, constraints)
+            architecture_candidates = current_architecture_candidates(planning_ir, profile, constraints)
 
             def source_request(*, prompt_name, messages, config, temperature=None, enable_thinking=False):
                 if prompt_name == "protocol_profile_patch_prompt":
@@ -471,8 +446,8 @@ class PlanningCompatibilityDiscoveryTests(unittest.TestCase):
                 "architecture_ranking_prompt",
                 "core_design_candidate_prompt",
                 "module_artifacts_candidate_prompt",
-                "type_inventory_candidate_prompt",
-                "function_inventory_candidate_prompt",
+                "type_filling_candidate_prompt",
+                "function_annotation_candidate_prompt",
                 "function_signature_patch_prompt",
                 "function_behavior_contract_patch_prompt",
             }

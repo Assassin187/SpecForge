@@ -64,36 +64,25 @@ class PlanningPreflightTests(unittest.TestCase):
             ]
         )
         self.assertEqual(args.resume_from_stage, "architecture")
-        args = parser.parse_args(
-            [
-                "plan",
-                "--facts",
-                "facts.json",
-                "--target-profile",
-                "target.json",
-                "--resume-from-stage",
-                "5.4d",
-                "--stop-after-stage",
-                "architecture",
-            ]
-        )
-        self.assertEqual(args.resume_from_stage, "5.4d")
-        self.assertEqual(args.stop_after_stage, "architecture")
-        args = parser.parse_args(
-            [
-                "plan",
-                "--facts",
-                "facts.json",
-                "--target-profile",
-                "target.json",
-                "--resume-from-stage",
-                "6",
-                "--stop-after-stage",
-                "6",
-            ]
-        )
-        self.assertEqual(args.resume_from_stage, "6")
-        self.assertEqual(args.stop_after_stage, "6")
+        for stage in ("5.2a", "5.2b", "5.3_type_data", "5.4a_function_inventory", "5.5a_file_layout", "6"):
+            args = parser.parse_args(
+                [
+                    "plan",
+                    "--facts",
+                    "facts.json",
+                    "--target-profile",
+                    "target.json",
+                    "--resume-from-stage",
+                    stage,
+                    "--stop-after-stage",
+                    stage,
+                ]
+            )
+            self.assertEqual(args.resume_from_stage, stage)
+            self.assertEqual(args.stop_after_stage, stage)
+        for old_stage in ("5.2", "5.4", "5.5"):
+            with self.assertRaises(SystemExit):
+                parser.parse_args(["plan", "--facts", "facts.json", "--target-profile", "target.json", "--resume-from-stage", old_stage])
         with self.assertRaises(SystemExit):
             parser.parse_args(["plan", "--facts", "facts.json", "--target-profile", "target.json", "--resume-from-stage", "bad"])
         with self.assertRaises(SystemExit):
@@ -102,10 +91,13 @@ class PlanningPreflightTests(unittest.TestCase):
             parser.parse_args(["plan", "--facts", "facts.json", "--target-profile", "target.json", "--resume-from-stage", "spec_blueprint"])
 
     def test_stage_aliases_normalize_to_resume_targets(self) -> None:
-        self.assertEqual(normalize_resume_stage("5.2"), "implementation_plan_5_2a")
+        self.assertEqual(normalize_resume_stage("5.2"), "5.2")
+        self.assertEqual(normalize_resume_stage("5.2a"), "implementation_plan_5_2a")
+        self.assertEqual(normalize_resume_stage("5.2b"), "implementation_plan_5_2b")
         self.assertEqual(normalize_resume_stage("5.3"), "implementation_plan_5_3")
-        self.assertEqual(normalize_resume_stage("5.4"), "implementation_plan_5_4a")
-        self.assertEqual(normalize_resume_stage("5.5"), "implementation_plan_5_5a")
+        self.assertEqual(normalize_resume_stage("5.3_type_data"), "implementation_plan_5_3")
+        self.assertEqual(normalize_resume_stage("5.4a_function_inventory"), "implementation_plan_5_4a")
+        self.assertEqual(normalize_resume_stage("5.5a_file_layout"), "implementation_plan_5_5a")
         self.assertEqual(normalize_resume_stage("6"), "specs_compile")
         self.assertEqual(normalize_stop_after_stage("6"), "specs_compile")
 

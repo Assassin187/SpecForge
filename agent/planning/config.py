@@ -8,19 +8,6 @@ TARGET_PROFILE_FORMAT_VERSION = "target_profile/v1"
 CODER_OUTPUT_FORMAT_VERSION = "spec_bundle/current"
 PROMPT_VERSION = "planning/prompts/v0"
 
-LLM_STAGE_CONFIG_COMPAT_ALIASES = {
-    "implementation_plan_5_2a": ("implementation_plan_5_2",),
-    "implementation_plan_5_2b": ("implementation_plan_5_3",),
-    "implementation_plan_5_3": ("implementation_plan_5_4a",),
-    "implementation_plan_5_4a": ("implementation_plan_5_4b",),
-    "implementation_plan_5_4b": ("implementation_plan_5_4c",),
-    "implementation_plan_5_4c": ("implementation_plan_5_4d",),
-    "implementation_plan_5_4d": ("implementation_plan_5_4e",),
-    "implementation_plan_5_4e": ("implementation_plan_5_4f",),
-    "implementation_plan_5_5a": ("implementation_plan_5_5",),
-    "implementation_plan_5_5b": ("implementation_plan_5_4g",),
-}
-
 MODULE_SCOPED_BATCH_SIZE_DEFAULTS = {
     "implementation_plan_5_4b": 32,
     "implementation_plan_5_4c": 8,
@@ -56,10 +43,6 @@ def default_llm_stage_configs() -> dict[str, LLMStageConfig]:
         "implementation_plan_5_5b": LLMStageConfig(temperature=0.2, max_retries=1, enable_thinking=False),
         "implementation_plan_5_6": LLMStageConfig(temperature=0.2, max_retries=1, enable_thinking=False),
         "implementation_plan_5_7": LLMStageConfig(temperature=0.2, max_retries=1, enable_thinking=False),
-        "implementation_plan_5_2": LLMStageConfig(temperature=0.2, max_retries=3, enable_thinking=False),
-        "implementation_plan_5_4f": LLMStageConfig(temperature=0.2, max_retries=3, enable_thinking=False),
-        "implementation_plan_5_5": LLMStageConfig(temperature=0.2, max_retries=3, enable_thinking=False),
-        "implementation_plan_5_4g": LLMStageConfig(temperature=0.2, max_retries=1, enable_thinking=False),
     }
 
 
@@ -94,11 +77,6 @@ class PlanningConfig:
     def llm_stage_config(self, stage: str) -> LLMStageConfig:
         default = default_llm_stage_configs().get(stage, LLMStageConfig())
         override = self.llm_stage_configs.get(stage)
-        if override is None:
-            for alias in LLM_STAGE_CONFIG_COMPAT_ALIASES.get(stage, ()):
-                override = self.llm_stage_configs.get(alias)
-                if override is not None:
-                    break
         if override is None:
             return default
         return LLMStageConfig(

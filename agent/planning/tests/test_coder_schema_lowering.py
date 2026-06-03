@@ -8,16 +8,17 @@ from pathlib import Path
 
 from agent.planning.adapters.facts_input import build_planning_ir
 from agent.planning.adapters.target_profile import load_target_profile
-from agent.planning.stages.architecture import build_architecture_candidates, select_architecture
+from agent.planning.stages.architecture import select_architecture
 from agent.planning.stages.constraints import activate_constraints
 from agent.planning.stages.coder_spec_lowering import (
+    extract_c_signature_type_refs,
+    lower_signature_for_coder,
     normalize_data_visibility_for_coder,
-    normalize_interface_visibility_for_coder,
     normalize_param_ownership_for_coder,
 )
-from agent.planning.stages.implementation_plan import build_implementation_plan
 from agent.planning.stages.protocol_profile import build_protocol_profile
 from agent.planning.stages.specs_compiler import compile_spec_bundle
+from agent.planning.tests.current_flow_fixtures import current_architecture_candidates, current_implementation_plan
 from agent.planning.validators.coder_compat import validate_coder_compatibility
 from agent.planning.validators.coder_schema import validate_coder_spec_bundle_against_schema
 from agent.coder.generation import render_header
@@ -166,7 +167,6 @@ class CoderSchemaLoweringTests(unittest.TestCase):
         self.assertEqual(normalize_param_ownership_for_coder("borrowed"), "BORROWED")
         self.assertEqual(normalize_param_ownership_for_coder("value"), "UNKNOWN")
         self.assertEqual(normalize_param_ownership_for_coder("transferred"), "TRANSFER")
-        self.assertEqual(normalize_interface_visibility_for_coder("internal"), "private")
         self.assertEqual(normalize_data_visibility_for_coder("internal"), "PRIVATE")
 
     def test_compiled_planning_bundle_is_strict_schema_valid(self) -> None:
@@ -179,9 +179,9 @@ class CoderSchemaLoweringTests(unittest.TestCase):
             self.assertIsNotNone(planning_ir, [diag.__dict__ for diag in ir_diags])
             profile = build_protocol_profile(planning_ir)
             constraints = activate_constraints(profile)
-            candidates = build_architecture_candidates(planning_ir, profile, constraints)
+            candidates = current_architecture_candidates(planning_ir, profile, constraints)
             selected = select_architecture(candidates, profile)
-            plan = build_implementation_plan(planning_ir, profile, constraints, selected)
+            plan = current_implementation_plan(planning_ir, profile, constraints, selected)
             manifest, _ = compile_spec_bundle(plan, tmp)
             diagnostics = validate_coder_spec_bundle_against_schema(manifest["spec_root"])
             self.assertFalse([diag.__dict__ for diag in diagnostics if diag.level == "error"])
@@ -585,6 +585,28 @@ class CoderSchemaLoweringTests(unittest.TestCase):
             manifest, _ = compile_spec_bundle(plan, Path(raw_tmp))
             diagnostics = validate_coder_compatibility(manifest["spec_root"])
             self.assertIn("coder_public_signature_unknown_type", {diag.code for diag in diagnostics if diag.level == "error"})
+
+    def test_lowering_renders_callback_type_and_anonymous_function_pointer_params(self) -> None:
+        named = {
+            "name": "mqtt_topic_tree_match",
+            "signature": {
+                "name": "mqtt_topic_tree_match",
+                "return_type": "void",
+                "params": [{"type": "mqtt_topic_match_callback_fn", "name": "callback", "nullable": False, "ownership": "BORROWED"}],
+            },
+        }
+        self.assertIn("mqtt_topic_match_callback_fn callback", lower_signature_for_coder(named)["RAW"])
+
+        anonymous = copy.deepcopy(named)
+        anonymous["signature"]["params"][0]["type"] = "void (*)(uint32_t, void*)"
+        self.assertIn("void (*callback)(uint32_t, void*)", lower_signature_for_coder(anonymous)["RAW"])
+
+    def test_signature_type_ref_extraction_handles_function_pointer_commas(self) -> None:
+        refs = extract_c_signature_type_refs("void mqtt_topic_tree_match(const mqtt_topic_tree_t* tree, void (*callback)(uint32_t sid, void* user_data), void* user_data)")
+        raw_refs = {str(ref["raw"]) for ref in refs}
+        self.assertIn("const mqtt_topic_tree_t*", raw_refs)
+        self.assertNotIn("void (*)(uint32_t", raw_refs)
+        self.assertNotIn("void*)", raw_refs)
 
     def test_specs_compiler_has_no_protocol_role_special_cases(self) -> None:
         texts = [

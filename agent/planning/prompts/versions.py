@@ -11,11 +11,7 @@ PROMPT_REGISTRY = {
     "core_design_candidate_prompt": PROMPT_VERSION,
     "module_artifacts_candidate_prompt": PROMPT_VERSION,
     "type_filling_candidate_prompt": PROMPT_VERSION,
-    "type_inventory_candidate_prompt": PROMPT_VERSION,
-    "type_inventory_repair_patch_prompt": PROMPT_VERSION,
     "function_annotation_candidate_prompt": PROMPT_VERSION,
-    "function_inventory_candidate_prompt": PROMPT_VERSION,
-    "function_inventory_repair_patch_prompt": PROMPT_VERSION,
     "function_signature_patch_prompt": PROMPT_VERSION,
     "function_behavior_contract_patch_prompt": PROMPT_VERSION,
     "wire_access_binding_patch_prompt": PROMPT_VERSION,
@@ -23,5 +19,4 @@ PROMPT_REGISTRY = {
     "runtime_entrypoint_candidate_prompt": PROMPT_VERSION,
     "file_layout_candidate_prompt": PROMPT_VERSION,
     "dependency_repair_patch_prompt": PROMPT_VERSION,
-    "validation_explanation_prompt": PROMPT_VERSION,
 }

@@ -34,10 +34,6 @@ def normalize_data_visibility_for_coder(value: Any) -> str:
     return "PUBLIC" if str(value or "").strip().lower() in {"public", "exported", "external"} else "PRIVATE"
 
 
-def normalize_interface_visibility_for_coder(value: Any) -> str:
-    return "public" if str(value or "").strip().lower() in {"public", "exported", "external"} else "private"
-
-
 def _string_list(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
@@ -151,15 +147,22 @@ def _strip_param_name(param: str) -> str:
         return ""
     text = text.split("=", 1)[0].strip()
     text = re.sub(r"\[[^\]]*\]\s*$", "", text).strip()
+    match = re.match(r"(.+?)\(\s*\*[A-Za-z_][A-Za-z0-9_]*\s*\)\s*\((.*)\)$", text)
+    if match:
+        return f"{match.group(1).strip()} (*)({match.group(2).strip()})"
     match = re.match(r"(.+?)([*\s]+)([A-Za-z_][A-Za-z0-9_]*)$", text)
     if match:
         return (match.group(1) + match.group(2)).strip()
     return text
 
 
+def is_anonymous_c_function_pointer_type(value: Any) -> bool:
+    return bool(re.search(r"\(\s*\*\s*\)\s*\(", str(value or "")))
+
+
 def _type_ref_record(raw_type: str) -> dict[str, Any] | None:
     raw = str(raw_type or "").strip()
-    if not raw or raw == "void" or is_builtin_or_system_c_type(raw):
+    if not raw or raw == "void" or is_builtin_or_system_c_type(raw) or is_anonymous_c_function_pointer_type(raw):
         return None
     key = normalize_type_key(raw)
     if not key:
@@ -205,7 +208,19 @@ def extract_c_signature_type_refs(signature_or_params: Any) -> list[dict[str, An
     params = rest.rsplit(")", 1)[0]
     return_type = re.sub(r"\s+[A-Za-z_][A-Za-z0-9_]*\s*$", "", left).strip()
     add(return_type)
-    for param in [part.strip() for part in params.split(",") if part.strip()]:
+    depth = 0
+    start = 0
+    parts: list[str] = []
+    for index, char in enumerate(params):
+        if char in "([{":
+            depth += 1
+        elif char in ")]}" and depth:
+            depth -= 1
+        elif char == "," and depth == 0:
+            parts.append(params[start:index].strip())
+            start = index + 1
+    parts.append(params[start:].strip())
+    for param in [part for part in parts if part]:
         add(_strip_param_name(param))
     return refs
 
@@ -415,7 +430,13 @@ def _render_signature_params(signature: dict[str, Any]) -> tuple[str, list[dict[
                     "OWNERSHIP": normalize_param_ownership_for_coder(param.get("ownership")),
                 }
             )
-    rendered = ", ".join(f"{item['TYPE']} {item['NAME']}".strip() for item in lowered) if lowered else "void"
+    def render_param(item: dict[str, Any]) -> str:
+        match = re.match(r"(.+?)\(\s*\*\s*\)\s*\((.*)\)$", str(item["TYPE"]).strip())
+        if match:
+            return f"{match.group(1).strip()} (*{item['NAME']})({match.group(2).strip()})"
+        return f"{item['TYPE']} {item['NAME']}".strip()
+
+    rendered = ", ".join(render_param(item) for item in lowered) if lowered else "void"
     return rendered, lowered
 
 

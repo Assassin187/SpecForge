@@ -3,7 +3,6 @@ from __future__ import annotations
 import copy
 import inspect
 import json
-import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -15,12 +14,15 @@ from agent.planning.config import PlanningConfig
 from agent.planning.diagnostics import PlanningDiagnostic
 from agent.planning.orchestrator import PlanningAgent, STEP_FILENAMES, request_architecture_json_candidate
 from agent.planning.prompts.templates import architecture_candidate_messages, core_design_candidate_messages
-from agent.planning.stages.architecture import build_architecture_candidates, build_architecture_context, select_architecture
+from agent.planning.stages.architecture import build_architecture_context, select_architecture
 from agent.planning.stages.constraints import activate_constraints
-from agent.planning.stages.implementation_plan import build_implementation_plan
 from agent.planning.stages.implementation_plan_context import build_core_design_context
-from agent.planning.stages.implementation_plan_merger import fallback_function_inventory, fallback_type_inventory
 from agent.planning.stages.protocol_profile import build_protocol_profile
+from agent.planning.tests.current_flow_fixtures import (
+    current_architecture_candidates,
+    current_implementation_plan,
+    current_inventory_prompt_candidate,
+)
 from agent.planning.validators.architecture import validate_architecture_candidates
 from agent.planning.validators.implementation_plan import validate_implementation_plan
 
@@ -53,9 +55,9 @@ def _build_artifacts(tmp: Path):
     assert planning_ir is not None, ir_diags
     profile = build_protocol_profile(planning_ir)
     constraints = activate_constraints(profile)
-    architecture_candidates = build_architecture_candidates(planning_ir, profile, constraints)
+    architecture_candidates = current_architecture_candidates(planning_ir, profile, constraints)
     selected_architecture = select_architecture(architecture_candidates, profile)
-    implementation_plan = build_implementation_plan(planning_ir, profile, constraints, selected_architecture)
+    implementation_plan = current_implementation_plan(planning_ir, profile, constraints, selected_architecture)
     return planning_ir, profile, constraints, architecture_candidates, selected_architecture, implementation_plan
 
 
@@ -84,178 +86,8 @@ def _noop_profile_patch_candidate() -> dict:
     }
 
 
-def _safe_id(text: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "_", str(text).lower()).strip("_") or "x"
-
-
-def _type_field(field: dict) -> dict:
-    field_type = str(field.get("field_type", ""))
-    name = str(field.get("field_name", ""))
-    pointer_like = "*" in field_type or "buffer" in field_type.lower() or "string" in field_type.lower()
-    result = {
-        "field_name": name,
-        "field_type": field_type,
-        "type_ref": "",
-        "required": True,
-        "ownership": "OWNED" if pointer_like else "BORROWED",
-        "lifetime": "owned by parent type until cleanup" if pointer_like else "valid while parent type is valid",
-        "length_field": "len" if name == "data" and pointer_like else "",
-        "capacity_field": "",
-        "validation_notes": "test generated from type_generation_targets",
-    }
-    if isinstance(field.get("variants"), list):
-        result["variants"] = field["variants"]
-    return result
-
-
-def _target_type_item(module_id: str, target: dict) -> dict:
-    name = str(target.get("suggested_name", f"{module_id}_target_t"))
-    target_kind = str(target.get("target_kind", "struct"))
-    kind_by_target = {
-        "packet_enum": "enum",
-        "payload_struct": "struct",
-        "packet_container_struct": "struct",
-        "owned_buffer": "owned_buffer",
-        "callback_or_event_boundary": "event_struct",
-        "internal_state": "internal_state",
-    }
-    lifecycle = {"created_by": [], "initialized_by": [], "destroyed_by": [], "freed_by": []}
-    if target_kind in {"packet_container_struct", "owned_buffer"}:
-        lifecycle["freed_by"] = [f"{_safe_id(name.removesuffix('_t'))}_free"]
-    item = {
-        "type_id": f"type:{module_id}:{_safe_id(name)}",
-        "name": name,
-        "module_id": module_id,
-        "kind": kind_by_target.get(target_kind, "struct"),
-        "visibility": "public" if target_kind in {"packet_enum", "payload_struct", "packet_container_struct", "owned_buffer", "callback_or_event_boundary"} else "private",
-        "defined_in": "public_header" if target_kind in {"packet_enum", "payload_struct", "packet_container_struct", "owned_buffer", "callback_or_event_boundary"} else "source_file",
-        "purpose": str(target.get("reason", "test generated type target")),
-        "fields": [_type_field(field) for field in target.get("required_fields", []) if isinstance(field, dict) and str(field.get("field_type", "")) != "enum_value"],
-        "enum_values": [],
-        "callback_signature": {"return_type": "", "params": []},
-        "ownership_lifetime": "Owned data is released by lifecycle cleanup." if target_kind in {"packet_container_struct", "owned_buffer"} else "",
-        "lifecycle": lifecycle,
-        "related_functions": lifecycle["freed_by"],
-        "dependencies": [],
-        "trace_ref_keys": target.get("trace_ref_keys", []),
-        "status": "inferred",
-    }
-    if target_kind == "packet_enum":
-        item["enum_values"] = [
-            {"name": f"MQTT_PACKET_TYPE_{str(field.get('field_name', '')).upper()}", "value": str(index), "role": str(field.get("field_name", ""))}
-            for index, field in enumerate(target.get("required_fields", []))
-            if isinstance(field, dict)
-        ]
-    return item
-
-
-def _augment_type_candidate(candidate: dict, context: dict) -> dict:
-    result = copy.deepcopy(candidate)
-    module_id = str(context["module_artifact"].get("module_id", ""))
-    by_name = {_safe_id(str(item.get("name", ""))): item for item in result.get("types", []) if isinstance(item, dict)}
-    for target in context.get("type_generation_targets", []):
-        if not isinstance(target, dict):
-            continue
-        item = _target_type_item(module_id, target)
-        key = _safe_id(str(item.get("name", "")))
-        if key in by_name:
-            by_name[key].update({k: v for k, v in item.items() if k not in {"type_id", "name", "module_id", "kind"}})
-        else:
-            result.setdefault("types", []).append(item)
-            by_name[key] = item
-    return result
-
-
-def _function_item(module_id: str, name: str, *, kind: str = "resource_lifecycle", public: bool = False) -> dict:
-    return {
-        "function_id": f"fn:{module_id}:{_safe_id(name)}",
-        "name": name,
-        "module_id": module_id,
-        "function_kind": kind,
-        "coder_function_type": "ALGORITHM",
-        "visibility": "public" if public else "internal",
-        "api_surface": "public" if public else "module_internal",
-        "exported": public,
-        "export_reason": "test public boundary" if public else "",
-        "public_api_role": "module_boundary_operation" if public else "",
-        "grouping_hint": module_id,
-        "purpose": f"Test-generated function to satisfy {kind} coverage.",
-        "capability_ids": [],
-        "covers_handler_ids": [],
-        "covers_message_ids": [],
-        "covers_field_ids": [],
-        "trace_ref_keys": [],
-        "status": "inferred",
-    }
-
-
-def _ensure_type_release_functions(candidate: dict, type_inventory: list[dict]) -> dict:
-    result = copy.deepcopy(candidate)
-    functions = result.setdefault("functions", [])
-    existing_names = {str(item.get("name", "")) for item in functions if isinstance(item, dict)}
-    existing_ids = {str(item.get("function_id", "")) for item in functions if isinstance(item, dict)}
-    for type_item in type_inventory:
-        if not isinstance(type_item, dict):
-            continue
-        module_id = str(type_item.get("module_id", ""))
-        lifecycle = type_item.get("lifecycle", {}) if isinstance(type_item.get("lifecycle"), dict) else {}
-        names = [str(name) for name in [*lifecycle.get("destroyed_by", []), *lifecycle.get("freed_by", [])] if str(name).strip()]
-        pointer_owned = any(
-            isinstance(field, dict)
-            and ("*" in str(field.get("field_type", "")) or "buffer" in str(field.get("field_type", "")).lower() or "string" in str(field.get("field_type", "")).lower())
-            and str(field.get("ownership", "")) in {"OWNED", "TRANSFER"}
-            for field in type_item.get("fields", [])
-        )
-        if not names and (pointer_owned or type_item.get("kind") in {"owned_buffer", "result_struct"}):
-            base = _safe_id(str(type_item.get("name", "")).removesuffix("_t"))
-            names = [f"{base}_destroy", f"{base}_free", f"{base}_cleanup"]
-        if names and not any(name in existing_names for name in names):
-            name = names[0]
-            function = _function_item(module_id, name)
-            if function["function_id"] not in existing_ids:
-                functions.append(function)
-                existing_ids.add(function["function_id"])
-                existing_names.add(name)
-    return result
-
-
 def _fallback_inventory_candidate(prompt_name: str, messages: list[dict[str, str]], reference_plan: dict | None = None) -> dict | None:
-    if prompt_name == "type_inventory_candidate_prompt":
-        payload = json.loads(messages[1]["content"])
-        context = payload["type_inventory_context"]
-        module_id = str(context["module_artifact"].get("module_id", ""))
-        if reference_plan is not None:
-            return _augment_type_candidate({
-                "schema_version": "type_inventory_candidate/v1",
-                "candidate_id": f"candidate:type_inventory:{module_id}",
-                "producer": {"stage": "5.4a_type_inventory", "prompt_name": "type_inventory_candidate_prompt", "prompt_version": "test"},
-                "module_id": module_id,
-                "types": [copy.deepcopy(item) for item in reference_plan.get("type_inventory", []) if str(item.get("module_id", "")) == module_id],
-                "assumptions": [],
-                "unresolved_questions": [],
-            }, context)
-        draft = {
-            "protocol_name": "mqtt",
-            "module_artifacts": context["global_module_artifacts_reference"],
-            "canonical_types": context.get("canonical_types", []),
-            "state_design": context.get("state_design", []),
-            "resource_lifecycle": context.get("resource_lifecycle", []),
-            "error_strategy": context.get("error_strategy", []),
-            "handler_matrix": context.get("handler_matrix", []),
-        }
-        return fallback_type_inventory(draft, context["module_artifact"])
-    if prompt_name == "function_inventory_candidate_prompt":
-        payload = json.loads(messages[1]["content"])
-        context = payload["function_inventory_context"]
-        draft = {
-            "protocol_name": "mqtt",
-            "module_artifacts": context["global_module_artifacts_reference"],
-            "type_inventory": context.get("current_module_type_inventory", []),
-            "handler_matrix": context.get("core_design_summary", {}).get("handler_matrix", []),
-            "traceability": {"required_capabilities": context.get("legal_id_universe", {}).get("capability_ids", [])},
-        }
-        return _ensure_type_release_functions(fallback_function_inventory(draft, context["module_artifact"]), context.get("current_module_type_inventory", []))
-    return None
+    return current_inventory_prompt_candidate(prompt_name, messages)
 
 
 class PlanningValidatorTests(unittest.TestCase):
@@ -555,7 +387,6 @@ class PlanningValidatorTests(unittest.TestCase):
             self.assertFalse(list(step_logs.glob("007_5_4a_function_inventory_planning_space__*.json")))
             self.assertFalse(list(step_logs.glob("007_5_4e_function_call_contracts_candidate__*.json")))
             self.assertGreaterEqual(calls.count("function_annotation_candidate_prompt"), module_count)
-            self.assertEqual(calls.count("function_inventory_repair_patch_prompt"), 0)
             inventory = json.loads((step_logs / STEP_FILENAMES["function_inventory_candidate"]).read_text(encoding="utf-8"))
             signature = json.loads((step_logs / STEP_FILENAMES["function_signature_patch"]).read_text(encoding="utf-8"))
             behavior = json.loads((step_logs / STEP_FILENAMES["function_behavior_patch"]).read_text(encoding="utf-8"))
@@ -569,7 +400,6 @@ class PlanningValidatorTests(unittest.TestCase):
             self.assertEqual(len(inventory["functions"]), len(behavior["function_behavior_updates"]))
             self.assertTrue((step_logs / STEP_FILENAMES["runtime_entrypoint_candidate"]).exists())
             event_log = (result.output_dir / "_agent_logs" / "000_stage_events.log").read_text(encoding="utf-8")
-            self.assertNotIn(" repair_attempt=1 prompt=function_inventory_repair_patch_prompt", event_log)
             self.assertIn("prompt=function_annotation_candidate_prompt", event_log)
             attempt_summary = json.loads((agent_logs / STEP_FILENAMES["function_inventory_attempt_summary"]).read_text(encoding="utf-8"))
             self.assertTrue(all("accepted_by" in module for module in attempt_summary["modules"]))

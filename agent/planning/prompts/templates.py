@@ -33,11 +33,6 @@ ENUM_USAGE_RULES = [
 ]
 
 LOCAL_ID_RULES = {
-    "type_inventory_candidate/v1": [
-        "candidate_id is a new local ID and should use candidate:type_inventory:{module_id}.",
-        "types[].type_id is a new local ID and should use type:{module_id}:{symbol}.",
-        "dependencies, fields[].type_ref, and callback_signature.params[].type_ref are references; use local type_ids declared in this candidate, provider_public_types, or legal_id_universe.system_type_ids.",
-    ],
     "type_filling_candidate/v1": [
         "candidate_id is a new local ID and should use candidate:type_filling:{module_id}.",
         "slot_fillings[].slot_id must be copied exactly from type_planning_space mandatory_type_slots, derived_type_slots, or recommended_type_slots.",
@@ -45,27 +40,12 @@ LOCAL_ID_RULES = {
         "optional_type_proposals[].proposal_key is local. optional_type_proposals[].name_hint is only a hint; deterministic reconciliation assigns final identity.",
         "dependencies, fields[].type_ref, and callback_signature.params[].type_ref are references and must use type_planning_space.allowed_type_refs or system types.",
     ],
-    "type_inventory_repair_patch/v1": [
-        "patch_id is a new local ID and should use patch:type_inventory:{module_id}:{purpose}.",
-        "added_types[].type_id is a new local ID and should use type:{module_id}:{symbol}.",
-        "updated_types[].type_id must reference an existing type_id from current_candidate.types.",
-    ],
-    "function_inventory_candidate/v2": [
-        "candidate_id is a new local ID and should use candidate:function_inventory:{module_id}.",
-        "functions[].function_id is a new local ID and should use fn:{module_id}:{action}.",
-        "capability_ids, covers_handler_ids, covers_message_ids, and covers_field_ids are references and must come from legal_id_universe.",
-    ],
     "function_annotation_candidate/v1": [
         "candidate_id is a new local ID and should use candidate:function_annotation:{module_id}.",
         "seed_annotations[].seed_id must be copied exactly from function_planning_space required or recommended seeds.",
         "Do not assign final required function_id/name/module_id/kind/visibility; those are deterministic seed identity.",
         "optional_function_proposals[].proposal_key is local. optional_function_proposals[].name_hint is only a hint; deterministic reconciliation assigns final identity.",
         "capability_ids, covers_handler_ids, covers_message_ids, and covers_field_ids are references and must come from function_planning_space.legal_refs.",
-    ],
-    "function_inventory_repair_patch/v1": [
-        "patch_id is a new local ID and should use patch:function_inventory:{module_id}:{purpose}.",
-        "added_functions[].function_id is a new local ID and should use fn:{module_id}:{action}.",
-        "updated_functions[].function_id must reference an existing function_id from current_candidate.functions.",
     ],
 }
 
@@ -90,96 +70,15 @@ STAGE_SEMANTIC_RULES = {
         "FUNC artifacts seed the next function inventory stage. TYPE artifacts seed canonical type/header/data lowering.",
         "If facts are insufficient, generate a reasonable minimum_v1 artifact and record the assumption; only blocking issues belong in unresolved_questions.",
     ],
-    "type_inventory_candidate/v1": [
-        "Task definition: given one module and its module_artifacts TYPE/FUNC seeds, plan the implementation-oriented type inventory for that module only.",
-        "Generate only type inventory; do not include function signatures, input/output contracts, state access, wire mappings, calls, file layout, dependency graph, or code.",
-        "Every current_module_artifacts item with kind=TYPE is a deterministic mandatory seed and must be represented by types[] unless a blocking unresolved_questions item names that artifact.",
-        "TYPE artifacts are mandatory seeds but not a closed set; type_generation_targets are required implementation targets derived from protocol facts, canonical types, module role, and runtime responsibilities.",
-        "The type inventory may add richer implementation-oriented types beyond TYPE artifacts, including internal_state, payload structs, packet/container structs, callback/event boundaries, owned buffers, result structs, bitflags, or aliases when justified by module responsibilities.",
-        "global_module_artifacts_reference is reference-only 5.3 context for architecture boundaries and naming; it is not an unrestricted dependency surface.",
-        "Cross-module type dependencies may come only from provider_public_types for current_module_dependencies; unrelated global_module_artifacts_reference entries may not be used in fields, dependencies, or callback_signature.",
-        "provider_public_types entries with seed_source are deterministic public boundary intent for reference validation only; do not copy them into the current module's types[] unless the current module owns that type.",
-        "For system types, type_ref must be the bare value from legal_id_universe.system_type_ids such as uint8_t, size_t, or void; never use system:uint8_t or system:void.",
-        "Add internal state, packet enum, payload struct, packet/container struct, config, callback, event, view, owned buffer, result, bitflag, or alias types when needed for API clarity, lifecycle closure, protocol facts, or module boundaries.",
-        "For codec/parser/serializer modules, derive packet enums, per-message payload structs, unified packet/container structs, and result or owned byte buffer types from protocol facts/canonical_types instead of leaving packet data as an opaque placeholder.",
-        "Do not use uint8_t placeholders when facts imply concrete types: string fields should be char*, u16/packet_id/keep_alive should be uint16_t, flags should be bool, payload bytes should be uint8_t* with length/count fields.",
-        "Unified packet/container structs must expose a variant boundary, such as type plus a union-like payload field with fields[].variants, or equivalent variant fields; a packet container with only a type discriminator is incomplete.",
-        "If packet payloads own strings, repeated arrays, or byte buffers, declare a cleanup/free lifecycle intent such as protocol_packet_free.",
-        "For network/runtime/event modules, represent callback_type/event_struct and callback collection types when accept/data/close/timer/epoll style boundaries are present.",
-        "Callback collection types such as *_callbacks_t must use fields[] for on_accept/on_data/on_close/on_timer entries; callback_signature is only for a single function pointer callback_type.",
-        "Align the meaning with coder specs: public_header types lower to HEADER.DATA; source_file private/module_internal types lower to SOURCE.DATA; public module type artifacts become PROTOCOL_MODULE_SPEC ARTIFACTS.",
-        "Use public opaque handles for public APIs that need module-owned state without exposing private struct fields.",
-        "Do not expose internal_state fields in public_header. Public/header types may not depend on private or module_internal types.",
-        "Public callback/function-pointer types must not expose private/internal state such as per-connection socket or buffer structs; use void* context or a deliberately public server/session/broker handle instead.",
-        "If a public packet/container type depends on variant payload structs, those payload structs must also be public_header, or the packet/container must not be public.",
-        "State/resource-owning modules must include either a public opaque boundary handle or a private internal_state; do not confuse public handles with private storage.",
-        "dependencies may reference only public types from provider modules or local types; never depend on another module's private/module_internal type.",
-        "Do not put codec parser internals such as mqtt_parser_t inside network connection state unless that parser type is a public provider type; use an opaque void* context or local buffers instead.",
-        "Consumer private state such as session structs must not depend on network per-connection internals like mqtt_connection_t; use void* connection context or a public server/session handle.",
-        "Router private state must not depend on session-owned structs such as mqtt_session_t; store subscriber/client IDs, callback context, or void* subscriber handles instead.",
-        "Type lifecycle names must belong to the type's owning module. Network types such as mqtt_server_t must use network-owned lifecycle names like mqtt_server_create/mqtt_server_destroy, not broker_app names such as mqtt_broker_init or mqtt_broker_run.",
-        "Pointer, string, and buffer fields must include ownership and lifetime. Owned buffers must identify length_field and capacity_field or explain the equivalent in ownership_lifetime.",
-        "Public structs with owned pointer/string/buffer fields and all owned_buffer/result_struct types must identify freed_by or destroyed_by lifecycle functions, or add an unresolved question if no release path can be planned.",
-        "related_functions should name the function artifacts or expected function inventory usage that creates, initializes, consumes, destroys, or frees the type.",
-        "If a callback or event responsibility is present in the module role/artifacts/core design, represent callback_type or event_struct where it is needed for a stable boundary.",
-    ],
     "type_filling_candidate/v1": [
         "Task definition: fill semantic details for the provided deterministic type_planning_space; do not generate a complete type inventory.",
         "Preserve every mandatory, derived, and recommended slot identity. Use slot_fillings[].slot_id to attach fields, enum_values, callback_signature, ownership/lifetime, dependencies, assumptions, and unresolved questions.",
         "The LLM is a local semantic proposal generator only. It may not delete, rename, re-module, re-kind, or change visibility for required slots.",
-        "optional_type_proposals are allowed only for justified module-local expansion. Each proposal must include expansion_reason and source_refs tied to message structure, field group, handler boundary, resource lifecycle, error strategy, parser/serializer need, callback/event boundary, coder compatibility, or explicit assumption.",
+        "optional_type_proposals are allowed only for justified module-local expansion. Treat callback/event/visitor outputs as ABI type boundaries: propose a public callback_type for a single function-pointer role and an event_struct for a callback collection when a module reports events, iterates matches, dispatches timers, or returns items through caller callbacks.",
         "Use only type_planning_space.allowed_type_refs for dependencies and type_ref fields. Never reference provider private types, unrelated module private types, state/message/field ids as type refs, or natural-language type names.",
         "Declare ownership and lifetime for every pointer, string, and buffer field. Owned/resource/container/result types must declare lifecycle cleanup/free intent, but do not generate real function signatures or behavior.",
         "Scalar/value ownership means the field value belongs to its containing struct; only owned pointer/string/buffer storage requires cleanup/free lifecycle.",
         "Do not generate function inventory, signature, behavior, wire mapping, calls_allowed, file layout, dependency graph, or code.",
-    ],
-    "type_inventory_repair_patch/v1": [
-        "Return a minimal patch for the current module's existing type_inventory_candidate; do not return or rewrite a complete type_inventory_candidate.",
-        "Repair is small_patch_only: preserve useful existing candidate content and only fix the validator_errors listed in failure_context.",
-        "Output only type_inventory_repair_patch/v1 with added_types, updated_types, added_assumptions, and added_unresolved_questions; never output candidate_id or a full types array.",
-        "Use added_types for missing artifact types, missing opaque handles, missing internal state, missing config, missing callback/event types, or genuinely needed unknown types.",
-        "Use updated_types only for small corrections to description/boundary metadata such as visibility, defined_in, fields, enum_values, callback_signature, ownership_lifetime, lifecycle, related_functions, dependencies, or status.",
-        "For unknown type references, prefer binding to an existing type before adding a new type.",
-        "For private leaks, repair the boundary by changing visibility/defined_in only when that is semantically valid; otherwise leave an unresolved question for the later signature stage to use a public opaque handle.",
-        "For ownership diagnostics, add only the missing ownership, lifetime, length_field, capacity_field, freed_by, or destroyed_by information.",
-        "If the listed errors cannot be fixed with a small patch, add added_unresolved_questions instead of rewriting unrelated types.",
-        "Do not delete, rename, batch rewrite, or change type_id/name/module_id/kind of existing types.",
-        "Do not include functions, signatures, state access, wire mappings, calls, files, dependency graphs, or code.",
-    ],
-    "function_inventory_candidate/v2": [
-        "Task definition: given one module, its mandatory module_artifacts, and the accepted type_inventory, plan an implementation-oriented function inventory for that module. module_artifacts FUNC entries are mandatory public/API seeds, not the complete function list and not a function-count ceiling.",
-        "Generate only a function inventory; do not include signatures, input/output contracts, state access, wire mappings, access paths, calls, file IDs, dependency graphs, or code.",
-        "function_id values must be new and unique within this candidate; function names must be unique.",
-        "module_id must be the current module or another module explicitly present in module_artifacts.",
-        "function_kind describes functional responsibility such as parser, serializer, handler, validator, lifecycle, resource, or helper. It is not the public/private visibility decision.",
-        "For every current_module_artifacts item with kind=FUNC, generate the same-name or equivalent public/exported artifact_required_public_api function; if it cannot be covered, add a blocking unresolved_questions item naming that artifact.",
-        "Do not treat module_artifacts as the complete function list. Do not produce only one-to-one artifact mirroring for non-trivial modules; add internal helpers needed for realistic implementation decomposition.",
-        "Use module role, artifact roles, dependencies, provider/consumer boundaries, doc_ref, capability_ids, and handler/message/field coverage to add internal functions that support later signature, behavior, wire/access, and call-contract lowering.",
-        "global_module_artifacts_reference is reference-only 5.3 context; cross-module function intent may reference provider_module_artifacts, not unrelated modules or provider private helpers.",
-        "Do not generate functions for kind=TYPE artifacts; TYPE artifacts seed canonical type/header/data lowering.",
-        "Reuse accepted type_inventory when describing related usage; do not invent parallel context/config/result/buffer types in function purpose text.",
-        "type_obligations are mandatory function responsibilities derived from accepted type_inventory; cover every obligation with one required_function_names entry or an equivalent same-module function.",
-        "If a type_obligation cannot be covered from evidence, add a blocking unresolved_questions item targeting the obligation_id or type_id.",
-        "Lifecycle type_obligations must be covered by resource_lifecycle/public_api/internal_helper functions as appropriate; do not use message handlers as create, destroy, free, cleanup, or release functions.",
-        "When covering type_obligations, generate functions in the current module with current-module names. Do not satisfy network type obligations by inventing mqtt_broker_init/mqtt_broker_run in the network module; use mqtt_server_create/mqtt_server_destroy or existing network FUNC artifacts.",
-        "Callback type_obligations should become a public registration boundary or an internal adapter according to visibility_hint and module boundary evidence.",
-        "Public/exported functions have two allowed sources: artifact_required_public_api from current module FUNC artifacts, or derived_public_api required by lifecycle completeness, consumer dependency, callback/runtime integration, file/header boundary, or cross-module service boundary.",
-        "For derived_public_api functions, export_reason must explain the stable boundary, public_api_role must describe the API role, and purpose must explain why the function cannot remain an internal helper. If that basis is weak, make it internal or add unresolved_questions.",
-        "Do not create public APIs from examples, guessed names, naming preference, or protocol terms that merely sound important. Internal helpers do not need module_artifacts support.",
-        "Selected decomposition hints in decomposition_context are heuristics for function families, not required function names; adapt them to the current module and do not copy them as prose.",
-        "selected_rule_ids, selected_decomposition_hints, expected_function_families_by_rule, recommended_concrete_slots_by_rule, and evidence_summary are the only decomposition rule context available to this prompt; do not assume access to the complete rule pool.",
-        "expected_function_families_by_rule lists responsibility families this module should try to cover with explainable public seeds or internal helpers.",
-        "recommended_concrete_slots_by_rule contains preferred concrete helper slots; do not turn abstract family names such as lifecycle_control, lookup_or_match, or create_configure_start_run_stop_destroy directly into function names.",
-        "Coverage expectation: every mandatory FUNC seed must be covered; non-trivial parser, serializer, runtime, session, routing, orchestration, or resource-owning modules should include representative internal function families for their major responsibilities.",
-        "If an expected function family cannot be reliably represented from the current trace/capability/module evidence, add an assumptions or unresolved_questions item explaining why.",
-        "Do not mechanically generate helpers with no trace, capability, purpose, or module responsibility support; every added internal helper must have an explainable purpose.",
-        "If one function purpose combines too many stages such as parse, validate, dispatch, state update, encode, send, and cleanup, split it into clearer inventory entries.",
-        "Cross-module service intent may reference only provider_module_artifacts FUNC names; do not call provider private helpers that are not declared as artifacts.",
-        "For a protocol key-flow module, generate distinct public lifecycle functions for runtime_create, runtime_start, runtime_run, and runtime_destroy using names ending in _create, _start, _run or _serve, and _destroy; do not reuse message handlers as lifecycle functions.",
-        "If the module owns decode, encode, dispatch, state-machine, lifecycle, or error-policy responsibilities, represent them with the matching function_kind values or add unresolved_questions.",
-        "coder_function_type must be ALGORITHM, EVENT, or ENTRYPOINT; handlers are not automatically EVENT.",
-        "Use EVENT only when the later behavior patch can provide trigger, precondition, input, action, state_change, response, and event_type; otherwise use ALGORITHM.",
-        "covers_handler_ids, covers_message_ids, and covers_field_ids may reference only existing handler, message, and protocol wire field IDs from legal_id_universe; covers_field_ids must never invent IDs for type_inventory fields or struct members such as field:mqtt_connection_t:fd.",
     ],
     "function_annotation_candidate/v1": [
         "Task definition: annotate deterministic function_planning_space seeds and propose only budgeted module-local helpers for concrete implementation boundaries in C code; do not generate a complete function inventory.",
@@ -199,18 +98,6 @@ STAGE_SEMANTIC_RULES = {
         "Do not propose cross-module private helper calls or unknown refs. If evidence is missing, record assumptions or unresolved_questions instead of inventing protocol facts.",
         "Do not generate signatures, input/output contracts, behavior, state_access, wire mapping, calls_allowed, file layout, dependency graph, or code.",
     ],
-    "function_inventory_repair_patch/v1": [
-        "Return a minimal patch for the current module's existing function_inventory_candidate; do not return or rewrite a complete function_inventory_candidate.",
-        "Repair is small_patch_only: preserve useful existing candidate content and only fix failure_context.validator_errors or the listed decomposition gaps.",
-        "Output only function_inventory_repair_patch/v1 with added_functions, updated_functions, added_assumptions, and added_unresolved_questions; never output candidate_id or a full functions array.",
-        "Preserve all existing functions. Do not delete, rename, or change function_id, name, module_id, visibility, api_surface, exported, export_reason, or public_api_role of existing functions.",
-        "Prefer added_functions for missing validator-required functions, missing_function_families, under-decomposed responsibilities, or coarse-function split helpers.",
-        "Prefer internal helpers for added_functions unless the repair_context proves a derived_public_api is required and provides a stable export_reason and public_api_role.",
-        "For coarse function repair, keep the existing public API as a facade or entrypoint and add internal helpers for parser, validator, dispatcher, state transition, encoder/send, cleanup, or error handling responsibilities as applicable.",
-        "updated_functions may only narrow purpose, grouping_hint, or status for an existing coarse facade/orchestrator; it must not alter identity or public API fields.",
-        "If a missing expected family cannot be safely repaired from trace/capability evidence, add an added_assumptions or added_unresolved_questions item instead of inventing unsupported behavior.",
-        "Do not include signatures, input/output contracts, state access, wire mappings, access paths, calls, dependency graphs, files, or code.",
-    ],
     "function_signature_patch/v1": [
         "Patch existing function_id values only; never add a new function.",
         "function_signature_updates must include exactly one update for every function in the batch.",
@@ -223,10 +110,10 @@ STAGE_SEMANTIC_RULES = {
         "Public C symbols must be globally unique. If the existing inventory name is generic or duplicated across modules, preserve signature.name and record an unresolved question instead of inventing an inconsistent raw symbol.",
         "For public lifecycle APIs, use module-owned protocol-prefixed names already present in the inventory and include concrete context/config parameters needed by the role, such as port, callbacks, user context, or the module handle.",
         "For parser/serializer helpers, prefer concrete buffer/cursor/out-param shapes like const uint8_t* + length + position + typed out parameter; avoid generic void* packet/message when a public packet or payload type is available.",
-        "For exported=true or api_surface=public functions, signature.raw, signature.name, return_type, and every param name/type must be complete enough to lower into a C header declaration.",
-        "Public function signatures must not use static storage class and must not expose private/internal-only types except through a public opaque handle.",
+        "For exported=true or api_surface=public functions, design a stable ABI boundary: signature.raw, signature.name, return_type, and every param name/type must lower into a C header without exposing private/internal-only types except through public opaque handles.",
+        "Public callback/event/visitor parameters must use an existing named public callback_type from signature_type_table or provider_public_types; do not encode them as anonymous C function pointers. If no suitable named callback_type exists, keep the conservative skeleton shape or record an unresolved question for type inventory.",
         "signature.params[].type is the C spelling; type_ref may use only legal_id_universe.type_ids or legal_id_universe.system_type_ids.",
-        "For public functions, non-primitive parameter and return types must be canonical_types, system types, or explicitly public opaque declarations; do not rely on compiler guesses.",
+        "For public functions, non-primitive parameter and return types must be canonical_types, named public callback_types, system types, or explicitly public opaque declarations; do not rely on compiler guesses.",
         "C primitive, POSIX, or common network types not present in the type pool must use an empty type_ref.",
         "Never use state_ids, message_ids, field_ids, paths, filenames, or natural-language names as type_ref.",
         "Header-facing public API dependencies should reference only public/exported types or system types; use public opaque handles or unresolved_questions for private implementation types.",
@@ -745,18 +632,6 @@ def module_artifacts_candidate_messages(context: dict[str, Any]) -> list[dict[st
     )
 
 
-def type_inventory_candidate_messages(context: dict[str, Any]) -> list[dict[str, str]]:
-    return _stage_messages(
-        prompt_name="type_inventory_candidate_prompt",
-        task="Given one module, its module_artifacts TYPE/FUNC seeds, and accepted core design context, plan the module type inventory. TYPE artifacts are mandatory seeds but not the complete type set.",
-        context_key="type_inventory_context",
-        context=context,
-        expected_schema="type_inventory_candidate/v1",
-        forbidden_fields=["function_id", "signature", "input_contract", "output_contract", "state_access", "wire_mapping", "access_paths", "calls_allowed", "file_id", "dependency_graph", "code"],
-        validator="validate_type_inventory_candidate",
-    )
-
-
 def type_filling_candidate_messages(context: dict[str, Any]) -> list[dict[str, str]]:
     return _stage_messages(
         prompt_name="type_filling_candidate_prompt",
@@ -766,30 +641,6 @@ def type_filling_candidate_messages(context: dict[str, Any]) -> list[dict[str, s
         expected_schema="type_filling_candidate/v1",
         forbidden_fields=["type_id", "function_id", "signature", "input_contract", "output_contract", "state_access", "wire_mapping", "access_paths", "calls_allowed", "file_id", "dependency_graph", "code"],
         validator="validate_type_filling_candidate",
-    )
-
-
-def type_inventory_repair_patch_messages(context: dict[str, Any]) -> list[dict[str, str]]:
-    return _stage_messages(
-        prompt_name="type_inventory_repair_patch_prompt",
-        task="Patch one module's type inventory with a small validator-targeted repair. Preserve useful content, fix only failure_context errors, and return only a type_inventory_repair_patch/v1 object.",
-        context_key="type_inventory_repair_context",
-        context=context,
-        expected_schema="type_inventory_repair_patch/v1",
-        forbidden_fields=["candidate_id", "types", "functions", "signature", "input_contract", "output_contract", "state_access", "wire_mapping", "access_paths", "calls_allowed", "file_id", "dependency_graph", "code"],
-        validator="validate_type_inventory_repair_patch",
-    )
-
-
-def function_inventory_candidate_messages(context: dict[str, Any]) -> list[dict[str, str]]:
-    return _stage_messages(
-        prompt_name="function_inventory_candidate_prompt",
-        task="Given one module and its mandatory module_artifacts, plan an implementation-oriented function inventory. FUNC artifacts are mandatory public/API seeds, not the complete function list; include required public APIs plus necessary internal functions for realistic implementation decomposition. Do not fill signatures or detailed contracts.",
-        context_key="function_inventory_context",
-        context=context,
-        expected_schema="function_inventory_candidate/v2",
-        forbidden_fields=["signature", "input_contract", "output_contract", "state_access", "wire_mapping", "access_paths", "calls_allowed", "dependency_graph", "code"],
-        validator="validate_function_inventory_candidate",
     )
 
 
@@ -806,18 +657,6 @@ def function_annotation_candidate_messages(context: dict[str, Any]) -> list[dict
         expected_schema="function_annotation_candidate/v1",
         forbidden_fields=["function_id", "signature", "input_contract", "output_contract", "state_access", "wire_mapping", "access_paths", "calls_allowed", "dependency_graph", "file_id", "code"],
         validator="validate_function_annotation_candidate",
-    )
-
-
-def function_inventory_repair_patch_messages(context: dict[str, Any]) -> list[dict[str, str]]:
-    return _stage_messages(
-        prompt_name="function_inventory_repair_patch_prompt",
-        task="Patch one module's function inventory with a small validator- or decomposition-targeted repair. Preserve useful content and return only a function_inventory_repair_patch/v1 object; do not rewrite the full inventory.",
-        context_key="function_inventory_repair_context",
-        context=context,
-        expected_schema="function_inventory_repair_patch/v1",
-        forbidden_fields=["candidate_id", "functions", "signature", "input_contract", "output_contract", "state_access", "wire_mapping", "access_paths", "calls_allowed", "dependency_graph", "file_id", "code"],
-        validator="validate_function_inventory_repair_patch",
     )
 
 

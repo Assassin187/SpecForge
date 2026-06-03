@@ -12,19 +12,17 @@ from ..schemas.implementation_plan import (
     FUNCTION_ANNOTATION_CANDIDATE_SCHEMA_VERSION,
     FUNCTION_BEHAVIOR_CONTRACT_PATCH_SCHEMA_VERSION,
     FUNCTION_INVENTORY_CANDIDATE_SCHEMA_VERSION,
-    FUNCTION_INVENTORY_REPAIR_PATCH_SCHEMA_VERSION,
     FUNCTION_SIGNATURE_PATCH_SCHEMA_VERSION,
     MODULE_ARTIFACTS_CANDIDATE_SCHEMA_VERSION,
     RUNTIME_ENTRYPOINT_CANDIDATE_SCHEMA_VERSION,
     SCHEMA_VERSION,
     TYPE_FILLING_CANDIDATE_SCHEMA_VERSION,
     TYPE_INVENTORY_CANDIDATE_SCHEMA_VERSION,
-    TYPE_INVENTORY_REPAIR_PATCH_SCHEMA_VERSION,
     VALIDATION_REPORT_SCHEMA_VERSION,
     WIRE_ACCESS_BINDING_PATCH_SCHEMA_VERSION,
 )
 from ..schemas.implementation_plan_candidates import validate_shape
-from ..stages.coder_spec_lowering import normalize_type_key
+from ..stages.coder_spec_lowering import is_anonymous_c_function_pointer_type, normalize_type_key
 from ..stages.function_inventory_decomposition import DECOMPOSITION_RULES, select_top_decomposition_hints
 from ..stages.implementation_plan import _handler_surfaces, _safe_id, _surface_units, _wire_fields
 from ..stages.implementation_plan_context import (
@@ -80,14 +78,6 @@ def _capability_values(module: dict[str, Any]) -> set[str]:
         for cap in module.get(key, [])
         if str(cap).strip()
     }
-
-
-def _is_key_flow_module(module: dict[str, Any]) -> bool:
-    caps = _capability_values(module)
-    return "role_composition" in caps or (
-        {"semantic_dispatch", "state_machine"}.issubset(caps)
-        and bool(caps & {"connection_termination", "timeout_handling", "protocol_error_policy"})
-    )
 
 
 def _lifecycle_name_matches(action: str, name: str) -> bool:
@@ -380,21 +370,6 @@ def _module_owns_public_lifecycle_name(module_id: str, name: str) -> bool:
     return normalized_module in normalized_name
 
 
-def _module_type_matches(types: list[dict[str, Any]], suggested_name: str, *, kind: str = "", contains: tuple[str, ...] = ()) -> bool:
-    suggested_key = normalize_type_key(suggested_name)
-    for item in types:
-        name = str(item.get("name", ""))
-        name_key = normalize_type_key(name)
-        if kind and str(item.get("kind", "")) != kind:
-            continue
-        if suggested_key and name_key == suggested_key:
-            return True
-        lower_name = name.lower()
-        if contains and all(part in lower_name for part in contains):
-            return True
-    return False
-
-
 def _field_has_variant_boundary(field: dict[str, Any]) -> bool:
     return (
         str(field.get("field_type", "")).lower() == "union"
@@ -504,10 +479,6 @@ def _find_packet_container(types: list[dict[str, Any]], suggested_name: str) -> 
     return ranked[0][1]
 
 
-def _has_packet_container(types: list[dict[str, Any]], suggested_name: str) -> bool:
-    return _find_packet_container(types, suggested_name) is not None
-
-
 def _find_payload_struct(types: list[dict[str, Any]], suggested_name: str, target: dict[str, Any]) -> dict[str, Any] | None:
     message = ""
     source_messages = target.get("source_message_ids", [])
@@ -524,10 +495,6 @@ def _find_payload_struct(types: list[dict[str, Any]], suggested_name: str, targe
         if message and message in name_key.replace("_", "") and "payload" in name_key:
             message_matches.append(item)
     return message_matches[0] if message_matches else None
-
-
-def _has_payload_struct(types: list[dict[str, Any]], suggested_name: str, target: dict[str, Any]) -> bool:
-    return _find_payload_struct(types, suggested_name, target) is not None
 
 
 def _payload_fields_cover_target(type_item: dict[str, Any], target: dict[str, Any]) -> bool:
@@ -1158,41 +1125,6 @@ def validate_type_inventory_candidate(candidate: dict[str, Any], module_artifact
     return diagnostics
 
 
-def validate_type_inventory_repair_patch(patch: dict[str, Any], candidate: dict[str, Any], module_artifacts: list[dict[str, Any]], *, path: str | None = None) -> list[PlanningDiagnostic]:
-    diagnostics = _shape(patch, TYPE_INVENTORY_REPAIR_PATCH_SCHEMA_VERSION, path=path)
-    if has_errors(diagnostics):
-        return diagnostics
-    module_id = str(patch.get("module_id", ""))
-    if module_id not in _module_artifact_ids(module_artifacts):
-        diagnostics.append(PlanningDiagnostic("error", "repair_unknown_module", f"repair patch module_id '{module_id}' is not a module", path))
-    if module_id != str(candidate.get("module_id", "")):
-        diagnostics.append(PlanningDiagnostic("error", "repair_module_mismatch", "repair patch module_id must match the current candidate module_id", path))
-    existing_ids = {str(item.get("type_id", "")) for item in candidate.get("types", []) if isinstance(item, dict)}
-    existing_names = {str(item.get("name", "")) for item in candidate.get("types", []) if isinstance(item, dict)}
-    added_ids: set[str] = set()
-    added_names: set[str] = set()
-    for item in patch.get("added_types", []):
-        type_id = str(item.get("type_id", ""))
-        name = str(item.get("name", ""))
-        if str(item.get("module_id", "")) != module_id:
-            diagnostics.append(PlanningDiagnostic("error", "repair_added_type_wrong_module", f"added type '{type_id}' is not in repaired module", path))
-        if type_id in existing_ids or type_id in added_ids:
-            diagnostics.append(PlanningDiagnostic("error", "repair_duplicate_added_type_id", f"added type_id '{type_id}' conflicts with existing or added type", path))
-        if name in existing_names or name in added_names:
-            diagnostics.append(PlanningDiagnostic("error", "repair_duplicate_added_type_name", f"added type name '{name}' conflicts with existing or added type", path))
-        added_ids.add(type_id)
-        added_names.add(name)
-    seen_updates: set[str] = set()
-    for update in patch.get("updated_types", []):
-        type_id = str(update.get("type_id", ""))
-        if type_id not in existing_ids:
-            diagnostics.append(PlanningDiagnostic("error", "repair_unknown_update_type", f"updated type '{type_id}' is not in the current candidate", path))
-        if type_id in seen_updates:
-            diagnostics.append(PlanningDiagnostic("error", "repair_duplicate_update_type", f"duplicate update for type '{type_id}'", path))
-        seen_updates.add(type_id)
-    return diagnostics
-
-
 def validate_type_filling_candidate(candidate: dict[str, Any], module_artifacts: list[dict[str, Any]], *, path: str | None = None) -> list[PlanningDiagnostic]:
     diagnostics = _shape(candidate, TYPE_FILLING_CANDIDATE_SCHEMA_VERSION, path=path)
     if has_errors(diagnostics):
@@ -1552,41 +1484,6 @@ def validate_function_annotation_candidate(candidate: dict[str, Any], module_art
     return diagnostics
 
 
-def validate_function_inventory_repair_patch(patch: dict[str, Any], candidate: dict[str, Any], module_artifacts: list[dict[str, Any]], *, path: str | None = None) -> list[PlanningDiagnostic]:
-    diagnostics = _shape(patch, FUNCTION_INVENTORY_REPAIR_PATCH_SCHEMA_VERSION, path=path)
-    if has_errors(diagnostics):
-        return diagnostics
-    module_id = str(patch.get("module_id", ""))
-    if module_id not in _module_artifact_ids(module_artifacts):
-        diagnostics.append(PlanningDiagnostic("error", "repair_unknown_module", f"repair patch module_id '{module_id}' is not a module", path))
-    if module_id != str(candidate.get("module_id", "")):
-        diagnostics.append(PlanningDiagnostic("error", "repair_module_mismatch", "repair patch module_id must match the current candidate module_id", path))
-    existing_ids = {str(function.get("function_id", "")) for function in candidate.get("functions", []) if isinstance(function, dict)}
-    existing_names = {str(function.get("name", "")) for function in candidate.get("functions", []) if isinstance(function, dict)}
-    added_ids: set[str] = set()
-    added_names: set[str] = set()
-    for function in patch.get("added_functions", []):
-        function_id = str(function.get("function_id", ""))
-        name = str(function.get("name", ""))
-        if str(function.get("module_id", "")) != module_id:
-            diagnostics.append(PlanningDiagnostic("error", "repair_added_function_wrong_module", f"added function '{function_id}' is not in repaired module", path))
-        if function_id in existing_ids or function_id in added_ids:
-            diagnostics.append(PlanningDiagnostic("error", "repair_duplicate_added_function_id", f"added function_id '{function_id}' conflicts with existing or added function", path))
-        if name in existing_names or name in added_names:
-            diagnostics.append(PlanningDiagnostic("error", "repair_duplicate_added_function_name", f"added function name '{name}' conflicts with existing or added function", path))
-        added_ids.add(function_id)
-        added_names.add(name)
-    seen_updates: set[str] = set()
-    for update in patch.get("updated_functions", []):
-        function_id = str(update.get("function_id", ""))
-        if function_id not in existing_ids:
-            diagnostics.append(PlanningDiagnostic("error", "repair_unknown_update_function", f"updated function '{function_id}' is not in the current candidate", path))
-        if function_id in seen_updates:
-            diagnostics.append(PlanningDiagnostic("error", "repair_duplicate_update_function", f"duplicate update for function '{function_id}'", path))
-        seen_updates.add(function_id)
-    return diagnostics
-
-
 def _batch_function_ids(patch: dict[str, Any], key: str) -> set[str]:
     return {str(item.get("function_id", "")) for item in patch.get(key, []) if isinstance(item, dict)}
 
@@ -1672,6 +1569,8 @@ def validate_function_signature_patch(patch: dict[str, Any], draft: dict[str, An
                 diagnostics.append(PlanningDiagnostic("error", "unknown_signature_param_type_ref", f"function '{function_id}' references unknown type_ref '{type_ref}'", path))
             if is_public:
                 raw_param_type = str(param.get("type", ""))
+                if not type_ref and is_anonymous_c_function_pointer_type(raw_param_type):
+                    diagnostics.append(PlanningDiagnostic("error", "public_signature_uses_anonymous_callback_pointer", f"public function '{function_id}' exposes an anonymous callback pointer parameter '{param.get('name')}'", path))
                 inv_type = type_inventory.get(type_ref) if type_ref else None
                 if inv_type is None and raw_param_type.strip().startswith("struct "):
                     inv_type = type_inventory_by_name.get(normalize_type_key(_strip_c_type(raw_param_type)))
@@ -2130,9 +2029,7 @@ def _has_cycle(edges: list[tuple[str, str]]) -> bool:
 validate_core_design = validate_core_design_candidate
 validate_module_artifacts = validate_module_artifacts_candidate
 validate_type_inventory = validate_type_inventory_candidate
-validate_type_inventory_repair = validate_type_inventory_repair_patch
 validate_function_inventory = validate_function_inventory_candidate
-validate_function_inventory_repair = validate_function_inventory_repair_patch
 validate_function_signatures = validate_function_signature_patch
 validate_function_behavior_contracts = validate_function_behavior_contract_patch
 validate_wire_access_binding = validate_wire_access_binding_patch

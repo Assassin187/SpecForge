@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from copy import deepcopy
 from typing import Any
 
 from ..diagnostics import PlanningDiagnostic
@@ -376,24 +375,6 @@ TYPE_INVENTORY_SCHEMA = _object(
     }
 )
 
-TYPE_INVENTORY_UPDATE_SCHEMA = _object(
-    {
-        "type_id": STRING,
-        "visibility": _scalar("string", enum=TYPE_INVENTORY_VISIBILITY_VALUES),
-        "defined_in": _scalar("string", enum=TYPE_INVENTORY_DEFINED_IN_VALUES),
-        "purpose": STRING,
-        "fields": _array(TYPE_INVENTORY_FIELD_SCHEMA),
-        "enum_values": _array(TYPE_INVENTORY_ENUM_VALUE_SCHEMA),
-        "callback_signature": CALLBACK_SIGNATURE_SCHEMA,
-        "ownership_lifetime": STRING,
-        "lifecycle": TYPE_LIFECYCLE_SCHEMA,
-        "related_functions": STRING_LIST,
-        "dependencies": STRING_LIST,
-        "status": STATUS,
-    },
-    required=["type_id"],
-)
-
 FUNCTION_SEED_ANNOTATION_SCHEMA = _object(
     {
         "seed_id": STRING,
@@ -425,15 +406,6 @@ FUNCTION_OPTIONAL_PROPOSAL_SCHEMA = _object(
         "expansion_reason": STRING,
         "source_refs": STRING_LIST,
         "trace_ref_keys": STRING_LIST,
-        "status": STATUS,
-    }
-)
-
-FUNCTION_INVENTORY_UPDATE_SCHEMA = _object(
-    {
-        "function_id": STRING,
-        "purpose": STRING,
-        "grouping_hint": STRING,
         "status": STATUS,
     }
 )
@@ -794,18 +766,6 @@ SCHEMA_SPECS: dict[str, SchemaSpec] = {
             "expansion_notes": STRING_LIST,
         }
     ),
-    "type_inventory_repair_patch/v1": _object(
-        {
-            "schema_version": _scalar("string", enum={"type_inventory_repair_patch/v1"}),
-            "patch_id": STRING,
-            "producer": PRODUCER_SCHEMA,
-            "module_id": STRING,
-            "added_types": _array(TYPE_INVENTORY_SCHEMA),
-            "updated_types": _array(TYPE_INVENTORY_UPDATE_SCHEMA),
-            "added_assumptions": _array(ASSUMPTION_SCHEMA),
-            "added_unresolved_questions": _array(UNRESOLVED_QUESTION_SCHEMA),
-        }
-    ),
     "function_inventory_candidate/v2": _object(
         {
             "schema_version": _scalar("string", enum={"function_inventory_candidate/v2"}),
@@ -828,18 +788,6 @@ SCHEMA_SPECS: dict[str, SchemaSpec] = {
             "assumptions": _array(ASSUMPTION_SCHEMA),
             "unresolved_questions": _array(UNRESOLVED_QUESTION_SCHEMA),
             "decomposition_notes": STRING_LIST,
-        }
-    ),
-    "function_inventory_repair_patch/v1": _object(
-        {
-            "schema_version": _scalar("string", enum={"function_inventory_repair_patch/v1"}),
-            "patch_id": STRING,
-            "producer": PRODUCER_SCHEMA,
-            "module_id": STRING,
-            "added_functions": _array(FUNCTION_INVENTORY_SCHEMA),
-            "updated_functions": _array(FUNCTION_INVENTORY_UPDATE_SCHEMA),
-            "added_assumptions": _array(ASSUMPTION_SCHEMA),
-            "added_unresolved_questions": _array(UNRESOLVED_QUESTION_SCHEMA),
         }
     ),
     "function_signature_patch/v1": _object(
@@ -1006,7 +954,3 @@ def _validate_node(value: Any, spec: SchemaSpec, path: str, diagnostics: list[Pl
             diagnostics.append(PlanningDiagnostic("error", "invalid_field_type", f"{path} must be an integer", path))
         return
     diagnostics.append(PlanningDiagnostic("error", "unknown_shape_type", f"{path} uses unknown schema type '{kind}'", path))
-
-
-def copy_schema_spec(schema_version: str) -> SchemaSpec:
-    return deepcopy(SCHEMA_SPECS[schema_version])

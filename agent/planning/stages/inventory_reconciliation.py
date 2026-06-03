@@ -565,7 +565,7 @@ def reconcile_type_filling_candidate(space: dict[str, Any], filling_candidate: d
     candidate = {
         "schema_version": "type_inventory_candidate/v1",
         "candidate_id": f"candidate:type_inventory:{space.get('module_id')}",
-        "producer": _producer("5.4a_type_inventory", "type_filling_candidate_prompt"),
+        "producer": _producer("5.3_type_data", "type_filling_candidate_prompt"),
         "module_id": str(space.get("module_id", "")),
         "types": types,
         "assumptions": deepcopy(filling_candidate.get("assumptions", [])),
@@ -742,7 +742,7 @@ def reconcile_function_annotation_candidate(space: dict[str, Any], annotation_ca
     candidate = {
         "schema_version": "function_inventory_candidate/v2",
         "candidate_id": f"candidate:function_inventory:{space.get('module_id')}",
-        "producer": _producer("5.4b_function_inventory", "function_annotation_candidate_prompt"),
+        "producer": _producer("5.4a_function_inventory", "function_annotation_candidate_prompt"),
         "module_id": str(space.get("module_id", "")),
         "functions": functions,
         "assumptions": deepcopy(annotation_candidate.get("assumptions", [])),

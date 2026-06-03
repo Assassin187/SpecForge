@@ -130,7 +130,6 @@ STEP_FILENAMES = {
     "protocol_profile": "004_protocol_profile.json",
     "engineering_constraints": "005_engineering_constraints.json",
     "architecture_context": "006_architecture_context.json",
-    "llm_architecture_candidates": "006_llm_architecture_candidates.json",
     "architecture_candidates": "006_architecture_candidates.json",
     "architecture_ranking": "006_architecture_ranking.json",
     "selected_architecture": "006_selected_architecture.json",
@@ -172,48 +171,11 @@ STEP_FILENAMES = {
     "planning_validation_report": "014_planning_validation_report.json",
 }
 
-LEGACY_STEP_FILENAMES = {
-    "core_design_candidate": "007_5_2_core_design_candidate.json",
-    "core_design_validation_report": "007_5_2_core_design_validation_report.json",
-    "module_artifacts_candidate": "007_5_3_module_artifacts_candidate.json",
-    "module_artifacts_validation_report": "007_5_3_module_artifacts_validation_report.json",
-    "type_planning_space": "007_5_4a_type_planning_space.json",
-    "type_inventory_candidate": "007_5_4a_type_inventory_candidate.json",
-    "type_inventory_validation_report": "007_5_4a_type_inventory_validation_report.json",
-    "type_reconciliation_report": "007_5_4a_type_reconciliation_report.json",
-    "type_inventory_diagnostics": "007_5_4a_type_inventory_diagnostics.json",
-    "type_obligations": "007_5_4a_type_obligations.json",
-    "type_inventory_attempt_summary": "007_5_4a_type_inventory_attempt_summary.json",
-    "function_planning_space": "007_5_4b_function_planning_space.json",
-    "function_inventory_candidate": "007_5_4b_function_inventory_candidate.json",
-    "function_inventory_validation_report": "007_5_4b_function_inventory_validation_report.json",
-    "function_reconciliation_report": "007_5_4b_function_reconciliation_report.json",
-    "function_inventory_diagnostics": "007_5_4b_function_inventory_diagnostics.json",
-    "function_inventory_attempt_summary": "007_5_4b_function_inventory_attempt_summary.json",
-    "function_signature_patch": "007_5_4c_function_signature_patch.json",
-    "function_signature_validation_report": "007_5_4c_function_signature_validation_report.json",
-    "function_behavior_patch": "007_5_4d_function_behavior_contract_patch.json",
-    "function_behavior_validation_report": "007_5_4d_function_behavior_validation_report.json",
-    "wire_access_binding_patch": "007_5_4e_wire_access_binding_patch.json",
-    "wire_access_binding_validation_report": "007_5_4e_wire_access_binding_validation_report.json",
-    "calls_allowed_candidate": "007_5_4f_calls_allowed_candidate.json",
-    "calls_allowed_validation_report": "007_5_4f_calls_allowed_validation_report.json",
-    "file_layout_candidate": "007_5_5_file_layout_candidate.json",
-    "file_layout_validation_report": "007_5_5_file_layout_validation_report.json",
-    "runtime_entrypoint_candidate": "007_5_4g_runtime_entrypoint_candidate.json",
-    "runtime_entrypoint_validation_report": "007_5_4g_runtime_entrypoint_validation_report.json",
-}
-
 AGENT_LOG_ARTIFACT_KEYS = {
     "protocol_profile_patch_candidate",
     "type_inventory_attempt_summary",
     "function_inventory_attempt_summary",
     "dependency_repair_patch",
-}
-LEGACY_AGENT_LOG_ARTIFACT_KEYS = {
-    "function_signature_patch",
-    "function_behavior_patch",
-    "wire_access_binding_patch",
 }
 
 TOP_LEVEL_RESUME_STAGES = (
@@ -244,8 +206,6 @@ RESUME_STAGE_ALIASES = {
     "5.1": "implementation_plan_5_1",
     "5.1_plan_skeleton": "implementation_plan_5_1",
     "implementation_plan_skeleton": "implementation_plan_5_1",
-    "5.2": "implementation_plan_5_2a",
-    "5.2_module_spec": "implementation_plan_5_2a",
     "5.2a": "implementation_plan_5_2a",
     "5.2a_core_design": "implementation_plan_5_2a",
     "core_design": "implementation_plan_5_2a",
@@ -253,42 +213,29 @@ RESUME_STAGE_ALIASES = {
     "5.2b_module_artifacts": "implementation_plan_5_2b",
     "5.3": "implementation_plan_5_3",
     "5.3_type_data": "implementation_plan_5_3",
-    "5.3_module_artifacts": "implementation_plan_5_2b",
     "module_artifacts": "implementation_plan_5_2b",
     "type_inventory": "implementation_plan_5_3",
-    "5.4a_type_inventory": "implementation_plan_5_3",
-    "5.4": "implementation_plan_5_4a",
-    "5.4_function_spec": "implementation_plan_5_4a",
     "5.4a": "implementation_plan_5_4a",
     "5.4a_function_inventory": "implementation_plan_5_4a",
     "5.4b": "implementation_plan_5_4b",
     "5.4b_function_signatures": "implementation_plan_5_4b",
-    "5.4b_function_inventory": "implementation_plan_5_4a",
     "function_inventory": "implementation_plan_5_4a",
     "5.4c": "implementation_plan_5_4c",
     "5.4c_behavior_contract": "implementation_plan_5_4c",
-    "5.4c_signature_planning": "implementation_plan_5_4b",
     "function_signatures": "implementation_plan_5_4b",
     "5.4d": "implementation_plan_5_4d",
     "5.4d_wire_access_binding": "implementation_plan_5_4d",
-    "5.4d_behavior_contract": "implementation_plan_5_4c",
     "function_behavior": "implementation_plan_5_4c",
     "5.4e": "implementation_plan_5_4e",
     "5.4e_call_contracts": "implementation_plan_5_4e",
-    "5.4e_wire_access_binding": "implementation_plan_5_4d",
     "wire_access_binding": "implementation_plan_5_4d",
-    "5.4f_call_planning": "implementation_plan_5_4e",
     "calls_allowed": "implementation_plan_5_4e",
     "call_contracts": "implementation_plan_5_4e",
-    "5.5": "implementation_plan_5_5a",
-    "5.5_file_spec": "implementation_plan_5_5a",
     "5.5a": "implementation_plan_5_5a",
     "5.5a_file_layout": "implementation_plan_5_5a",
-    "5.5_file_layout": "implementation_plan_5_5a",
     "file_layout": "implementation_plan_5_5a",
     "5.5b": "implementation_plan_5_5b",
     "5.5b_runtime_entrypoint": "implementation_plan_5_5b",
-    "5.4g_runtime_entrypoint": "implementation_plan_5_5b",
     "runtime_entrypoint": "implementation_plan_5_5b",
     "5.6": "implementation_plan_5_6",
     "5.6_dependency_generation": "implementation_plan_5_6",
@@ -843,59 +790,10 @@ def _should_stop_after(stage: str, stop_after_stage: str | None) -> bool:
 
 def _artifact_path(root: Path, key: str) -> Path:
     filename = STEP_FILENAMES[key]
-    legacy_filename = LEGACY_STEP_FILENAMES.get(key)
-    if key in LEGACY_AGENT_LOG_ARTIFACT_KEYS:
-        preferred = root / "_step_logs" / filename
-        if preferred.exists():
-            return preferred
-        if legacy_filename:
-            legacy_step = root / "_step_logs" / legacy_filename
-            if legacy_step.exists():
-                return legacy_step
-        legacy_agent = root / "_agent_logs" / filename
-        if legacy_agent.exists():
-            return legacy_agent
-        if legacy_filename:
-            legacy_agent_step = root / "_agent_logs" / legacy_filename
-            if legacy_agent_step.exists():
-                return legacy_agent_step
-        return preferred
     if key in AGENT_LOG_ARTIFACT_KEYS:
-        preferred = root / "_agent_logs" / filename
-        if preferred.exists():
-            return preferred
-        if legacy_filename:
-            legacy_agent = root / "_agent_logs" / legacy_filename
-            if legacy_agent.exists():
-                return legacy_agent
-        legacy = root / "_step_logs" / filename
-        if legacy.exists():
-            return legacy
-        if legacy_filename:
-            legacy_step = root / "_step_logs" / legacy_filename
-            if legacy_step.exists():
-                return legacy_step
-        return preferred
+        return root / "_agent_logs" / filename
     if "validation_report" in filename:
-        preferred = root / "_validation_reports" / filename
-        if preferred.exists():
-            return preferred
-        if legacy_filename:
-            legacy_report = root / "_validation_reports" / legacy_filename
-            if legacy_report.exists():
-                return legacy_report
-        legacy = root / "_step_logs" / filename
-        if legacy.exists():
-            return legacy
-        if legacy_filename:
-            legacy_step = root / "_step_logs" / legacy_filename
-            if legacy_step.exists():
-                return legacy_step
-        return preferred
-    if legacy_filename:
-        legacy = root / "_step_logs" / legacy_filename
-        if legacy.exists():
-            return legacy
+        return root / "_validation_reports" / filename
     return root / "_step_logs" / filename
 
 
@@ -1848,7 +1746,7 @@ class PlanningAgent:
                     "candidate_id": "candidate:type_inventory:all_modules",
                     "producer": {
                         "stage": "5.3_type_data",
-                        "prompt_name": "type_inventory_candidate_prompt",
+                        "prompt_name": "type_filling_candidate_prompt",
                         "prompt_version": "aggregate",
                     },
                     "module_id": "all_modules",
@@ -2002,7 +1900,7 @@ class PlanningAgent:
                     "candidate_id": "candidate:function_inventory:all_modules",
                     "producer": {
                         "stage": "5.4a_function_inventory",
-                        "prompt_name": "function_inventory_candidate_prompt",
+                        "prompt_name": "function_annotation_candidate_prompt",
                         "prompt_version": "aggregate",
                     },
                     "module_id": "all_modules",
