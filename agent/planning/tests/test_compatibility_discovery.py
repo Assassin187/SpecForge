@@ -11,7 +11,7 @@ from agent.coder.specs import load_spec_bundle_from_root
 from agent.planning.adapters.facts_input import build_planning_ir
 from agent.planning.adapters.target_profile import load_target_profile
 from agent.planning.config import LLMStageConfig, PlanningConfig
-from agent.planning.orchestrator import PlanningAgent, compare_output_to_reference, find_latest_resume_source, validate_resume_prefix, validate_resume_source_dir
+from agent.planning.orchestrator import PlanningAgent, STEP_FILENAMES, compare_output_to_reference, find_latest_resume_source, validate_resume_prefix, validate_resume_source_dir
 from agent.planning.stages.architecture import select_architecture
 from agent.planning.stages.constraints import activate_constraints
 from agent.planning.stages.protocol_profile import build_protocol_profile
@@ -175,6 +175,7 @@ class PlanningCompatibilityDiscoveryTests(unittest.TestCase):
                 "006_architecture_ranking.json",
                 "006_selected_architecture.json",
                 "007_implementation_plan.json",
+                "012_planning_repair_statistics.json",
                 "013_token_usage_summary.json",
             ):
                 self.assertTrue((result.output_dir / "_step_logs" / filename).exists(), filename)
@@ -186,6 +187,10 @@ class PlanningCompatibilityDiscoveryTests(unittest.TestCase):
                 self.assertFalse((result.output_dir / "_step_logs" / filename).exists(), filename)
             self.assertTrue((result.output_dir / "coder_manifest.json").exists())
             self.assertTrue((result.output_dir / "spec_bundle").exists())
+            self.assertFalse(list((result.output_dir / "spec_bundle").glob("planning_*.json")))
+            self.assertTrue((result.output_dir / "planning_traceability.json").exists())
+            self.assertTrue((result.output_dir / "planning_decisions.json").exists())
+            self.assertTrue((result.output_dir / "planning_ir_refs.json").exists())
             self.assertFalse(list((result.output_dir / "spec_bundle").rglob("functions")))
             self.assertTrue([path for path in (result.output_dir / "spec_bundle").rglob("*_spec.json") if path.name != "mqtt_module_spec.json"])
             profile = json.loads((result.output_dir / "_step_logs" / "004_protocol_profile.json").read_text(encoding="utf-8"))
@@ -199,6 +204,9 @@ class PlanningCompatibilityDiscoveryTests(unittest.TestCase):
             token_usage = json.loads((result.output_dir / "_step_logs" / "013_token_usage_summary.json").read_text(encoding="utf-8"))
             self.assertEqual(token_usage["schema_version"], "planning_token_usage_summary/v1")
             self.assertEqual(token_usage["total"]["total_tokens"], 0)
+            repair_stats = json.loads((result.output_dir / "_step_logs" / "012_planning_repair_statistics.json").read_text(encoding="utf-8"))
+            self.assertEqual(repair_stats["schema_version"], "planning_repair_statistics/v1")
+            self.assertIn("implementation_plan_5_7", repair_stats["substage_pass_rates"]["by_stage_key"])
             bundle = load_spec_bundle_from_root(result.output_dir / "spec_bundle")
             self.assertFalse([diag.__dict__ for diag in bundle.diagnostics if diag.level == "error"])
             report = json.loads((result.output_dir / "_validation_reports" / "014_planning_validation_report.json").read_text(encoding="utf-8"))
@@ -414,6 +422,61 @@ class PlanningCompatibilityDiscoveryTests(unittest.TestCase):
             self.assertEqual(set(temperature_by_prompt["core_design_candidate_prompt"]), {0.61})
             self.assertEqual(set(temperature_by_prompt["module_artifacts_candidate_prompt"]), {0.19})
 
+    def test_validator_repair_statistics_track_inventory_retry(self) -> None:
+        facts = ROOT / "agent" / "facts" / "gold_facts" / "mqtt_min" / "protocol_facts.json"
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            tmp = Path(raw_tmp)
+            target = _write_target_profile(tmp, role="broker")
+            target_profile, target_diags = load_target_profile(target)
+            self.assertIsNotNone(target_profile, [diag.__dict__ for diag in target_diags])
+            planning_ir, ir_diags = build_planning_ir(facts, target_profile)
+            self.assertIsNotNone(planning_ir, [diag.__dict__ for diag in ir_diags])
+            profile = build_protocol_profile(planning_ir)
+            constraints = activate_constraints(profile)
+            architecture_candidates = current_architecture_candidates(planning_ir, profile, constraints)
+            sent_invalid_type_candidate = False
+
+            def fake_request(*, prompt_name, messages, config, temperature=None, enable_thinking=False):
+                nonlocal sent_invalid_type_candidate
+                if prompt_name == "protocol_profile_patch_prompt":
+                    return _noop_profile_patch_candidate(), [], {"mocked": True}
+                if prompt_name == "architecture_candidate_prompt":
+                    return architecture_candidates, [], {"mocked": True}
+                if prompt_name == "architecture_ranking_prompt":
+                    return _ranking_candidate(messages), [], {"mocked": True}
+                if prompt_name == "type_filling_candidate_prompt":
+                    payload = json.loads(messages[1]["content"])
+                    context = payload["type_filling_context"]
+                    module_id = str(context.get("module_id") or context.get("module_artifact", {}).get("module_id", ""))
+                    if module_id == "transport_runtime" and not sent_invalid_type_candidate:
+                        sent_invalid_type_candidate = True
+                        return {
+                            "schema_version": "type_filling_candidate/v1",
+                            "candidate_id": "candidate:type_filling:bad_module",
+                            "producer": {"stage": "5.3_type_data", "prompt_name": "type_filling_candidate_prompt", "prompt_version": "test"},
+                            "module_id": "missing_module",
+                            "slot_fillings": [],
+                            "optional_type_proposals": [],
+                            "assumptions": [],
+                            "unresolved_questions": [],
+                            "expansion_notes": [],
+                        }, [], {"mocked": True}
+                inventory_candidate = _fallback_inventory_candidate(prompt_name, messages)
+                if inventory_candidate is not None:
+                    return inventory_candidate, [], {"mocked": True}
+                return None, [], {"mocked": True}
+
+            with patch("agent.planning.orchestrator.request_json_candidate", side_effect=fake_request):
+                result = PlanningAgent(facts, target, output_dir=tmp / "run", config=PlanningConfig(llm_max_retries=1)).plan(stop_after_stage="5.3")
+
+            self.assertTrue(result.success, [diag.__dict__ for diag in result.diagnostics])
+            stats = json.loads((result.output_dir / "_step_logs" / STEP_FILENAMES["planning_repair_statistics"]).read_text(encoding="utf-8"))
+            stage_stats = stats["repair_success_summary"]["by_stage_key"]["implementation_plan_5_3"]
+            self.assertGreaterEqual(stage_stats["validator_error_count"], 1)
+            self.assertGreaterEqual(stage_stats["repair_attempt_count"], 1)
+            self.assertGreaterEqual(stage_stats["repair_success_count"], 1)
+            self.assertEqual(stage_stats["repair_success_rate"], 1.0)
+
     def test_resume_from_implementation_plan_substage_inherits_prior_substage_artifacts(self) -> None:
         facts = ROOT / "agent" / "facts" / "gold_facts" / "mqtt_min" / "protocol_facts.json"
         with tempfile.TemporaryDirectory() as raw_tmp:
@@ -465,10 +528,27 @@ class PlanningCompatibilityDiscoveryTests(unittest.TestCase):
                 with patch("agent.planning.orchestrator.request_json_candidate", side_effect=source_request):
                     source = PlanningAgent(facts, target, output_dir=source_dir).plan()
                 self.assertTrue(source.success, [diag.__dict__ for diag in source.diagnostics])
+                type_inventory_path = source_dir / "_step_logs" / "007_5_3_type_data_inventory_candidate.json"
+                type_inventory = json.loads(type_inventory_path.read_text(encoding="utf-8"))
+                function_inventory = json.loads((source_dir / "_step_logs" / "007_5_4a_function_inventory_candidate.json").read_text(encoding="utf-8"))
+                release_modules = {
+                    str(function.get("module_id", ""))
+                    for function in function_inventory["functions"]
+                    if str(function.get("name", "")).endswith(("_cancel", "_destroy", "_free", "_cleanup", "_close"))
+                }
+                drift_type = next(
+                    item
+                    for item in type_inventory["types"]
+                    if str(item.get("module_id", "")) in release_modules and isinstance(item.get("lifecycle"), dict)
+                )
+                drift_type["lifecycle"]["destroyed_by"] = ["timer_expiry"]
+                drift_type["lifecycle"]["freed_by"] = ["timer_expiry"]
+                type_inventory_path.write_text(json.dumps(type_inventory, indent=2), encoding="utf-8")
                 with patch("agent.planning.orchestrator.request_json_candidate", side_effect=resumed_request):
                     resumed = PlanningAgent(facts, target, output_dir=resumed_dir).plan(resume_from_stage="5.4d_wire_access_binding")
 
             self.assertTrue(resumed.success, [diag.__dict__ for diag in resumed.diagnostics])
+            self.assertFalse([diag for diag in resumed.diagnostics if diag.code == "type_function_reference_unresolved"])
             self.assertIn("wire_access_binding_patch_prompt", resumed_prompts)
             self.assertIn("function_behavior_patch", resumed.artifact_paths)
             manifest = json.loads((resumed.output_dir / "_step_logs" / "000_planning_run_manifest.json").read_text(encoding="utf-8"))

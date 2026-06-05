@@ -1,0 +1,1875 @@
+{
+  "schema_version": "protocol_facts/v2alpha1",
+  "protocol_meta": {
+    "protocol_name": "coap",
+    "source_documents": [
+      "/home/ljf/SpecForge/protocol-example/coap/README.md",
+      "/home/ljf/SpecForge/protocol-example/coap/main.c",
+      "/home/ljf/SpecForge/protocol-example/coap/protocol/coap_message.h",
+      "/home/ljf/SpecForge/protocol-example/coap/protocol/coap_message.c",
+      "/home/ljf/SpecForge/protocol-example/coap/protocol/coap_codec.h",
+      "/home/ljf/SpecForge/protocol-example/coap/protocol/coap_codec.c",
+      "/home/ljf/SpecForge/protocol-example/coap/server/coap_server.c",
+      "/home/ljf/SpecForge/protocol-example/coap/resource/resource_router.h",
+      "/home/ljf/SpecForge/protocol-example/coap/resource/resource_router.c",
+      "/home/ljf/SpecForge/protocol-example/coap/network/udp_server.h",
+      "/home/ljf/SpecForge/protocol-example/coap/network/udp_server.c"
+    ],
+    "document_count": 11,
+    "fact_source_type": "example_implementation",
+    "target_scope": "minimal CoAP over UDP server subset for planning-agent debugging"
+  },
+  "transport": {
+    "network_stack": {
+      "value": "udp",
+      "evidence_refs": [
+        "readme_scope",
+        "udp_runtime"
+      ]
+    },
+    "connection_model": {
+      "value": "connectionless",
+      "evidence_refs": [
+        "readme_scope",
+        "udp_runtime"
+      ]
+    },
+    "channels": [
+      {
+        "name": "main",
+        "transport": "udp",
+        "purpose": "Carries one complete CoAP message per UDP datagram between external clients and the server.",
+        "evidence_refs": [
+          "readme_scope",
+          "udp_runtime",
+          "server_datagram_path"
+        ]
+      }
+    ],
+    "runtime_implications": [
+      {
+        "summary": "The server runtime should bind a UDP socket, receive datagrams with peer endpoint metadata, and send encoded responses with sendto.",
+        "evidence_refs": [
+          "udp_runtime",
+          "server_datagram_path"
+        ]
+      },
+      {
+        "summary": "Packet decoding is datagram-scoped; the implementation does not maintain stream buffers, message fragmentation buffers, or per-peer connection objects.",
+        "evidence_refs": [
+          "udp_runtime",
+          "codec_decode",
+          "readme_limits"
+        ]
+      },
+      {
+        "summary": "The UDP event loop uses epoll on a nonblocking IPv4 datagram socket and reads datagrams up to the fixed receive buffer size.",
+        "evidence_refs": [
+          "udp_runtime"
+        ]
+      }
+    ]
+  },
+  "interaction_model": {
+    "style": {
+      "value": "request_response",
+      "evidence_refs": [
+        "readme_supported",
+        "server_datagram_path"
+      ]
+    },
+    "roles": [
+      {
+        "name": "client",
+        "summary": "External CoAP clients send CON or NON method requests over UDP and receive ACK or NON responses from the server.",
+        "evidence_refs": [
+          "readme_supported",
+          "server_datagram_path"
+        ]
+      },
+      {
+        "name": "server",
+        "summary": "The generated target is a CoAP server that decodes requests, builds a request view from URI and content options, dispatches to in-memory resources, and encodes responses.",
+        "evidence_refs": [
+          "readme_scope",
+          "server_datagram_path",
+          "router_dispatch",
+          "server_resources"
+        ]
+      }
+    ],
+    "interaction_units": [
+      {
+        "name": "datagram_message",
+        "summary": "Each protocol unit is a binary CoAP message decoded from one UDP datagram with a 4-byte header, optional token, ordered options, and optional payload.",
+        "evidence_refs": [
+          "codec_decode",
+          "message_types"
+        ]
+      },
+      {
+        "name": "resource_request",
+        "summary": "A method request is projected into method, normalized path, joined query string, Content-Format, Accept, token, message id, and payload fields before routing.",
+        "evidence_refs": [
+          "server_request_view",
+          "message_helpers"
+        ]
+      },
+      {
+        "name": "resource_response",
+        "summary": "The response envelope preserves token and message id, uses ACK for CON requests and NON for NON requests, and carries a response code plus optional options and payload.",
+        "evidence_refs": [
+          "server_response_envelope",
+          "codec_encode"
+        ]
+      }
+    ],
+    "core_flows": [
+      {
+        "name": "resource_discovery",
+        "summary": "Client sends GET /.well-known/core; server returns discoverable resource links in application/link-format when Accept is absent or link-format.",
+        "surface_units": [
+          "GET",
+          "/.well-known/core",
+          "2.05 Content",
+          "4.06 Not Acceptable"
+        ],
+        "evidence_refs": [
+          "readme_supported",
+          "discovery_handler",
+          "router_dispatch"
+        ]
+      },
+      {
+        "name": "hello_resource_read",
+        "summary": "Client sends GET /hello; server returns a text/plain greeting and changes the greeting text when a URI Query is present.",
+        "surface_units": [
+          "GET",
+          "/hello",
+          "2.05 Content"
+        ],
+        "evidence_refs": [
+          "readme_supported",
+          "hello_handler"
+        ]
+      },
+      {
+        "name": "echo_payload",
+        "summary": "Client sends POST or PUT /echo with a payload; server echoes the bytes with 2.04 Changed and preserves request Content-Format when present.",
+        "surface_units": [
+          "POST",
+          "PUT",
+          "/echo",
+          "2.04 Changed"
+        ],
+        "evidence_refs": [
+          "readme_supported",
+          "echo_handler"
+        ]
+      },
+      {
+        "name": "kv_list",
+        "summary": "Client sends GET /kv; server returns a JSON array of stored keys.",
+        "surface_units": [
+          "GET",
+          "/kv",
+          "2.05 Content"
+        ],
+        "evidence_refs": [
+          "readme_supported",
+          "kv_handler"
+        ]
+      },
+      {
+        "name": "kv_create_or_update",
+        "summary": "Client sends PUT or POST /kv/<key>; server stores the payload in memory, returns 2.01 Created for a new key, and returns 2.04 Changed for an existing key.",
+        "surface_units": [
+          "PUT",
+          "POST",
+          "/kv/<key>",
+          "2.01 Created",
+          "2.04 Changed"
+        ],
+        "evidence_refs": [
+          "readme_supported",
+          "kv_handler"
+        ]
+      },
+      {
+        "name": "kv_read",
+        "summary": "Client sends GET /kv/<key>; server returns stored bytes with the stored Content-Format or application/octet-stream when no format was stored.",
+        "surface_units": [
+          "GET",
+          "/kv/<key>",
+          "2.05 Content",
+          "4.04 Not Found"
+        ],
+        "evidence_refs": [
+          "readme_supported",
+          "kv_handler"
+        ]
+      },
+      {
+        "name": "kv_delete",
+        "summary": "Client sends DELETE /kv/<key>; server deletes an existing key and returns 2.02 Deleted, or 4.04 Not Found when the key does not exist.",
+        "surface_units": [
+          "DELETE",
+          "/kv/<key>",
+          "2.02 Deleted",
+          "4.04 Not Found"
+        ],
+        "evidence_refs": [
+          "readme_supported",
+          "kv_handler"
+        ]
+      },
+      {
+        "name": "malformed_confirmable_request",
+        "summary": "If a malformed datagram is at least four bytes and its type is CON, the server sends an empty RST with the request message id.",
+        "surface_units": [
+          "CON",
+          "RST"
+        ],
+        "evidence_refs": [
+          "server_datagram_path",
+          "codec_decode"
+        ]
+      }
+    ]
+  },
+  "message_model": {
+    "framing": {
+      "value": "binary_datagram",
+      "evidence_refs": [
+        "codec_decode",
+        "codec_encode"
+      ]
+    },
+    "surface_catalog": [
+      {
+        "name": "CON",
+        "kind": "message_type",
+        "direction": "client_to_server",
+        "summary": "Confirmable request type; the server responds with ACK for valid method requests or RST for malformed CON datagrams when the message id can be read.",
+        "evidence_refs": [
+          "message_types",
+          "server_response_envelope",
+          "server_datagram_path"
+        ]
+      },
+      {
+        "name": "NON",
+        "kind": "message_type",
+        "direction": "bidirectional",
+        "summary": "Non-confirmable request type; the server returns NON responses for valid NON method requests.",
+        "evidence_refs": [
+          "message_types",
+          "server_response_envelope"
+        ]
+      },
+      {
+        "name": "ACK",
+        "kind": "message_type",
+        "direction": "server_to_client",
+        "summary": "Acknowledgement response type used by this server for valid CON method requests.",
+        "evidence_refs": [
+          "message_types",
+          "server_response_envelope"
+        ]
+      },
+      {
+        "name": "RST",
+        "kind": "message_type",
+        "direction": "server_to_client",
+        "summary": "Reset response type used when a malformed CON datagram has a readable message id.",
+        "evidence_refs": [
+          "message_types",
+          "server_datagram_path"
+        ]
+      },
+      {
+        "name": "GET",
+        "kind": "method",
+        "direction": "client_to_server",
+        "summary": "Reads /hello, /.well-known/core, /kv, or /kv/<key> resources.",
+        "evidence_refs": [
+          "message_types",
+          "server_resources",
+          "kv_handler"
+        ]
+      },
+      {
+        "name": "POST",
+        "kind": "method",
+        "direction": "client_to_server",
+        "summary": "Writes /echo or /kv/<key> resources with request payload bytes.",
+        "evidence_refs": [
+          "message_types",
+          "server_resources",
+          "echo_handler",
+          "kv_handler"
+        ]
+      },
+      {
+        "name": "PUT",
+        "kind": "method",
+        "direction": "client_to_server",
+        "summary": "Writes /echo or /kv/<key> resources with request payload bytes.",
+        "evidence_refs": [
+          "message_types",
+          "server_resources",
+          "echo_handler",
+          "kv_handler"
+        ]
+      },
+      {
+        "name": "DELETE",
+        "kind": "method",
+        "direction": "client_to_server",
+        "summary": "Deletes /kv/<key> resources.",
+        "evidence_refs": [
+          "message_types",
+          "server_resources",
+          "kv_handler"
+        ]
+      },
+      {
+        "name": "2.01 Created",
+        "kind": "response_code",
+        "direction": "server_to_client",
+        "summary": "Returned when PUT or POST creates a new /kv/<key> entry.",
+        "evidence_refs": [
+          "kv_handler"
+        ]
+      },
+      {
+        "name": "2.02 Deleted",
+        "kind": "response_code",
+        "direction": "server_to_client",
+        "summary": "Returned when DELETE removes an existing /kv/<key> entry.",
+        "evidence_refs": [
+          "kv_handler"
+        ]
+      },
+      {
+        "name": "2.04 Changed",
+        "kind": "response_code",
+        "direction": "server_to_client",
+        "summary": "Returned by /echo and by /kv/<key> updates.",
+        "evidence_refs": [
+          "echo_handler",
+          "kv_handler"
+        ]
+      },
+      {
+        "name": "2.05 Content",
+        "kind": "response_code",
+        "direction": "server_to_client",
+        "summary": "Returned for successful discovery, /hello, /kv, and /kv/<key> reads.",
+        "evidence_refs": [
+          "discovery_handler",
+          "hello_handler",
+          "kv_handler"
+        ]
+      },
+      {
+        "name": "4.00 Bad Request",
+        "kind": "response_code",
+        "direction": "server_to_client",
+        "summary": "Returned when /kv is addressed without a key for non-GET methods.",
+        "evidence_refs": [
+          "kv_handler"
+        ]
+      },
+      {
+        "name": "4.04 Not Found",
+        "kind": "response_code",
+        "direction": "server_to_client",
+        "summary": "Returned when no resource route matches or a requested /kv/<key> is absent.",
+        "evidence_refs": [
+          "server_datagram_path",
+          "kv_handler"
+        ]
+      },
+      {
+        "name": "4.05 Method Not Allowed",
+        "kind": "response_code",
+        "direction": "server_to_client",
+        "summary": "Returned by the router when a matching resource exists but its method mask does not include the request method.",
+        "evidence_refs": [
+          "router_dispatch"
+        ]
+      },
+      {
+        "name": "4.06 Not Acceptable",
+        "kind": "response_code",
+        "direction": "server_to_client",
+        "summary": "Returned by discovery when an Accept option is present and is not application/link-format.",
+        "evidence_refs": [
+          "discovery_handler"
+        ]
+      },
+      {
+        "name": "5.00 Internal Server Error",
+        "kind": "response_code",
+        "direction": "server_to_client",
+        "summary": "Returned on selected allocation or request-view construction failures.",
+        "evidence_refs": [
+          "discovery_handler",
+          "kv_handler",
+          "server_request_view"
+        ]
+      }
+    ],
+    "message_or_command_entries": [
+      {
+        "name": "coap_header",
+        "surface_unit": "datagram_message",
+        "syntax_or_layout": "byte0 version/type/token_length, byte1 code, byte2-3 message_id",
+        "summary": "The first four bytes carry version, type, token length, code, and message id.",
+        "evidence_refs": [
+          "codec_decode",
+          "codec_encode"
+        ],
+        "fields": [
+          {
+            "name": "version",
+            "summary": "Two-bit version field; decoder accepts only version 1 and encoder requires version 1.",
+            "evidence_refs": [
+              "codec_decode",
+              "codec_encode"
+            ]
+          },
+          {
+            "name": "type",
+            "summary": "Two-bit message type mapped to CON, NON, ACK, or RST.",
+            "evidence_refs": [
+              "message_types",
+              "codec_decode"
+            ]
+          },
+          {
+            "name": "token_len",
+            "summary": "Low four bits of byte0; values above 8 are rejected by decoder and encoder.",
+            "evidence_refs": [
+              "message_types",
+              "codec_decode",
+              "codec_encode"
+            ]
+          },
+          {
+            "name": "code",
+            "summary": "One byte interpreted as method code for requests or class/detail response code for responses.",
+            "evidence_refs": [
+              "message_types",
+              "message_helpers",
+              "server_datagram_path"
+            ]
+          },
+          {
+            "name": "message_id",
+            "summary": "Unsigned 16-bit message id copied from valid requests into responses and used for malformed CON resets.",
+            "evidence_refs": [
+              "codec_decode",
+              "server_response_envelope",
+              "server_datagram_path"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "token",
+        "surface_unit": "datagram_message",
+        "syntax_or_layout": "0 to 8 bytes immediately after the 4-byte header",
+        "summary": "The server copies the request token into each valid response envelope.",
+        "evidence_refs": [
+          "message_types",
+          "codec_decode",
+          "server_response_envelope"
+        ],
+        "fields": [
+          {
+            "name": "token_bytes",
+            "summary": "Opaque token bytes with maximum length 8.",
+            "evidence_refs": [
+              "message_types",
+              "message_helpers"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "options",
+        "surface_unit": "datagram_message",
+        "syntax_or_layout": "ordered sequence of option delta/length bytes with optional extended delta and length bytes",
+        "summary": "Options are decoded as cumulative option numbers and encoded only when option numbers are nondecreasing.",
+        "evidence_refs": [
+          "codec_decode",
+          "codec_encode"
+        ],
+        "fields": [
+          {
+            "name": "option_delta",
+            "summary": "High nibble of each option header byte; values 13 and 14 use extended encoding and value 15 is invalid.",
+            "evidence_refs": [
+              "codec_decode",
+              "codec_encode"
+            ]
+          },
+          {
+            "name": "option_length",
+            "summary": "Low nibble of each option header byte; values 13 and 14 use extended encoding and value 15 is invalid.",
+            "evidence_refs": [
+              "codec_decode",
+              "codec_encode"
+            ]
+          },
+          {
+            "name": "uri_path",
+            "summary": "Repeated option number 11 segments are joined with '/' and normalized to a leading slash.",
+            "evidence_refs": [
+              "message_types",
+              "server_request_view",
+              "message_helpers"
+            ]
+          },
+          {
+            "name": "content_format",
+            "summary": "Option number 12 is parsed as an unsigned integer and used by /echo and /kv storage/response logic.",
+            "evidence_refs": [
+              "message_types",
+              "server_request_view",
+              "echo_handler",
+              "kv_handler"
+            ]
+          },
+          {
+            "name": "uri_query",
+            "summary": "Repeated option number 15 segments are joined with '&' for request handlers.",
+            "evidence_refs": [
+              "message_types",
+              "server_request_view",
+              "message_helpers"
+            ]
+          },
+          {
+            "name": "accept",
+            "summary": "Option number 17 is parsed as an unsigned integer; discovery rejects Accept values other than link-format.",
+            "evidence_refs": [
+              "message_types",
+              "server_request_view",
+              "discovery_handler"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "payload",
+        "surface_unit": "datagram_message",
+        "syntax_or_layout": "optional 0xff payload marker followed by opaque payload bytes",
+        "summary": "The decoder treats all bytes after a payload marker as opaque payload; encoder emits the marker only when payload length is greater than zero.",
+        "evidence_refs": [
+          "codec_decode",
+          "codec_encode",
+          "message_helpers"
+        ],
+        "fields": [
+          {
+            "name": "payload_bytes",
+            "summary": "Opaque application payload used by /echo and /kv writes.",
+            "evidence_refs": [
+              "echo_handler",
+              "kv_handler"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "request_view",
+        "surface_unit": "resource_request",
+        "syntax_or_layout": "method, path, query, content_format, accept, original message pointer",
+        "summary": "Server-side view built from a decoded method request before resource dispatch.",
+        "evidence_refs": [
+          "server_request_view",
+          "router_header"
+        ],
+        "fields": [
+          {
+            "name": "method",
+            "summary": "Request code must be one of GET, POST, PUT, or DELETE.",
+            "evidence_refs": [
+              "message_helpers",
+              "server_request_view"
+            ]
+          },
+          {
+            "name": "path",
+            "summary": "Joined URI Path; empty path is normalized to '/'.",
+            "evidence_refs": [
+              "server_request_view",
+              "message_helpers"
+            ]
+          },
+          {
+            "name": "query",
+            "summary": "Joined URI Query string; empty string when no URI Query option is present.",
+            "evidence_refs": [
+              "server_request_view",
+              "message_helpers"
+            ]
+          }
+        ]
+      }
+    ],
+    "field_constraints": [
+      {
+        "condition": "CoAP version is not 1",
+        "required_action": "decoder rejects the message as invalid",
+        "evidence_refs": [
+          "codec_decode"
+        ]
+      },
+      {
+        "condition": "token_len is greater than 8",
+        "required_action": "decoder rejects the message as invalid; encoder refuses to encode",
+        "evidence_refs": [
+          "message_types",
+          "codec_decode",
+          "codec_encode"
+        ]
+      },
+      {
+        "condition": "datagram length is less than 4 or shorter than header plus token",
+        "required_action": "decoder reports truncated input",
+        "evidence_refs": [
+          "codec_decode"
+        ]
+      },
+      {
+        "condition": "option delta nibble or option length nibble is 15",
+        "required_action": "decoder rejects the message as invalid",
+        "evidence_refs": [
+          "codec_decode"
+        ]
+      },
+      {
+        "condition": "encoded options are not in nondecreasing option-number order",
+        "required_action": "encoder refuses to encode the message",
+        "evidence_refs": [
+          "codec_encode"
+        ]
+      },
+      {
+        "condition": "request code is not GET, POST, PUT, or DELETE",
+        "required_action": "server frees the decoded message and sends no response",
+        "evidence_refs": [
+          "message_helpers",
+          "server_datagram_path"
+        ]
+      }
+    ]
+  },
+  "state_model": {
+    "state_nodes": [
+      {
+        "name": "udp_server_running",
+        "summary": "UDP socket and epoll file descriptor are open, registered for EPOLLIN, and the server loop is running.",
+        "evidence_refs": [
+          "udp_runtime",
+          "main_runtime"
+        ]
+      },
+      {
+        "name": "decoded_request",
+        "summary": "One datagram has been decoded into a coap_message_t and is ready for method validation and request-view construction.",
+        "evidence_refs": [
+          "codec_decode",
+          "server_datagram_path"
+        ]
+      },
+      {
+        "name": "resource_dispatch",
+        "summary": "A valid method request has a normalized request view and is being matched against resource entries and method masks.",
+        "evidence_refs": [
+          "server_request_view",
+          "router_dispatch"
+        ]
+      },
+      {
+        "name": "kv_entry_present",
+        "summary": "An in-memory /kv/<key> record exists with key, payload bytes, and optional stored Content-Format.",
+        "evidence_refs": [
+          "kv_handler"
+        ]
+      },
+      {
+        "name": "response_encoded",
+        "summary": "A response message has been populated, encoded into bytes, sent to the request peer, and then freed.",
+        "evidence_refs": [
+          "server_datagram_path",
+          "codec_encode",
+          "message_helpers"
+        ]
+      }
+    ],
+    "transitions": [
+      {
+        "from_state": "udp_server_running",
+        "to_state": "decoded_request",
+        "trigger": "valid CoAP datagram",
+        "summary": "The datagram callback decodes the packet and logs type, response-code class/detail representation, and message id.",
+        "evidence_refs": [
+          "udp_runtime",
+          "server_datagram_path"
+        ]
+      },
+      {
+        "from_state": "udp_server_running",
+        "to_state": "udp_server_running",
+        "trigger": "malformed NON datagram or datagram shorter than 4 bytes",
+        "summary": "The server drops malformed input without a response when it cannot or should not send a reset.",
+        "evidence_refs": [
+          "server_datagram_path",
+          "codec_decode"
+        ]
+      },
+      {
+        "from_state": "udp_server_running",
+        "to_state": "response_encoded",
+        "trigger": "malformed CON datagram with readable message id",
+        "summary": "The server sends an empty RST response carrying the request message id.",
+        "evidence_refs": [
+          "server_datagram_path"
+        ]
+      },
+      {
+        "from_state": "decoded_request",
+        "to_state": "resource_dispatch",
+        "trigger": "GET, POST, PUT, or DELETE request code",
+        "summary": "The server creates a response envelope and request view, then dispatches by URI path and method.",
+        "evidence_refs": [
+          "server_response_envelope",
+          "server_request_view",
+          "router_dispatch"
+        ]
+      },
+      {
+        "from_state": "resource_dispatch",
+        "to_state": "kv_entry_present",
+        "trigger": "PUT or POST /kv/<key> for a missing key",
+        "summary": "The server allocates a new key-value entry, stores payload bytes, and returns 2.01 Created.",
+        "evidence_refs": [
+          "kv_handler"
+        ]
+      },
+      {
+        "from_state": "kv_entry_present",
+        "to_state": "kv_entry_present",
+        "trigger": "PUT or POST /kv/<key> for an existing key",
+        "summary": "The server replaces the stored value and returns 2.04 Changed.",
+        "evidence_refs": [
+          "kv_handler"
+        ]
+      },
+      {
+        "from_state": "kv_entry_present",
+        "to_state": "resource_dispatch",
+        "trigger": "DELETE /kv/<key>",
+        "summary": "The server frees the key-value entry, compacts the in-memory array, and returns 2.02 Deleted.",
+        "evidence_refs": [
+          "kv_handler"
+        ]
+      },
+      {
+        "from_state": "resource_dispatch",
+        "to_state": "response_encoded",
+        "trigger": "handler success, handler error response, route miss, or method-mask miss",
+        "summary": "The server sends the populated CoAP response to the peer endpoint.",
+        "evidence_refs": [
+          "server_datagram_path",
+          "router_dispatch"
+        ]
+      }
+    ],
+    "timers_and_constants": [
+      {
+        "name": "default_port",
+        "scope": "server",
+        "value_or_rule": "5683 unless overridden by a valid command-line port.",
+        "evidence_refs": [
+          "readme_runtime",
+          "main_runtime"
+        ]
+      },
+      {
+        "name": "coap_version",
+        "scope": "message",
+        "value_or_rule": "1",
+        "evidence_refs": [
+          "message_types",
+          "codec_decode"
+        ]
+      },
+      {
+        "name": "max_token_len",
+        "scope": "message",
+        "value_or_rule": "8 bytes",
+        "evidence_refs": [
+          "message_types",
+          "codec_decode"
+        ]
+      },
+      {
+        "name": "max_datagram_size",
+        "scope": "udp_runtime",
+        "value_or_rule": "1500-byte receive buffer per recvfrom call.",
+        "evidence_refs": [
+          "udp_runtime"
+        ]
+      },
+      {
+        "name": "option_extended_delta_or_length",
+        "scope": "codec",
+        "value_or_rule": "nibble < 13 inline, nibble 13 uses one extra byte plus 13, nibble 14 uses two extra bytes plus 269, nibble 15 invalid.",
+        "evidence_refs": [
+          "codec_decode",
+          "codec_encode"
+        ]
+      }
+    ],
+    "invariants": [
+      {
+        "summary": "Each incoming datagram is decoded and processed independently; the server does not retain per-peer request state for deduplication, retransmission, Observe, or Block transfer.",
+        "evidence_refs": [
+          "udp_runtime",
+          "readme_limits"
+        ]
+      },
+      {
+        "summary": "Valid CON method requests receive ACK responses; valid NON method requests receive NON responses.",
+        "evidence_refs": [
+          "server_response_envelope"
+        ]
+      },
+      {
+        "summary": "Valid responses copy the request message id and token.",
+        "evidence_refs": [
+          "server_response_envelope"
+        ]
+      },
+      {
+        "summary": "Resource routing is server-local and keyed by normalized URI path plus method mask.",
+        "evidence_refs": [
+          "server_request_view",
+          "router_dispatch"
+        ]
+      },
+      {
+        "summary": "The /kv store is memory-only and is destroyed with the server process.",
+        "evidence_refs": [
+          "kv_handler",
+          "server_resources"
+        ]
+      }
+    ]
+  },
+  "routing_model": {
+    "dispatch_keys": [
+      {
+        "name": "method_code",
+        "summary": "Resource dispatch uses GET, POST, PUT, and DELETE method bits.",
+        "evidence_refs": [
+          "message_types",
+          "server_resources",
+          "router_dispatch"
+        ]
+      },
+      {
+        "name": "uri_path",
+        "summary": "Repeated URI Path options are joined into a normalized path and matched against resource entries.",
+        "evidence_refs": [
+          "server_request_view",
+          "router_dispatch"
+        ]
+      },
+      {
+        "name": "prefix_match",
+        "summary": "The /kv route is registered as a prefix route and matches /kv and /kv/<key> path forms.",
+        "evidence_refs": [
+          "server_resources",
+          "router_dispatch"
+        ]
+      },
+      {
+        "name": "accept",
+        "summary": "The discovery handler uses the Accept option to decide whether link-format can be returned.",
+        "evidence_refs": [
+          "server_request_view",
+          "discovery_handler"
+        ]
+      },
+      {
+        "name": "content_format",
+        "summary": "The /echo and /kv handlers use Content-Format to select response format or persist stored value metadata.",
+        "evidence_refs": [
+          "server_request_view",
+          "echo_handler",
+          "kv_handler"
+        ]
+      }
+    ],
+    "dispatch_targets": [
+      {
+        "name": "datagram_handler",
+        "summary": "Central datagram callback decodes input, builds request/response objects, invokes the router, and sends responses.",
+        "evidence_refs": [
+          "server_datagram_path"
+        ]
+      },
+      {
+        "name": "resource_router",
+        "summary": "Router owns resource entries, method masks, exact/prefix path matching, and link-format discovery string generation.",
+        "evidence_refs": [
+          "router_dispatch"
+        ]
+      },
+      {
+        "name": "discovery_handler",
+        "summary": "Handles GET /.well-known/core and returns discoverable route metadata.",
+        "evidence_refs": [
+          "discovery_handler",
+          "server_resources"
+        ]
+      },
+      {
+        "name": "hello_handler",
+        "summary": "Handles GET /hello and returns text/plain greeting content.",
+        "evidence_refs": [
+          "hello_handler",
+          "server_resources"
+        ]
+      },
+      {
+        "name": "echo_handler",
+        "summary": "Handles POST and PUT /echo by returning request payload bytes.",
+        "evidence_refs": [
+          "echo_handler",
+          "server_resources"
+        ]
+      },
+      {
+        "name": "kv_handler",
+        "summary": "Handles /kv and /kv/<key> list, read, write, and delete operations backed by memory.",
+        "evidence_refs": [
+          "kv_handler",
+          "server_resources"
+        ]
+      }
+    ],
+    "matching_rules": [
+      {
+        "summary": "Exact-match resource entries match only when the registered path equals the normalized request path.",
+        "evidence_refs": [
+          "router_dispatch"
+        ]
+      },
+      {
+        "summary": "Prefix-match resource entries match when the request path starts with the registered path and the next character is end-of-string or '/'.",
+        "evidence_refs": [
+          "router_dispatch"
+        ]
+      },
+      {
+        "summary": "When a matching route exists but the method bit is absent from its method mask, the router returns 4.05 Method Not Allowed.",
+        "evidence_refs": [
+          "router_dispatch"
+        ]
+      },
+      {
+        "summary": "If no route matches, the datagram handler returns 4.04 Not Found.",
+        "evidence_refs": [
+          "server_datagram_path",
+          "router_dispatch"
+        ]
+      },
+      {
+        "summary": "Discovery output includes only entries registered as discoverable and serializes them as comma-separated link-format entries.",
+        "evidence_refs": [
+          "router_dispatch",
+          "server_resources"
+        ]
+      }
+    ]
+  },
+  "resource_model": {
+    "resource_objects": [
+      {
+        "name": "coap_udp_server",
+        "scope": "server",
+        "summary": "Owns UDP socket fd, epoll fd, running flag, callbacks, configured port, and user pointer.",
+        "evidence_refs": [
+          "udp_runtime"
+        ]
+      },
+      {
+        "name": "coap_message",
+        "scope": "message",
+        "summary": "Represents version, type, code, message id, token, dynamic options, and dynamic payload.",
+        "evidence_refs": [
+          "message_types",
+          "message_helpers"
+        ]
+      },
+      {
+        "name": "coap_request_view",
+        "scope": "datagram",
+        "summary": "Temporary request view that stores method, path, query, content_format, accept, and a pointer to the decoded message.",
+        "evidence_refs": [
+          "router_header",
+          "server_request_view"
+        ]
+      },
+      {
+        "name": "resource_entry",
+        "scope": "server",
+        "summary": "Router entry with path, prefix flag, method mask, discoverable flag, link attributes, handler, and handler user pointer.",
+        "evidence_refs": [
+          "router_dispatch"
+        ]
+      },
+      {
+        "name": "kv_entry",
+        "scope": "server",
+        "summary": "In-memory key-value record containing key, value bytes, value length, stored Content-Format, and has_content_format flag.",
+        "evidence_refs": [
+          "kv_handler"
+        ]
+      },
+      {
+        "name": "coap_endpoint",
+        "scope": "datagram_peer",
+        "summary": "Peer address and address length captured from recvfrom and reused for sendto.",
+        "evidence_refs": [
+          "udp_header",
+          "udp_runtime"
+        ]
+      }
+    ],
+    "lifecycle_rules": [
+      {
+        "summary": "Server creation allocates the router, creates the UDP runtime, and registers discovery, hello, echo, and kv resources.",
+        "evidence_refs": [
+          "server_resources"
+        ]
+      },
+      {
+        "summary": "UDP start creates a nonblocking IPv4 datagram socket, binds it, creates epoll, and registers EPOLLIN.",
+        "evidence_refs": [
+          "udp_runtime"
+        ]
+      },
+      {
+        "summary": "Each decoded request message, response message, and request view is freed after datagram processing.",
+        "evidence_refs": [
+          "server_datagram_path",
+          "message_helpers"
+        ]
+      },
+      {
+        "summary": "PUT and POST allocate or replace kv_entry value storage; DELETE and server destroy free key/value allocations.",
+        "evidence_refs": [
+          "kv_handler",
+          "server_resources"
+        ]
+      },
+      {
+        "summary": "Server destroy stops the UDP runtime, destroys the router, frees all key-value entries, and releases the server object.",
+        "evidence_refs": [
+          "server_resources",
+          "udp_runtime",
+          "router_dispatch"
+        ]
+      }
+    ],
+    "persistence_scope": [
+      {
+        "name": "in_memory_only",
+        "summary": "The example server does not persist resource data across process restarts and has no durable storage layer.",
+        "evidence_refs": [
+          "kv_handler",
+          "readme_limits"
+        ]
+      }
+    ]
+  },
+  "error_and_limits": {
+    "error_matrix": [
+      {
+        "condition": "Malformed or truncated datagram",
+        "surface_unit": "datagram_message",
+        "required_action": "decoder returns INVALID or TRUNCATED; server sends RST only when the datagram is at least four bytes and type is CON",
+        "evidence_refs": [
+          "codec_decode",
+          "server_datagram_path"
+        ]
+      },
+      {
+        "condition": "Decoded request code is not GET, POST, PUT, or DELETE",
+        "surface_unit": "datagram_message",
+        "required_action": "server ignores the message and sends no response",
+        "evidence_refs": [
+          "message_helpers",
+          "server_datagram_path"
+        ]
+      },
+      {
+        "condition": "Request-view construction fails",
+        "surface_unit": "resource_request",
+        "required_action": "server replies 5.00 Internal Server Error",
+        "evidence_refs": [
+          "server_request_view",
+          "server_datagram_path"
+        ]
+      },
+      {
+        "condition": "No route matches the normalized URI path",
+        "surface_unit": "resource_request",
+        "required_action": "server replies 4.04 Not Found",
+        "evidence_refs": [
+          "router_dispatch",
+          "server_datagram_path"
+        ]
+      },
+      {
+        "condition": "Route matches but method is not allowed",
+        "surface_unit": "resource_request",
+        "required_action": "router replies 4.05 Method Not Allowed",
+        "evidence_refs": [
+          "router_dispatch"
+        ]
+      },
+      {
+        "condition": "GET /.well-known/core has Accept option other than application/link-format",
+        "surface_unit": "resource_request",
+        "required_action": "server replies 4.06 Not Acceptable",
+        "evidence_refs": [
+          "discovery_handler"
+        ]
+      },
+      {
+        "condition": "Non-GET method targets /kv without a key suffix",
+        "surface_unit": "resource_request",
+        "required_action": "server replies 4.00 Bad Request",
+        "evidence_refs": [
+          "kv_handler"
+        ]
+      },
+      {
+        "condition": "GET or DELETE targets missing /kv/<key>",
+        "surface_unit": "resource_request",
+        "required_action": "server replies 4.04 Not Found",
+        "evidence_refs": [
+          "kv_handler"
+        ]
+      },
+      {
+        "condition": "Allocation fails while building discovery links, JSON key list, key-value storage, or request view",
+        "surface_unit": "resource_request",
+        "required_action": "server replies 5.00 Internal Server Error when a response can be formed",
+        "evidence_refs": [
+          "discovery_handler",
+          "kv_handler",
+          "server_request_view"
+        ]
+      }
+    ],
+    "limits": {
+      "fixed_protocol_constants": [
+        {
+          "name": "coap_version",
+          "value_or_rule": "1",
+          "evidence_refs": [
+            "codec_decode",
+            "message_helpers"
+          ]
+        },
+        {
+          "name": "max_token_len",
+          "value_or_rule": "8 bytes",
+          "evidence_refs": [
+            "message_types"
+          ]
+        },
+        {
+          "name": "supported_message_types",
+          "value_or_rule": "CON, NON, ACK, and RST enum values are defined; request handling is implemented for CON/NON method requests and server-generated ACK/NON/RST responses.",
+          "evidence_refs": [
+            "message_types",
+            "server_response_envelope"
+          ]
+        },
+        {
+          "name": "supported_methods",
+          "value_or_rule": "GET=1, POST=2, PUT=3, DELETE=4",
+          "evidence_refs": [
+            "message_types",
+            "message_helpers"
+          ]
+        },
+        {
+          "name": "supported_options",
+          "value_or_rule": "Uri-Path=11, Content-Format=12, Uri-Query=15, Accept=17",
+          "evidence_refs": [
+            "message_types"
+          ]
+        },
+        {
+          "name": "supported_content_formats",
+          "value_or_rule": "text/plain=0, application/link-format=40, application/octet-stream=42, application/json=50",
+          "evidence_refs": [
+            "message_types"
+          ]
+        },
+        {
+          "name": "default_port",
+          "value_or_rule": "5683 for the example server executable",
+          "evidence_refs": [
+            "readme_runtime",
+            "main_runtime"
+          ]
+        }
+      ],
+      "defaults": [
+        {
+          "name": "response_type_for_con",
+          "value_or_rule": "ACK",
+          "evidence_refs": [
+            "server_response_envelope"
+          ]
+        },
+        {
+          "name": "response_type_for_non",
+          "value_or_rule": "NON",
+          "evidence_refs": [
+            "server_response_envelope"
+          ]
+        },
+        {
+          "name": "hello_content_format",
+          "value_or_rule": "text/plain",
+          "evidence_refs": [
+            "hello_handler"
+          ]
+        },
+        {
+          "name": "kv_read_default_content_format",
+          "value_or_rule": "application/octet-stream when the stored entry does not have an explicit Content-Format",
+          "evidence_refs": [
+            "kv_handler"
+          ]
+        }
+      ],
+      "recommended_values": [
+        {
+          "name": "validation_profile",
+          "value_or_rule": "Use coap-client-notls against localhost UDP port 5683 for /hello, /.well-known/core, /echo, and /kv flows.",
+          "evidence_refs": [
+            "readme_runtime"
+          ]
+        }
+      ],
+      "hard_bounds": [
+        {
+          "name": "udp_receive_buffer",
+          "value_or_rule": "1500 bytes per recvfrom call.",
+          "evidence_refs": [
+            "udp_runtime"
+          ]
+        },
+        {
+          "name": "option_length_storage",
+          "value_or_rule": "Option values are stored with uint16_t length; coap_message_add_option rejects lengths above UINT16_MAX.",
+          "evidence_refs": [
+            "message_helpers"
+          ]
+        },
+        {
+          "name": "uint_option_length",
+          "value_or_rule": "Unsigned integer options longer than four bytes are treated as absent by coap_message_get_uint_option.",
+          "evidence_refs": [
+            "message_helpers"
+          ]
+        }
+      ],
+      "configurable_bounds": [
+        {
+          "name": "listen_port",
+          "value_or_rule": "Server accepts an optional command-line port if it is between 1 and 65535.",
+          "evidence_refs": [
+            "main_runtime"
+          ]
+        }
+      ]
+    },
+    "security": [
+      {
+        "name": "authentication",
+        "summary": "Authentication and authorization are not implemented in this example scope.",
+        "evidence_refs": [
+          "readme_limits"
+        ]
+      },
+      {
+        "name": "dtls",
+        "summary": "DTLS is explicitly outside the current example scope; transport is plain UDP.",
+        "evidence_refs": [
+          "readme_limits",
+          "readme_scope"
+        ]
+      }
+    ]
+  },
+  "minimum_v1": {
+    "must_support_surface": [
+      {
+        "name": "CoAP over UDP",
+        "summary": "Listen on UDP, decode one CoAP message per datagram, and reply to the datagram peer.",
+        "evidence_refs": [
+          "readme_supported",
+          "udp_runtime",
+          "server_datagram_path"
+        ]
+      },
+      {
+        "name": "CON and NON requests",
+        "summary": "Handle valid CON and NON method requests and produce ACK or NON responses respectively.",
+        "evidence_refs": [
+          "readme_supported",
+          "server_response_envelope"
+        ]
+      },
+      {
+        "name": "GET",
+        "summary": "Support GET for /.well-known/core, /hello, /kv, and /kv/<key>.",
+        "evidence_refs": [
+          "readme_supported",
+          "server_resources",
+          "kv_handler"
+        ]
+      },
+      {
+        "name": "POST",
+        "summary": "Support POST for /echo and /kv/<key>.",
+        "evidence_refs": [
+          "readme_supported",
+          "server_resources",
+          "echo_handler",
+          "kv_handler"
+        ]
+      },
+      {
+        "name": "PUT",
+        "summary": "Support PUT for /echo and /kv/<key>.",
+        "evidence_refs": [
+          "readme_supported",
+          "server_resources",
+          "echo_handler",
+          "kv_handler"
+        ]
+      },
+      {
+        "name": "DELETE",
+        "summary": "Support DELETE for /kv/<key>.",
+        "evidence_refs": [
+          "readme_supported",
+          "server_resources",
+          "kv_handler"
+        ]
+      },
+      {
+        "name": "CoAP header, token, options, and payload codec",
+        "summary": "Decode and encode version, type, code, message id, token, ordered options, payload marker, and payload bytes.",
+        "evidence_refs": [
+          "codec_decode",
+          "codec_encode",
+          "message_types"
+        ]
+      },
+      {
+        "name": "URI Path and URI Query",
+        "summary": "Join repeated URI Path options with '/' and repeated URI Query options with '&'.",
+        "evidence_refs": [
+          "server_request_view",
+          "message_helpers"
+        ]
+      },
+      {
+        "name": "Content-Format and Accept",
+        "summary": "Parse unsigned Content-Format and Accept options for resource handlers.",
+        "evidence_refs": [
+          "server_request_view",
+          "message_helpers"
+        ]
+      },
+      {
+        "name": "/.well-known/core",
+        "summary": "Return discoverable resources in link-format.",
+        "evidence_refs": [
+          "readme_supported",
+          "discovery_handler",
+          "router_dispatch"
+        ]
+      },
+      {
+        "name": "/hello",
+        "summary": "Return a text/plain greeting.",
+        "evidence_refs": [
+          "readme_supported",
+          "hello_handler"
+        ]
+      },
+      {
+        "name": "/echo",
+        "summary": "Echo payload bytes for POST and PUT.",
+        "evidence_refs": [
+          "readme_supported",
+          "echo_handler"
+        ]
+      },
+      {
+        "name": "/kv and /kv/<key>",
+        "summary": "Provide in-memory list, create, update, read, and delete behavior.",
+        "evidence_refs": [
+          "readme_supported",
+          "kv_handler"
+        ]
+      }
+    ],
+    "must_support_state_behaviors": [
+      {
+        "name": "datagram_scoped_processing",
+        "summary": "Process each UDP datagram independently without connection-level buffering.",
+        "evidence_refs": [
+          "udp_runtime",
+          "server_datagram_path"
+        ]
+      },
+      {
+        "name": "response_envelope",
+        "summary": "Copy token and message id from requests, and choose ACK for CON or NON for NON.",
+        "evidence_refs": [
+          "server_response_envelope"
+        ]
+      },
+      {
+        "name": "kv_lifecycle",
+        "summary": "Keep key-value records in memory until DELETE or server destruction.",
+        "evidence_refs": [
+          "kv_handler",
+          "server_resources"
+        ]
+      },
+      {
+        "name": "resource_registration",
+        "summary": "Register discovery, hello, echo, and kv routes during server creation.",
+        "evidence_refs": [
+          "server_resources"
+        ]
+      }
+    ],
+    "must_support_error_paths": [
+      {
+        "name": "malformed_confirmable_reset",
+        "summary": "Send RST for malformed CON datagrams when a message id is available.",
+        "evidence_refs": [
+          "server_datagram_path"
+        ]
+      },
+      {
+        "name": "not_found",
+        "summary": "Return 4.04 for unmatched routes and missing /kv/<key> reads/deletes.",
+        "evidence_refs": [
+          "server_datagram_path",
+          "kv_handler"
+        ]
+      },
+      {
+        "name": "method_not_allowed",
+        "summary": "Return 4.05 when a route exists but the method mask rejects the request method.",
+        "evidence_refs": [
+          "router_dispatch"
+        ]
+      },
+      {
+        "name": "discovery_not_acceptable",
+        "summary": "Return 4.06 when discovery cannot satisfy the Accept option.",
+        "evidence_refs": [
+          "discovery_handler"
+        ]
+      },
+      {
+        "name": "bad_kv_collection_write",
+        "summary": "Return 4.00 when a non-GET /kv request omits the key suffix.",
+        "evidence_refs": [
+          "kv_handler"
+        ]
+      }
+    ],
+    "must_support_limits": [
+      {
+        "name": "token_length_bound",
+        "summary": "Reject token lengths above eight bytes.",
+        "evidence_refs": [
+          "message_types",
+          "codec_decode"
+        ]
+      },
+      {
+        "name": "datagram_buffer_bound",
+        "summary": "Receive datagrams into a 1500-byte runtime buffer.",
+        "evidence_refs": [
+          "udp_runtime"
+        ]
+      },
+      {
+        "name": "option_extended_encoding",
+        "summary": "Support option delta and length extended encodings for nibble values 13 and 14; reject nibble 15.",
+        "evidence_refs": [
+          "codec_decode",
+          "codec_encode"
+        ]
+      }
+    ],
+    "may_defer_features": [
+      {
+        "name": "DTLS",
+        "summary": "Secure CoAP over DTLS is outside this example scope.",
+        "evidence_refs": [
+          "readme_limits"
+        ]
+      },
+      {
+        "name": "Observe",
+        "summary": "Observe registration, notifications, and cancellation are outside this example scope.",
+        "evidence_refs": [
+          "readme_limits"
+        ]
+      },
+      {
+        "name": "Block1_Block2",
+        "summary": "Block-wise transfer and payload fragmentation/reassembly are outside this example scope.",
+        "evidence_refs": [
+          "readme_limits"
+        ]
+      },
+      {
+        "name": "deduplication_cache",
+        "summary": "Duplicate detection cache is outside this example scope.",
+        "evidence_refs": [
+          "readme_limits"
+        ]
+      },
+      {
+        "name": "retransmission_state_machine",
+        "summary": "CON retransmission timers and acknowledgement tracking are outside this example scope.",
+        "evidence_refs": [
+          "readme_limits"
+        ]
+      },
+      {
+        "name": "separate_responses",
+        "summary": "The server always builds immediate piggybacked ACK responses for valid CON requests and does not implement separate response handling.",
+        "evidence_refs": [
+          "server_response_envelope",
+          "readme_limits"
+        ]
+      },
+      {
+        "name": "4.13_payload_too_large_enforcement",
+        "summary": "README lists 4.13 as a common response code, but the current handler code does not emit it.",
+        "evidence_refs": [
+          "readme_supported",
+          "server_resources"
+        ]
+      }
+    ],
+    "implementation_assumptions": [
+      {
+        "name": "server_only_target",
+        "summary": "The downstream target should generate CoAP server code; clients are external tools used for validation.",
+        "evidence_refs": [
+          "readme_scope",
+          "readme_runtime"
+        ]
+      },
+      {
+        "name": "plain_udp_only",
+        "summary": "The minimum runnable server uses plain UDP and omits DTLS.",
+        "evidence_refs": [
+          "readme_scope",
+          "readme_limits"
+        ]
+      },
+      {
+        "name": "in_memory_runtime",
+        "summary": "Resource registry and /kv data are in memory and tied to the server process lifetime.",
+        "evidence_refs": [
+          "server_resources",
+          "kv_handler"
+        ]
+      }
+    ]
+  },
+  "planning_inputs": {
+    "protocol_summary": "Minimal CoAP server subset implemented in C over UDP + epoll. The planning target is a server that handles CON/NON method requests, decodes CoAP headers/options/payloads, dispatches URI resources, returns immediate ACK/NON responses, implements /.well-known/core, /hello, /echo, and an in-memory /kv store, and intentionally defers DTLS, Observe, Block-wise transfer, deduplication, and retransmission state.",
+    "planning_checklist": [
+      "传输层与 datagram 运行模型",
+      "报文模型与 CoAP codec 范围",
+      "请求视图与 URI option 处理",
+      "资源路由/调度设计",
+      "响应 envelope 与 response code 设计",
+      "内存资源状态与生命周期",
+      "错误路径与 RST 行为",
+      "最小可运行功能集",
+      "测试与验证方式"
+    ],
+    "required_codec_scope": [
+      "CoAP 4-byte header decode and encode",
+      "version/type/code/message_id fields",
+      "token decode and encode with maximum length 8",
+      "option delta and length extended encoding",
+      "Uri-Path, Uri-Query, Content-Format, and Accept options",
+      "payload marker and opaque payload bytes",
+      "RST encode for malformed CON datagrams"
+    ],
+    "implementation_axes": [
+      "UDP event loop and peer endpoint handling",
+      "CoAP message codec",
+      "request-view builder",
+      "resource router",
+      "discovery handler",
+      "hello/echo handlers",
+      "in-memory kv resource",
+      "minimal server handlers"
+    ],
+    "critical_stateful_behaviors": [
+      "Each datagram is processed independently and responses are sent to the recvfrom peer endpoint.",
+      "CON requests receive ACK responses; NON requests receive NON responses.",
+      "Tokens and message ids are copied into valid responses.",
+      "The /kv resource stores payload bytes and optional Content-Format in memory until DELETE or server destruction."
+    ],
+    "error_handling_obligations": [
+      "Send RST for malformed CON datagrams when the type and message id can be read.",
+      "Return 4.04 for route misses and missing /kv entries.",
+      "Return 4.05 for method-mask mismatches.",
+      "Return 4.06 for discovery Accept mismatch.",
+      "Record 4.13 as documented but not currently emitted by implementation code."
+    ],
+    "persistence_and_lifecycle_obligations": [
+      "Use in-memory state only.",
+      "Free decoded request messages, response messages, and request views after each datagram.",
+      "Free all kv entries and router resources during server destruction."
+    ],
+    "coverage_gaps": [
+      "DTLS",
+      "Observe",
+      "Block1/Block2",
+      "duplicate detection cache",
+      "CON retransmission timers and acknowledgement tracking",
+      "separate responses",
+      "4.13 Payload Too Large enforcement",
+      "durable resource persistence"
+    ],
+    "implementation_risks": [
+      "README lists 4.13, but the current code does not contain a response path that emits coap_make_code(4, 13).",
+      "The runtime receive buffer is 1500 bytes and there is no Block-wise transfer support, so larger payload interoperability is intentionally limited.",
+      "Non-method CoAP messages are silently ignored after decoding, which may need an explicit planning policy if broader interoperability is required.",
+      "The UDP socket is created as AF_INET; endpoint formatting supports IPv6, but the runtime listener is IPv4-only."
+    ],
+    "consistency_findings": [
+      "README, message enums, codec, server handler, and resource router agree on the minimum CoAP over UDP server surface.",
+      "The supported README features map directly to implemented routes for /.well-known/core, /hello, /echo, /kv, and /kv/<key>.",
+      "The README limitation list matches absent implementation state for DTLS, Observe, Block-wise transfer, deduplication, and retransmission."
+    ],
+    "planning_trigger_facts": {
+      "target_role": "server",
+      "transport_shape": "datagram",
+      "statefulness": "resource_state",
+      "routing_intensity": "medium",
+      "failure_semantics": "response_codes_and_confirmable_reset",
+      "minimum_surface_count": 13
+    }
+  },
+  "open_questions": [
+    {
+      "category": "error_and_limits",
+      "question_type": "implementation_policy_needed",
+      "question": "Should the planning agent preserve the current lack of 4.13 Payload Too Large enforcement, or should generated protocol specs add a payload-size check because README lists 4.13?",
+      "blocking_impact": "medium",
+      "suggested_followup": "For exact parity with the example project, keep 4.13 documented-but-not-emitted; for stronger CoAP behavior, define a payload limit and response path."
+    },
+    {
+      "category": "state_model",
+      "question_type": "scope_boundary",
+      "question": "Should minimum_v1 include duplicate detection and CON retransmission state, or intentionally mirror the current stateless datagram processing?",
+      "blocking_impact": "medium",
+      "suggested_followup": "Keep deduplication and retransmission deferred for the current min implementation; add them only when expanding beyond the example scope."
+    },
+    {
+      "category": "message_model",
+      "question_type": "implementation_policy_needed",
+      "question": "Should unsupported non-method CoAP messages receive RST or remain silently ignored as in the current server path?",
+      "blocking_impact": "low",
+      "suggested_followup": "For parity, preserve silent ignore after successful decode; for stricter interoperability, define explicit response behavior per message type."
+    }
+  ],
+  "evidence_index": [
+    {
+      "evidence_id": "readme_scope",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/coap/README.md",
+      "section_hint": "Project overview",
+      "chunk_id": "README-scope",
+      "excerpt": "Minimal CoAP server implemented over UDP, intended to keep common functionality runnable and code structure clear for extension."
+    },
+    {
+      "evidence_id": "readme_supported",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/coap/README.md",
+      "section_hint": "Supported features",
+      "chunk_id": "README-supported",
+      "excerpt": "Supported capabilities list CoAP over UDP, CON/NON requests, GET/POST/PUT/DELETE, Token, Message ID, URI Path, URI Query, Content-Format, Accept, common response codes, /.well-known/core, and /hello, /echo, /kv resources."
+    },
+    {
+      "evidence_id": "readme_runtime",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/coap/README.md",
+      "section_hint": "Build, run, and quick test",
+      "chunk_id": "README-runtime",
+      "excerpt": "The server executable runs as ./coap_server [port], defaults to 5683, and quick tests use coap-client-notls for /hello, /.well-known/core, /kv, and /echo."
+    },
+    {
+      "evidence_id": "readme_limits",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/coap/README.md",
+      "section_hint": "Current scope",
+      "chunk_id": "README-limits",
+      "excerpt": "Current scope excludes DTLS, Observe, Block1/Block2, deduplication cache, and retransmission state machine."
+    },
+    {
+      "evidence_id": "main_runtime",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/coap/main.c",
+      "section_hint": "main",
+      "chunk_id": "main.c-runtime",
+      "excerpt": "main defaults to port 5683, accepts a valid numeric command-line port, creates the server, starts it, runs it, and destroys it."
+    },
+    {
+      "evidence_id": "message_types",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/coap/protocol/coap_message.h",
+      "section_hint": "Message constants and structs",
+      "chunk_id": "coap_message.h-types",
+      "excerpt": "Definitions include max token length 8, message types CON/NON/ACK/RST, methods GET/POST/PUT/DELETE, option numbers Uri-Path/Content-Format/Uri-Query/Accept, content formats, and coap_message_t fields."
+    },
+    {
+      "evidence_id": "message_helpers",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/coap/protocol/coap_message.c",
+      "section_hint": "Message helpers",
+      "chunk_id": "coap_message.c-helpers",
+      "excerpt": "Message helpers initialize version 1, copy tokens, allocate payloads/options, join repeated options, parse uint options up to four bytes, and compute code class/detail."
+    },
+    {
+      "evidence_id": "codec_decode",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/coap/protocol/coap_codec.c",
+      "section_hint": "coap_decode_message",
+      "chunk_id": "coap_codec.c-decode",
+      "excerpt": "Decoder parses the 4-byte header, validates version and token length, copies token, decodes ordered options with extended delta/length, handles payload marker, and returns OK, INVALID, or TRUNCATED."
+    },
+    {
+      "evidence_id": "codec_encode",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/coap/protocol/coap_codec.c",
+      "section_hint": "coap_encode_message",
+      "chunk_id": "coap_codec.c-encode",
+      "excerpt": "Encoder validates version and token length, computes encoded size, requires nondecreasing option numbers, encodes extended delta/length, writes payload marker when needed, and returns bytes."
+    },
+    {
+      "evidence_id": "server_response_envelope",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/coap/server/coap_server.c",
+      "section_hint": "setup_response_envelope",
+      "chunk_id": "coap_server.c-response-envelope",
+      "excerpt": "Response envelope initializes version 1, sets ACK for CON requests or NON otherwise, copies message id, and copies the request token."
+    },
+    {
+      "evidence_id": "server_request_view",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/coap/server/coap_server.c",
+      "section_hint": "build_request_view",
+      "chunk_id": "coap_server.c-request-view",
+      "excerpt": "Request view requires a method code, joins URI Path with '/', joins URI Query with '&', normalizes empty path to '/', prefixes missing leading slash, and parses Content-Format and Accept."
+    },
+    {
+      "evidence_id": "server_datagram_path",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/coap/server/coap_server.c",
+      "section_hint": "on_datagram",
+      "chunk_id": "coap_server.c-on-datagram",
+      "excerpt": "on_datagram decodes input, sends RST for malformed CON messages with a readable message id, ignores non-method messages, dispatches valid request views, maps route misses to 4.04, sends responses, and frees message state."
+    },
+    {
+      "evidence_id": "discovery_handler",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/coap/server/coap_server.c",
+      "section_hint": "handle_discovery",
+      "chunk_id": "coap_server.c-discovery",
+      "excerpt": "Discovery rejects non-link-format Accept with 4.06, builds core links from the router, returns 5.00 on allocation failure, and sends 2.05 with application/link-format on success."
+    },
+    {
+      "evidence_id": "hello_handler",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/coap/server/coap_server.c",
+      "section_hint": "handle_hello",
+      "chunk_id": "coap_server.c-hello",
+      "excerpt": "Hello returns text/plain 2.05 content and uses alternate text when the request query string is nonempty."
+    },
+    {
+      "evidence_id": "echo_handler",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/coap/server/coap_server.c",
+      "section_hint": "handle_echo",
+      "chunk_id": "coap_server.c-echo",
+      "excerpt": "Echo returns 2.04 Changed with request payload bytes and uses request Content-Format when present, otherwise text/plain."
+    },
+    {
+      "evidence_id": "kv_handler",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/coap/server/coap_server.c",
+      "section_hint": "kv helpers and handle_kv",
+      "chunk_id": "coap_server.c-kv",
+      "excerpt": "KV helpers find, create/update, and delete entries; handle_kv lists keys as JSON for GET /kv, reads keys, writes payload bytes with optional Content-Format, deletes keys, and returns 2.01/2.02/2.04/2.05/4.00/4.04/4.05/5.00 as appropriate."
+    },
+    {
+      "evidence_id": "server_resources",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/coap/server/coap_server.c",
+      "section_hint": "coap_server_create and destroy",
+      "chunk_id": "coap_server.c-resources",
+      "excerpt": "Server creation registers /.well-known/core, /hello, /echo, and prefix /kv routes with method masks and discovery attributes; destroy stops UDP, destroys router, and frees key-value entries."
+    },
+    {
+      "evidence_id": "router_header",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/coap/resource/resource_router.h",
+      "section_hint": "Request and router API",
+      "chunk_id": "resource_router.h-api",
+      "excerpt": "coap_request_t exposes message, method, path, query, content_format, has_content_format, accept, and has_accept; router API creates, destroys, adds, dispatches, and builds core links."
+    },
+    {
+      "evidence_id": "router_dispatch",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/coap/resource/resource_router.c",
+      "section_hint": "Resource entry matching and core link generation",
+      "chunk_id": "resource_router.c-dispatch",
+      "excerpt": "Router entries include path, prefix_match, methods_mask, discoverable, attributes, handler, and user; dispatch supports exact and slash-boundary prefix matching, method masks, and link-format discovery output."
+    },
+    {
+      "evidence_id": "udp_header",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/coap/network/udp_server.h",
+      "section_hint": "UDP endpoint and callback API",
+      "chunk_id": "udp_server.h-api",
+      "excerpt": "UDP API defines coap_endpoint_t with sockaddr_storage and addr_len, datagram callback signature, server lifecycle functions, sendto, and endpoint-to-string helper."
+    },
+    {
+      "evidence_id": "udp_runtime",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/coap/network/udp_server.c",
+      "section_hint": "UDP server event loop",
+      "chunk_id": "udp_server.c-runtime",
+      "excerpt": "UDP runtime creates a nonblocking AF_INET SOCK_DGRAM socket, sets SO_REUSEADDR, binds to INADDR_ANY, registers EPOLLIN, receives datagrams into a 1500-byte buffer with recvfrom, and sends responses with sendto."
+    }
+  ]
+}

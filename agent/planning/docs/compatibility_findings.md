@@ -63,4 +63,5 @@ schemas before relying on loader compatibility:
 Planning-only fields such as capability IDs, state access, call graph details,
 and traceability decisions must not be written as unknown top-level fields in
 strict specs. They are either lowered into schema-approved fields such as
-`DOC_REF` or written to non-`*_spec.json` sidecars under `spec_bundle/`.
+`DOC_REF` or written to run-level non-`*_spec.json` sidecars indexed by
+`coder_manifest.json`.

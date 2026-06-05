@@ -300,6 +300,8 @@ class PlanningValidatorTests(unittest.TestCase):
             self.assertFalse(result.success)
             self.assertTrue(any(diag.code == "architecture_mandatory_llm_failed" for diag in result.diagnostics), [diag.__dict__ for diag in result.diagnostics])
             self.assertFalse((result.output_dir / "_step_logs" / "006_architecture_candidates.json").exists())
+            repair_stats = json.loads((result.output_dir / "_step_logs" / STEP_FILENAMES["planning_repair_statistics"]).read_text(encoding="utf-8"))
+            self.assertEqual(repair_stats["schema_version"], "planning_repair_statistics/v1")
             token_usage = json.loads((result.output_dir / "_step_logs" / "013_token_usage_summary.json").read_text(encoding="utf-8"))
             self.assertEqual(token_usage["by_stage"]["architecture"]["attempt_count"], 6)
             architecture_calls = [messages for prompt_name, messages in calls if prompt_name == "architecture_candidate_prompt"]

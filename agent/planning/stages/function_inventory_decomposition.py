@@ -238,6 +238,16 @@ def select_top_decomposition_hints(module_artifact: dict[str, Any], context: dic
     ]
     boundary_text = _artifact_text(provider_artifacts + consumer_artifacts)
     core_text = _core_design_text(module_id, context)
+    owner_text = f"{role_text} {artifact_text} {capability_text} {doc_ref_text} {core_text}"
+
+    def rule_has_required_evidence(rule_id: str, score: int, evidence: list[str]) -> bool:
+        if score < 2 or not any(not item.startswith(("provider_or_consumer_boundary", "core_design_owner_evidence")) for item in evidence):
+            return False
+        if rule_id == "transport_runtime_io":
+            return bool(_contains(owner_text, ["transport", "connection", "socket", "tcp", "udp", "epoll", "event loop", "read", "write", "send", "receive", "accept", "close"]))
+        if rule_id == "session_transaction_state":
+            return bool(_contains(owner_text, ["session", "transaction", "client state", "connection state", "login state", "request context"]))
+        return True
 
     scored: list[tuple[int, int, DecompositionRule, list[str]]] = []
     for index, rule in enumerate(DECOMPOSITION_RULES):
@@ -265,18 +275,10 @@ def select_top_decomposition_hints(module_artifact: dict[str, Any], context: dic
         if _contains(core_text, rule.artifact_terms + rule.positive_terms + rule.capability_terms):
             score += 1
             evidence.append("core_design_owner_evidence")
-        scored.append((score, index, rule, evidence))
+        if rule_has_required_evidence(rule.rule_id, score, evidence):
+            scored.append((score, index, rule, evidence))
 
-    selected = sorted(scored, key=lambda item: (-item[0], item[1]))[: max(1, max_hints)]
-    if len(selected) < max_hints:
-        selected_ids = {item[2].rule_id for item in selected}
-        for item in sorted(scored, key=lambda scored_item: scored_item[1]):
-            if item[2].rule_id not in selected_ids:
-                selected.append(item)
-                selected_ids.add(item[2].rule_id)
-            if len(selected) >= max_hints:
-                break
-    selected = selected[:max_hints]
+    selected = sorted(scored, key=lambda item: (-item[0], item[1]))[:max_hints]
     selected_rule_ids = [item[2].rule_id for item in selected]
     return {
         "selected_rule_ids": selected_rule_ids,

@@ -725,6 +725,29 @@ def _legal_ids_from_draft(draft: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _public_exportable_type(item: dict[str, Any]) -> dict[str, str]:
+    return {
+        "type_id": str(item.get("type_id", "")),
+        "name": str(item.get("c_symbol") or item.get("c_type_name") or item.get("name", "")).strip(),
+        "owner_module_id": str(item.get("owner_module_id", "")),
+        "kind": str(item.get("kind", "")),
+    }
+
+
+def _has_c_type_symbol(item: dict[str, Any]) -> bool:
+    return bool(re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", str(item.get("c_symbol") or item.get("c_type_name") or item.get("name", "")).strip()))
+
+
+def _public_exportable_types(draft: dict[str, Any]) -> list[dict[str, str]]:
+    return [
+        _public_exportable_type(item)
+        for item in draft.get("canonical_types", [])
+        if isinstance(item, dict)
+        and str(item.get("type_id", "")).strip()
+        and _has_c_type_symbol(item)
+    ]
+
+
 def _legal_ids_from_inputs(planning_ir: dict[str, Any], profile: dict[str, Any], constraints: dict[str, Any], selected_architecture: dict[str, Any]) -> dict[str, Any]:
     return {
         "module_ids": [item["module_id"] for item in _selected_modules(selected_architecture)],
@@ -2132,6 +2155,9 @@ def _file_layout_module_summaries(draft: dict[str, Any]) -> list[dict[str, Any]]
         if isinstance(function, dict):
             functions_by_module.setdefault(str(function.get("module_id", "")), []).append(function)
     summaries: list[dict[str, Any]] = []
+    exportable_by_module: dict[str, list[dict[str, str]]] = {}
+    for type_item in _public_exportable_types(draft):
+        exportable_by_module.setdefault(str(type_item.get("owner_module_id", "")), []).append(type_item)
     for module in draft.get("module_artifacts", []):
         if not isinstance(module, dict):
             continue
@@ -2167,6 +2193,7 @@ def _file_layout_module_summaries(draft: dict[str, Any]) -> list[dict[str, Any]]
                 "public_function_ids": [str(function.get("function_id", "")) for function in public_functions],
                 "private_function_ids": [str(function.get("function_id", "")) for function in private_functions],
                 "recommended_file_units": _layout_role_units(module, functions),
+                "public_exportable_types": exportable_by_module.get(module_id, []),
                 "selected_decomposition_rules": decomposition.get("selected_rule_ids", []),
                 "function_clusters": [_layout_function_cluster(function) for function in functions],
             }
@@ -2175,6 +2202,7 @@ def _file_layout_module_summaries(draft: dict[str, Any]) -> list[dict[str, Any]]
 
 
 def build_file_layout_context(draft: dict[str, Any], planning_ir: dict[str, Any], constraints: dict[str, Any]) -> dict[str, Any]:
+    exportable_types = _public_exportable_types(draft)
     return {
         "schema_version": "file_layout_context/v1",
         "module_artifacts": draft.get("module_artifacts", []),
@@ -2190,6 +2218,11 @@ def build_file_layout_context(draft: dict[str, Any], planning_ir: dict[str, Any]
             "role_unit_examples": ["connection", "tcp_server", "packet", "decoder", "encoder", "session", "session_manager", "topic_tree", "message_router", "broker"],
         },
         "engineering_constraints": _constraints(constraints),
+        "public_exportable_type_ids": [str(item["type_id"]) for item in exportable_types],
+        "public_exportable_types_by_module": {
+            module_id: [item for item in exportable_types if str(item.get("owner_module_id", "")) == module_id]
+            for module_id in sorted({str(item.get("owner_module_id", "")) for item in exportable_types if str(item.get("owner_module_id", ""))})
+        },
         "legal_id_universe": _legal_ids_from_draft(draft),
     }
 

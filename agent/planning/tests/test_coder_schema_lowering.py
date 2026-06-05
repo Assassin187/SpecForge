@@ -17,6 +17,7 @@ from agent.planning.stages.coder_spec_lowering import (
     normalize_param_ownership_for_coder,
 )
 from agent.planning.stages.protocol_profile import build_protocol_profile
+from agent.planning.stages.implementation_plan_merger import normalize_file_layout_candidate
 from agent.planning.stages.specs_compiler import compile_spec_bundle
 from agent.planning.tests.current_flow_fixtures import current_architecture_candidates, current_implementation_plan
 from agent.planning.validators.coder_compat import validate_coder_compatibility
@@ -183,8 +184,22 @@ class CoderSchemaLoweringTests(unittest.TestCase):
             selected = select_architecture(candidates, profile)
             plan = current_implementation_plan(planning_ir, profile, constraints, selected)
             manifest, _ = compile_spec_bundle(plan, tmp)
+            spec_root = Path(manifest["spec_root"])
+            self.assertFalse(list(spec_root.glob("planning_*.json")))
+            sidecar_paths = [Path(path) for path in manifest["sidecar_paths"]]
+            self.assertEqual({path.parent for path in sidecar_paths}, {tmp})
+            self.assertTrue(all(path.exists() for path in sidecar_paths))
             diagnostics = validate_coder_spec_bundle_against_schema(manifest["spec_root"])
             self.assertFalse([diag.__dict__ for diag in diagnostics if diag.level == "error"])
+            coder_diagnostics = validate_coder_compatibility(manifest["spec_root"])
+            self.assertFalse([diag.__dict__ for diag in coder_diagnostics if diag.level == "error"])
+            bundle = load_spec_bundle_from_root(manifest["spec_root"])
+            self.assertEqual(bundle.protocol.name, "mqtt")
+            self.assertEqual(bundle.protocol.spec_version, "3.1.1")
+            self.assertEqual(bundle.protocol.roles, ["BROKER"])
+            module_spec = json.loads(Path(manifest["module_spec_path"]).read_text(encoding="utf-8"))
+            self.assertTrue(module_spec.get("TEST_VECTORS"))
+            self.assertTrue(module_spec.get("FORBIDDEN_SYMBOLS"))
 
             for path in Path(manifest["spec_root"]).rglob("*_spec.json"):
                 raw = json.loads(path.read_text(encoding="utf-8"))
@@ -193,6 +208,8 @@ class CoderSchemaLoweringTests(unittest.TestCase):
                     self.assertNotIn("CAPABILITY_IDS", raw)
                     self.assertNotIn("STATE_ACCESS", raw)
                     self.assertNotIn("CALLS_ALLOWED", raw)
+                    if raw.get("WIRE_MAPPING"):
+                        self.assertTrue(raw.get("TEST_VECTORS"))
 
     def test_non_mqtt_public_interfaces_artifacts_and_metadata_lowering(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:
@@ -421,6 +438,14 @@ class CoderSchemaLoweringTests(unittest.TestCase):
             self.assertEqual(modules["relay"]["DEPENDENCIES"], ["framing"])
             self.assertLess(module_spec["GENERATION_ORDER"].index("framing"), module_spec["GENERATION_ORDER"].index("relay"))
 
+        declared_dep_plan = copy.deepcopy(plan)
+        declared_dep_plan["dependency_graph"]["module_edges"] = []
+        next(item for item in declared_dep_plan["module_artifacts"] if item["module_id"] == "relay")["dependencies"] = ["framing"]
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(declared_dep_plan, Path(raw_tmp))
+            module_spec = json.loads(Path(manifest["module_spec_path"]).read_text(encoding="utf-8"))
+            self.assertLess(module_spec["GENERATION_ORDER"].index("framing"), module_spec["GENERATION_ORDER"].index("relay"))
+
     def test_source_only_main_file_enters_module_files_and_loader(self) -> None:
         plan = copy.deepcopy(_zap_plan())
         plan["file_layout"]["files"].append(
@@ -489,6 +514,26 @@ class CoderSchemaLoweringTests(unittest.TestCase):
             self.assertEqual(module_spec["PROTOCOL"]["SPEC_VERSION"], "unspecified")
             self.assertEqual(module_spec["PROTOCOL"]["ROLES"], ["UNSPECIFIED_ROLE"])
 
+    def test_scalar_target_directives_lower_protocol_metadata(self) -> None:
+        plan = _zap_plan()
+        plan.pop("protocol_metadata")
+        plan.pop("target_profile")
+        plan["target_directives_ref"] = {
+            "schema_version": "target_directives/v1",
+            "directives": {
+                "target_role": "relay",
+                "protocol_version": "2.0",
+                "scope": "ZapLine relay profile",
+            },
+        }
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(plan, Path(raw_tmp))
+            module_spec = json.loads(Path(manifest["module_spec_path"]).read_text(encoding="utf-8"))
+            self.assertEqual(module_spec["PROTOCOL"]["NAME"], "zapline")
+            self.assertEqual(module_spec["PROTOCOL"]["SPEC_VERSION"], "2.0")
+            self.assertEqual(module_spec["PROTOCOL"]["ROLES"], ["RELAY"])
+            self.assertEqual(module_spec["PROTOCOL"]["SCOPE"], "ZapLine relay profile")
+
     def test_coder_semantics_reject_missing_header_and_bad_artifact_name(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:
             manifest, _ = compile_spec_bundle(_zap_plan(), Path(raw_tmp))
@@ -516,6 +561,32 @@ class CoderSchemaLoweringTests(unittest.TestCase):
             manifest, _ = compile_spec_bundle(plan, Path(raw_tmp))
             diagnostics = validate_coder_compatibility(manifest["spec_root"])
             self.assertIn("coder_public_lowering_unresolved", {diag.code for diag in diagnostics if diag.level == "error"})
+
+    def test_normalized_layout_does_not_export_internal_types_to_coder(self) -> None:
+        plan = _zap_plan()
+        plan["type_inventory"] = [
+            {
+                "type_id": "type:zapline_internal_cursor",
+                "name": "zapline_internal_cursor_t",
+                "module_id": "framing",
+                "kind": "view_struct",
+                "visibility": "module_internal",
+                "defined_in": "internal_header",
+            }
+        ]
+        plan["file_layout"]["files"][0]["exports_type_ids"] = ["type:zapline_frame", "type:zapline_internal_cursor"]
+        normalized, stats = normalize_file_layout_candidate({"files": copy.deepcopy(plan["file_layout"]["files"])}, plan)
+        self.assertEqual(normalized["files"][0]["exports_type_ids"], ["type:zapline_frame"])
+        self.assertGreater(stats["layout_internal_export_dropped"], 0)
+        plan["file_layout"]["files"] = normalized["files"]
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(plan, Path(raw_tmp))
+            diagnostics = validate_coder_compatibility(manifest["spec_root"])
+            self.assertNotIn("coder_public_lowering_unresolved", {diag.code for diag in diagnostics if diag.level == "error"})
+            file_path = next(path for path in Path(manifest["spec_root"]).rglob("*_spec.json") if path.name == "framing_spec.json")
+            file_spec = json.loads(file_path.read_text(encoding="utf-8"))
+            public_names = {item["NAME"] for item in file_spec.get("PUBLIC_SYMBOLS", [])}
+            self.assertNotIn("zapline_internal_cursor_t", public_names)
 
     def test_coder_semantics_reject_missing_public_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:

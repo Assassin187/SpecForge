@@ -51,6 +51,8 @@ LOCAL_ID_RULES = {
 
 STAGE_SEMANTIC_RULES = {
     "core_design_candidate/v1": [
+        "canonical_types describe implementation-facing public C type contracts, not raw protocol message labels; keep protocol identity in type_id, source_message_ids, source_field_ids, and trace_ref_keys.",
+        "canonical_types[].name must be the C ABI type symbol a coder can place in a public header, preferably protocol/module-prefixed, such as mqtt_connect_payload_t rather than a bare protocol surface name.",
         "handler_matrix[].trigger is a coverage key, not prose. For every handler_requirements[].surface, either one handler_matrix[].trigger must exactly equal that surface or one unresolved_questions[].target_id must exactly equal that surface.",
         "owner_module_id values must come from selected modules.",
         "capability_id and source_capability_ids values must come from required capabilities.",
@@ -72,11 +74,13 @@ STAGE_SEMANTIC_RULES = {
     ],
     "type_filling_candidate/v1": [
         "Task definition: fill semantic details for the provided deterministic type_planning_space; do not generate a complete type inventory.",
+        "Public_header types are coder ABI declarations. Their names must be stable C symbols that identify the protocol/module representation, while protocol message names remain evidence and trace identity.",
         "Preserve every mandatory, derived, and recommended slot identity. Use slot_fillings[].slot_id to attach fields, enum_values, callback_signature, ownership/lifetime, dependencies, assumptions, and unresolved questions.",
         "The LLM is a local semantic proposal generator only. It may not delete, rename, re-module, re-kind, or change visibility for required slots.",
         "optional_type_proposals are allowed only for justified module-local expansion. Treat callback/event/visitor outputs as ABI type boundaries: propose a public callback_type for a single function-pointer role and an event_struct for a callback collection when a module reports events, iterates matches, dispatches timers, or returns items through caller callbacks.",
         "Use only type_planning_space.allowed_type_refs for dependencies and type_ref fields. Never reference provider private types, unrelated module private types, state/message/field ids as type refs, or natural-language type names.",
         "Declare ownership and lifetime for every pointer, string, and buffer field. Owned/resource/container/result types must declare lifecycle cleanup/free intent, but do not generate real function signatures or behavior.",
+        "If lifecycle.created_by/initialized_by/destroyed_by/freed_by names are provided, they must be concrete module-owned function names, not event or concept labels such as expiry, timeout, callback, owner, or caller.",
         "Scalar/value ownership means the field value belongs to its containing struct; only owned pointer/string/buffer storage requires cleanup/free lifecycle.",
         "Do not generate function inventory, signature, behavior, wire mapping, calls_allowed, file layout, dependency graph, or code.",
     ],
@@ -111,6 +115,7 @@ STAGE_SEMANTIC_RULES = {
         "For public lifecycle APIs, use module-owned protocol-prefixed names already present in the inventory and include concrete context/config parameters needed by the role, such as port, callbacks, user context, or the module handle.",
         "For parser/serializer helpers, prefer concrete buffer/cursor/out-param shapes like const uint8_t* + length + position + typed out parameter; avoid generic void* packet/message when a public packet or payload type is available.",
         "For exported=true or api_surface=public functions, design a stable ABI boundary: signature.raw, signature.name, return_type, and every param name/type must lower into a C header without exposing private/internal-only types except through public opaque handles.",
+        "Public opaque handles hide layout and must cross the ABI by pointer or be replaced with a concrete public scalar/struct type; do not return or pass an opaque_handle typedef by value.",
         "Public callback/event/visitor parameters must use an existing named public callback_type from signature_type_table or provider_public_types; do not encode them as anonymous C function pointers. If no suitable named callback_type exists, keep the conservative skeleton shape or record an unresolved question for type inventory.",
         "signature.params[].type is the C spelling; type_ref may use only legal_id_universe.type_ids or legal_id_universe.system_type_ids.",
         "For public functions, non-primitive parameter and return types must be canonical_types, named public callback_types, system types, or explicitly public opaque declarations; do not rely on compiler guesses.",
@@ -193,7 +198,8 @@ STAGE_SEMANTIC_RULES = {
         "Do not create separate header or source file items.",
         "Do not add functions; every existing function must have exactly one function_file_assignment.",
         "exports_function_ids is the header declaration intent for public API functions; every exported=true, api_surface=public, or visibility=public function must appear in exactly one exports_function_ids list.",
-        "exports_type_ids may contain only canonical type IDs; never use state IDs, message IDs, field IDs, filenames, paths, or natural-language type names.",
+        "exports_type_ids is the public header type ABI surface for this file; export the concrete prefixed representation type that coder code should include, not every semantic/canonical protocol concept covered by the file.",
+        "exports_type_ids may contain only IDs copied from file_layout_context.public_exportable_type_ids; never export ordinary type_inventory IDs, internal cursor/result/context/state types, state IDs, message IDs, field IDs, filenames, paths, or natural-language type names.",
         "imports_allowed may reference only other files[].file_id FILE_SPEC values from this same candidate.",
         "imports_allowed must not reference header IDs, .h files, .c files, paths, or the file's own file_id.",
         "Public functions must have declaration_file_id equal to their FILE_SPEC file_id.",

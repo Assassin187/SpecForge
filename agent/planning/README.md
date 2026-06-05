@@ -141,6 +141,7 @@ LLM 参与：
   - `evidence_refs_by_fact_id`
   - `field_id_by_message_and_name`
 - 将 target directives 写入 `planning_ir.target_directives`，但不混入 `protocol_facts`。
+- 后续实现计划阶段会通过统一 normalizer 读取 target directives；normalizer 同时兼容 Facts/target adapter 的 `{value: ...}` 包装形态和 implementation plan 中的 scalar view，避免 metadata lowering 因形状差异丢失 role/runtime/scope。
 - 将 facts 中的 open questions 和缺失、不确定、无证据的信息归一化写入 `unresolved_facts`。
 - 写入 `_step_logs/003_planning_ir.json`，并运行 `validate_planning_ir`。
 
@@ -314,6 +315,7 @@ LLM 参与：
 具体操作：
 
 - 5.1 由规则层生成 `implementation_plan/v1` skeleton：
+  - 写入 normalized `protocol_metadata`，包含协议名、版本、目标角色和 scope；版本优先来自显式 facts/target 字段，缺失时只从 scope 文本中抽取通用版本号模式。
   - 固定 `source_artifacts` / `source_artifact_refs`。
   - 建立 `id_namespace`，包括 module、capability、constraint、field、function/file id pattern。
   - 建立 `validation_targets`，明确 capability coverage、handler coverage、wire field coverage、dependency derivation only 和 specs compile no-new-semantics。
@@ -342,7 +344,7 @@ LLM 参与：
   - LLM prompt 输入是 planning space，输出 `type_filling_candidate/v1`，只允许填 slot semantic、field/enum/callback details、ownership/lifetime、assumptions/unresolved questions，并提出 optional module-local type proposals。
   - 只做 JSON retry；如果 LLM 没返回合法 JSON 或 candidate shape 不合法，使用 empty semantic candidate 进入 deterministic reconciliation。
   - `reconcile_type_filling_candidate()` 固定 required slot 的 `type_id/name/module_id/kind/visibility/defined_in`，吸收合法语义字段，normalize optional proposals，去重，检查 public/private boundary，提取 lifecycle obligations。
-  - `validate_type_inventory_candidate()` 阻断 unknown type refs、public type 泄漏 private type、missing mandatory coverage、owned/resource/container type 缺 release path 等 coder-breaking 问题。
+  - `validate_type_inventory_candidate()` 阻断 unknown type refs、public type 泄漏 private type、missing mandatory coverage、owned/resource/container type 缺 release path 等 coder-breaking 问题；`lifecycle.*` 只能表达 concrete function name，expiry/timeout/callback 等事件语义应留在 callback/event type 或 behavior note。
   - quality/richness 问题写入 diagnostics 和 validation report，不触发旧 repair/quality repair。
   - public/public_header 类型通过 `merge_type_inventory()` 同步到 `canonical_types`。
 
@@ -352,7 +354,7 @@ LLM 参与：
   - LLM 不允许删除、重命名、改 module、改 visibility 或改 required seed identity；也不生成 signature、behavior、wire mapping、calls_allowed、file layout、dependency graph 或代码。
   - `reconcile_function_annotation_candidate()` 保留 required seeds，normalize optional helpers，去重，校验 refs/boundary，并记录 accepted/rejected optional counts。
   - `validate_function_inventory_candidate()` 阻断 missing FUNC coverage、uncovered lifecycle obligation、missing handler/parser/serializer entry、unknown refs、invalid coder function type 和 public API inconsistency。
-  - 聚合后执行 `reconcile_type_inventory_function_refs()`，把 5.3 type lifecycle refs 对齐到已接受的 lifecycle/API functions。
+  - 聚合后执行幂等的 `reconcile_type_inventory_function_refs()`，清理 stale type-function unresolved，并把 5.3 type lifecycle refs 对齐到已接受的 lifecycle/API functions。
   - 随后执行 `5.4a.1_function_symbol_repair`，保留 public/exported API symbol，并 deterministic 重命名 internal duplicate C-facing function name；修复报告写入 `_agent_logs/007_5_4a_function_symbol_repair_report.json`。
 
 - 5.4b 按 module 补全 C signature；默认 batch size 为 `PlanningConfig.module_scoped_batch_sizes["implementation_plan_5_4b"] == 32`：
@@ -398,6 +400,7 @@ LLM 参与：
   - 每个 file item 是“一源一头 FILE_SPEC 单元”，`file_id` 使用源文件无后缀路径，例如 `file:mqtt/transport_runtime/transport_runtime`。
   - 只能分配 existing functions。
   - 填充 `source_path`、`header_path`、`exports`、`implements`、`imports_allowed` 和 traceability；`imports_allowed` 只引用其他 FILE_SPEC ids，不引用 `.h` / `.c` 或 `header:*`。
+  - `exports_type_ids` 只表达 public header 中可由 coder lowering 生成的 canonical public types；内部 cursor/result/context/state 类型不能导出到 public header。
   - 不合法时使用 deterministic file layout fallback。
 
 - 5.5b 在 file layout 稳定后生成 runtime entrypoint candidate，把 key flow lifecycle 组织成可执行入口。
@@ -406,6 +409,7 @@ LLM 参与：
 - 若 dependency validation 失败，执行一次 LLM dependency repair patch；repair patch 写入 `_agent_logs/`，repair 后仍失败则使用 deterministic dependency fallback。
 - 写入最终 `_step_logs/007_implementation_plan.json`。
 - 5.7 Spec Readiness Validation 运行 full implementation plan validator 与 dependency graph validator，确认 Step 5 输出已经具备直接进入 specs compiler 的结构完整性。
+  - readiness gate 会阻断缺失协议 metadata、wire mapping/access path 不闭合、call contract callee/参数绑定不一致、wire-facing codec 缺少 test seed 或 function-level test vector 等 coder-breaking 问题。
 - 每个子步骤都会写入对应 validation report；阶段产物保留在 `_step_logs/`，LLM patch/attempt summary 保留在 `_agent_logs/`。
 
 LLM 参与：
@@ -469,9 +473,12 @@ LLM 参与：
 - 从 `file_layout.files[*]` 生成多个 `FILE_SPEC`。
 - 从 implemented functions 生成多个 `FUNCTION_SPEC`。
 - 生成一个 `PROTOCOL_MODULE_SPEC`。
+- 从 normalized `protocol_metadata` 和 target directives 稳定 lowering `PROTOCOL.NAME`、`SPEC_VERSION`、`ROLES` 和 `SCOPE`，不再依赖 fallback 的 `unspecified` / `UNSPECIFIED_ROLE` 通过正常 readiness。
+- 从 wire mapping 自动下沉 smoke-level `TEST_VECTORS` 到 wire-facing function specs，并把 planning `test_plan` seeds 下沉到 module-level `TEST_VECTORS`。
+- 从 canonical public type tree 派生通用 `FORBIDDEN_SYMBOLS`，并合并 planner/LLM 已给出的 forbidden symbols，减少 coder 对不存在公共字段的臆造。
 - 对非法 planning function name 执行 canonical C symbol lowering，并用 structured signature 重建 `RAW`。
 - 生成 `coder_manifest.json` 作为索引和审计文件。
-- 生成非 `*_spec.json` sidecar，例如 `planning_traceability.json`、`planning_decisions.json`、`planning_ir_refs.json`，用于保存 traceability、capability/state/call planning 信息。
+- 在 run 根目录生成非 `*_spec.json` sidecar，例如 `planning_traceability.json`、`planning_decisions.json`、`planning_ir_refs.json`，并由 `coder_manifest.json` 索引，用于保存 traceability、capability/state/call planning 信息。
 - strict specs 中不得出现 coder schema 不允许的顶层字段，例如 `TRACEABILITY`、`CAPABILITY_IDS`、`STATE_ACCESS`、`CALLS_ALLOWED`。
 - 先用 `specs-example/specs_schema/*.json` 做 strict JSON Schema validation，再调用当前 Coder loader 做兼容性验证：
   - `agent.planning.validators.coder_schema.validate_coder_spec_bundle_against_schema()`
@@ -572,6 +579,9 @@ agent/planning/out/<protocol>/<target_slug>/<timestamp>/
 │   ├── 008_dependency_validation_report.json
 │   └── 014_planning_validation_report.json
 ├── coder_manifest.json
+├── planning_traceability.json
+├── planning_decisions.json
+├── planning_ir_refs.json
 └── spec_bundle/
 ```
 

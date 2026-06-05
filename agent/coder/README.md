@@ -227,7 +227,7 @@ python3 -m agent coder \
   generate
 
 python3 -m agent coder \
-  --spec-root /home/ljf/SpecForge/agent/planning/out/mqtt/broker__c__linux_epoll__minimum_v1/20260513_111646_443818/spec_bundle \
+  --spec-root /home/ljf/SpecForge/agent/planning/out/mqtt/broker__c__linux_epoll__minimum_v1/test1/spec_bundle \
   generate
 
 ```

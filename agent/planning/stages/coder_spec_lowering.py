@@ -339,7 +339,10 @@ def lower_protocol_meta_for_coder(planning_source: dict[str, Any]) -> dict[str, 
     target_directives = planning_source.get("target_directives_ref", {}).get("directives", {}) if isinstance(planning_source.get("target_directives_ref"), dict) else {}
 
     def directive_value(name: str) -> Any:
-        return _nested_value(target_directives, (name, "value"))
+        value = target_directives.get(name) if isinstance(target_directives, dict) else None
+        if isinstance(value, dict) and ("value" in value or "directive_id" in value):
+            return value.get("value")
+        return value
 
     name = _first_text(
         fact_meta.get("protocol_name"),
@@ -384,7 +387,17 @@ def lower_protocol_meta_for_coder(planning_source: dict[str, Any]) -> dict[str, 
         if role not in seen:
             seen.add(role)
             unique_roles.append(role)
-    return {"NAME": name, "SPEC_VERSION": version or "unspecified", "ROLES": unique_roles}
+    scope = _first_text(
+        protocol_metadata.get("scope"),
+        protocol_metadata.get("target_scope"),
+        fact_meta.get("target_scope"),
+        fact_meta.get("scope"),
+        directive_value("scope"),
+    )
+    result = {"NAME": name, "SPEC_VERSION": version or "unspecified", "ROLES": unique_roles}
+    if scope:
+        result["SCOPE"] = scope
+    return result
 
 
 def _event_contract(function: dict[str, Any]) -> dict[str, Any]:

@@ -22,7 +22,7 @@ from ..schemas.implementation_plan import (
     WIRE_ACCESS_BINDING_PATCH_SCHEMA_VERSION,
 )
 from ..schemas.implementation_plan_candidates import validate_shape
-from ..stages.coder_spec_lowering import is_anonymous_c_function_pointer_type, normalize_type_key
+from ..stages.coder_spec_lowering import is_anonymous_c_function_pointer_type, lower_canonical_type_to_header_data, normalize_type_key
 from ..stages.function_inventory_decomposition import DECOMPOSITION_RULES, select_top_decomposition_hints
 from ..stages.implementation_plan import _handler_surfaces, _safe_id, _surface_units, _wire_fields
 from ..stages.implementation_plan_context import (
@@ -78,6 +78,29 @@ def _capability_values(module: dict[str, Any]) -> set[str]:
         for cap in module.get(key, [])
         if str(cap).strip()
     }
+
+
+def _forbidden_public_symbol_names(container: dict[str, Any]) -> set[str]:
+    return {
+        str(item.get("name") or item.get("NAME") or "").strip()
+        for item in container.get("forbidden_symbols", []) if isinstance(item, dict)
+        if str(item.get("name") or item.get("NAME") or "").strip()
+    } | {
+        str(item).strip()
+        for item in container.get("forbidden_symbols", []) if not isinstance(item, dict)
+        if str(item).strip()
+    }
+
+
+def _public_symbol_policy_diagnostic(name: Any, subject: str, code: str, path: str | None, forbidden_names: set[str] | None = None) -> PlanningDiagnostic | None:
+    symbol = str(name or "").strip()
+    if not symbol:
+        return PlanningDiagnostic("error", code, f"{subject} has empty public C symbol", path)
+    if not C_SYMBOL_RE.match(symbol):
+        return PlanningDiagnostic("error", code, f"{subject} public C symbol '{symbol}' is not C-friendly", path)
+    if symbol in BARE_C_SYMBOL_DENYLIST or (forbidden_names is not None and symbol in forbidden_names):
+        return PlanningDiagnostic("error", code, f"{subject} public C symbol '{symbol}' must use a protocol/module-prefixed ABI name", path)
+    return None
 
 
 def _lifecycle_name_matches(action: str, name: str) -> bool:
@@ -227,6 +250,111 @@ def _type_ids(draft: dict[str, Any]) -> set[str]:
     }
 
 
+def _canonical_types_by_id(draft: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    return {
+        str(item.get("type_id", "")): item
+        for item in draft.get("canonical_types", [])
+        if isinstance(item, dict) and str(item.get("type_id", "")).strip()
+    }
+
+
+def _type_inventory_by_id(draft: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    return {
+        str(item.get("type_id", "")): item
+        for item in draft.get("type_inventory", [])
+        if isinstance(item, dict) and str(item.get("type_id", "")).strip()
+    }
+
+
+def _layout_export_type_diagnostic(type_id: str, draft: dict[str, Any], file_id: str, path: str | None) -> PlanningDiagnostic | None:
+    forbidden_names = _forbidden_public_symbol_names(draft)
+    canonical = _canonical_types_by_id(draft)
+    if type_id in canonical:
+        declaration = lower_canonical_type_to_header_data(canonical[type_id])
+        if declaration is None:
+            return PlanningDiagnostic("error", "layout_exports_unlowerable_type", f"file '{file_id}' exports unlowerable public type '{type_id}'", path)
+        policy_diag = _public_symbol_policy_diagnostic(
+            declaration.get("NAME", ""),
+            f"file '{file_id}' exported type '{type_id}'",
+            "layout_exports_forbidden_public_type_name",
+            path,
+            forbidden_names,
+        )
+        if policy_diag is not None:
+            return policy_diag
+        return None
+    inventory = _type_inventory_by_id(draft)
+    if type_id in inventory:
+        item = inventory[type_id]
+        public_header = str(item.get("visibility", "")).lower() == "public" and str(item.get("defined_in", "")).lower() == "public_header"
+        if public_header:
+            return PlanningDiagnostic("error", "layout_exports_noncanonical_type", f"file '{file_id}' exports non-canonical type '{type_id}'", path)
+        return PlanningDiagnostic("error", "layout_exports_nonpublic_type", f"file '{file_id}' exports non-public/internal type '{type_id}'", path)
+    return PlanningDiagnostic("error", "layout_exports_unknown_type", f"file '{file_id}' exports unknown type '{type_id}'", path)
+
+
+def _projected_public_symbol_diagnostics(plan: dict[str, Any], path: str | None) -> list[PlanningDiagnostic]:
+    diagnostics: list[PlanningDiagnostic] = []
+    forbidden_names = _forbidden_public_symbol_names(plan)
+
+    for module in plan.get("module_artifacts", []) if isinstance(plan.get("module_artifacts"), list) else []:
+        if not isinstance(module, dict):
+            continue
+        module_id = str(module.get("module_id", ""))
+        for artifact in module.get("artifacts", []) if isinstance(module.get("artifacts"), list) else []:
+            if not isinstance(artifact, dict):
+                continue
+            diag = _public_symbol_policy_diagnostic(
+                artifact.get("name", ""),
+                f"module '{module_id}' artifact",
+                "readiness_forbidden_public_symbol",
+                path,
+                forbidden_names,
+            )
+            if diag is not None:
+                diagnostics.append(diag)
+
+    for type_item in plan.get("type_inventory", []) if isinstance(plan.get("type_inventory"), list) else []:
+        if isinstance(type_item, dict) and _is_public_type(type_item):
+            diag = _public_symbol_policy_diagnostic(
+                type_item.get("name", ""),
+                f"public header type '{type_item.get('type_id')}'",
+                "readiness_forbidden_public_symbol",
+                path,
+                forbidden_names,
+            )
+            if diag is not None:
+                diagnostics.append(diag)
+
+    for function in plan.get("function_contracts", []) if isinstance(plan.get("function_contracts"), list) else []:
+        if not isinstance(function, dict):
+            continue
+        if _is_public_function(function):
+            signature = function.get("signature", {}) if isinstance(function.get("signature"), dict) else {}
+            diag = _public_symbol_policy_diagnostic(
+                signature.get("name") or function.get("name", ""),
+                f"public function '{function.get('function_id')}'",
+                "readiness_forbidden_public_symbol",
+                path,
+                forbidden_names,
+            )
+            if diag is not None:
+                diagnostics.append(diag)
+        for declaration in function.get("interface_type_declarations", []) if isinstance(function.get("interface_type_declarations"), list) else []:
+            if isinstance(declaration, dict) and str(declaration.get("visibility", "")).lower() == "public":
+                diag = _public_symbol_policy_diagnostic(
+                    declaration.get("name", ""),
+                    f"public interface type declaration in '{function.get('function_id')}'",
+                    "readiness_forbidden_public_symbol",
+                    path,
+                    forbidden_names,
+                )
+                if diag is not None:
+                    diagnostics.append(diag)
+
+    return diagnostics
+
+
 def _handler_ids(draft: dict[str, Any]) -> set[str]:
     return {str(item.get("handler_id", "")) for item in draft.get("handler_matrix", []) if isinstance(item, dict) and item.get("handler_id")}
 
@@ -286,6 +414,47 @@ def _module_by_id(module_artifacts: list[dict[str, Any]]) -> dict[str, dict[str,
 
 def _is_public_function(function: dict[str, Any]) -> bool:
     return bool(function.get("exported")) or str(function.get("api_surface", "")).lower() == "public" or str(function.get("visibility", "")).lower() == "public"
+
+
+def _signature_params(function: dict[str, Any]) -> list[dict[str, Any]]:
+    signature = function.get("signature", {}) if isinstance(function.get("signature"), dict) else {}
+    return [
+        param
+        for param in signature.get("params", [])
+        if isinstance(param, dict) and str(param.get("type", "")).strip() and str(param.get("type", "")).strip() != "void"
+    ]
+
+
+def _binding_param_names_match(bindings: Any, callee_params: list[dict[str, Any]]) -> bool:
+    if not isinstance(bindings, list) or len(bindings) != len(callee_params):
+        return False
+    for binding, param in zip(bindings, callee_params):
+        if not isinstance(binding, dict):
+            return False
+        name = str(binding.get("param_name", "")).strip()
+        expected = str(param.get("name", "")).strip()
+        if name and expected and name != expected:
+            return False
+    return True
+
+
+def _allowed_call_value_ref(value_ref: str, caller_param_names: set[str], access_path_values: set[str], local_symbols: set[str]) -> bool:
+    if not value_ref:
+        return True
+    if value_ref in caller_param_names or value_ref in access_path_values or value_ref in local_symbols:
+        return True
+    if value_ref.startswith(("&", "*")):
+        return _allowed_call_value_ref(value_ref[1:].strip(), caller_param_names, access_path_values, local_symbols)
+    if value_ref.startswith(("sizeof", "NULL", "true", "false")) or re.fullmatch(r"-?\d+(?:u|U|l|L)*", value_ref):
+        return True
+    if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", value_ref):
+        return True
+    c_expr = r"[A-Za-z_][A-Za-z0-9_]*(?:(?:->|\.)[A-Za-z_][A-Za-z0-9_]*|\[[A-Za-z0-9_+\-*/ ()]+\])*"
+    if re.fullmatch(c_expr, value_ref):
+        return True
+    if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*\([A-Za-z_][A-Za-z0-9_]*(?:(?:->|\.)[A-Za-z_][A-Za-z0-9_]*)*\)", value_ref):
+        return True
+    return bool(re.fullmatch(r"[A-Za-z0-9_>.<+\-*/|&() \[\]]+", value_ref) and re.search(r"(->|\.|\+|-|\*|/|<<|>>|\||&|\(|\[)", value_ref))
 
 
 def _function_text(function: dict[str, Any]) -> str:
@@ -742,6 +911,14 @@ def validate_core_design_candidate(candidate: dict[str, Any], planning_ir: dict[
                 diagnostics.append(PlanningDiagnostic("error", f"duplicate_{key}", f"duplicate {key} '{item_id}'", path))
             seen[key].add(item_id)
     for item in candidate.get("canonical_types", []):
+        policy_diag = _public_symbol_policy_diagnostic(
+            item.get("name", ""),
+            f"canonical type '{item.get('type_id')}'",
+            "forbidden_bare_canonical_type_name",
+            path,
+        )
+        if policy_diag is not None:
+            diagnostics.append(policy_diag)
         if item["owner_module_id"] not in module_ids:
             diagnostics.append(PlanningDiagnostic("error", "unknown_type_owner", f"type '{item['type_id']}' owner is not selected", path))
         for field_id in item["source_field_ids"]:
@@ -915,6 +1092,52 @@ def _is_public_type(type_item: dict[str, Any]) -> bool:
     return str(type_item.get("visibility", "")) == "public" and str(type_item.get("defined_in", "")) == "public_header"
 
 
+def _is_public_opaque_type(type_item: dict[str, Any] | None, *, canonical: bool = False) -> bool:
+    if not isinstance(type_item, dict):
+        return False
+    kind = str(type_item.get("kind", "")).lower()
+    if canonical:
+        return kind == "opaque"
+    return kind == "opaque_handle" and _is_public_type(type_item)
+
+
+def _type_is_by_value(raw_type: Any) -> bool:
+    text = str(raw_type or "").strip()
+    return bool(text) and "*" not in text and not is_anonymous_c_function_pointer_type(text)
+
+
+def _type_item_by_ref_or_name(
+    *,
+    type_ref: Any,
+    raw_type: Any,
+    type_inventory: dict[str, dict[str, Any]],
+    type_inventory_by_name: dict[str, dict[str, Any]],
+    canonical_types: dict[str, dict[str, Any]],
+    canonical_types_by_name: dict[str, dict[str, Any]],
+) -> tuple[dict[str, Any] | None, bool]:
+    ref = str(type_ref or "").strip()
+    if ref in type_inventory:
+        return type_inventory[ref], False
+    if ref in canonical_types:
+        return canonical_types[ref], True
+    key = normalize_type_key(_strip_c_type(raw_type))
+    if key in type_inventory_by_name:
+        return type_inventory_by_name[key], False
+    if key in canonical_types_by_name:
+        return canonical_types_by_name[key], True
+    return None, False
+
+
+def _canonical_type_name_index(canonical_types: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    result: dict[str, dict[str, Any]] = {}
+    for item in canonical_types.values():
+        for value in (item.get("name"), item.get("c_symbol"), item.get("c_type_name")):
+            key = normalize_type_key(value)
+            if key:
+                result.setdefault(key, item)
+    return result
+
+
 def _add_type_reference(index_by_id: dict[str, dict[str, Any]], index_by_name: dict[str, dict[str, Any]], type_item: dict[str, Any]) -> None:
     type_id = str(type_item.get("type_id", "")).strip()
     values = [type_id, str(type_item.get("name", "")).strip(), str(type_item.get("name", "")).strip().removeprefix("struct ")]
@@ -1014,6 +1237,15 @@ def validate_type_inventory_candidate(candidate: dict[str, Any], module_artifact
             diagnostics.append(PlanningDiagnostic("error", "unknown_type_inventory_owner", f"type '{type_id}' belongs to unknown module", path))
         if candidate.get("module_id") != "all_modules" and module_id != candidate.get("module_id"):
             diagnostics.append(PlanningDiagnostic("error", "type_inventory_wrong_module", f"type '{type_id}' is outside current module", path))
+        if _is_public_type(type_item):
+            policy_diag = _public_symbol_policy_diagnostic(
+                name,
+                f"public header type '{type_id}'",
+                "forbidden_bare_public_type_name",
+                path,
+            )
+            if policy_diag is not None:
+                diagnostics.append(policy_diag)
         if _is_public_type(type_item) and type_item.get("kind") == "internal_state":
             diagnostics.append(PlanningDiagnostic("error", "public_header_exposes_internal_state", f"public header exposes internal state type '{name}'", path))
         provider_by_id, provider_by_name = provider_indexes.get(module_id, ({}, {}))
@@ -1516,6 +1748,8 @@ def validate_function_signature_patch(patch: dict[str, Any], draft: dict[str, An
     legal_type_refs = type_ids | system_type_ids
     type_inventory = _type_inventory_by_id(draft)
     type_inventory_by_name = _type_inventory_name_index(list(type_inventory.values()))
+    canonical_types = _canonical_types_by_id(draft)
+    canonical_types_by_name = _canonical_type_name_index(canonical_types)
     module_ids = _module_artifact_ids(draft.get("module_artifacts", []))
     target_ids = _batch_function_ids(patch, "function_signature_updates")
     if expected_function_ids is not None and target_ids != expected_function_ids:
@@ -1557,6 +1791,16 @@ def validate_function_signature_patch(patch: dict[str, Any], draft: dict[str, An
             name = str(signature.get("name", ""))
             if not _module_owns_public_lifecycle_name(module_id, name):
                 diagnostics.append(PlanningDiagnostic("warning", "public_lifecycle_name_crosses_module_boundary", f"public lifecycle function '{name}' does not appear owned by module '{module_id}'", path))
+            return_type_item, return_is_canonical = _type_item_by_ref_or_name(
+                type_ref="",
+                raw_type=signature.get("return_type", ""),
+                type_inventory=type_inventory,
+                type_inventory_by_name=type_inventory_by_name,
+                canonical_types=canonical_types,
+                canonical_types_by_name=canonical_types_by_name,
+            )
+            if _type_is_by_value(signature.get("return_type", "")) and _is_public_opaque_type(return_type_item, canonical=return_is_canonical):
+                diagnostics.append(PlanningDiagnostic("error", "public_signature_returns_opaque_by_value", f"public function '{function_id}' returns opaque public type '{signature.get('return_type')}' by value", path))
         for param in signature["params"]:
             if is_public and (not str(param.get("name", "")).strip() or not str(param.get("type", "")).strip()):
                 diagnostics.append(PlanningDiagnostic("error", "public_function_incomplete_param", f"public function '{function_id}' has an incomplete signature parameter", path))
@@ -1576,6 +1820,16 @@ def validate_function_signature_patch(patch: dict[str, Any], draft: dict[str, An
                     inv_type = type_inventory_by_name.get(normalize_type_key(_strip_c_type(raw_param_type)))
                 if inv_type is not None and not _is_public_type(inv_type):
                     diagnostics.append(PlanningDiagnostic("error", "public_signature_uses_private_type", f"public function '{function_id}' exposes private/internal type '{inv_type.get('name')}'", path))
+                param_type_item, param_is_canonical = _type_item_by_ref_or_name(
+                    type_ref=type_ref,
+                    raw_type=raw_param_type,
+                    type_inventory=type_inventory,
+                    type_inventory_by_name=type_inventory_by_name,
+                    canonical_types=canonical_types,
+                    canonical_types_by_name=canonical_types_by_name,
+                )
+                if _type_is_by_value(raw_param_type) and _is_public_opaque_type(param_type_item, canonical=param_is_canonical):
+                    diagnostics.append(PlanningDiagnostic("error", "public_signature_uses_opaque_by_value", f"public function '{function_id}' exposes opaque public type '{raw_param_type}' by value", path))
         for dep in update["signature_dependencies"]:
             type_ref = str(dep.get("type_ref", ""))
             owner = str(dep.get("owner_module_id", ""))
@@ -1804,6 +2058,13 @@ def validate_calls_allowed_candidate(
                 resolved_service_ids.add(requirement_id)
             if caller_fn.get("module_id") not in module_ids or callee_fn.get("module_id") not in module_ids:
                 diagnostics.append(PlanningDiagnostic("error", "call_unknown_module", f"call edge '{caller}' -> '{callee}' references unknown module", path))
+            bindings = edge.get("param_bindings", [])
+            callee_params = _signature_params(callee_fn)
+            if isinstance(bindings, list) and bindings:
+                if len(bindings) != len(callee_params):
+                    diagnostics.append(PlanningDiagnostic("error", "call_contract_param_count_mismatch", f"caller '{caller}' binds {len(bindings)} values for callee '{callee}' with {len(callee_params)} params", path))
+                elif not _binding_param_names_match(bindings, callee_params):
+                    diagnostics.append(PlanningDiagnostic("error", "call_contract_param_name_mismatch", f"caller '{caller}' binds parameter names that do not match callee '{callee}' signature", path))
             edges.append((caller, callee))
     for requirement_id in sorted(service_requirement_ids - resolved_service_ids - unresolved_service_ids):
         diagnostics.append(PlanningDiagnostic("error", "unresolved_service_requirement_missing", f"service requirement '{requirement_id}' must be resolved to a call or listed as unresolved", path))
@@ -1821,7 +2082,6 @@ def validate_file_layout_candidate(candidate: dict[str, Any], draft: dict[str, A
     module_ids = _module_artifact_ids(draft.get("module_artifacts", []))
     function_ids = _function_ids(draft)
     functions = _function_by_id(draft)
-    type_ids = _type_ids(draft)
     file_ids: set[str] = set()
     paths: set[str] = set()
     exports_by_function: dict[str, list[str]] = {}
@@ -1850,8 +2110,9 @@ def validate_file_layout_candidate(candidate: dict[str, Any], draft: dict[str, A
         for function_id in file_item["implements_function_ids"]:
             implements_by_function.setdefault(function_id, []).append(file_id)
         for type_id in file_item["exports_type_ids"]:
-            if type_ids and type_id not in type_ids:
-                diagnostics.append(PlanningDiagnostic("error", "layout_exports_unknown_type", f"file '{file_id}' exports unknown type '{type_id}'", path))
+            diag = _layout_export_type_diagnostic(str(type_id), draft, file_id, path)
+            if diag is not None:
+                diagnostics.append(diag)
     for file_item in candidate["files"]:
         for imported in file_item["imports_allowed"]:
             if imported not in file_ids:
@@ -1952,6 +2213,14 @@ def validate_dependency_repair_patch(patch: dict[str, Any], draft: dict[str, Any
 
 def validate_full_implementation_plan(plan: dict[str, Any], *, profile: dict[str, Any], planning_ir: dict[str, Any], path: str | None = None) -> list[PlanningDiagnostic]:
     diagnostics = validate_implementation_plan(plan, profile=profile, planning_ir=planning_ir, path=path)
+    metadata = plan.get("protocol_metadata", {}) if isinstance(plan.get("protocol_metadata"), dict) else {}
+    if not str(metadata.get("name") or plan.get("protocol_name") or "").strip():
+        diagnostics.append(PlanningDiagnostic("error", "readiness_missing_protocol_name", "final implementation_plan must include protocol metadata name", path))
+    if not str(metadata.get("protocol_version") or metadata.get("spec_version") or metadata.get("version") or "").strip():
+        diagnostics.append(PlanningDiagnostic("error", "readiness_missing_protocol_version", "final implementation_plan must include protocol version/spec_version metadata", path))
+    roles = metadata.get("roles", [])
+    if not ([item for item in roles if str(item).strip()] if isinstance(roles, list) else str(roles).strip()):
+        diagnostics.append(PlanningDiagnostic("error", "readiness_missing_protocol_roles", "final implementation_plan must include target protocol role metadata", path))
     if plan.get("dependency_graph") is None:
         diagnostics.append(PlanningDiagnostic("error", "missing_final_dependency_graph", "final implementation_plan must include deterministic dependency_graph", path))
     blocking = [
@@ -1961,8 +2230,111 @@ def validate_full_implementation_plan(plan: dict[str, Any], *, profile: dict[str
     ]
     if blocking:
         diagnostics.append(PlanningDiagnostic("error", "blocking_unresolved_questions", "final implementation_plan still contains blocking unresolved questions", path))
+    diagnostics.extend(_projected_public_symbol_diagnostics(plan, path))
     files = [item for item in plan.get("file_layout", {}).get("files", []) if isinstance(item, dict)]
+    for file_item in files:
+        file_id = str(file_item.get("file_id", ""))
+        for type_id in file_item.get("exports_type_ids", []) if isinstance(file_item.get("exports_type_ids"), list) else []:
+            diag = _layout_export_type_diagnostic(str(type_id), plan, file_id, path)
+            if diag is not None:
+                diagnostics.append(diag)
     functions = [item for item in plan.get("function_contracts", []) if isinstance(item, dict)]
+    functions_by_id = {str(item.get("function_id", "")): item for item in functions if str(item.get("function_id", "")).strip()}
+    type_inventory = _type_inventory_by_id(plan)
+    type_inventory_by_name = _type_inventory_name_index(list(type_inventory.values()))
+    canonical_types = _canonical_types_by_id(plan)
+    canonical_types_by_name = _canonical_type_name_index(canonical_types)
+    access_paths_by_id = {
+        str(item.get("access_path_id", "")): str(item.get("path", "")).strip()
+        for item in plan.get("access_path_table", [])
+        if isinstance(item, dict) and str(item.get("access_path_id", "")).strip()
+    }
+    access_path_values = {value for value in access_paths_by_id.values() if value}
+    for mapping in plan.get("wire_mapping_table", []) if isinstance(plan.get("wire_mapping_table"), list) else []:
+        if not isinstance(mapping, dict):
+            continue
+        access_id = str(mapping.get("access_path_id", "")).strip()
+        target_path = str(mapping.get("target_path", "")).strip()
+        if access_id and access_id not in access_paths_by_id:
+            diagnostics.append(PlanningDiagnostic("error", "readiness_wire_mapping_unknown_access_id", f"wire mapping '{mapping.get('mapping_id')}' references unknown access path '{access_id}'", path))
+        if target_path and target_path != "buffer" and access_path_values and target_path not in access_path_values:
+            diagnostics.append(PlanningDiagnostic("error", "readiness_wire_mapping_target_not_accessible", f"wire mapping '{mapping.get('mapping_id')}' target_path '{target_path}' is not an ACCESS_PATHS path", path))
+
+    for function in functions:
+        if not _is_public_function(function):
+            continue
+        function_id = str(function.get("function_id", ""))
+        signature = function.get("signature", {}) if isinstance(function.get("signature"), dict) else {}
+        return_type_item, return_is_canonical = _type_item_by_ref_or_name(
+            type_ref="",
+            raw_type=signature.get("return_type", ""),
+            type_inventory=type_inventory,
+            type_inventory_by_name=type_inventory_by_name,
+            canonical_types=canonical_types,
+            canonical_types_by_name=canonical_types_by_name,
+        )
+        if _type_is_by_value(signature.get("return_type", "")) and _is_public_opaque_type(return_type_item, canonical=return_is_canonical):
+            diagnostics.append(PlanningDiagnostic("error", "readiness_public_signature_opaque_by_value", f"public function '{function_id}' returns opaque public type '{signature.get('return_type')}' by value", path))
+        for param in signature.get("params", []) if isinstance(signature.get("params"), list) else []:
+            if not isinstance(param, dict):
+                continue
+            raw_param_type = str(param.get("type", ""))
+            param_type_item, param_is_canonical = _type_item_by_ref_or_name(
+                type_ref=param.get("type_ref", ""),
+                raw_type=raw_param_type,
+                type_inventory=type_inventory,
+                type_inventory_by_name=type_inventory_by_name,
+                canonical_types=canonical_types,
+                canonical_types_by_name=canonical_types_by_name,
+            )
+            if _type_is_by_value(raw_param_type) and _is_public_opaque_type(param_type_item, canonical=param_is_canonical):
+                diagnostics.append(PlanningDiagnostic("error", "readiness_public_signature_opaque_by_value", f"public function '{function_id}' exposes opaque public type '{raw_param_type}' by value", path))
+
+    for caller in functions:
+        caller_id = str(caller.get("function_id", ""))
+        caller_param_names = {
+            str(param.get("name", ""))
+            for param in _signature_params(caller)
+            if str(param.get("name", "")).strip()
+        }
+        call_contracts = caller.get("call_contracts", []) if isinstance(caller.get("call_contracts"), list) else []
+        local_symbols = {
+            str(edge.get("return_binding", {}).get("target_ref", "")).strip()
+            for edge in call_contracts
+            if isinstance(edge, dict) and isinstance(edge.get("return_binding"), dict) and str(edge.get("return_binding", {}).get("target_ref", "")).strip()
+        }
+        for edge in call_contracts:
+            if not isinstance(edge, dict):
+                continue
+            callee_id = str(edge.get("callee_function_id", "")).strip()
+            callee = functions_by_id.get(callee_id)
+            if callee is None:
+                diagnostics.append(PlanningDiagnostic("error", "readiness_call_contract_unknown_callee", f"function '{caller_id}' call contract references unknown callee '{callee_id}'", path))
+                continue
+            if str(caller.get("module_id", "")) != str(callee.get("module_id", "")) and not _is_public_function(callee):
+                diagnostics.append(PlanningDiagnostic("error", "readiness_call_contract_private_cross_module", f"function '{caller_id}' cannot call non-public callee '{callee_id}' across modules", path))
+            bindings = edge.get("param_bindings", [])
+            callee_params = _signature_params(callee)
+            if isinstance(bindings, list) and bindings and len(bindings) != len(callee_params):
+                diagnostics.append(PlanningDiagnostic("error", "readiness_call_contract_param_count_mismatch", f"call contract '{caller_id}' -> '{callee_id}' has {len(bindings)} param bindings for {len(callee_params)} callee params", path))
+            elif isinstance(bindings, list) and bindings and not _binding_param_names_match(bindings, callee_params):
+                diagnostics.append(PlanningDiagnostic("error", "readiness_call_contract_param_name_mismatch", f"call contract '{caller_id}' -> '{callee_id}' binds parameter names that do not match the callee signature", path))
+            for binding in bindings if isinstance(bindings, list) else []:
+                if not isinstance(binding, dict):
+                    continue
+                value_ref = str(binding.get("value_ref", "")).strip()
+                if not _allowed_call_value_ref(value_ref, caller_param_names, access_path_values, local_symbols):
+                    diagnostics.append(PlanningDiagnostic("error", "readiness_call_contract_unknown_param_binding", f"call contract '{caller_id}' -> '{callee_id}' binds unknown value_ref '{value_ref}'", path))
+
+    wire_facing = [
+        function
+        for function in functions
+        if function.get("wire_mapping") or str(function.get("function_kind", "")) in {"parser", "serializer"}
+    ]
+    has_test_seed = bool(plan.get("test_plan"))
+    has_function_vectors = any(function.get("test_vectors") for function in wire_facing)
+    if wire_facing and not (has_test_seed or has_function_vectors):
+        diagnostics.append(PlanningDiagnostic("error", "readiness_missing_codec_test_vectors", "wire-facing parser/serializer functions require TEST_VECTORS or planning test_plan seeds", path))
     entrypoints = [
         function
         for function in functions

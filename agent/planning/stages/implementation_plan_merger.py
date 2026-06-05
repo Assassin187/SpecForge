@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import re
 from copy import deepcopy
 from typing import Any
 
 from ..schemas.implementation_plan import SCHEMA_VERSION
-from .coder_spec_lowering import normalize_param_ownership_for_coder
+from .coder_spec_lowering import lower_canonical_type_to_header_data, normalize_param_ownership_for_coder, normalize_type_key
 from .dependencies import derive_dependency_graph
 from .implementation_plan import _capability_refs, _field_value, _function_signature, _handler_surfaces, _safe_id, _surface_units, _target_directives, _wire_fields
 from .implementation_plan_context import SYSTEM_TYPE_IDS, normalize_type_inventory_candidate
@@ -29,6 +30,18 @@ def _trace(*values: Any) -> list[str]:
             result.extend(str(item) for item in value if str(item).strip())
         elif str(value).strip():
             result.append(str(value))
+    return result
+
+
+def _nonblocking_questions(items: Any) -> list[Any]:
+    result: list[Any] = []
+    for item in items if isinstance(items, list) else []:
+        if isinstance(item, dict):
+            question = deepcopy(item)
+            question["blocking"] = False
+            result.append(question)
+        elif str(item).strip():
+            result.append({"question": str(item), "blocking": False})
     return result
 
 
@@ -90,6 +103,82 @@ def _default_signature(function: dict[str, Any], module_id: str, protocol: str =
     return _function_signature(return_type, name, params), params, return_type
 
 
+def _first_text(*values: Any) -> str:
+    for value in values:
+        if isinstance(value, dict):
+            value = value.get("value")
+        if isinstance(value, list):
+            value = next((item for item in value if str(item).strip()), "")
+        text = str(value).strip() if value is not None else ""
+        if text:
+            return text
+    return ""
+
+
+def _role_values(*values: Any) -> list[str]:
+    result: list[str] = []
+    for value in values:
+        if isinstance(value, dict):
+            value = value.get("value")
+        items = value if isinstance(value, list) else [value]
+        for item in items:
+            if isinstance(item, dict):
+                item = item.get("name") or item.get("value")
+            role = str(item).strip().upper() if item is not None else ""
+            if role and role not in result:
+                result.append(role)
+    return result
+
+
+def _version_from_text(*values: Any) -> str:
+    for value in values:
+        text = str(value).strip() if value is not None else ""
+        if not text:
+            continue
+        match = re.search(r"\b\d+(?:\.\d+)+(?:[A-Za-z0-9._-]*)?\b", text)
+        if match:
+            return match.group(0)
+    return ""
+
+
+def _protocol_metadata(planning_ir: dict[str, Any], profile: dict[str, Any], protocol: str) -> dict[str, Any]:
+    facts = planning_ir.get("protocol_facts", {}) if isinstance(planning_ir.get("protocol_facts"), dict) else {}
+    meta = facts.get("protocol_meta", {}) if isinstance(facts.get("protocol_meta"), dict) else {}
+    target = _target_directives(planning_ir)
+    message_model = facts.get("message_model", {}) if isinstance(facts.get("message_model"), dict) else {}
+    scope = _first_text(
+        meta.get("target_scope"),
+        meta.get("scope"),
+        profile.get("minimum_scope"),
+        target.get("scope"),
+    )
+    version = _first_text(
+        meta.get("protocol_version"),
+        meta.get("spec_version"),
+        meta.get("version"),
+        profile.get("protocol_version"),
+        profile.get("spec_version"),
+        profile.get("version"),
+        target.get("protocol_version"),
+        target.get("spec_version"),
+        target.get("version"),
+    ) or _version_from_text(scope, meta.get("target_scope"), message_model.get("summary"))
+    roles = _role_values(
+        target.get("enabled_roles"),
+        target.get("target_role"),
+        profile.get("roles"),
+        profile.get("target_role"),
+        meta.get("roles"),
+    )
+    return {
+        "name": _first_text(meta.get("protocol_name"), profile.get("protocol_name"), target.get("protocol_name"), protocol),
+        "protocol_version": version,
+        "roles": roles,
+        "scope": scope,
+        "source": "planning_ir.protocol_facts.protocol_meta+target_directives",
+    }
+
+
 def build_plan_skeleton(
     planning_ir: dict[str, Any],
     profile: dict[str, Any],
@@ -104,6 +193,7 @@ def build_plan_skeleton(
     return {
         "schema_version": SCHEMA_VERSION,
         "protocol_name": protocol,
+        "protocol_metadata": _protocol_metadata(planning_ir, profile, protocol),
         "target_directives_ref": {
             "schema_version": planning_ir.get("target_directives", {}).get("schema_version", "target_directives/v1"),
             "directives": _target_directives(planning_ir),
@@ -524,8 +614,8 @@ def _replacement_function_name(functions: list[dict[str, Any]], action: str, typ
     suffixes_by_action = {
         "created_by": ("_create", "_init", "_open"),
         "initialized_by": ("_init", "_create", "_start"),
-        "destroyed_by": ("_destroy", "_close", "_cleanup", "_deinit", "_free"),
-        "freed_by": ("_free", "_destroy", "_cleanup", "_close"),
+        "destroyed_by": ("_cancel", "_destroy", "_close", "_cleanup", "_deinit", "_free"),
+        "freed_by": ("_cancel", "_free", "_destroy", "_cleanup", "_close"),
         "related_functions": (),
     }
     suffixes = suffixes_by_action.get(action, ())
@@ -576,7 +666,7 @@ def _add_unresolved_type_function_ref(result: dict[str, Any], type_item: dict[st
             "target_id": ref,
             "question": f"Resolve function reference '{ref}' for type '{type_item.get('type_id', type_item.get('name', ''))}'.",
             "unresolved_reason": "The type lifecycle or related function reference did not match any concrete same-module function inventory entry after 5.4a reconciliation.",
-            "blocking": True,
+            "blocking": False,
             "trace_ref_keys": [str(type_item.get("type_id", ""))],
         }
     )
@@ -584,6 +674,11 @@ def _add_unresolved_type_function_ref(result: dict[str, Any], type_item: dict[st
 
 def reconcile_type_inventory_function_refs(draft: dict[str, Any]) -> dict[str, Any]:
     result = deepcopy(draft)
+    result["unresolved_questions"] = [
+        item
+        for item in result.get("unresolved_questions", [])
+        if not (isinstance(item, dict) and str(item.get("question_id", "")).startswith("q:type_function_ref:"))
+    ]
     functions_by_module: dict[str, list[dict[str, Any]]] = {}
     for function in result.get("function_contracts", []):
         if isinstance(function, dict):
@@ -1116,7 +1211,7 @@ def merge_function_signatures(draft: dict[str, Any], patch: dict[str, Any]) -> d
         ]
         function["input_contract"] = {"params": params}
         function["output_contract"] = {"return_type": signature.get("return_type", "")}
-    result.setdefault("unresolved_questions", []).extend(patch.get("unresolved_questions", []))
+    result.setdefault("unresolved_questions", []).extend(_nonblocking_questions(patch.get("unresolved_questions", [])))
     result.setdefault("accepted_stage_artifacts", []).append("5.4b_function_signatures")
     return result
 
@@ -1583,7 +1678,16 @@ def _valid_failure_behavior(value: Any) -> str:
     return text if text in {"close_connection", "return_error", "cleanup_and_return", "ignore"} else "ignore"
 
 
-def _valid_param_bindings(value: Any) -> list[dict[str, str]]:
+def _signature_params(function: dict[str, Any]) -> list[dict[str, Any]]:
+    signature = function.get("signature", {}) if isinstance(function.get("signature"), dict) else {}
+    return [
+        param
+        for param in signature.get("params", [])
+        if isinstance(param, dict) and str(param.get("type", "")).strip() and str(param.get("type", "")).strip() != "void"
+    ]
+
+
+def _valid_param_bindings(value: Any, callee: dict[str, Any] | None = None) -> list[dict[str, str]]:
     if not isinstance(value, list):
         return []
     result = []
@@ -1598,6 +1702,15 @@ def _valid_param_bindings(value: Any) -> list[dict[str, str]]:
                 "nullability": str(item.get("nullability", "")),
             }
         )
+    if callee is not None and result:
+        params = _signature_params(callee)
+        if len(result) != len(params):
+            return []
+        for binding, param in zip(result, params):
+            name = str(binding.get("param_name", "")).strip()
+            expected = str(param.get("name", "")).strip()
+            if name and expected and name != expected:
+                return []
     return result
 
 
@@ -1673,6 +1786,11 @@ def normalize_calls_allowed_candidate(
                 for item in raw_edge.get("service_requirement_ids", [])
                 if str(item) in expected_service_requirement_ids
             ] if isinstance(raw_edge.get("service_requirement_ids", []), list) else []
+            param_bindings = _valid_param_bindings(raw_edge.get("param_bindings", []), callee_fn)
+            raw_had_bindings = bool(raw_edge.get("param_bindings")) if isinstance(raw_edge.get("param_bindings", []), list) else False
+            if cross_module and service_ids and (raw_had_bindings and not param_bindings or (_signature_params(callee_fn) and not param_bindings)):
+                stats["invalid_call_edges_dropped"] += 1
+                continue
             resolved_service_ids.update(service_ids)
             edges.append(
                 {
@@ -1681,7 +1799,7 @@ def normalize_calls_allowed_candidate(
                     "required": bool(raw_edge.get("required", False)),
                     "service_requirement_ids": service_ids,
                     "call_reason": str(raw_edge.get("call_reason", "")),
-                    "param_bindings": _valid_param_bindings(raw_edge.get("param_bindings", [])),
+                    "param_bindings": param_bindings,
                     "return_binding": _valid_return_binding(raw_edge.get("return_binding", {}), functions_by_id, stats),
                     "failure_behavior": _valid_failure_behavior(raw_edge.get("failure_behavior", "ignore")),
                     "trace_ref_keys": raw_edge.get("trace_ref_keys", []) if isinstance(raw_edge.get("trace_ref_keys", []), list) else [],
@@ -1890,7 +2008,7 @@ def merge_calls_allowed(draft: dict[str, Any], candidate: dict[str, Any]) -> dic
         if update:
             function["calls_allowed"] = [edge["callee_function_id"] for edge in update.get("calls_allowed", [])]
             function["call_contracts"] = update.get("calls_allowed", [])
-    result.setdefault("unresolved_questions", []).extend(candidate.get("unresolved_questions", []))
+    result.setdefault("unresolved_questions", []).extend(_nonblocking_questions(candidate.get("unresolved_questions", [])))
     result.setdefault("accepted_stage_artifacts", []).append("5.4e_call_contracts")
     return result
 
@@ -1952,6 +2070,71 @@ def fallback_file_layout(draft: dict[str, Any]) -> dict[str, Any]:
         "assumptions": [],
         "unresolved_questions": [],
     }
+
+
+def _canonical_type_export_indexes(draft: dict[str, Any]) -> tuple[dict[str, str], set[str]]:
+    by_key: dict[str, str] = {}
+    exportable_ids: set[str] = set()
+    for item in draft.get("canonical_types", []):
+        if not isinstance(item, dict) or lower_canonical_type_to_header_data(item) is None:
+            continue
+        type_id = str(item.get("type_id", "")).strip()
+        if not type_id:
+            continue
+        exportable_ids.add(type_id)
+        for value in (type_id, item.get("name"), item.get("c_symbol"), item.get("c_type_name")):
+            key = normalize_type_key(value)
+            if key:
+                by_key.setdefault(key, type_id)
+    return by_key, exportable_ids
+
+
+def _inventory_type_by_id(draft: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    return {
+        str(item.get("type_id", "")): item
+        for item in draft.get("type_inventory", [])
+        if isinstance(item, dict) and str(item.get("type_id", "")).strip()
+    }
+
+
+def _public_inventory_type(item: dict[str, Any]) -> bool:
+    return str(item.get("visibility", "")).lower() == "public" and str(item.get("defined_in", "")).lower() == "public_header"
+
+
+def normalize_file_layout_candidate(candidate: dict[str, Any], draft: dict[str, Any]) -> tuple[dict[str, Any], dict[str, int]]:
+    result = deepcopy(candidate)
+    stats = {
+        "layout_export_type_normalized": 0,
+        "layout_internal_export_dropped": 0,
+        "layout_unknown_export_dropped": 0,
+    }
+    canonical_by_key, exportable_ids = _canonical_type_export_indexes(draft)
+    inventory_by_id = _inventory_type_by_id(draft)
+    for file_item in result.get("files", []):
+        if not isinstance(file_item, dict):
+            continue
+        normalized: list[str] = []
+        for raw in file_item.get("exports_type_ids", []) if isinstance(file_item.get("exports_type_ids"), list) else []:
+            type_id = str(raw).strip()
+            replacement = type_id if type_id in exportable_ids else ""
+            if not replacement:
+                inventory_type = inventory_by_id.get(type_id)
+                if inventory_type is not None and not _public_inventory_type(inventory_type):
+                    stats["layout_internal_export_dropped"] += 1
+                    continue
+                if inventory_type is not None:
+                    replacement = canonical_by_key.get(normalize_type_key(inventory_type.get("name", "")), "")
+                else:
+                    replacement = canonical_by_key.get(normalize_type_key(type_id), "")
+            if replacement and replacement in exportable_ids:
+                if replacement != type_id:
+                    stats["layout_export_type_normalized"] += 1
+                if replacement not in normalized:
+                    normalized.append(replacement)
+            else:
+                stats["layout_unknown_export_dropped"] += 1
+        file_item["exports_type_ids"] = normalized
+    return result, stats
 
 
 def merge_file_layout(draft: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any]:
@@ -2043,7 +2226,7 @@ def _find_lifecycle_function_id(draft: dict[str, Any], module_id: str, action: s
         if not isinstance(function, dict) or str(function.get("module_id", "")) != module_id:
             continue
         name = str(function.get("name", ""))
-        if any(name.endswith(suffix) for suffix in suffixes):
+        if any(name.endswith(suffix) for suffix in suffixes) and _is_lifecycle_function(function, action):
             return str(function.get("function_id", ""))
     return f"fn:{module_id}:{action}"
 

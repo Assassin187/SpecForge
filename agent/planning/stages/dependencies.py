@@ -17,7 +17,6 @@ def derive_dependency_graph(plan: dict[str, Any]) -> dict[str, Any]:
             continue
         if module_id not in file_by_module or str(item.get("header_path", "")).strip():
             file_by_module[module_id] = file_id
-    state_owner = {str(item.get("state_id", "")): str(item.get("owner_module_id", "")) for item in plan.get("state_design", []) if isinstance(item, dict)}
     known_files = set(module_by_file)
     known_functions = {str(item.get("function_id", "")) for item in functions}
     file_edges: list[dict[str, str]] = []
@@ -52,17 +51,6 @@ def derive_dependency_graph(plan: dict[str, Any]) -> dict[str, Any]:
                 file_edge = {"from": source_file, "to": target_file, "kind": "signature_dependency"}
                 if file_edge not in file_edges:
                     file_edges.append(file_edge)
-        for state in function.get("state_access", []):
-            target_module = state_owner.get(str(state.get("state_id", ""))) if isinstance(state, dict) else ""
-            target_file = file_by_module.get(target_module or "", "")
-            if source_module and target_module and source_module != target_module:
-                module_edge = {"from": source_module, "to": target_module, "kind": "state_access"}
-                if module_edge not in module_edges:
-                    module_edges.append(module_edge)
-            if source_file and target_file and source_file != target_file:
-                file_edge = {"from": source_file, "to": target_file, "kind": "state_access"}
-                if file_edge not in file_edges:
-                    file_edges.append(file_edge)
         for target_id in function.get("calls_allowed", []):
             target = str(target_id)
             if target not in known_functions:
@@ -88,7 +76,6 @@ def derive_dependency_graph(plan: dict[str, Any]) -> dict[str, Any]:
             "imports_allowed": "implementation_plan.file_layout.files[*].imports_allowed",
             "calls_allowed": "implementation_plan.function_contracts[*].calls_allowed",
             "signature_dependencies": "implementation_plan.function_contracts[*].signature_dependencies",
-            "state_access": "implementation_plan.function_contracts[*].state_access",
         },
     }
 

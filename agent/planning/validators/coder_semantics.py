@@ -39,13 +39,15 @@ def _check_artifact_item(item: dict[str, Any], diagnostics: list[PlanningDiagnos
 
 
 def _read_sidecar(bundle: Any, filename: str) -> dict[str, Any]:
-    path = Path(bundle.spec_root) / filename
-    if not path.exists():
-        return {}
-    try:
-        return _read_json(path)
-    except (OSError, json.JSONDecodeError):
-        return {}
+    spec_root = Path(bundle.spec_root)
+    for path in (spec_root.parent / filename, spec_root / filename):
+        if not path.exists():
+            continue
+        try:
+            return _read_json(path)
+        except (OSError, json.JSONDecodeError):
+            return {}
+    return {}
 
 
 def _planning_intent(bundle: Any) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]], list[dict[str, Any]]]:

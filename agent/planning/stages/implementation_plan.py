@@ -18,12 +18,16 @@ def _field_value(value: Any, default: str = "") -> str:
 
 def _target_directives(ir: dict[str, Any]) -> dict[str, Any]:
     target = ir.get("target_directives", {})
+    if not isinstance(target, dict) or "directives" not in target:
+        target = ir.get("target_directives_ref", {})
     directives = target.get("directives", {}) if isinstance(target, dict) else {}
     result: dict[str, Any] = {}
     if isinstance(directives, dict):
         for key, value in directives.items():
-            if isinstance(value, dict):
+            if isinstance(value, dict) and ("value" in value or "directive_id" in value):
                 result[key] = value.get("value")
+            else:
+                result[key] = value
     return result
 
 

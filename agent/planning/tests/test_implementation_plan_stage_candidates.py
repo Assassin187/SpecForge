@@ -48,6 +48,7 @@ from agent.planning.stages.implementation_plan_context import (
 from agent.planning.stages.inventory_planning_space import build_function_planning_space, build_type_planning_space
 from agent.planning.stages.inventory_reconciliation import reconcile_function_annotation_candidate, reconcile_type_filling_candidate
 from agent.planning.stages.function_inventory_decomposition import DECOMPOSITION_RULES, select_top_decomposition_hints
+from agent.planning.stages.dependencies import derive_dependency_graph
 from agent.planning.stages.implementation_plan_merger import (
     build_plan_skeleton,
     fallback_calls_allowed,
@@ -62,6 +63,7 @@ from agent.planning.stages.implementation_plan_merger import (
     finalize_dependency_graph,
     normalize_calls_allowed_aggregate,
     normalize_calls_allowed_candidate,
+    normalize_file_layout_candidate,
     normalize_function_signature_patch,
     repair_function_inventory_symbols,
     merge_calls_allowed,
@@ -90,6 +92,7 @@ from agent.planning.validators.implementation_plan_stages import (
     validate_function_behavior_contract_patch,
     validate_function_inventory_candidate,
     validate_function_signature_patch,
+    validate_full_implementation_plan,
     validate_module_artifacts_candidate,
     validate_runtime_entrypoint_candidate,
     validate_type_inventory_candidate,
@@ -307,6 +310,69 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
         self.assertIn("source/header boundaries", rules_text)
         self.assertIn("minimal_scope", rules_text)
 
+    def test_full_readiness_requires_metadata_and_valid_call_bindings(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            planning_ir, profile, _constraints, _selected, _draft, plan, _items = self._fixtures(Path(raw_tmp))
+            diagnostics = validate_full_implementation_plan(plan, profile=profile, planning_ir=planning_ir)
+            self.assertFalse([diag.__dict__ for diag in diagnostics if diag.level == "error"])
+            self.assertEqual(plan["protocol_metadata"]["protocol_version"], "3.1.1")
+            self.assertEqual(plan["protocol_metadata"]["roles"], ["BROKER"])
+
+            missing_metadata = copy.deepcopy(plan)
+            missing_metadata["protocol_metadata"]["protocol_version"] = ""
+            diagnostics = validate_full_implementation_plan(missing_metadata, profile=profile, planning_ir=planning_ir)
+            self.assertTrue(_has(diagnostics, "readiness_missing_protocol_version"))
+
+            bad_call = copy.deepcopy(plan)
+            caller = next(function for function in bad_call["function_contracts"] if function.get("call_contracts"))
+            caller["call_contracts"][0]["param_bindings"] = [{"param_name": "x", "value_ref": "missing_local"}]
+            diagnostics = validate_full_implementation_plan(bad_call, profile=profile, planning_ir=planning_ir)
+            self.assertTrue(
+                _has(diagnostics, "readiness_call_contract_param_count_mismatch")
+                or _has(diagnostics, "readiness_call_contract_param_name_mismatch")
+            )
+
+    def test_full_readiness_allows_c_expressions_and_local_value_refs(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            planning_ir, profile, _constraints, _selected, _draft, plan, _items = self._fixtures(Path(raw_tmp))
+            caller = next(function for function in plan["function_contracts"] if function.get("signature", {}).get("params"))
+            callee = copy.deepcopy(caller)
+            callee["function_id"] = "fn:test:callee"
+            callee["name"] = "test_callee"
+            callee["module_id"] = caller.get("module_id", "")
+            callee["signature"] = {
+                "return_type": "int",
+                "name": "test_callee",
+                "params": [{"name": "packet", "type": "mqtt_packet_t *"}],
+                "raw": "int test_callee(mqtt_packet_t *packet)",
+            }
+            caller["call_contracts"] = [
+                {
+                    "callee_function_id": callee["function_id"],
+                    "call_kind": "utility",
+                    "required": True,
+                    "service_requirement_ids": [],
+                    "call_reason": "test local expression binding",
+                    "param_bindings": [{"param_name": "packet", "value_ref": "payload->topics[i].topic_filter", "ownership": "borrowed", "nullability": "non_null"}],
+                    "return_binding": {"policy": "ignore", "target_ref": "", "cleanup_function_id": ""},
+                    "failure_behavior": "return_error",
+                    "trace_ref_keys": [],
+                    "status": "inferred",
+                }
+            ]
+            plan["function_contracts"].append(callee)
+            for value_ref in (
+                "payload->topics[i].topic_filter",
+                "conn->input_buffer.data + conn->input_buffer.len",
+                "(mqtt_codec_decode_result_t*)packet",
+                "header->packet_type << 4 | encode_remaining_length_flags",
+                "strlen(client_id)",
+                "local_packet",
+            ):
+                caller["call_contracts"][0]["param_bindings"][0]["value_ref"] = value_ref
+                diagnostics = validate_full_implementation_plan(plan, profile=profile, planning_ir=planning_ir)
+                self.assertFalse(_has(diagnostics, "readiness_call_contract_unknown_param_binding"), value_ref)
+
     def test_function_symbol_repair_renames_internal_duplicate_and_updates_type_refs(self) -> None:
         public_codec = _inventory_function("mqtt_encoder_encode", "codec", function_id="fn:codec:mqtt_encoder_encode", kind="serializer", public=True)
         internal_network = _inventory_function("mqtt_encoder_encode", "network", function_id="fn:network:mqtt_encoder_encode", kind="resource_lifecycle", public=False)
@@ -433,7 +499,17 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             ],
             "unresolved_service_requirements": [],
             "assumptions": [],
-            "unresolved_questions": [],
+            "unresolved_questions": [
+                {
+                    "question_id": "q:test",
+                    "target_kind": "function",
+                    "target_id": "fn:network:mqtt_network_cleanup_session",
+                    "question": "still useful context",
+                    "unresolved_reason": "test uncertainty",
+                    "blocking": True,
+                    "trace_ref_keys": [],
+                }
+            ],
         }
         normalized, stats = normalize_calls_allowed_candidate(
             candidate,
@@ -451,6 +527,8 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
         self.assertEqual(edge["return_binding"]["cleanup_function_id"], "")
         self.assertEqual(edge["service_requirement_ids"], ["svc:network:session_cleanup"])
         self.assertEqual(normalized["unresolved_service_requirements"], ["svc:network:session_bind"])
+        merged = merge_calls_allowed(draft, normalized)
+        self.assertEqual(merged["unresolved_questions"][0]["blocking"], False)
         self.assertGreater(stats["out_of_batch_call_updates_dropped"], 0)
         self.assertFalse(
             validate_calls_allowed_candidate(
@@ -622,12 +700,19 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             core = copy.deepcopy(items["core"])
             core["state_design"][0]["owner_module_id"] = "missing"
             self.assertTrue(_has(validate_core_design_candidate(core, planning_ir, profile, selected, constraints), "unknown_state_owner"))
+            core = copy.deepcopy(items["core"])
+            core["canonical_types"][0]["name"] = "connect"
+            self.assertTrue(_has(validate_core_design_candidate(core, planning_ir, profile, selected, constraints), "forbidden_bare_canonical_type_name"))
             modules = copy.deepcopy(items["modules"])
             modules["modules"][0]["module_id"] = "missing"
             self.assertTrue(_has(validate_module_artifacts_candidate(modules, selected, profile, constraints, draft), "unknown_module_artifacts_module"))
             type_inventory = copy.deepcopy(items["type_inventory"])
             type_inventory["types"][0]["module_id"] = "missing"
             self.assertTrue(_has(validate_type_inventory_candidate(type_inventory, draft["module_artifacts"], draft, profile, planning_ir), "unknown_type_inventory_owner"))
+            type_inventory = copy.deepcopy(items["type_inventory"])
+            public_type = next(item for item in type_inventory["types"] if item.get("visibility") == "public" and item.get("defined_in") == "public_header")
+            public_type["name"] = "publish"
+            self.assertTrue(_has(validate_type_inventory_candidate(type_inventory, draft["module_artifacts"], draft, profile, planning_ir), "forbidden_bare_public_type_name"))
             inventory = copy.deepcopy(items["inventory"])
             inventory["functions"][0]["module_id"] = "missing"
             self.assertTrue(_has(validate_function_inventory_candidate(inventory, draft["module_artifacts"], draft, profile, planning_ir), "unknown_function_module"))
@@ -669,6 +754,28 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             )
             runtime["lifecycle_function_ids"]["create"] = f"fn:{key_module}:handle_proxy"
             self.assertTrue(_has(validate_runtime_entrypoint_candidate(runtime, draft), "runtime_entrypoint_lifecycle_not_api"))
+
+    def test_runtime_entrypoint_fallback_ignores_non_runtime_lifecycle_names(self) -> None:
+        draft = {
+            "protocol_name": "mqtt",
+            "module_artifacts": [{"module_id": "broker_app", "owned_capabilities": ["role_composition"]}],
+            "function_contracts": [
+                {
+                    "function_id": "fn:broker_app:mqtt_broker_create",
+                    "name": "mqtt_broker_create",
+                    "module_id": "broker_app",
+                    "function_kind": "resource_lifecycle",
+                    "visibility": "public",
+                    "api_surface": "public",
+                    "exported": True,
+                    "public_api_role": "module_boundary_operation",
+                }
+            ],
+        }
+        runtime = fallback_runtime_entrypoint(draft)
+        self.assertEqual(runtime["key_flow_module_id"], "broker_app")
+        self.assertEqual(runtime["lifecycle_function_ids"]["create"], "fn:broker_app:create")
+        self.assertFalse(validate_runtime_entrypoint_candidate(runtime, draft))
 
     def test_module_artifacts_candidate_rules(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:
@@ -1860,6 +1967,56 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
         reconciled = reconcile_type_inventory_function_refs(draft)
         self.assertEqual(reconciled["type_inventory"][0]["lifecycle"]["freed_by"], ["mqtt_packet_free"])
 
+    def test_type_function_reference_reconciliation_marks_unmatched_refs_nonblocking(self) -> None:
+        module = {
+            "module_id": "timer",
+            "name": "timer",
+            "role": "timer",
+            "dependencies": [],
+            "artifacts": [{"name": "mqtt_timer_create", "kind": "FUNC", "role": "Create"}],
+            "files": [],
+            "doc_ref": [],
+        }
+        type_item = current_type_inventory_candidate({"protocol_name": "mqtt", "module_artifacts": [module]}, module)["types"][0]
+        type_item["lifecycle"]["destroyed_by"] = ["timer_expiry"]
+        draft = {
+            "protocol_name": "mqtt",
+            "module_artifacts": [module],
+            "type_inventory": [type_item],
+            "function_contracts": [_inventory_function("mqtt_timer_create", "timer", kind="resource_lifecycle")],
+        }
+        reconciled = reconcile_type_inventory_function_refs(draft)
+        unresolved = [item for item in reconciled["unresolved_questions"] if item.get("target_id") == "timer_expiry"]
+        self.assertTrue(unresolved)
+        self.assertFalse(unresolved[0].get("blocking"))
+
+    def test_type_function_reference_reconciliation_is_idempotent_after_repair(self) -> None:
+        module = {
+            "module_id": "timer",
+            "name": "timer",
+            "role": "timer",
+            "dependencies": [],
+            "artifacts": [{"name": "mqtt_timer_cancel", "kind": "FUNC", "role": "Cancel"}],
+            "files": [],
+            "doc_ref": [],
+        }
+        type_item = current_type_inventory_candidate({"protocol_name": "mqtt", "module_artifacts": [module]}, module)["types"][0]
+        type_item["name"] = "mqtt_timer_t"
+        type_item["lifecycle"]["destroyed_by"] = ["timer_expiry"]
+        type_item["lifecycle"]["freed_by"] = ["timer_expiry"]
+        draft = {
+            "protocol_name": "mqtt",
+            "module_artifacts": [module],
+            "type_inventory": [type_item],
+            "function_contracts": [_inventory_function("mqtt_timer_cancel", "timer", kind="resource_lifecycle")],
+            "unresolved_questions": [{"question_id": "q:type_function_ref:timer:old:destroyed_by:timer_expiry", "target_id": "timer_expiry"}],
+        }
+        reconciled = reconcile_type_inventory_function_refs(reconcile_type_inventory_function_refs(draft))
+        lifecycle = reconciled["type_inventory"][0]["lifecycle"]
+        self.assertEqual(lifecycle["destroyed_by"], ["mqtt_timer_cancel"])
+        self.assertEqual(lifecycle["freed_by"], ["mqtt_timer_cancel"])
+        self.assertFalse([item for item in reconciled.get("unresolved_questions", []) if str(item.get("question_id", "")).startswith("q:type_function_ref:")])
+
     def test_key_flow_module_requires_lifecycle_artifact(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:
             _, profile, constraints, selected, draft, _, items = self._fixtures(Path(raw_tmp))
@@ -2188,6 +2345,90 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             layout["files"][0]["implements_function_ids"].append(layout["files"][0]["implements_function_ids"][0])
             self.assertTrue(_has(validate_file_layout_candidate(layout, draft), "function_definition_count_mismatch"))
 
+    def test_file_layout_normalizes_public_type_exports_to_canonical_public_types(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            planning_ir, profile, _constraints, _selected, draft, plan, items = self._fixtures(Path(raw_tmp))
+            module_id = draft["module_artifacts"][0]["module_id"]
+            canonical_type = {
+                "type_id": f"type:{module_id}:public_frame",
+                "name": "public_frame_t",
+                "kind": "alias",
+                "owner_module_id": module_id,
+                "alias_of": "uint8_t",
+            }
+            public_inventory = {
+                "type_id": f"type:{module_id}:public_frame_inventory",
+                "name": "public_frame_t",
+                "module_id": module_id,
+                "kind": "alias",
+                "visibility": "public",
+                "defined_in": "public_header",
+            }
+            internal_inventory = {
+                "type_id": f"type:{module_id}:decode_result_t",
+                "name": "decode_result_t",
+                "module_id": module_id,
+                "kind": "result_struct",
+                "visibility": "module_internal",
+                "defined_in": "internal_header",
+            }
+            private_inventory = {
+                "type_id": f"type:{module_id}:state",
+                "name": "struct state",
+                "module_id": module_id,
+                "kind": "internal_state",
+                "visibility": "private",
+                "defined_in": "source_file",
+            }
+            for target in (draft, plan):
+                target.setdefault("canonical_types", []).append(copy.deepcopy(canonical_type))
+                target.setdefault("type_inventory", []).extend([copy.deepcopy(public_inventory), copy.deepcopy(internal_inventory), copy.deepcopy(private_inventory)])
+
+            layout = copy.deepcopy(items["layout"])
+            layout["files"][0]["exports_type_ids"] = [
+                canonical_type["type_id"],
+                public_inventory["type_id"],
+                internal_inventory["type_id"],
+                private_inventory["type_id"],
+                f"type:{module_id}:missing",
+            ]
+            diags = validate_file_layout_candidate(layout, draft)
+            self.assertTrue(_has(diags, "layout_exports_noncanonical_type"))
+            self.assertTrue(_has(diags, "layout_exports_nonpublic_type"))
+            self.assertTrue(_has(diags, "layout_exports_unknown_type"))
+
+            normalized, stats = normalize_file_layout_candidate(layout, draft)
+            self.assertEqual(normalized["files"][0]["exports_type_ids"], [canonical_type["type_id"]])
+            self.assertGreater(stats["layout_export_type_normalized"], 0)
+            self.assertGreaterEqual(stats["layout_internal_export_dropped"], 2)
+            self.assertGreater(stats["layout_unknown_export_dropped"], 0)
+            self.assertFalse(_has_error(validate_file_layout_candidate(normalized, draft)))
+
+            bad_plan = copy.deepcopy(plan)
+            bad_plan["file_layout"]["files"][0]["exports_type_ids"] = [internal_inventory["type_id"]]
+            self.assertTrue(_has(validate_full_implementation_plan(bad_plan, profile=profile, planning_ir=planning_ir), "layout_exports_nonpublic_type"))
+
+            forbidden_canonical = copy.deepcopy(canonical_type)
+            forbidden_canonical["type_id"] = f"type:{module_id}:connect"
+            forbidden_canonical["name"] = "connect"
+            forbidden_layout = copy.deepcopy(items["layout"])
+            forbidden_layout["files"][0]["exports_type_ids"] = [forbidden_canonical["type_id"]]
+            forbidden_draft = copy.deepcopy(draft)
+            forbidden_draft.setdefault("canonical_types", []).append(forbidden_canonical)
+            forbidden_draft["forbidden_symbols"] = [{"name": "connect", "kind": "FUNC", "reason": "public ABI must avoid POSIX names"}]
+            self.assertTrue(_has(validate_file_layout_candidate(forbidden_layout, forbidden_draft), "layout_exports_forbidden_public_type_name"))
+
+            forbidden_plan = copy.deepcopy(plan)
+            forbidden_plan.setdefault("canonical_types", []).append(forbidden_canonical)
+            forbidden_plan["forbidden_symbols"] = [{"name": "connect", "kind": "FUNC", "reason": "public ABI must avoid POSIX names"}]
+            forbidden_plan["file_layout"]["files"][0]["exports_type_ids"] = [forbidden_canonical["type_id"]]
+            self.assertTrue(_has(validate_full_implementation_plan(forbidden_plan, profile=profile, planning_ir=planning_ir), "layout_exports_forbidden_public_type_name"))
+
+            forbidden_artifact_plan = copy.deepcopy(plan)
+            forbidden_artifact_plan["forbidden_symbols"] = [{"name": "connect", "kind": "FUNC", "reason": "public ABI must avoid POSIX names"}]
+            forbidden_artifact_plan["module_artifacts"][0]["artifacts"][0]["name"] = "connect"
+            self.assertTrue(_has(validate_full_implementation_plan(forbidden_artifact_plan, profile=profile, planning_ir=planning_ir), "readiness_forbidden_public_symbol"))
+
     def test_full_plan_and_dependency_graph_are_rejected_as_stage_outputs(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:
             planning_ir, profile, constraints, selected, draft, plan, items = self._fixtures(Path(raw_tmp))
@@ -2261,7 +2502,6 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             }
             selected = select_top_decomposition_hints(module, {"core_design_summary": {}}, max_hints=3)
             ids = selected["detected_rule_ids"]
-            self.assertEqual(len(ids), 3)
             self.assertEqual(ids, selected["selected_rule_ids"])
             self.assertEqual(set(ids), set(selected["expected_function_families_by_rule"]))
             self.assertTrue(required.issubset(set(ids)))
@@ -2270,6 +2510,28 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             renamed = copy.deepcopy(module)
             renamed["module_id"] = "mqtt_codec_network_router_session_store_broker_app"
             self.assertEqual(ids, select_top_decomposition_hints(renamed, {"core_design_summary": {}}, max_hints=3)["detected_rule_ids"])
+
+    def test_function_inventory_classifier_filters_weak_generic_matches(self) -> None:
+        timer = {
+            "module_id": "timer",
+            "name": "timer",
+            "role": "timer callback scheduling",
+            "dependencies": [],
+            "artifacts": [{"name": "mqtt_timer_cancel", "kind": "FUNC", "role": "Cancel timer"}],
+            "files": [],
+            "doc_ref": [],
+        }
+        codec = {
+            "module_id": "codec",
+            "name": "codec",
+            "role": "packet data model decoder encoder",
+            "dependencies": [],
+            "artifacts": [{"name": "mqtt_decode", "kind": "FUNC", "role": "Decode packet"}],
+            "files": [],
+            "doc_ref": [],
+        }
+        self.assertNotIn("transport_runtime_io", select_top_decomposition_hints(timer, {"core_design_summary": {}}, max_hints=3)["detected_rule_ids"])
+        self.assertNotIn("session_transaction_state", select_top_decomposition_hints(codec, {"core_design_summary": {}}, max_hints=3)["detected_rule_ids"])
 
     def test_function_planning_space_uses_concrete_recommended_helpers(self) -> None:
         module = {
@@ -2611,10 +2873,10 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             self.assertIn("do not generate a complete function inventory", rules_text)
             self.assertIn("Preserve every required seed identity", rules_text)
             decomposition = payload["function_annotation_context"]["function_planning_space"]["source_context"]["decomposition_context"]
-            self.assertEqual(len(decomposition["selected_decomposition_hints"]), 3)
+            self.assertGreaterEqual(len(decomposition["selected_decomposition_hints"]), 1)
+            self.assertLessEqual(len(decomposition["selected_decomposition_hints"]), 3)
             prompt_text = json.dumps(payload, ensure_ascii=False)
             selected_hints = set(decomposition["selected_decomposition_hints"])
-            self.assertEqual(len(decomposition["selected_rule_ids"]), 3)
             self.assertEqual(set(decomposition["selected_rule_ids"]), set(decomposition["expected_function_families_by_rule"]))
             self.assertEqual(set(decomposition["selected_rule_ids"]), set(decomposition["recommended_concrete_slots_by_rule"]))
             for rule in DECOMPOSITION_RULES:
@@ -2975,11 +3237,13 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             self.assertIn("invariants_used should name concrete invariants", joined_rules)
             self.assertIn("role-aware units", joined_rules)
             self.assertIn("Parser and serializer functions must not write state", joined_rules)
-            self.assertIn("exports_type_ids may contain only canonical type IDs", joined_rules)
+            self.assertIn("exports_type_ids may contain only IDs copied from file_layout_context.public_exportable_type_ids", joined_rules)
             self.assertIn("entrypoint_signature should normally be int main", joined_rules)
             self.assertIn("must be copied exactly from legal_id_universe.file_ids or files[].file_id", joined_rules)
             self.assertIn("behavior_quality_policy", payload_by_schema["function_behavior_contract_patch/v1"]["function_behavior_context"])
             self.assertIn("module_file_layout_summaries", payload_by_schema["file_layout_candidate/v2"]["file_layout_context"])
+            self.assertIn("public_exportable_type_ids", payload_by_schema["file_layout_candidate/v2"]["file_layout_context"])
+            self.assertIn("public_exportable_types_by_module", payload_by_schema["file_layout_candidate/v2"]["file_layout_context"])
             self.assertTrue(payload_by_schema["file_layout_candidate/v2"]["file_layout_context"]["file_split_policy"]["split_by_role_when_non_trivial"])
 
     def test_valid_candidate_merges_and_invalid_candidate_is_not_merged(self) -> None:
@@ -3012,6 +3276,27 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             for file_item in draft["file_layout"]["files"]:
                 self.assertFalse(file_item["file_id"].startswith("header:"))
                 self.assertTrue(set(file_item["imports_allowed"]).issubset(final_file_ids))
+
+    def test_dependency_graph_does_not_treat_state_access_as_compile_edge(self) -> None:
+        plan = {
+            "state_design": [
+                {"state_id": "state:a", "owner_module_id": "a"},
+                {"state_id": "state:b", "owner_module_id": "b"},
+            ],
+            "file_layout": {
+                "files": [
+                    {"file_id": "file:a/a", "module_id": "a", "imports_allowed": [], "header_path": "a/a.h"},
+                    {"file_id": "file:b/b", "module_id": "b", "imports_allowed": [], "header_path": "b/b.h"},
+                ]
+            },
+            "function_contracts": [
+                {"function_id": "fn:a:read_b", "module_id": "a", "file_id": "file:a/a", "state_access": [{"state_id": "state:b", "access_kind": "read"}], "calls_allowed": [], "signature_dependencies": []},
+                {"function_id": "fn:b:read_a", "module_id": "b", "file_id": "file:b/b", "state_access": [{"state_id": "state:a", "access_kind": "read"}], "calls_allowed": [], "signature_dependencies": []},
+            ],
+        }
+        graph = derive_dependency_graph(plan)
+        self.assertFalse([edge for edge in graph["module_edges"] if edge["kind"] == "state_access"])
+        self.assertNotIn("state_access", graph["derived_from"])
 
     def test_file_layout_allows_multiple_source_header_pairs_per_module_and_warns_on_mechanical_layout(self) -> None:
         functions = [
@@ -3125,6 +3410,21 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             param["type"] = f"{public_handle['name']} *"
             param["type_ref"] = public_handle["type_id"]
             self.assertFalse(_has(validate_function_signature_patch(signature, draft), "public_signature_uses_private_type"))
+            param["type"] = public_handle["name"]
+            self.assertTrue(_has(validate_function_signature_patch(signature, draft), "public_signature_uses_opaque_by_value"))
+            param["type"] = f"{public_handle['name']} *"
+            update["signature"]["return_type"] = public_handle["name"]
+            update["signature"]["raw"] = f"{public_handle['name']} {update['signature']['name']}({public_handle['name']} *{param['name']})"
+            self.assertTrue(_has(validate_function_signature_patch(signature, draft), "public_signature_returns_opaque_by_value"))
+
+            plan = copy.deepcopy(draft)
+            plan["function_contracts"] = copy.deepcopy(draft["function_contracts"])
+            target_function = next(function for function in plan["function_contracts"] if function["function_id"] == update["function_id"])
+            target_function["signature"] = copy.deepcopy(update["signature"])
+            target_function["signature"]["params"] = [{"name": "handle", "type": public_handle["name"], "type_ref": public_handle["type_id"], "nullable": False, "ownership": "BORROWED"}]
+            target_function["signature"]["return_type"] = "void"
+            target_function["signature"]["raw"] = f"void {target_function['name']}({public_handle['name']} handle)"
+            self.assertTrue(_has(validate_full_implementation_plan(plan, profile={}, planning_ir={}), "readiness_public_signature_opaque_by_value"))
 
     def test_signature_validator_rejects_public_anonymous_callback_pointer(self) -> None:
         public_function = _inventory_function("mqtt_router_match", "router", public=True)
@@ -3360,6 +3660,37 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
         updates = {item["caller_function_id"]: item for item in normalized["call_updates"]}
         self.assertEqual([edge["callee_function_id"] for edge in updates[public_close["function_id"]]["calls_allowed"]], [internal_close["function_id"]])
         self.assertEqual(updates[internal_close["function_id"]]["calls_allowed"], [])
+
+    def test_calls_allowed_validator_rejects_param_binding_count_mismatch(self) -> None:
+        caller = _inventory_function("caller", "codec", function_id="fn:codec:caller", kind="handler")
+        callee = _inventory_function("callee", "codec", function_id="fn:codec:callee", kind="parser")
+        callee["signature"] = {
+            "return_type": "int",
+            "name": "callee",
+            "params": [{"name": "packet", "type": "mqtt_packet_t *"}, {"name": "len", "type": "size_t"}],
+            "raw": "int callee(mqtt_packet_t *packet, size_t len)",
+        }
+        candidate = {
+            "schema_version": "calls_allowed_candidate/v2",
+            "candidate_id": "candidate:test:param_mismatch",
+            "producer": {"stage": "5.4e_call_contracts", "prompt_name": "calls_allowed_candidate_prompt", "prompt_version": "test"},
+            "call_updates": [
+                {
+                    "caller_function_id": caller["function_id"],
+                    "calls_allowed": [
+                        {
+                            **_call_edge(callee["function_id"], []),
+                            "param_bindings": [{"param_name": "packet", "value_ref": "packet", "ownership": "borrowed", "nullability": "nullable"}],
+                        }
+                    ],
+                }
+            ],
+            "unresolved_service_requirements": [],
+            "assumptions": [],
+            "unresolved_questions": [],
+        }
+        draft = {"module_artifacts": [{"module_id": "codec"}], "function_contracts": [caller, callee]}
+        self.assertTrue(_has(validate_calls_allowed_candidate(candidate, draft, {"architecture": {"modules": [{"module_id": "codec"}]}}), "call_contract_param_count_mismatch"))
 
     def test_calls_allowed_aggregate_prefers_route_over_delivery_back_edge(self) -> None:
         session_process = _inventory_function(

@@ -77,6 +77,7 @@ from .stages.implementation_plan_merger import (
     merge_wire_access_binding,
     normalize_calls_allowed_aggregate,
     normalize_calls_allowed_candidate,
+    normalize_file_layout_candidate,
     normalize_function_signature_patch,
     repair_function_inventory_symbols,
     reconcile_type_inventory_function_refs,
@@ -167,6 +168,7 @@ STEP_FILENAMES = {
     "dependency_repair_validation_report": "007_5_6_dependency_repair_validation_report.json",
     "implementation_plan": "007_implementation_plan.json",
     "dependency_validation_report": "008_dependency_validation_report.json",
+    "planning_repair_statistics": "012_planning_repair_statistics.json",
     "token_usage_summary": "013_token_usage_summary.json",
     "planning_validation_report": "014_planning_validation_report.json",
 }
@@ -489,6 +491,8 @@ def _run_controlled_inventory_candidate(
             "json_attempt": json_attempt,
             "meta": meta,
             "accepted": False,
+            "validated": False,
+            "validator_error": False,
             "rejection_reasons": [],
         }
         if raw_candidate is None:
@@ -507,7 +511,9 @@ def _run_controlled_inventory_candidate(
             f"event=response_received json=valid {_llm_token_event(meta)}"
         )
         llm_candidate_diags = validate_llm_candidate(raw_candidate)
+        record["validated"] = True
         if has_errors(llm_candidate_diags):
+            record["validator_error"] = True
             record["rejection_reasons"] = _diagnostic_reasons(llm_candidate_diags)
             emit(
                 f"stage=implementation_plan substage={stage_label} llm_attempt={request_index} "
@@ -521,6 +527,7 @@ def _run_controlled_inventory_candidate(
             accepted_by = "deterministic_reconciliation_after_invalid_llm_shape"
         else:
             record["accepted"] = True
+            record["validator_error"] = False
             accepted_by = "llm_semantic_candidate"
             emit(
                 f"stage=implementation_plan substage={stage_label} llm_attempt={request_index} "
@@ -617,6 +624,144 @@ def _usage_from_meta(meta: dict[str, Any]) -> dict[str, int]:
         "completion_tokens": int(usage.get("completion_tokens", 0) or 0),
         "total_tokens": int(usage.get("total_tokens", 0) or 0),
     }
+
+
+def _rate(numerator: int, denominator: int) -> float | None:
+    if denominator <= 0:
+        return None
+    return round(numerator / denominator, 6)
+
+
+def _implementation_stage_key_from_label(stage_label: str) -> str:
+    prefix = str(stage_label).split(":", 1)[0]
+    mapping = {
+        "5.1_plan_skeleton": "implementation_plan_5_1",
+        "5.2a_core_design": "implementation_plan_5_2a",
+        "5.2b_module_artifacts": "implementation_plan_5_2b",
+        "5.3_type_data": "implementation_plan_5_3",
+        "5.4a_function_inventory": "implementation_plan_5_4a",
+        "5.4b_function_signatures": "implementation_plan_5_4b",
+        "5.4c_behavior_contract": "implementation_plan_5_4c",
+        "5.4d_wire_access_binding": "implementation_plan_5_4d",
+        "5.4e_call_contracts": "implementation_plan_5_4e",
+        "5.5a_file_layout": "implementation_plan_5_5a",
+        "5.5b_runtime_entrypoint": "implementation_plan_5_5b",
+        "5.6_dependency_generation": "implementation_plan_5_6",
+        "5.7_spec_readiness_validation": "implementation_plan_5_7",
+    }
+    return mapping.get(prefix, prefix)
+
+
+class ValidatorStatsTracker:
+    def __init__(self) -> None:
+        self._invocations: list[dict[str, Any]] = []
+
+    def record(
+        self,
+        *,
+        stage_key: str,
+        substage: str,
+        prompt_name: str = "",
+        source: str = "generated",
+        first_generation_passed: bool | None = None,
+        validator_error_triggered_repair: bool = False,
+        repair_attempted: bool = False,
+        repair_success: bool = False,
+        final_validator_passed: bool | None = None,
+        fallback_used: bool = False,
+        failure_code: str | None = None,
+    ) -> None:
+        self._invocations.append(
+            {
+                "stage_key": stage_key,
+                "substage": substage,
+                "prompt_name": prompt_name,
+                "source": source,
+                "first_generation_passed": first_generation_passed,
+                "validator_error_triggered_repair": validator_error_triggered_repair,
+                "repair_attempted": repair_attempted,
+                "repair_success": repair_success,
+                "final_validator_passed": final_validator_passed,
+                "fallback_used": fallback_used,
+                "failure_code": failure_code,
+            }
+        )
+
+    def summary(self) -> dict[str, Any]:
+        generated = [item for item in self._invocations if item.get("source") != "inherited"]
+
+        def build_buckets(group_key: str) -> dict[str, dict[str, Any]]:
+            buckets: dict[str, dict[str, Any]] = {}
+            for item in generated:
+                bucket = buckets.setdefault(
+                    str(item[group_key]),
+                    {
+                        "stage_key": item["stage_key"],
+                        "invocation_count": 0,
+                        "first_generation_count": 0,
+                        "first_generation_pass_count": 0,
+                        "validator_error_count": 0,
+                        "repair_attempt_count": 0,
+                        "repair_success_count": 0,
+                        "fallback_pass_count": 0,
+                        "final_validation_count": 0,
+                        "final_validator_pass_count": 0,
+                    },
+                )
+                bucket["invocation_count"] += 1
+                if item.get("first_generation_passed") is not None:
+                    bucket["first_generation_count"] += 1
+                    if item.get("first_generation_passed"):
+                        bucket["first_generation_pass_count"] += 1
+                if item.get("validator_error_triggered_repair"):
+                    bucket["validator_error_count"] += 1
+                if item.get("repair_attempted"):
+                    bucket["repair_attempt_count"] += 1
+                if item.get("repair_success"):
+                    bucket["repair_success_count"] += 1
+                if item.get("fallback_used") and item.get("final_validator_passed"):
+                    bucket["fallback_pass_count"] += 1
+                if item.get("final_validator_passed") is not None:
+                    bucket["final_validation_count"] += 1
+                    if item.get("final_validator_passed"):
+                        bucket["final_validator_pass_count"] += 1
+            for bucket in buckets.values():
+                bucket["first_generation_pass_rate"] = _rate(bucket["first_generation_pass_count"], bucket["first_generation_count"])
+                bucket["repair_success_rate"] = _rate(bucket["repair_success_count"], bucket["repair_attempt_count"])
+                bucket["final_validator_pass_rate"] = _rate(bucket["final_validator_pass_count"], bucket["final_validation_count"])
+            return buckets
+
+        by_stage_key = build_buckets("stage_key")
+        by_substage = build_buckets("substage")
+        repair_attempt_count = sum(item["repair_attempt_count"] for item in by_stage_key.values())
+        repair_success_count = sum(item["repair_success_count"] for item in by_stage_key.values())
+        first_generation_count = sum(item["first_generation_count"] for item in by_stage_key.values())
+        first_generation_pass_count = sum(item["first_generation_pass_count"] for item in by_stage_key.values())
+        final_validation_count = sum(item["final_validation_count"] for item in by_stage_key.values())
+        final_validator_pass_count = sum(item["final_validator_pass_count"] for item in by_stage_key.values())
+        return {
+            "schema_version": "planning_repair_statistics/v1",
+            "created_at": datetime.now().isoformat(timespec="seconds"),
+            "repair_success_summary": {
+                "validator_error_count": sum(item["validator_error_count"] for item in by_stage_key.values()),
+                "repair_attempt_count": repair_attempt_count,
+                "repair_success_count": repair_success_count,
+                "repair_success_rate": _rate(repair_success_count, repair_attempt_count),
+                "by_stage_key": by_stage_key,
+                "by_substage": by_substage,
+            },
+            "substage_pass_rates": {
+                "first_generation_count": first_generation_count,
+                "first_generation_pass_count": first_generation_pass_count,
+                "first_generation_pass_rate": _rate(first_generation_pass_count, first_generation_count),
+                "final_validation_count": final_validation_count,
+                "final_validator_pass_count": final_validator_pass_count,
+                "final_validator_pass_rate": _rate(final_validator_pass_count, final_validation_count),
+                "by_stage_key": by_stage_key,
+                "by_substage": by_substage,
+            },
+            "substage_invocations": list(self._invocations),
+        }
 
 
 def _summarize_llm_meta(meta: dict[str, Any], attempt: int) -> dict[str, Any]:
@@ -954,6 +1099,17 @@ def _write_token_usage_summary(
     return path
 
 
+def _write_repair_statistics(
+    *,
+    store: ArtifactStore,
+    tracker: ValidatorStatsTracker,
+    artifact_paths: dict[str, Path],
+) -> Path:
+    path = store.write_step_json(STEP_FILENAMES["planning_repair_statistics"], tracker.summary())
+    artifact_paths["planning_repair_statistics"] = path
+    return path
+
+
 def _validation_report(
     *,
     status: str,
@@ -1040,10 +1196,45 @@ class PlanningAgent:
         stop_after_stage = normalize_stop_after_stage(stop_after_stage)
         store = ArtifactStore(self.output_dir)
         token_tracker = TokenUsageTracker()
+        validator_stats = ValidatorStatsTracker()
         store.log_event("stage=preflight start")
         diagnostics = self.validate_inputs()
         artifact_paths: dict[str, Path] = {}
         inherited_artifacts: dict[str, Any] = {}
+
+        def finish_run(
+            stage: str,
+            *,
+            status: str,
+            failure: dict[str, Any] | None = None,
+            coder_compatibility_status: str = "not_run",
+            coder_schema_status: str = "not_run",
+            coder_loader_status: str = "not_run",
+        ) -> PlanningResult:
+            _write_repair_statistics(store=store, tracker=validator_stats, artifact_paths=artifact_paths)
+            _write_token_usage_summary(store=store, tracker=token_tracker, artifact_paths=artifact_paths)
+            report = _validation_report(
+                status=status,
+                diagnostics=diagnostics,
+                artifact_paths=artifact_paths,
+                coder_compatibility_status=coder_compatibility_status,
+                coder_schema_status=coder_schema_status,
+                coder_loader_status=coder_loader_status,
+            )
+            report_path = store.write_step_json(STEP_FILENAMES["planning_validation_report"], report)
+            artifact_paths["planning_validation_report"] = report_path
+            _write_manifest(
+                store=store,
+                facts_path=self.facts_path,
+                target_profile_path=self.target_profile_path,
+                config=self.config,
+                status=status,
+                diagnostics=diagnostics,
+                artifact_paths=artifact_paths,
+                failure=failure,
+            )
+            store.log_event(f"planning finalize stage={stage} status={status}")
+            return PlanningResult(status != "failed" and not has_errors(diagnostics), self.output_dir, diagnostics, artifact_paths)
         if resume_from_stage is not None:
             if resume_from_stage not in RESUME_STAGES:
                 diagnostics.append(
@@ -1093,34 +1284,14 @@ class PlanningAgent:
         )
         artifact_paths["planning_run_manifest"] = manifest_path
         if has_errors(diagnostics):
-            _write_manifest(
-                store=store,
-                facts_path=self.facts_path,
-                target_profile_path=self.target_profile_path,
-                config=self.config,
-                status="failed",
-                diagnostics=diagnostics,
-                artifact_paths=artifact_paths,
-                failure={"stage": "preflight", "code": "validation_errors"},
-            )
-            return PlanningResult(False, self.output_dir, diagnostics, artifact_paths)
+            return finish_run("preflight", status="failed", failure={"stage": "preflight", "code": "validation_errors"})
         store.log_event("stage=preflight done")
 
         store.log_event("stage=target_profile load start")
         target_profile, target_diags = load_target_profile(self.target_profile_path)
         diagnostics.extend(target_diags)
         if target_profile is None or has_errors(target_diags):
-            _write_manifest(
-                store=store,
-                facts_path=self.facts_path,
-                target_profile_path=self.target_profile_path,
-                config=self.config,
-                status="failed",
-                diagnostics=diagnostics,
-                artifact_paths=artifact_paths,
-                failure={"stage": "target_profile", "code": "target_profile_load_failed"},
-            )
-            return PlanningResult(False, self.output_dir, diagnostics, artifact_paths)
+            return finish_run("target_profile", status="failed", failure={"stage": "target_profile", "code": "target_profile_load_failed"})
         store.log_event("stage=target_profile load done")
 
         if resume_from_stage is not None and not has_errors(diagnostics):
@@ -1170,68 +1341,24 @@ class PlanningAgent:
             else:
                 store.log_event(f"resume from_stage={resume_from_stage} has no prior persisted artifacts")
         if has_errors(diagnostics):
-            _write_manifest(
-                store=store,
-                facts_path=self.facts_path,
-                target_profile_path=self.target_profile_path,
-                config=self.config,
-                status="failed",
-                diagnostics=diagnostics,
-                artifact_paths=artifact_paths,
-                failure={"stage": "resume", "code": "resume_validation_failed"},
-            )
-            return PlanningResult(False, self.output_dir, diagnostics, artifact_paths)
+            return finish_run("resume", status="failed", failure={"stage": "resume", "code": "resume_validation_failed"})
 
         def finish_early(stage: str) -> PlanningResult:
             status = "failed" if has_errors(diagnostics) else "stopped"
-            _write_token_usage_summary(store=store, tracker=token_tracker, artifact_paths=artifact_paths)
-            report = _validation_report(status=status, diagnostics=diagnostics, artifact_paths=artifact_paths)
-            report_path = store.write_step_json(STEP_FILENAMES["planning_validation_report"], report)
-            artifact_paths["planning_validation_report"] = report_path
-            _write_manifest(
-                store=store,
-                facts_path=self.facts_path,
-                target_profile_path=self.target_profile_path,
-                config=self.config,
-                status=status,
-                diagnostics=diagnostics,
-                artifact_paths=artifact_paths,
-                failure={"stage": stage, "code": "validation_errors"} if status == "failed" else None,
-            )
             store.log_event(f"planning stopped after stage={stage} status={status}")
-            return PlanningResult(not has_errors(diagnostics), self.output_dir, diagnostics, artifact_paths)
+            return finish_run(stage, status=status, failure={"stage": stage, "code": "validation_errors"} if status == "failed" else None)
 
         if _stage_should_run("planning_ir", resume_from_stage):
             store.log_event("stage=planning_ir build start")
             planning_ir, ir_diags = build_planning_ir(self.facts_path, target_profile)
             diagnostics.extend(ir_diags)
             if planning_ir is None:
-                _write_manifest(
-                    store=store,
-                    facts_path=self.facts_path,
-                    target_profile_path=self.target_profile_path,
-                    config=self.config,
-                    status="failed",
-                    diagnostics=diagnostics,
-                    artifact_paths=artifact_paths,
-                    failure={"stage": "planning_ir", "code": "planning_ir_build_failed"},
-                )
-                return PlanningResult(False, self.output_dir, diagnostics, artifact_paths)
+                return finish_run("planning_ir", status="failed", failure={"stage": "planning_ir", "code": "planning_ir_build_failed"})
             planning_ir_path = store.write_step_json(STEP_FILENAMES["planning_ir"], planning_ir)
             artifact_paths["planning_ir"] = planning_ir_path
             diagnostics.extend(validate_planning_ir(planning_ir, path=str(planning_ir_path)))
             if has_errors(diagnostics):
-                _write_manifest(
-                    store=store,
-                    facts_path=self.facts_path,
-                    target_profile_path=self.target_profile_path,
-                    config=self.config,
-                    status="failed",
-                    diagnostics=diagnostics,
-                    artifact_paths=artifact_paths,
-                    failure={"stage": "planning_ir", "code": "planning_ir_validation_failed"},
-                )
-                return PlanningResult(False, self.output_dir, diagnostics, artifact_paths)
+                return finish_run("planning_ir", status="failed", failure={"stage": "planning_ir", "code": "planning_ir_validation_failed"})
             store.log_event("stage=planning_ir build done")
         else:
             planning_ir = inherited_artifacts["planning_ir"]
@@ -1283,34 +1410,13 @@ class PlanningAgent:
                 store.log_event(f"stage=protocol_profile llm_attempt={attempt} rejected reason={previous_reasons[0] if previous_reasons else 'unknown'}")
             if accepted_profile is None:
                 diagnostics.append(_llm_failure_diagnostic("protocol_profile", previous_reasons))
-                _write_token_usage_summary(store=store, tracker=token_tracker, artifact_paths=artifact_paths)
-                _write_manifest(
-                    store=store,
-                    facts_path=self.facts_path,
-                    target_profile_path=self.target_profile_path,
-                    config=self.config,
-                    status="failed",
-                    diagnostics=diagnostics,
-                    artifact_paths=artifact_paths,
-                    failure={"stage": "protocol_profile", "code": "mandatory_llm_failed"},
-                )
-                return PlanningResult(False, self.output_dir, diagnostics, artifact_paths)
+                return finish_run("protocol_profile", status="failed", failure={"stage": "protocol_profile", "code": "mandatory_llm_failed"})
             profile = accepted_profile
             profile_path = store.write_step_json(STEP_FILENAMES["protocol_profile"], profile)
             artifact_paths["protocol_profile"] = profile_path
             diagnostics.extend(validate_protocol_profile(profile, path=str(profile_path)))
             if has_errors(diagnostics):
-                _write_manifest(
-                    store=store,
-                    facts_path=self.facts_path,
-                    target_profile_path=self.target_profile_path,
-                    config=self.config,
-                    status="failed",
-                    diagnostics=diagnostics,
-                    artifact_paths=artifact_paths,
-                    failure={"stage": "protocol_profile", "code": "protocol_profile_validation_failed"},
-                )
-                return PlanningResult(False, self.output_dir, diagnostics, artifact_paths)
+                return finish_run("protocol_profile", status="failed", failure={"stage": "protocol_profile", "code": "protocol_profile_validation_failed"})
             store.log_event("stage=protocol_profile build done")
         else:
             profile = inherited_artifacts["protocol_profile"]
@@ -1325,22 +1431,8 @@ class PlanningAgent:
             artifact_paths["engineering_constraints"] = constraints_path
             diagnostics.extend(validate_constraints(constraints, path=str(constraints_path)))
             if has_errors(diagnostics):
-                status = "failed"
-                report = _validation_report(status=status, diagnostics=diagnostics, artifact_paths=artifact_paths)
-                report_path = store.write_step_json(STEP_FILENAMES["planning_validation_report"], report)
-                artifact_paths["planning_validation_report"] = report_path
-                _write_manifest(
-                    store=store,
-                    facts_path=self.facts_path,
-                    target_profile_path=self.target_profile_path,
-                    config=self.config,
-                    status=status,
-                    diagnostics=diagnostics,
-                    artifact_paths=artifact_paths,
-                    failure={"stage": "engineering_constraints", "code": "validation_errors"},
-                )
-                store.log_event(f"stage=engineering_constraints activate done status={status}")
-                return PlanningResult(False, self.output_dir, diagnostics, artifact_paths)
+                store.log_event("stage=engineering_constraints activate done status=failed")
+                return finish_run("engineering_constraints", status="failed", failure={"stage": "engineering_constraints", "code": "validation_errors"})
             store.log_event("stage=engineering_constraints activate done")
         else:
             constraints = inherited_artifacts["engineering_constraints"]
@@ -1449,21 +1541,7 @@ class PlanningAgent:
                     store.log_event(f"stage=architecture generation_request={request_counter_for_log} accepted")
             if not accepted_candidates:
                 diagnostics.append(_llm_failure_diagnostic("architecture", rejection_reasons))
-                _write_token_usage_summary(store=store, tracker=token_tracker, artifact_paths=artifact_paths)
-                report = _validation_report(status="failed", diagnostics=diagnostics, artifact_paths=artifact_paths)
-                report_path = store.write_step_json(STEP_FILENAMES["planning_validation_report"], report)
-                artifact_paths["planning_validation_report"] = report_path
-                _write_manifest(
-                    store=store,
-                    facts_path=self.facts_path,
-                    target_profile_path=self.target_profile_path,
-                    config=self.config,
-                    status="failed",
-                    diagnostics=diagnostics,
-                    artifact_paths=artifact_paths,
-                    failure={"stage": "architecture", "code": "mandatory_llm_failed"},
-                )
-                return PlanningResult(False, self.output_dir, diagnostics, artifact_paths)
+                return finish_run("architecture", status="failed", failure={"stage": "architecture", "code": "mandatory_llm_failed"})
             architecture_candidates = {
                 "schema_version": "architecture_candidates/v1",
                 "candidates": accepted_candidates,
@@ -1503,22 +1581,8 @@ class PlanningAgent:
             artifact_paths["selected_architecture"] = selected_path
             diagnostics.extend(validate_selected_architecture(selected_architecture, profile, constraints, path=str(selected_path)))
             if has_errors(diagnostics):
-                status = "failed"
-                report = _validation_report(status=status, diagnostics=diagnostics, artifact_paths=artifact_paths)
-                report_path = store.write_step_json(STEP_FILENAMES["planning_validation_report"], report)
-                artifact_paths["planning_validation_report"] = report_path
-                _write_manifest(
-                    store=store,
-                    facts_path=self.facts_path,
-                    target_profile_path=self.target_profile_path,
-                    config=self.config,
-                    status=status,
-                    diagnostics=diagnostics,
-                    artifact_paths=artifact_paths,
-                    failure={"stage": "architecture", "code": "validation_errors"},
-                )
-                store.log_event(f"stage=architecture build done status={status}")
-                return PlanningResult(False, self.output_dir, diagnostics, artifact_paths)
+                store.log_event("stage=architecture build done status=failed")
+                return finish_run("architecture", status="failed", failure={"stage": "architecture", "code": "validation_errors"})
             store.log_event("stage=architecture build done")
 
         else:
@@ -1542,23 +1606,18 @@ class PlanningAgent:
                 skeleton_path = artifact_paths["implementation_plan_skeleton"]
                 store.log_event("stage=implementation_plan substage=5.1_plan_skeleton resume inherited")
             skeleton_diags = validate_plan_skeleton(draft, selected_architecture, profile, constraints, path=str(skeleton_path))
+            skeleton_errors = [diag for diag in skeleton_diags if diag.level == "error"]
+            validator_stats.record(
+                stage_key="implementation_plan_5_1",
+                substage="5.1_plan_skeleton",
+                source="generated" if _implementation_plan_substage_should_run("implementation_plan_5_1", resume_from_stage) else "inherited",
+                first_generation_passed=stage_passed(skeleton_diags),
+                final_validator_passed=stage_passed(skeleton_diags),
+                failure_code=skeleton_errors[0].code if skeleton_errors else None,
+            )
             if has_errors(skeleton_diags):
                 diagnostics.extend(skeleton_diags)
-                _write_token_usage_summary(store=store, tracker=token_tracker, artifact_paths=artifact_paths)
-                report = _validation_report(status="failed", diagnostics=diagnostics, artifact_paths=artifact_paths)
-                report_path = store.write_step_json(STEP_FILENAMES["planning_validation_report"], report)
-                artifact_paths["planning_validation_report"] = report_path
-                _write_manifest(
-                    store=store,
-                    facts_path=self.facts_path,
-                    target_profile_path=self.target_profile_path,
-                    config=self.config,
-                    status="failed",
-                    diagnostics=diagnostics,
-                    artifact_paths=artifact_paths,
-                    failure={"stage": "implementation_plan", "code": "invalid_plan_skeleton"},
-                )
-                return PlanningResult(False, self.output_dir, diagnostics, artifact_paths)
+                return finish_run("implementation_plan", status="failed", failure={"stage": "implementation_plan", "code": "invalid_plan_skeleton"})
             if _should_stop_after("implementation_plan_5_1", stop_after_stage):
                 return finish_early("implementation_plan_5_1")
 
@@ -1584,7 +1643,15 @@ class PlanningAgent:
                 artifact_suffix = safe_slug(step_log_suffix) if step_log_suffix else ""
                 enable_thinking = self.config.llm_enable_thinking_for(thinking_stage)
                 request_config = _llm_config_for_stage(self.config, thinking_stage)
+                first_generation_passed: bool | None = None
+                validator_error_seen = False
+                repair_attempted = False
+                repair_success = False
+                fallback_used = False
                 for attempt in range(1, attempts + 1):
+                    repair_attempt = validator_error_seen
+                    if repair_attempt:
+                        repair_attempted = True
                     store.log_event(
                         f"stage=implementation_plan substage={stage_label} llm_attempt={attempt} prompt={prompt_name} thinking={str(enable_thinking).lower()} start"
                     )
@@ -1610,18 +1677,40 @@ class PlanningAgent:
                             store.log_event(f"stage=implementation_plan substage={stage_label} llm_attempt={attempt} normalized {stats_text}")
                     candidate_diags = validator(candidate)
                     if stage_passed(candidate_diags):
+                        if first_generation_passed is None:
+                            first_generation_passed = True
+                        if repair_attempt:
+                            repair_success = True
                         accepted = candidate
                         accepted_diags = candidate_diags
                         token_tracker.mark_attempt_accepted(stage="implementation_plan", prompt_name=prompt_name, attempt=attempt)
                         store.log_event(f"stage=implementation_plan substage={stage_label} llm_attempt={attempt} accepted")
                         break
+                    if first_generation_passed is None:
+                        first_generation_passed = False
+                    validator_error_seen = True
                     previous_reasons = _diagnostic_reasons(candidate_diags)
                     store.write_agent_log(f"{log_key}_llm_attempt_{attempt}_rejection", "\n".join(previous_reasons))
                     store.log_event(f"stage=implementation_plan substage={stage_label} llm_attempt={attempt} rejected reason={previous_reasons[0] if previous_reasons else 'unknown'}")
                 if accepted is None:
                     accepted = fallback
                     accepted_diags = validator(accepted)
+                    fallback_used = True
                     store.log_event(f"stage=implementation_plan substage={stage_label} fallback=deterministic")
+                final_passed = stage_passed(accepted_diags)
+                accepted_errors = [diag for diag in accepted_diags if diag.level == "error"]
+                validator_stats.record(
+                    stage_key=thinking_stage,
+                    substage=stage_label,
+                    prompt_name=prompt_name,
+                    first_generation_passed=first_generation_passed,
+                    validator_error_triggered_repair=validator_error_seen,
+                    repair_attempted=repair_attempted,
+                    repair_success=repair_success,
+                    final_validator_passed=final_passed,
+                    fallback_used=fallback_used,
+                    failure_code=accepted_errors[0].code if accepted_errors else None,
+                )
                 candidate_filename = _suffixed_step_filename(STEP_FILENAMES[candidate_key], step_log_suffix)
                 candidate_path = store.write_agent_json(candidate_filename, accepted) if step_log_suffix else _write_artifact_json(store, candidate_key, candidate_filename, accepted)
                 report_path = store.write_step_json(_suffixed_step_filename(STEP_FILENAMES[report_key], step_log_suffix), validation_report(stage_label, accepted_diags))
@@ -1636,9 +1725,18 @@ class PlanningAgent:
             def inherited_stage_candidate(*, stage_label: str, candidate_key: str, validator) -> dict[str, Any]:
                 candidate = inherited_artifacts[candidate_key]
                 candidate_diags = validator(candidate)
+                passed = stage_passed(candidate_diags)
+                candidate_errors = [diag for diag in candidate_diags if diag.level == "error"]
+                validator_stats.record(
+                    stage_key=_implementation_stage_key_from_label(stage_label),
+                    substage=stage_label,
+                    source="inherited",
+                    first_generation_passed=passed,
+                    final_validator_passed=passed,
+                    failure_code=candidate_errors[0].code if candidate_errors else None,
+                )
                 if has_errors(candidate_diags):
-                    diagnostics.extend(candidate_diags)
-                    store.log_event(f"stage=implementation_plan substage={stage_label} resume inherited invalid")
+                    store.log_event(f"stage=implementation_plan substage={stage_label} resume inherited has_errors={len([diag for diag in candidate_diags if diag.level == 'error'])}")
                 else:
                     store.log_event(f"stage=implementation_plan substage={stage_label} resume inherited")
                 return candidate
@@ -1740,6 +1838,42 @@ class PlanningAgent:
                     ],
                 }
 
+            def record_controlled_inventory_stats(result: dict[str, Any]) -> None:
+                records = [record for record in result.get("candidate_attempts", []) if isinstance(record, dict)]
+                validated_records = [record for record in records if record.get("validated")]
+                first_generation_passed = None
+                if validated_records:
+                    first_generation_passed = bool(validated_records[0].get("accepted")) and not result.get("fatal_diagnostics")
+                first_error_index = next(
+                    (
+                        index
+                        for index, record in enumerate(records)
+                        if record.get("validator_error")
+                    ),
+                    None,
+                )
+                repair_attempted = first_error_index is not None and any(record.get("validated") for record in records[first_error_index + 1 :])
+                repair_success = False
+                if first_error_index is not None:
+                    repair_success = any(record.get("validated") and record.get("accepted") for record in records[first_error_index + 1 :]) and not result.get("fatal_diagnostics")
+                accepted_diags = result.get("accepted_diags", [])
+                final_passed = not result.get("fatal_diagnostics") and not has_errors(accepted_diags)
+                failure_diags = list(result.get("fatal_diagnostics", [])) or [diag for diag in accepted_diags if diag.level == "error"]
+                stats = result.get("inventory_stats", {}) if isinstance(result.get("inventory_stats"), dict) else {}
+                accepted_by = str(stats.get("accepted_by", "") or "")
+                validator_stats.record(
+                    stage_key=_implementation_stage_key_from_label(str(result.get("stage_label", ""))),
+                    substage=str(result.get("stage_label", "")),
+                    prompt_name=str(result.get("prompt_name", "")),
+                    first_generation_passed=first_generation_passed,
+                    validator_error_triggered_repair=first_error_index is not None,
+                    repair_attempted=repair_attempted,
+                    repair_success=repair_success,
+                    final_validator_passed=final_passed,
+                    fallback_used=accepted_by.startswith("deterministic_"),
+                    failure_code=failure_diags[0].code if failure_diags else None,
+                )
+
             if _implementation_plan_substage_should_run("implementation_plan_5_3", resume_from_stage):
                 type_aggregate = {
                     "schema_version": "type_inventory_candidate/v1",
@@ -1819,6 +1953,7 @@ class PlanningAgent:
                         result,
                         candidate_log_prefix="type_inventory_candidate",
                     )
+                    record_controlled_inventory_stats(result)
                     planning_space_path = store.write_agent_json(
                         _suffixed_step_filename(STEP_FILENAMES["type_planning_space"], module_id),
                         result.get("planning_space", {}),
@@ -1980,6 +2115,7 @@ class PlanningAgent:
                         result,
                         candidate_log_prefix="function_inventory_candidate",
                     )
+                    record_controlled_inventory_stats(result)
                     fatal_diags = result.get("fatal_diagnostics", [])
                     reconciliation = result.get("reconciliation", {})
                     inventory_candidate = result.get("accepted") or reconciliation.get("candidate")
@@ -2069,6 +2205,12 @@ class PlanningAgent:
                 )
                 draft = merge_function_inventory(draft, inventory_aggregate)
                 draft = reconcile_type_inventory_function_refs(draft)
+                inventory_diags = validate_function_inventory_candidate(inventory_aggregate, draft.get("module_artifacts", []), draft, profile, planning_ir)
+                inventory_report_path = store.write_step_json(STEP_FILENAMES["function_inventory_validation_report"], validation_report("5.4a_function_inventory:all_modules", inventory_diags))
+                artifact_paths["function_inventory_validation_report"] = inventory_report_path
+                if has_errors(inventory_diags):
+                    diagnostics.extend(inventory_diags)
+                    return finish_early("implementation_plan_5_4a")
             if _should_stop_after("implementation_plan_5_4a", stop_after_stage):
                 return finish_early("implementation_plan_5_4a")
 
@@ -2312,6 +2454,7 @@ class PlanningAgent:
                     report_key="file_layout_validation_report",
                     fallback=fallback_file_layout(draft),
                     validator=lambda candidate: validate_file_layout_candidate(candidate, draft),
+                    normalizer=lambda candidate: normalize_file_layout_candidate(candidate, draft),
                 )
             else:
                 file_candidate = inherited_stage_candidate(
@@ -2378,24 +2521,20 @@ class PlanningAgent:
             artifact_paths["dependency_validation_report"] = dependency_report_path
             diagnostics.extend(plan_diags)
             diagnostics.extend(dependency_diags)
+            final_readiness_passed = not has_errors([*plan_diags, *dependency_diags])
+            readiness_errors = [diag for diag in [*plan_diags, *dependency_diags] if diag.level == "error"]
+            validator_stats.record(
+                stage_key="implementation_plan_5_7",
+                substage="5.7_spec_readiness_validation",
+                source="generated",
+                first_generation_passed=final_readiness_passed,
+                final_validator_passed=final_readiness_passed,
+                failure_code=readiness_errors[0].code if readiness_errors else None,
+            )
             store.log_event("stage=implementation_plan substage=5.7_spec_readiness_validation build done")
             if has_errors(diagnostics):
-                status = "failed"
-                report = _validation_report(status=status, diagnostics=diagnostics, artifact_paths=artifact_paths)
-                report_path = store.write_step_json(STEP_FILENAMES["planning_validation_report"], report)
-                artifact_paths["planning_validation_report"] = report_path
-                _write_manifest(
-                    store=store,
-                    facts_path=self.facts_path,
-                    target_profile_path=self.target_profile_path,
-                    config=self.config,
-                    status=status,
-                    diagnostics=diagnostics,
-                    artifact_paths=artifact_paths,
-                    failure={"stage": "implementation_plan", "code": "validation_errors"},
-                )
-                store.log_event(f"stage=implementation_plan build done status={status}")
-                return PlanningResult(False, self.output_dir, diagnostics, artifact_paths)
+                store.log_event("stage=implementation_plan build done status=failed")
+                return finish_run("implementation_plan", status="failed", failure={"stage": "implementation_plan", "code": "validation_errors"})
             store.log_event("stage=implementation_plan build done")
             if _should_stop_after("implementation_plan_5_7", stop_after_stage):
                 return finish_early("implementation_plan_5_7")
@@ -2420,29 +2559,15 @@ class PlanningAgent:
             status = "failed" if has_errors(diagnostics) else "stopped" if _should_stop_after("specs_compile", stop_after_stage) else "success"
             store.log_event(f"stage=specs_compile done coder_status={coder_status}")
 
-            _write_token_usage_summary(store=store, tracker=token_tracker, artifact_paths=artifact_paths)
-            report = _validation_report(
+            return finish_run(
+                "specs_compile",
                 status=status,
-                diagnostics=diagnostics,
-                artifact_paths=artifact_paths,
                 coder_compatibility_status=coder_status,
                 coder_schema_status=coder_schema_status,
                 coder_loader_status=coder_loader_status,
-            )
-            report_path = store.write_step_json(STEP_FILENAMES["planning_validation_report"], report)
-            artifact_paths["planning_validation_report"] = report_path
-            _write_manifest(
-                store=store,
-                facts_path=self.facts_path,
-                target_profile_path=self.target_profile_path,
-                config=self.config,
-                status=status,
-                diagnostics=diagnostics,
-                artifact_paths=artifact_paths,
                 failure={"stage": "specs_compile", "code": "validation_errors"} if status == "failed" else None,
             )
-            store.log_event(f"planning done status={status}")
-        return PlanningResult(not has_errors(diagnostics), self.output_dir, diagnostics, artifact_paths)
+        return finish_run("planning", status="success")
 
 
 def verify_output_dir(output_dir: str | Path) -> PlanningResult:
@@ -2461,6 +2586,7 @@ def verify_output_dir(output_dir: str | Path) -> PlanningResult:
         "selected_architecture": root / "_step_logs" / STEP_FILENAMES["selected_architecture"],
         "implementation_plan": root / "_step_logs" / STEP_FILENAMES["implementation_plan"],
         "dependency_validation_report": validation_reports / STEP_FILENAMES["dependency_validation_report"],
+        "planning_repair_statistics": root / "_step_logs" / STEP_FILENAMES["planning_repair_statistics"],
         "token_usage_summary": root / "_step_logs" / STEP_FILENAMES["token_usage_summary"],
         "coder_manifest": root / "coder_manifest.json",
         "spec_bundle": root / "spec_bundle",

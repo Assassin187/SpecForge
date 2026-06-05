@@ -151,6 +151,13 @@ def _plan_functions(implementation_plan: dict[str, Any]) -> list[dict[str, Any]]
 def _module_dependencies_from_plan(implementation_plan: dict[str, Any], module_ids: list[str]) -> dict[str, set[str]]:
     known = set(module_ids)
     deps: dict[str, set[str]] = {module_id: set() for module_id in module_ids}
+    for module in implementation_plan.get("module_artifacts", []) if isinstance(implementation_plan.get("module_artifacts"), list) else []:
+        if not isinstance(module, dict):
+            continue
+        module_id = str(module.get("module_id", "")).strip()
+        if module_id not in known:
+            continue
+        deps.setdefault(module_id, set()).update(str(dep).strip() for dep in module.get("dependencies", []) if str(dep).strip() in known and str(dep).strip() != module_id)
     graph = implementation_plan.get("dependency_graph", {})
     edges = graph.get("module_edges", []) if isinstance(graph, dict) else []
     for edge in edges if isinstance(edges, list) else []:
@@ -312,7 +319,52 @@ def _function_spec(
         spec["ACCESS_PATHS"] = lowered_access
     if wire_mappings:
         spec["WIRE_MAPPING"] = wire_mappings
+        test_vectors = [
+            {
+                "NAME": f"smoke_{safe_slug(mapping.get('PACKET', 'packet'))}_{safe_slug(mapping.get('WIRE_FIELD', 'field'))}",
+                "INPUT": {
+                    "packet": mapping.get("PACKET", ""),
+                    "wire_field": mapping.get("WIRE_FIELD", ""),
+                    "strategy": mapping.get("STRATEGY", ""),
+                },
+                "EXPECT": {
+                    "target": mapping.get("TARGET", ""),
+                    "rule": mapping.get("RULE", ""),
+                    "coder_action": "exercise_wire_mapping",
+                },
+            }
+            for mapping in wire_mappings[:4]
+        ]
+        if test_vectors:
+            spec["TEST_VECTORS"] = test_vectors
     return spec, unresolved
+
+
+def _derived_forbidden_symbols(canonical_types: list[dict[str, Any]]) -> list[dict[str, str]]:
+    forbidden: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for type_item in canonical_types:
+        if not isinstance(type_item, dict):
+            continue
+        fields = [field for field in type_item.get("fields", []) if isinstance(field, dict)]
+        field_names = {str(field.get("field_name", "")).strip() for field in fields}
+        if "v" not in field_names or "data" in field_names:
+            continue
+        symbol = canonical_type_symbol(type_item)
+        if not symbol:
+            continue
+        name = f"{symbol}.data"
+        if name in seen:
+            continue
+        seen.add(name)
+        forbidden.append(
+            {
+                "NAME": name,
+                "KIND": "FIELD",
+                "REASON": f"{symbol} exposes canonical fields {', '.join(sorted(field_names))}; data is not a public field.",
+            }
+        )
+    return forbidden
 
 
 def _data_declarations(
@@ -681,9 +733,20 @@ def compile_spec_bundle(implementation_plan: dict[str, Any], output_dir: str | P
             ],
         ],
     }
-    forbidden = lower_forbidden_symbols_for_coder(implementation_plan.get("forbidden_symbols", []))
+    forbidden = lower_forbidden_symbols_for_coder([*implementation_plan.get("forbidden_symbols", []), *_derived_forbidden_symbols(canonical_types)])
     if forbidden:
         module_spec["FORBIDDEN_SYMBOLS"] = forbidden
+    module_test_vectors = [
+        {
+            "NAME": safe_slug(item.get("test_id") or item.get("name") or f"test_{index}"),
+            "INPUT": {"scenario": str(item.get("purpose", "")), "trace_ref_keys": item.get("trace_ref_keys", []) if isinstance(item.get("trace_ref_keys"), list) else []},
+            "EXPECT": {"status": str(item.get("status", "inferred")), "coder_action": "preserve_protocol_behavior"},
+        }
+        for index, item in enumerate(implementation_plan.get("test_plan", []))
+        if isinstance(item, dict) and str(item.get("purpose", "")).strip()
+    ]
+    if module_test_vectors:
+        module_spec["TEST_VECTORS"] = module_test_vectors
     if all_public_symbols:
         seen: set[tuple[str, str]] = set()
         module_spec["PUBLIC_SYMBOLS"] = []
@@ -695,9 +758,14 @@ def compile_spec_bundle(implementation_plan: dict[str, Any], output_dir: str | P
     module_spec_path = write_json(spec_root / f"{safe_slug(protocol)}_module_spec.json", module_spec)
 
     traceability_sidecar, decisions_sidecar, refs_sidecar = sidecar_payload(_compiler_sidecar_source(implementation_plan, modules, files, functions), unresolved_lowering)
-    write_json(spec_root / "planning_traceability.json", traceability_sidecar)
-    write_json(spec_root / "planning_decisions.json", decisions_sidecar)
-    write_json(spec_root / "planning_ir_refs.json", refs_sidecar)
+    sidecar_paths = [
+        root / "planning_traceability.json",
+        root / "planning_decisions.json",
+        root / "planning_ir_refs.json",
+    ]
+    write_json(sidecar_paths[0], traceability_sidecar)
+    write_json(sidecar_paths[1], decisions_sidecar)
+    write_json(sidecar_paths[2], refs_sidecar)
 
     manifest = {
         "schema_version": CODER_MANIFEST_SCHEMA_VERSION,
@@ -706,11 +774,7 @@ def compile_spec_bundle(implementation_plan: dict[str, Any], output_dir: str | P
         "module_spec_path": str(module_spec_path),
         "file_spec_paths": file_spec_paths,
         "function_spec_paths": function_spec_paths,
-        "sidecar_paths": [
-            str(spec_root / "planning_traceability.json"),
-            str(spec_root / "planning_decisions.json"),
-            str(spec_root / "planning_ir_refs.json"),
-        ],
+        "sidecar_paths": [str(path) for path in sidecar_paths],
         "compatibility_target": "specs_schema_then_agent.coder.specs.load_spec_bundle_from_root",
     }
     manifest_path = write_json(root / "coder_manifest.json", manifest)
