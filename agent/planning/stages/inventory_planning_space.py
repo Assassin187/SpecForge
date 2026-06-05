@@ -8,6 +8,8 @@ from .implementation_plan_context import (
     SYSTEM_TYPE_IDS,
     _field_summaries,
     _legal_ids_from_draft,
+    _module_has_context_type_artifact,
+    _module_needs_private_state,
     _message_summaries,
     _module_text,
     _protocol_prefix,
@@ -94,8 +96,12 @@ def _type_artifact_kind(name: str, role: str) -> tuple[str, str, str]:
         if name.endswith("_t"):
             return "opaque_handle", "public", "public_header"
         return "internal_state", "module_internal", "source_file"
-    if any(word in text for word in ("buffer", "payload", "bytes")):
+    if any(word in text for word in ("packet_type", "packet type", "control packet type", "type enum", "enum")):
+        return "enum", "public", "public_header"
+    if any(word in text for word in ("buffer", "bytes")):
         return "owned_buffer", "public", "public_header"
+    if "payload" in text:
+        return "struct", "public", "public_header"
     if any(word in text for word in ("packet", "container", "decoded message", "decoded protocol")):
         return "struct", "public", "public_header"
     if any(word in text for word in ("callback", "cb", "hook")):
@@ -117,6 +123,29 @@ def _type_kind_for_target(target_kind: str, suggested_name: str) -> tuple[str, s
     if target_kind == "internal_state":
         return "internal_state", "private", "source_file"
     return "struct", "public", "public_header"
+
+
+def _slot_kind_score(slot: dict[str, Any]) -> int:
+    if slot.get("source_kind") != "type_generation_target":
+        return 0
+    source_id = str(slot.get("source_id", ""))
+    kind = str(slot.get("kind", ""))
+    if "packet_enum" in source_id and kind == "enum":
+        return 4
+    if "payload" in source_id and kind == "struct":
+        return 3
+    if kind == "owned_buffer":
+        return 2
+    return 1
+
+
+def _apply_slot_kind_precedence(existing: dict[str, Any], incoming: dict[str, Any]) -> None:
+    if _slot_kind_score(incoming) <= _slot_kind_score(existing):
+        return
+    existing["kind"] = incoming.get("kind", existing.get("kind"))
+    existing["visibility"] = incoming.get("visibility", existing.get("visibility"))
+    existing["defined_in"] = incoming.get("defined_in", existing.get("defined_in"))
+    existing["source_reason"] = str(incoming.get("source_reason", "")) or str(existing.get("source_reason", ""))
 
 
 def _type_slot(
@@ -172,6 +201,7 @@ def _dedupe_slots(slots: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 existing["trace_ref_keys"] = _trace(existing.get("trace_ref_keys", []), slot.get("trace_ref_keys", []))
                 existing["source_refs"] = _trace(existing.get("source_refs", []), slot.get("source_refs", []))
                 continue
+            _apply_slot_kind_precedence(existing, slot)
             if not existing.get("required_fields") and slot.get("required_fields"):
                 existing["required_fields"] = slot.get("required_fields", [])
                 existing["source_reason"] = str(existing.get("source_reason", "")) or str(slot.get("source_reason", ""))
@@ -206,6 +236,7 @@ def _merge_slot_details(primary: list[dict[str, Any]], secondary: list[dict[str,
             existing["trace_ref_keys"] = _trace(existing.get("trace_ref_keys", []), slot.get("trace_ref_keys", []))
             existing["source_refs"] = _trace(existing.get("source_refs", []), slot.get("source_refs", []))
             continue
+        _apply_slot_kind_precedence(existing, slot)
         if slot.get("required_fields"):
             existing["required_fields"] = slot.get("required_fields", [])
         existing["trace_ref_keys"] = _trace(existing.get("trace_ref_keys", []), slot.get("trace_ref_keys", []))
@@ -368,7 +399,7 @@ def build_type_planning_space(
             )
         )
 
-    if (module_artifact.get("state_owned") or module_artifact.get("owned_capabilities")) and not any(slot.get("kind") == "internal_state" for slot in [*mandatory, *derived]):
+    if _module_needs_private_state(module_artifact) and not _module_has_context_type_artifact(module_artifact, protocol) and not any(slot.get("kind") == "internal_state" for slot in [*mandatory, *derived]):
         derived.append(
             _type_slot(
                 module_id=module_id,

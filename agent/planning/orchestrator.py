@@ -64,6 +64,7 @@ from .stages.implementation_plan_merger import (
     fallback_module_artifacts,
     fallback_runtime_entrypoint,
     fallback_wire_access_binding,
+    cleanup_final_unresolved_questions,
     finalize_dependency_graph,
     merge_calls_allowed,
     merge_core_design,
@@ -2488,7 +2489,7 @@ class PlanningAgent:
             if _should_stop_after("implementation_plan_5_5b", stop_after_stage):
                 return finish_early("implementation_plan_5_5b")
 
-            implementation_plan = finalize_dependency_graph(draft)
+            implementation_plan = cleanup_final_unresolved_questions(finalize_dependency_graph(draft))
             dependency_diags = validate_dependency_graph(implementation_plan)
             if _implementation_plan_substage_should_run("implementation_plan_5_6", resume_from_stage) and has_errors(dependency_diags):
                 repair_context = build_dependency_repair_context(draft, _diagnostics_as_dependency_errors(dependency_diags))
@@ -2503,11 +2504,11 @@ class PlanningAgent:
                     validator=lambda candidate: validate_dependency_repair_patch(candidate, draft),
                 )
                 draft = apply_dependency_repair_patch(draft, repair_patch)
-                implementation_plan = finalize_dependency_graph(draft)
+                implementation_plan = cleanup_final_unresolved_questions(finalize_dependency_graph(draft))
                 dependency_diags = validate_dependency_graph(implementation_plan)
                 if has_errors(dependency_diags):
                     draft = apply_deterministic_dependency_fallback(draft, _diagnostics_as_dependency_errors(dependency_diags))
-                    implementation_plan = finalize_dependency_graph(draft)
+                    implementation_plan = cleanup_final_unresolved_questions(finalize_dependency_graph(draft))
 
             implementation_plan_path = store.write_step_json(STEP_FILENAMES["implementation_plan"], implementation_plan)
             artifact_paths["implementation_plan"] = implementation_plan_path

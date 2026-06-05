@@ -184,8 +184,33 @@ def _merge_type_fields(default_fields: list[dict[str, Any]], filling_fields: Any
     return merged
 
 
+def _type_kind_score(type_item: dict[str, Any]) -> int:
+    text = " ".join(
+        [
+            str(type_item.get("name", "")),
+            str(type_item.get("purpose", "")),
+            " ".join(str(ref) for ref in type_item.get("trace_ref_keys", []) if str(ref).strip()),
+        ]
+    ).lower()
+    kind = str(type_item.get("kind", ""))
+    if kind == "enum" and ("packet_enum" in text or "packet type" in text or type_item.get("enum_values")):
+        return 4
+    if kind == "struct" and "payload" in text:
+        return 3
+    if kind == "owned_buffer" and any(word in text for word in ("owned_buffer", "bytes", "buffer")):
+        return 2
+    return 1
+
+
 def _merge_type_items(existing: dict[str, Any], incoming: dict[str, Any]) -> dict[str, Any]:
     item = deepcopy(existing)
+    incoming_kind_wins = _type_kind_score(incoming) > _type_kind_score(existing)
+    if incoming_kind_wins:
+        for key in ("kind", "visibility", "defined_in"):
+            if str(incoming.get(key, "")).strip():
+                item[key] = deepcopy(incoming[key])
+        if str(incoming.get("purpose", "")).strip():
+            item["purpose"] = str(incoming.get("purpose", ""))
     item["fields"] = _merge_type_fields(
         [field for field in item.get("fields", []) if isinstance(field, dict)],
         [field for field in incoming.get("fields", []) if isinstance(field, dict)],

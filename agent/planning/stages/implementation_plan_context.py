@@ -318,6 +318,46 @@ def _module_text(module_artifact: dict[str, Any]) -> str:
     return " ".join(parts).lower()
 
 
+def _module_needs_private_state(module_artifact: dict[str, Any]) -> bool:
+    text = _module_text(module_artifact)
+    if any(word in text for word in ("stateless", "definition", "definitions", "protocol constants", "enum definitions")):
+        return False
+    runtime_signals = (
+        "connection",
+        "socket",
+        "fd",
+        "session",
+        "timer",
+        "heap",
+        "registry",
+        "map",
+        "store",
+        "tree",
+        "event loop",
+        "runtime context",
+        "lifecycle",
+        "buffer pool",
+        "i/o buffer",
+        "io buffer",
+        "recv buffer",
+        "send buffer",
+        "per-connection buffer",
+    )
+    return any(signal in text for signal in runtime_signals)
+
+
+def _module_has_context_type_artifact(module_artifact: dict[str, Any], protocol: str) -> bool:
+    module_id = _safe_id(str(module_artifact.get("module_id", "")))
+    context_names = {module_id, f"{_safe_id(protocol)}_{module_id}"}
+    for artifact in module_artifact.get("artifacts", []):
+        if not isinstance(artifact, dict) or str(artifact.get("kind", "")).upper() != "TYPE":
+            continue
+        name = _safe_id(str(artifact.get("name", "")).removeprefix("struct ").removesuffix("_t"))
+        if name in context_names:
+            return True
+    return False
+
+
 def _message_fields_from_source(planning_ir: dict[str, Any] | None, draft: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
     fields: list[dict[str, Any]] = []
     facts = (planning_ir or {}).get("protocol_facts", {}) if isinstance(planning_ir, dict) else {}
@@ -589,7 +629,7 @@ def derive_type_generation_targets(draft: dict[str, Any], module_artifact: dict[
                 "trace_ref_keys": module_artifact.get("source_fact_ids", []),
             }
         )
-    if module_artifact.get("state_owned") or module_artifact.get("owned_capabilities"):
+    if _module_needs_private_state(module_artifact) and not _module_has_context_type_artifact(module_artifact, protocol):
         targets.append(
             {
                 "target_id": f"target:{module_id}:private_state",

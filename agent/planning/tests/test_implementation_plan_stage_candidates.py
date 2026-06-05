@@ -60,6 +60,7 @@ from agent.planning.stages.implementation_plan_merger import (
     fallback_module_artifacts,
     fallback_runtime_entrypoint,
     fallback_wire_access_binding,
+    cleanup_final_unresolved_questions,
     finalize_dependency_graph,
     normalize_calls_allowed_aggregate,
     normalize_calls_allowed_candidate,
@@ -910,6 +911,60 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             fixed_fields = {field["field_name"]: field["field_type"] for field in fixed_target["required_fields"]}
             self.assertEqual(fixed_fields["packet_type"], "mqtt_packet_type_t")
             self.assertEqual(fixed_fields["remaining_length"], "uint32_t")
+
+    def test_codec_payload_and_packet_type_duplicates_keep_derived_kind(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            planning_ir, profile, constraints, _, draft, _, _ = self._fixtures(Path(raw_tmp))
+            codec = next(module for module in draft["module_artifacts"] if any("decode" in str(artifact.get("role", "")).lower() for artifact in module["artifacts"]))
+            codec = copy.deepcopy(codec)
+            codec["artifacts"].extend(
+                [
+                    {"name": "mqtt_packet_type_t", "kind": "TYPE", "role": "Decoded packet discriminator"},
+                    {"name": "mqtt_connect_payload_t", "kind": "TYPE", "role": "CONNECT payload"},
+                    {"name": "mqtt_publish_payload_t", "kind": "TYPE", "role": "PUBLISH payload"},
+                    {"name": "mqtt_subscribe_payload_t", "kind": "TYPE", "role": "SUBSCRIBE payload"},
+                ]
+            )
+            candidate = current_type_inventory_candidate(draft, codec, planning_ir, profile, constraints)
+            by_name = {item["name"]: item for item in candidate["types"]}
+            self.assertEqual(by_name["mqtt_packet_type_t"]["kind"], "enum")
+            self.assertEqual(by_name["mqtt_connect_payload_t"]["kind"], "struct")
+            self.assertEqual(by_name["mqtt_publish_payload_t"]["kind"], "struct")
+            self.assertEqual(by_name["mqtt_subscribe_payload_t"]["kind"], "struct")
+            diags = validate_type_inventory_candidate(candidate, draft["module_artifacts"], draft, profile, planning_ir)
+            self.assertFalse(_has(diags, "missing_packet_enum_type"))
+            self.assertFalse(_has(diags, "missing_payload_struct_type"))
+            self.assertFalse(_has(diags, "buffer_type_missing_size_fields"))
+
+    def test_type_generation_targets_do_not_create_private_state_for_stateless_codec_capabilities(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            planning_ir, _, _, _, _, _, _ = self._fixtures(Path(raw_tmp))
+            draft = {"protocol_name": "mqtt", "module_artifacts": [], "canonical_types": []}
+            codec = {
+                "module_id": "codec",
+                "name": "codec",
+                "role": "Stateless incremental decode/encode of protocol units",
+                "dependencies": [],
+                "artifacts": [],
+                "state_owned": [],
+                "owned_capabilities": ["message_decode", "message_encode", "incremental_message_framing", "canonical_type_ownership"],
+                "files": [],
+                "doc_ref": [],
+            }
+            target_kinds = {target["target_kind"] for target in derive_type_generation_targets(draft, codec, planning_ir)}
+            self.assertNotIn("internal_state", target_kinds)
+            self.assertIn("packet_enum", target_kinds)
+            self.assertIn("payload_struct", target_kinds)
+
+            network = {
+                **codec,
+                "module_id": "network",
+                "name": "network",
+                "role": "TCP transport runtime connection lifecycle",
+                "state_owned": ["socket descriptors", "per-connection I/O buffers"],
+                "owned_capabilities": ["transport_io", "connection_lifecycle"],
+            }
+            self.assertIn("internal_state", {target["target_kind"] for target in derive_type_generation_targets(draft, network, planning_ir)})
 
     def test_type_inventory_context_exposes_provider_public_seed_types_only_for_dependencies(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:
@@ -3852,7 +3907,7 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
                     source = wire_by_id[mapping["mapping_id"]]
                     self.assertEqual(access["field_id"], mapping["field_id"])
                     self.assertEqual(mapping["strategy"], source["strategy"])
-                    self.assertEqual(mapping["target_path"], source["target_path"])
+                    self.assertEqual(mapping["target_path"], access["path"])
                     self.assertEqual(mapping["rule"], source["rule"])
                     self.assertEqual(table_by_field[mapping["field_id"]]["rule"], source["rule"])
                 break
@@ -3878,6 +3933,99 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             broken = copy.deepcopy(wire)
             broken["access_path_entries"][0]["access_kind"] = "read_write"
             self.assertTrue(_has(validate_wire_access_binding_patch(broken, draft, planning_ir), "wire_access_kind_conflict"))
+
+    def test_wire_access_merge_canonicalizes_helper_local_target_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            planning_ir, _, _, _, draft, _, items = self._fixtures(Path(raw_tmp))
+            wire = copy.deepcopy(items["wire"])
+            entry = next(
+                item
+                for item in wire["wire_mapping_entries"]
+                if item.get("direction") == "parse"
+                and any(access.get("function_id") == item.get("function_id") and access.get("field_id") == item.get("field_id") for access in wire["access_path_entries"])
+            )
+            access = next(item for item in wire["access_path_entries"] if item["function_id"] == entry["function_id"] and item["field_id"] == entry["field_id"])
+            entry["target_path"] = "helper_local"
+            self.assertTrue(_has(validate_wire_access_binding_patch(wire, draft, planning_ir), "wire_mapping_target_path_not_canonical"))
+
+            merged = merge_wire_access_binding(draft, wire)
+            table_entry = next(item for item in merged["wire_mapping_table"] if item["field_id"] == entry["field_id"])
+            self.assertEqual(table_entry["target_path"], access["path"])
+            function = next(item for item in merged["function_contracts"] if item["function_id"] == entry["function_id"])
+            function_entry = next(item for item in function["wire_mapping"] if item["mapping_id"] == entry["wire_mapping_id"])
+            self.assertEqual(function_entry["target_path"], access["path"])
+
+    def test_final_cleanup_removes_stale_private_state_blocker_and_resolved_free_question(self) -> None:
+        plan = {
+            "type_inventory": [
+                {
+                    "type_id": "type:codec:mqtt_codec",
+                    "name": "struct mqtt_codec",
+                    "module_id": "codec",
+                    "kind": "internal_state",
+                    "visibility": "private",
+                    "defined_in": "source_file",
+                    "purpose": "Resource-owning modules need private implementation state.",
+                    "fields": [],
+                    "enum_values": [],
+                    "callback_signature": {"return_type": "", "params": []},
+                    "ownership_lifetime": "",
+                    "lifecycle": {"created_by": [], "initialized_by": [], "destroyed_by": [], "freed_by": []},
+                    "related_functions": [],
+                    "dependencies": [],
+                    "trace_ref_keys": ["decision:type_slot:codec:internal_state:target_codec_private_state"],
+                    "status": "unresolved",
+                },
+                {
+                    "type_id": "type:codec:mqtt_bytes_t",
+                    "name": "mqtt_bytes_t",
+                    "module_id": "codec",
+                    "kind": "owned_buffer",
+                    "visibility": "public",
+                    "defined_in": "public_header",
+                    "purpose": "Encoding result buffer",
+                    "fields": [],
+                    "enum_values": [],
+                    "callback_signature": {"return_type": "", "params": []},
+                    "ownership_lifetime": "",
+                    "lifecycle": {"created_by": [], "initialized_by": [], "destroyed_by": [], "freed_by": []},
+                    "related_functions": [],
+                    "dependencies": [],
+                    "trace_ref_keys": [],
+                    "status": "inferred",
+                },
+            ],
+            "canonical_types": [],
+            "function_contracts": [_inventory_function("mqtt_bytes_free", "codec", function_id="fn:codec:mqtt_bytes_free", kind="resource_lifecycle")],
+            "file_layout": {"files": []},
+            "wire_mapping_table": [],
+            "access_path_table": [],
+            "dependency_graph": {},
+            "unresolved_questions": [
+                {
+                    "question_id": "question:codec:mqtt_codec:lifecycle",
+                    "target_kind": "type",
+                    "target_id": "slot:type:codec:derived:mqtt_codec",
+                    "question": "What functions create, initialize, destroy, and free the private codec state?",
+                    "unresolved_reason": "No function artifacts specify lifecycle management for internal state",
+                    "blocking": True,
+                    "trace_ref_keys": ["decision:type_slot:codec:internal_state:target_codec_private_state"],
+                },
+                {
+                    "question_id": "question:codec:mqtt_bytes_t:free_function_existence",
+                    "target_kind": "type",
+                    "target_id": "type:codec:mqtt_bytes_t",
+                    "question": "Does mqtt_bytes_t have a free function?",
+                    "unresolved_reason": "Asked before function inventory was generated",
+                    "blocking": False,
+                    "trace_ref_keys": [],
+                },
+            ],
+        }
+        cleaned = cleanup_final_unresolved_questions(plan)
+        self.assertFalse(any(item.get("blocking") for item in cleaned["unresolved_questions"] if isinstance(item, dict)))
+        self.assertFalse(any(item.get("type_id") == "type:codec:mqtt_codec" for item in cleaned["type_inventory"]))
+        self.assertEqual(cleaned["unresolved_questions"], [])
 
     def test_merge_file_layout_updates_module_files_from_actual_layout(self) -> None:
         draft = {

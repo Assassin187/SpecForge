@@ -1928,6 +1928,11 @@ def validate_wire_access_binding_patch(patch: dict[str, Any], draft: dict[str, A
     message_ids = _message_ids(planning_ir)
     wire_ids = {entry["wire_mapping_id"] for entry in patch["wire_mapping_entries"]}
     access_ids = {entry["access_path_id"] for entry in patch["access_path_entries"]}
+    access_by_function_field = {
+        (str(entry.get("function_id", "")), str(entry.get("field_id", ""))): entry
+        for entry in patch["access_path_entries"]
+        if isinstance(entry, dict)
+    }
     mapped_fields: set[str] = set()
     for entry in patch["wire_mapping_entries"]:
         function = functions.get(entry["function_id"])
@@ -1946,6 +1951,11 @@ def validate_wire_access_binding_patch(patch: dict[str, Any], draft: dict[str, A
             diagnostics.append(PlanningDiagnostic("error", "wire_serialize_function_kind_mismatch", f"serialize mapping uses non-serializer function '{entry['function_id']}'", path))
         if not entry["packet_name"].strip() or not entry["wire_field"].strip() or not entry["strategy"].strip():
             diagnostics.append(PlanningDiagnostic("error", "incomplete_coder_wire_mapping", f"wire mapping '{entry['wire_mapping_id']}' lacks coder-lowerable packet/field/strategy", path))
+        access_entry = access_by_function_field.get((entry["function_id"], entry["field_id"]))
+        target_path = str(entry.get("target_path", "")).strip()
+        access_path = str((access_entry or {}).get("path", "")).strip()
+        if access_path and target_path and target_path != "buffer" and target_path != access_path:
+            diagnostics.append(PlanningDiagnostic("error", "wire_mapping_target_path_not_canonical", f"wire mapping '{entry['wire_mapping_id']}' target_path must match access path '{access_path}'", path))
     for entry in patch["access_path_entries"]:
         function = functions.get(entry["function_id"])
         if entry["function_id"] not in function_ids:

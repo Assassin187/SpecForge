@@ -730,6 +730,126 @@ def reconcile_type_inventory_function_refs(draft: dict[str, Any]) -> dict[str, A
     return result
 
 
+def _collect_plan_strings(value: Any, *, skip_keys: set[str] | None = None) -> set[str]:
+    skip_keys = skip_keys or set()
+    result: set[str] = set()
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if key in skip_keys:
+                continue
+            result.update(_collect_plan_strings(child, skip_keys=skip_keys))
+    elif isinstance(value, list):
+        for child in value:
+            result.update(_collect_plan_strings(child, skip_keys=skip_keys))
+    elif isinstance(value, str) and value.strip():
+        result.add(value.strip())
+        result.add(value.replace("const", "").replace("*", "").strip())
+    return result
+
+
+def _type_aliases(type_item: dict[str, Any]) -> set[str]:
+    name = str(type_item.get("name", "")).strip()
+    base = name.removeprefix("struct ").removesuffix("_t")
+    return {value for value in {str(type_item.get("type_id", "")).strip(), name, name.removeprefix("struct "), base, _safe_id(base)} if value}
+
+
+def _type_index_by_question_target(types: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    result: dict[str, dict[str, Any]] = {}
+    for type_item in types:
+        if not isinstance(type_item, dict):
+            continue
+        for alias in _type_aliases(type_item):
+            result.setdefault(alias, type_item)
+        type_id = str(type_item.get("type_id", "")).strip()
+        module_id = str(type_item.get("module_id", "")).strip()
+        base = _safe_id(str(type_item.get("name", "")).removeprefix("struct ").removesuffix("_t"))
+        if module_id and base:
+            result.setdefault(f"slot:type:{module_id}:derived:{base}", type_item)
+            result.setdefault(f"slot:type:{module_id}:mandatory:{base}", type_item)
+        if type_id:
+            result.setdefault(type_id, type_item)
+    return result
+
+
+def _type_is_referenced(type_item: dict[str, Any], refs: set[str]) -> bool:
+    aliases = _type_aliases(type_item)
+    return any(alias in refs for alias in aliases)
+
+
+def _question_resolved_by_functions(question: dict[str, Any], type_item: dict[str, Any], function_names: set[str]) -> bool:
+    text = f"{question.get('question', '')} {question.get('unresolved_reason', '')}".lower()
+    if not any(word in text for word in ("free", "destroy", "cleanup", "create", "initialize", "init", "lifecycle")):
+        return False
+    base = _safe_id(str(type_item.get("name", "")).removeprefix("struct ").removesuffix("_t"))
+    base_tail = base.removeprefix("mqtt_")
+    suffixes = ("_free", "_destroy", "_cleanup", "_deinit", "_close", "_create", "_init", "_open")
+    for name in function_names:
+        key = _safe_id(name)
+        if not key.endswith(suffixes):
+            continue
+        if base and base in key:
+            return True
+        if base_tail and base_tail in key:
+            return True
+    return False
+
+
+def cleanup_final_unresolved_questions(plan: dict[str, Any]) -> dict[str, Any]:
+    result = deepcopy(plan)
+    types = [item for item in result.get("type_inventory", []) if isinstance(item, dict)]
+    refs = _collect_plan_strings(
+        {
+            "canonical_types": result.get("canonical_types", []),
+            "function_contracts": result.get("function_contracts", []),
+            "file_layout": result.get("file_layout", {}),
+            "wire_mapping_table": result.get("wire_mapping_table", []),
+            "access_path_table": result.get("access_path_table", []),
+            "dependency_graph": result.get("dependency_graph", {}),
+        }
+    )
+    type_by_target = _type_index_by_question_target(types)
+    function_names_by_module: dict[str, set[str]] = {}
+    for function in result.get("function_contracts", []):
+        if isinstance(function, dict):
+            function_names_by_module.setdefault(str(function.get("module_id", "")), set()).add(str(function.get("name", "")))
+
+    kept_questions: list[Any] = []
+    stale_private_type_ids: set[str] = set()
+    for question in result.get("unresolved_questions", []):
+        if not isinstance(question, dict):
+            kept_questions.append(question)
+            continue
+        target = str(question.get("target_id", "")).strip()
+        type_item = type_by_target.get(target) or type_by_target.get(_safe_id(target.removeprefix("struct ").removesuffix("_t")))
+        if type_item is None:
+            kept_questions.append(question)
+            continue
+        module_functions = function_names_by_module.get(str(type_item.get("module_id", "")), set())
+        if _question_resolved_by_functions(question, type_item, module_functions):
+            continue
+        text = f"{question.get('question', '')} {question.get('unresolved_reason', '')} {' '.join(str(ref) for ref in question.get('trace_ref_keys', []))}".lower()
+        private_empty = (
+            str(type_item.get("kind", "")) == "internal_state"
+            and str(type_item.get("visibility", "")) in {"private", "module_internal"}
+            and not [field for field in type_item.get("fields", []) if isinstance(field, dict)]
+            and not [dep for dep in type_item.get("dependencies", []) if str(dep).strip()]
+            and not [ref for ref in type_item.get("related_functions", []) if str(ref).strip()]
+            and not _type_is_referenced(type_item, refs)
+        )
+        if private_empty and any(word in text for word in ("private_state", "private state", "internal state", "lifecycle")):
+            stale_private_type_ids.add(str(type_item.get("type_id", "")))
+            continue
+        kept_questions.append(question)
+    result["unresolved_questions"] = kept_questions
+    if stale_private_type_ids:
+        result["type_inventory"] = [
+            item
+            for item in result.get("type_inventory", [])
+            if not (isinstance(item, dict) and str(item.get("type_id", "")) in stale_private_type_ids)
+        ]
+    return result
+
+
 def merge_function_inventory(draft: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any]:
     result = deepcopy(draft)
     existing = {str(item.get("function_id")) for item in result.get("function_contracts", []) if isinstance(item, dict)}
@@ -1451,6 +1571,14 @@ def _unresolved_wire_forbidden_symbol(result: dict[str, Any], index: int, raw_va
     )
 
 
+def _canonical_wire_target_path(entry: dict[str, Any], access_entry: dict[str, Any] | None) -> str:
+    target_path = _wire_entry_value(entry, "target_path")
+    if target_path == "buffer" and str(entry.get("direction", "")) == "serialize":
+        return target_path
+    access_path = str((access_entry or {}).get("path", "")).strip()
+    return access_path or target_path
+
+
 def merge_wire_access_binding(draft: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
     result = deepcopy(draft)
     entries = [item for item in patch.get("wire_mapping_entries", []) if isinstance(item, dict)]
@@ -1481,10 +1609,14 @@ def merge_wire_access_binding(draft: dict[str, Any], patch: dict[str, Any]) -> d
                 "source_fact_ids": entry.get("trace_ref_keys", []),
             },
         )
-        access_id = access_by_function_field.get((str(entry.get("function_id", "")), field_id), {}).get("access_path_id", "")
+        access_entry = access_by_function_field.get((str(entry.get("function_id", "")), field_id), {})
+        access_id = access_entry.get("access_path_id", "")
         current["access_path_id"] = access_id or current["access_path_id"]
         for key in ("strategy", "target_path", "source_expr", "rule", "mapping_role"):
             current[key] = current.get(key) or _wire_entry_value(entry, key)
+        canonical_target = _canonical_wire_target_path(entry, access_entry)
+        if not current.get("target_path") or (current["target_path"] == "buffer" and canonical_target != "buffer") or (access_entry and canonical_target != "buffer"):
+            current["target_path"] = canonical_target
         if entry.get("direction") == "parse":
             current["parser_function_id"] = entry.get("function_id", "")
         elif entry.get("direction") == "serialize":
@@ -1516,7 +1648,10 @@ def merge_wire_access_binding(draft: dict[str, Any], patch: dict[str, Any]) -> d
                     "direction": entry_by_id.get(wire_id, {}).get("direction", ""),
                     "access_path_id": access_by_function_field.get((str(function.get("function_id", "")), str(entry_by_id.get(wire_id, {}).get("field_id", ""))), {}).get("access_path_id", ""),
                     "strategy": _wire_entry_value(entry_by_id.get(wire_id, {}), "strategy"),
-                    "target_path": _wire_entry_value(entry_by_id.get(wire_id, {}), "target_path"),
+                    "target_path": _canonical_wire_target_path(
+                        entry_by_id.get(wire_id, {}),
+                        access_by_function_field.get((str(function.get("function_id", "")), str(entry_by_id.get(wire_id, {}).get("field_id", ""))), {}),
+                    ),
                     "source_expr": _wire_entry_value(entry_by_id.get(wire_id, {}), "source_expr"),
                     "rule": _wire_entry_value(entry_by_id.get(wire_id, {}), "rule"),
                     "mapping_role": _wire_entry_value(entry_by_id.get(wire_id, {}), "mapping_role"),
