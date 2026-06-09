@@ -165,17 +165,15 @@ STAGE_SEMANTIC_RULES = {
         "caller_function_id and callee_function_id must come from existing functions.",
         "Do not create self-calls.",
         "Do not call private or static functions across module boundaries.",
-        "Start from required_call_update_skeleton and fill edge proposals for current-batch callers only; deterministic normalization will discard out-of-batch callers and fill missing callers.",
-        "Plan complete call contracts for every current-batch caller, including same-module helpers, parser/serializer delegates, handler dispatch, lifecycle helpers, cleanup/error-handling helpers, and cross-module service calls.",
-        "Use same-module private/static helper calls when the caller behavior, signature, wire_mapping, access_paths, state/resource access, or cleanup policy implies a helper relationship.",
+        "Plan only cross-module service call edges for service requirements listed in expected_cross_module_service_requirements.",
+        "Do not plan same-module helper calls, parser/serializer delegates, lifecycle helpers, cleanup/error-handling helpers, or utility calls; those are generated deterministically before this prompt.",
+        "It is acceptable to return call_updates only for callers with cross-module service requirements; deterministic normalization will merge your edges with the baseline and fill missing callers.",
         "For each expected_cross_module_service_requirements item, either bind it to a concrete public/provider call edge or leave it unresolved; deterministic normalization closes any omitted expected service IDs as unresolved.",
-        "Non-service inferred calls such as same-module helpers, delegates, lifecycle, and cleanup must use service_requirement_ids=[].",
+        "Every edge you generate must carry at least one service_requirement_id from expected_cross_module_service_requirements.",
         "External runtime service requirements such as socket, epoll, malloc, timer, or OS/runtime operations must not become internal call edges and must not be listed in unresolved_service_requirements.",
-        "If callable_functions is present, callee_function_id must come from that list or from a same-module existing function.",
+        "callee_function_id must come from candidate_provider_functions.provider_function_ids; if no candidate is correct, list the service requirement in unresolved_service_requirements.",
         "The planned calls_allowed graph must avoid prohibited cycles.",
         "Do not bind an outbound delivery requirement to another module's inbound/process handler; if no explicit delivery helper or callback provider exists, list that requirement in unresolved_service_requirements.",
-        "For same-module public/API facades and internal helpers with overlapping lifecycle, cleanup, parse, encode, dispatch, or error purposes, only plan public/API -> internal helper edges; never add the reverse internal helper -> public/API edge.",
-        "return_binding.cleanup_function_id documents cleanup ownership and must not be mirrored as a reciprocal calls_allowed edge.",
         "Do not generate imports, file graphs, dependency graphs, new functions, or code.",
     ],
     "runtime_entrypoint_candidate/v1": [
@@ -204,6 +202,14 @@ STAGE_SEMANTIC_RULES = {
         "imports_allowed must not reference header IDs, .h files, .c files, paths, or the file's own file_id.",
         "Public functions must have declaration_file_id equal to their FILE_SPEC file_id.",
         "Private or static functions must not have declaration_file_id.",
+    ],
+    "file_layout_override_patch/v1": [
+        "This patch may only adjust an existing deterministic file layout baseline.",
+        "Prefer keep_baseline=true unless a validator error or mechanical layout warning requires a small change.",
+        "file_responsibility_overrides may only reference baseline file_id values and may only change responsibility text or trace_ref_keys.",
+        "function_reassignments may only move an existing function to an existing baseline file in the same module.",
+        "force_single_unit_module_ids may only name existing module ids when the baseline split is worse than a single cohesive unit.",
+        "Do not create new files, paths, file_ids, modules, functions, imports_allowed, dependency graphs, or code.",
     ],
     "dependency_repair_patch/v1": [
         "Repair only dependency inputs; never output dependency_graph.",
@@ -705,7 +711,7 @@ def wire_access_binding_patch_messages(context: dict[str, Any]) -> list[dict[str
 def calls_allowed_candidate_messages(context: dict[str, Any]) -> list[dict[str, str]]:
     return _stage_messages(
         prompt_name="calls_allowed_candidate_prompt",
-        task="Plan directed acyclic call contracts for the current batch after signatures, behavior contracts, and wire binding are stable; do not create reciprocal lifecycle or cleanup delegation.",
+        task="Plan only cross-module service call contracts for expected_cross_module_service_requirements; deterministic normalization will merge same-module helper, lifecycle, cleanup, parser, and serializer calls.",
         context_key="calls_allowed_context",
         context=context,
         expected_schema="calls_allowed_candidate/v2",
@@ -735,6 +741,18 @@ def file_layout_candidate_messages(context: dict[str, Any]) -> list[dict[str, st
         expected_schema="file_layout_candidate/v2",
         forbidden_fields=["new function_id", "new function name", "function implementation details", "function call graph", "final dependency_graph", "code"],
         validator="validate_file_layout_candidate",
+    )
+
+
+def file_layout_override_patch_messages(context: dict[str, Any]) -> list[dict[str, str]]:
+    return _stage_messages(
+        prompt_name="file_layout_override_patch_prompt",
+        task="Review the deterministic file layout baseline and return the smallest schema-valid override patch only when needed.",
+        context_key="file_layout_override_context",
+        context=context,
+        expected_schema="file_layout_override_patch/v1",
+        forbidden_fields=["new file_id", "new source_path", "new header_path", "new function_id", "imports_allowed", "dependency_graph", "code"],
+        validator="validate_file_layout_override_patch",
     )
 
 

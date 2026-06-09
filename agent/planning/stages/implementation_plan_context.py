@@ -1159,7 +1159,8 @@ def _compact_access_type(type_item: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
-def _compact_call_function(function: dict[str, Any]) -> dict[str, Any]:
+def _compact_cross_module_call_function(function: dict[str, Any]) -> dict[str, Any]:
+    signature = function.get("signature", {}) if isinstance(function.get("signature"), dict) else {}
     return {
         "function_id": function.get("function_id"),
         "name": function.get("name"),
@@ -1168,14 +1169,25 @@ def _compact_call_function(function: dict[str, Any]) -> dict[str, Any]:
         "api_surface": function.get("api_surface"),
         "purpose": function.get("purpose", ""),
         "function_kind": function.get("function_kind"),
-        "logic_kind": function.get("logic_kind", ""),
-        "signature": function.get("signature", {}),
-        "behavior_contract": function.get("behavior_contract", {}),
-        "wire_mapping": function.get("wire_mapping", []),
-        "access_paths": function.get("access_paths", []),
-        "state_access": function.get("state_access", []),
-        "resource_access": function.get("resource_access", []),
-        "service_requirements": [requirement for requirement in function.get("service_requirements", []) if isinstance(requirement, dict)],
+        "signature": {
+            "return_type": signature.get("return_type", ""),
+            "params": [
+                {
+                    "name": param.get("name"),
+                    "type": param.get("type"),
+                    "type_ref": param.get("type_ref"),
+                    "direction": param.get("direction", ""),
+                    "nullable": param.get("nullable", False),
+                }
+                for param in signature.get("params", [])
+                if isinstance(param, dict)
+            ],
+        },
+        "service_requirements": [
+            requirement
+            for requirement in function.get("service_requirements", [])
+            if isinstance(requirement, dict) and str(requirement.get("requirement_kind", "")) == "cross_module_service"
+        ],
     }
 
 
@@ -1296,11 +1308,25 @@ def _candidate_provider_functions(requirements: list[dict[str, Any]], callable_f
             score = sum(1 for token in tokens if token in text)
             if score:
                 scored.append((score, str(function.get("function_id", ""))))
-        provider_ids = [function_id for _, function_id in sorted(scored, reverse=True)[:8]]
+        provider_ids = [function_id for _, function_id in sorted(scored, reverse=True)[:4]]
         if not provider_ids:
-            provider_ids = [str(function.get("function_id", "")) for function in public_callables if str(function.get("module_id", "")) != caller_module_id][:8]
+            provider_ids = [str(function.get("function_id", "")) for function in public_callables if str(function.get("module_id", "")) != caller_module_id][:4]
         result.append({"service_requirement_id": requirement.get("service_requirement_id"), "provider_function_ids": provider_ids})
     return result
+
+
+def _provider_function_summaries(provider_candidates: list[dict[str, Any]], callable_functions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    provider_ids = {
+        str(function_id)
+        for item in provider_candidates
+        for function_id in item.get("provider_function_ids", [])
+        if str(function_id).strip()
+    }
+    return [
+        _compact_cross_module_call_function(function)
+        for function in callable_functions
+        if isinstance(function, dict) and str(function.get("function_id", "")) in provider_ids
+    ]
 
 
 def _service_cycle_risk_hints(requirements: list[dict[str, Any]], callable_functions: list[dict[str, Any]], callers: list[dict[str, Any]]) -> list[dict[str, str]]:
@@ -2073,37 +2099,40 @@ def build_calls_allowed_context(
     current_module = module_id or ""
     callable_functions = _callable_functions(draft, current_module) if current_module else []
     expected_requirements = _expected_cross_module_service_requirements(scoped_functions)
+    cross_module_caller_ids = {str(item.get("function_id", "")) for item in expected_requirements if str(item.get("function_id", "")).strip()}
+    cross_module_callers = [
+        item
+        for item in scoped_functions
+        if isinstance(item, dict) and str(item.get("function_id", "")) in cross_module_caller_ids
+    ]
+    provider_candidates = _candidate_provider_functions(expected_requirements, callable_functions, scoped_functions)
+    provider_summaries = _provider_function_summaries(provider_candidates, callable_functions)
     return {
         "schema_version": "calls_allowed_context/v1",
         "module_id": current_module,
         "batch": {"index": batch_index, "size": batch_size} if batch_index is not None else {},
-        "callers": [_compact_call_function(item) for item in scoped_functions if isinstance(item, dict)],
+        "callers": [_compact_cross_module_call_function(item) for item in cross_module_callers],
         "service_requirements": [
             {
                 "function_id": item.get("function_id"),
                 "cross_module_service_requirements": [
                     requirement
-                    for requirement in _compact_call_function(item).get("service_requirements", [])
+                    for requirement in _compact_cross_module_call_function(item).get("service_requirements", [])
                     if isinstance(requirement, dict) and str(requirement.get("requirement_kind", "cross_module_service")) == "cross_module_service"
                 ],
-                "external_runtime_service_requirements": [
-                    requirement
-                    for requirement in _compact_call_function(item).get("service_requirements", [])
-                    if isinstance(requirement, dict) and str(requirement.get("requirement_kind", "")) == "external_runtime_service"
-                ],
             }
-            for item in draft.get("function_contracts", [])
-            if isinstance(item, dict) and (not scoped_ids or str(item.get("function_id", "")) in scoped_ids)
+            for item in cross_module_callers
         ],
-        "callable_functions": callable_functions,
+        "callable_functions": provider_summaries,
         "required_call_update_caller_ids": sorted(scoped_ids),
-        "required_call_update_skeleton": _call_update_skeleton(scoped_functions),
+        "required_call_update_skeleton": _call_update_skeleton(cross_module_callers),
         "expected_cross_module_service_requirements": expected_requirements,
-        "candidate_provider_functions": _candidate_provider_functions(expected_requirements, callable_functions, scoped_functions),
+        "candidate_provider_functions": provider_candidates,
         "call_graph_direction_hints": _call_graph_direction_hints(current_module, scoped_functions, callable_functions) if current_module else [],
         "service_cycle_risk_hints": _service_cycle_risk_hints(expected_requirements, callable_functions, scoped_functions),
         "normalization_policy": {
-            "batch_coverage": "normalizer keeps exactly required_call_update_caller_ids and fills missing callers with empty calls_allowed",
+            "baseline_merge": "deterministic same-module calls are generated before this prompt and merged with accepted cross-module service edges",
+            "batch_coverage": "normalizer keeps exactly required_call_update_caller_ids and fills missing callers from deterministic baseline",
             "service_requirement_closure": "normalizer keeps resolved current-batch service ids and adds unresolved ids for any expected service requirement left unresolved",
             "invalid_edges": "normalizer drops unknown, self, private cross-module, and out-of-callable-universe callees before validation",
             "cycle_breaking": "aggregate normalization removes cycle edges before final validation while preserving service closure by adding removed unresolved service ids back to unresolved_service_requirements",
@@ -2264,6 +2293,64 @@ def build_file_layout_context(draft: dict[str, Any], planning_ir: dict[str, Any]
             for module_id in sorted({str(item.get("owner_module_id", "")) for item in exportable_types if str(item.get("owner_module_id", ""))})
         },
         "legal_id_universe": _legal_ids_from_draft(draft),
+    }
+
+
+def build_file_layout_override_context(draft: dict[str, Any], baseline: dict[str, Any], diagnostics: list[Any]) -> dict[str, Any]:
+    files = [item for item in baseline.get("files", []) if isinstance(item, dict)]
+    assignments = [item for item in baseline.get("function_file_assignments", []) if isinstance(item, dict)]
+    file_ids_by_module: dict[str, list[str]] = {}
+    for file_item in files:
+        module_id = str(file_item.get("module_id", ""))
+        file_id = str(file_item.get("file_id", ""))
+        if module_id and file_id:
+            file_ids_by_module.setdefault(module_id, []).append(file_id)
+    function_ids_by_module: dict[str, list[str]] = {}
+    for function in draft.get("function_contracts", []):
+        if isinstance(function, dict):
+            function_ids_by_module.setdefault(str(function.get("module_id", "")), []).append(str(function.get("function_id", "")))
+    return {
+        "schema_version": "file_layout_override_context/v1",
+        "baseline_files": [
+            {
+                "file_id": item.get("file_id"),
+                "source_path": item.get("source_path"),
+                "header_path": item.get("header_path"),
+                "module_id": item.get("module_id"),
+                "responsibility": item.get("responsibility"),
+                "exports_function_ids": item.get("exports_function_ids", []),
+                "implements_function_ids": item.get("implements_function_ids", []),
+            }
+            for item in files
+        ],
+        "baseline_assignments": [
+            {
+                "function_id": item.get("function_id"),
+                "implementation_file_id": item.get("implementation_file_id"),
+                "declaration_file_id": item.get("declaration_file_id"),
+                "visibility": item.get("visibility"),
+            }
+            for item in assignments
+        ],
+        "module_file_layout_summaries": _file_layout_module_summaries(draft),
+        "diagnostics": [
+            {
+                "level": getattr(item, "level", ""),
+                "code": getattr(item, "code", ""),
+                "message": getattr(item, "message", ""),
+            }
+            for item in diagnostics
+        ],
+        "override_policy": {
+            "prefer_keep_baseline": True,
+            "allowed_file_ids_by_module": file_ids_by_module,
+            "function_ids_by_module": function_ids_by_module,
+        },
+        "legal_id_universe": {
+            "module_ids": [str(item.get("module_id", "")) for item in draft.get("module_artifacts", []) if isinstance(item, dict)],
+            "function_ids": [str(item.get("function_id", "")) for item in draft.get("function_contracts", []) if isinstance(item, dict)],
+            "file_ids": [str(item.get("file_id", "")) for item in files],
+        },
     }
 
 

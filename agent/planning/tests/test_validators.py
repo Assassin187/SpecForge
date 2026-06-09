@@ -96,7 +96,9 @@ class PlanningValidatorTests(unittest.TestCase):
         self.assertEqual(config.module_scoped_batch_size_for("implementation_plan_5_4b"), 32)
         self.assertEqual(config.module_scoped_batch_size_for("implementation_plan_5_4c"), 2)
         self.assertEqual(config.module_scoped_batch_size_for("implementation_plan_5_4e"), 16)
-        self.assertTrue(config.llm_stage_config("implementation_plan_5_5a").enable_thinking)
+        self.assertFalse(config.llm_stage_config("implementation_plan_5_5a").enable_thinking)
+        self.assertEqual(config.llm_stage_config("implementation_plan_5_5a").max_completion_tokens, 4096)
+        self.assertEqual(config.llm_stage_config("implementation_plan_5_4e").max_retries, 1)
         with self.assertRaises(ValueError):
             PlanningConfig(module_scoped_batch_sizes={"implementation_plan_5_4d": 2})
         with self.assertRaises(ValueError):

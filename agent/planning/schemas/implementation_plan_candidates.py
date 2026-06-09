@@ -686,6 +686,22 @@ FUNCTION_FILE_ASSIGNMENT_SCHEMA = _object(
     }
 )
 
+FILE_RESPONSIBILITY_OVERRIDE_SCHEMA = _object(
+    {
+        "file_id": STRING,
+        "responsibility": STRING,
+        "trace_ref_keys": STRING_LIST,
+    }
+)
+
+FILE_FUNCTION_REASSIGNMENT_SCHEMA = _object(
+    {
+        "function_id": STRING,
+        "target_file_id": STRING,
+        "reason": STRING,
+    }
+)
+
 REPAIR_ACTION_SCHEMAS = {
     "remove_call_edge": _object({"action_kind": _scalar("string", enum={"remove_call_edge"}), "caller_function_id": STRING, "callee_function_id": STRING, "reason": STRING}),
     "adjust_imports_allowed": _object(
@@ -846,6 +862,19 @@ SCHEMA_SPECS: dict[str, SchemaSpec] = {
             "producer": PRODUCER_SCHEMA,
             "files": _array(FILE_ITEM_SCHEMA),
             "function_file_assignments": _array(FUNCTION_FILE_ASSIGNMENT_SCHEMA),
+            "assumptions": _array(ASSUMPTION_SCHEMA),
+            "unresolved_questions": _array(UNRESOLVED_QUESTION_SCHEMA),
+        }
+    ),
+    "file_layout_override_patch/v1": _object(
+        {
+            "schema_version": _scalar("string", enum={"file_layout_override_patch/v1"}),
+            "patch_id": STRING,
+            "producer": PRODUCER_SCHEMA,
+            "keep_baseline": BOOL,
+            "force_single_unit_module_ids": STRING_LIST,
+            "file_responsibility_overrides": _array(FILE_RESPONSIBILITY_OVERRIDE_SCHEMA),
+            "function_reassignments": _array(FILE_FUNCTION_REASSIGNMENT_SCHEMA),
             "assumptions": _array(ASSUMPTION_SCHEMA),
             "unresolved_questions": _array(UNRESOLVED_QUESTION_SCHEMA),
         }

@@ -20,7 +20,7 @@ from .prompts.templates import (
     calls_allowed_candidate_messages,
     core_design_candidate_messages,
     dependency_repair_patch_messages,
-    file_layout_candidate_messages,
+    file_layout_override_patch_messages,
     function_annotation_candidate_messages,
     function_behavior_contract_patch_messages,
     function_signature_patch_messages,
@@ -37,7 +37,7 @@ from .stages.implementation_plan_context import (
     build_calls_allowed_context,
     build_core_design_context,
     build_dependency_repair_context,
-    build_file_layout_context,
+    build_file_layout_override_context,
     build_function_behavior_context,
     build_function_inventory_context,
     build_function_signature_context,
@@ -54,6 +54,7 @@ from .stages.inventory_reconciliation import reconcile_function_annotation_candi
 from .stages.implementation_plan_merger import (
     apply_dependency_repair_patch,
     apply_deterministic_dependency_fallback,
+    apply_file_layout_override_patch,
     build_plan_skeleton,
     fallback_calls_allowed,
     fallback_core_design,
@@ -96,6 +97,7 @@ from .validators.implementation_plan_stages import (
     validate_calls_allowed_candidate,
     validate_core_design_candidate,
     validate_dependency_repair_patch,
+    validate_file_layout_override_patch,
     validate_file_layout_candidate,
     validate_full_implementation_plan,
     validate_function_annotation_candidate,
@@ -381,6 +383,27 @@ def _llm_config_for_stage(config: PlanningConfig, stage: str) -> PlanningConfig:
 
 def _diagnostic_reasons(diagnostics: list[PlanningDiagnostic]) -> list[str]:
     return [f"{diag.level}:{diag.code}: {diag.message}" for diag in diagnostics]
+
+
+def _file_layout_override_actionable(candidate: dict[str, Any], diagnostics: list[PlanningDiagnostic]) -> bool:
+    if has_errors(diagnostics):
+        return True
+    mechanical = [diag for diag in diagnostics if diag.code == "mechanical_single_file_module_layout"]
+    if not mechanical:
+        return False
+    file_counts: dict[str, int] = {}
+    for file_item in candidate.get("files", []):
+        if isinstance(file_item, dict):
+            module_id = str(file_item.get("module_id", ""))
+            file_counts[module_id] = file_counts.get(module_id, 0) + 1
+    for diag in mechanical:
+        marker = "module '"
+        module_id = ""
+        if marker in diag.message:
+            module_id = diag.message.split(marker, 1)[1].split("'", 1)[0]
+        if not module_id or file_counts.get(module_id, 0) > 1:
+            return True
+    return False
 
 
 def _retry_messages(base_messages: list[dict[str, str]], previous_reasons: list[str], attempt: int) -> list[dict[str, str]]:
@@ -2387,35 +2410,68 @@ class PlanningAgent:
                             and str(requirement.get("requirement_kind", "cross_module_service")) == "cross_module_service"
                             and str(requirement.get("service_requirement_id", ""))
                         }
-                        calls_context = build_calls_allowed_context(draft, selected_architecture, module_id, batch, batch_index=batch_index, batch_size=calls_batch_size)
-                        callable_ids = {str(item.get("function_id", "")) for item in calls_context.get("callable_functions", []) if isinstance(item, dict)}
                         calls_fallback = fallback_calls_allowed(draft, batch, batch_index=batch_index, batch_size=calls_batch_size)
-                        calls_candidate = stage_candidate(
-                            stage_label=f"5.4e_call_contracts:{module_id}:{batch_index}",
-                            thinking_stage="implementation_plan_5_4e",
-                            prompt_name="calls_allowed_candidate_prompt",
-                            messages=calls_allowed_candidate_messages(calls_context),
-                            candidate_key="calls_allowed_candidate",
-                            report_key="calls_allowed_validation_report",
-                            fallback=calls_fallback,
-                            validator=lambda candidate, ids=expected_ids, service_ids=expected_service_ids, call_ids=callable_ids: validate_calls_allowed_candidate(
-                                candidate,
+                        stage_label = f"5.4e_call_contracts:{module_id}:{batch_index}"
+                        if expected_service_ids:
+                            calls_context = build_calls_allowed_context(draft, selected_architecture, module_id, batch, batch_index=batch_index, batch_size=calls_batch_size)
+                            callable_ids = {str(item.get("function_id", "")) for item in calls_context.get("callable_functions", []) if isinstance(item, dict)}
+                            callable_ids.update(
+                                str(function_id)
+                                for item in calls_context.get("candidate_provider_functions", [])
+                                if isinstance(item, dict)
+                                for function_id in item.get("provider_function_ids", [])
+                                if str(function_id).strip()
+                            )
+                            calls_candidate = stage_candidate(
+                                stage_label=stage_label,
+                                thinking_stage="implementation_plan_5_4e",
+                                prompt_name="calls_allowed_candidate_prompt",
+                                messages=calls_allowed_candidate_messages(calls_context),
+                                candidate_key="calls_allowed_candidate",
+                                report_key="calls_allowed_validation_report",
+                                fallback=calls_fallback,
+                                validator=lambda candidate, ids=expected_ids, service_ids=expected_service_ids, call_ids=callable_ids: validate_calls_allowed_candidate(
+                                    candidate,
+                                    draft,
+                                    selected_architecture,
+                                    expected_caller_ids=ids,
+                                    expected_service_requirement_ids=service_ids,
+                                    callable_function_ids=call_ids,
+                                ),
+                                normalizer=lambda candidate, ids=expected_ids, service_ids=expected_service_ids, call_ids=callable_ids, fallback=calls_fallback: normalize_calls_allowed_candidate(
+                                    candidate,
+                                    draft,
+                                    ids,
+                                    service_ids,
+                                    call_ids,
+                                    fallback,
+                                ),
+                                step_log_suffix=f"{module_id}__batch_{batch_index}",
+                            )
+                        else:
+                            calls_candidate = calls_fallback
+                            batch_diags = validate_calls_allowed_candidate(
+                                calls_candidate,
                                 draft,
                                 selected_architecture,
-                                expected_caller_ids=ids,
-                                expected_service_requirement_ids=service_ids,
-                                callable_function_ids=call_ids,
-                            ),
-                            normalizer=lambda candidate, ids=expected_ids, service_ids=expected_service_ids, call_ids=callable_ids, fallback=calls_fallback: normalize_calls_allowed_candidate(
-                                candidate,
-                                draft,
-                                ids,
-                                service_ids,
-                                call_ids,
-                                fallback,
-                            ),
-                            step_log_suffix=f"{module_id}__batch_{batch_index}",
-                        )
+                                expected_caller_ids=expected_ids,
+                                expected_service_requirement_ids=expected_service_ids,
+                                callable_function_ids=set(),
+                            )
+                            artifact_suffix = safe_slug(f"{module_id}__batch_{batch_index}")
+                            candidate_filename = _suffixed_step_filename(STEP_FILENAMES["calls_allowed_candidate"], f"{module_id}__batch_{batch_index}")
+                            report_filename = _suffixed_step_filename(STEP_FILENAMES["calls_allowed_validation_report"], f"{module_id}__batch_{batch_index}")
+                            artifact_paths[f"calls_allowed_candidate_{artifact_suffix}"] = store.write_agent_json(candidate_filename, calls_candidate)
+                            artifact_paths[f"calls_allowed_validation_report_{artifact_suffix}"] = store.write_step_json(report_filename, validation_report(stage_label, batch_diags))
+                            validator_stats.record(
+                                stage_key="implementation_plan_5_4e",
+                                substage=stage_label,
+                                prompt_name="calls_allowed_candidate_prompt",
+                                first_generation_passed=True,
+                                final_validator_passed=stage_passed(batch_diags),
+                                fallback_used=True,
+                            )
+                            store.log_event(f"stage=implementation_plan substage={stage_label} llm=skipped reason=no_cross_module_service")
                         calls_aggregate["call_updates"].extend(calls_candidate.get("call_updates", []))
                         calls_aggregate["unresolved_service_requirements"].extend(calls_candidate.get("unresolved_service_requirements", []))
                         calls_aggregate["assumptions"].extend(calls_candidate.get("assumptions", []))
@@ -2445,18 +2501,78 @@ class PlanningAgent:
                 return finish_early("implementation_plan_5_4e")
 
             if _implementation_plan_substage_should_run("implementation_plan_5_5a", resume_from_stage):
-                file_context = build_file_layout_context(draft, planning_ir, constraints)
-                file_candidate = stage_candidate(
-                    stage_label="5.5a_file_layout",
-                    thinking_stage="implementation_plan_5_5a",
-                    prompt_name="file_layout_candidate_prompt",
-                    messages=file_layout_candidate_messages(file_context),
-                    candidate_key="file_layout_candidate",
-                    report_key="file_layout_validation_report",
-                    fallback=fallback_file_layout(draft),
-                    validator=lambda candidate: validate_file_layout_candidate(candidate, draft),
-                    normalizer=lambda candidate: normalize_file_layout_candidate(candidate, draft),
+                file_candidate, file_norm_stats = normalize_file_layout_candidate(fallback_file_layout(draft), draft)
+                file_diags = validate_file_layout_candidate(file_candidate, draft)
+                mechanical_warning = any(diag.code == "mechanical_single_file_module_layout" for diag in file_diags)
+                needs_override = _file_layout_override_actionable(file_candidate, file_diags)
+                first_generation_passed = stage_passed(file_diags)
+                repair_attempted = False
+                repair_success = False
+                if needs_override:
+                    repair_attempted = True
+                    file_context = build_file_layout_override_context(draft, file_candidate, file_diags)
+                    file_config = _llm_config_for_stage(self.config, "implementation_plan_5_5a")
+                    file_thinking = self.config.llm_enable_thinking_for("implementation_plan_5_5a")
+                    store.log_event(
+                        f"stage=implementation_plan substage=5.5a_file_layout llm_attempt=1 prompt=file_layout_override_patch_prompt "
+                        f"thinking={str(file_thinking).lower()} start"
+                    )
+                    override_patch, override_llm_diags, override_meta = request_json_candidate(
+                        prompt_name="file_layout_override_patch_prompt",
+                        messages=file_layout_override_patch_messages(file_context),
+                        config=file_config,
+                        enable_thinking=file_thinking,
+                    )
+                    token_tracker.add_attempt(stage="implementation_plan", prompt_name="file_layout_override_patch_prompt", attempt=1, meta=override_meta)
+                    store.write_agent_log("007_5_5a_file_layout_override_patch_llm_attempt_1_meta", str(override_meta))
+                    store.log_event(f"stage=implementation_plan substage=5.5a_file_layout llm_attempt=1 prompt=file_layout_override_patch_prompt {_llm_token_event(override_meta)}")
+                    if override_patch is None:
+                        reasons = _diagnostic_reasons(override_llm_diags) or ["LLM did not return a file layout override patch."]
+                        store.write_agent_log("007_5_5a_file_layout_override_patch_llm_attempt_1_rejection", "\n".join(reasons))
+                    else:
+                        override_diags = validate_file_layout_override_patch(override_patch, file_candidate, draft)
+                        if has_errors(override_diags):
+                            reasons = _diagnostic_reasons(override_diags)
+                            store.write_agent_log("007_5_5a_file_layout_override_patch_llm_attempt_1_rejection", "\n".join(reasons))
+                        else:
+                            store.write_agent_json("007_5_5a_file_layout_override_patch.json", override_patch)
+                            override_candidate, file_norm_stats = normalize_file_layout_candidate(apply_file_layout_override_patch(file_candidate, override_patch, draft), draft)
+                            override_candidate_diags = validate_file_layout_candidate(override_candidate, draft)
+                            if not has_errors(override_candidate_diags):
+                                file_candidate = override_candidate
+                                file_diags = override_candidate_diags
+                                repair_success = True
+                                token_tracker.mark_attempt_accepted(stage="implementation_plan", prompt_name="file_layout_override_patch_prompt", attempt=1)
+                                store.log_event("stage=implementation_plan substage=5.5a_file_layout override=accepted")
+                            else:
+                                reasons = _diagnostic_reasons(override_candidate_diags)
+                                store.write_agent_log("007_5_5a_file_layout_override_patch_candidate_rejection", "\n".join(reasons))
+                else:
+                    reason = "override_cannot_add_file_units" if mechanical_warning else "deterministic_baseline_valid"
+                    store.log_event(f"stage=implementation_plan substage=5.5a_file_layout llm=skipped reason={reason}")
+                if any(file_norm_stats.values()):
+                    store.log_event(
+                        "stage=implementation_plan substage=5.5a_file_layout normalized "
+                        + " ".join(f"{key}={value}" for key, value in sorted(file_norm_stats.items()) if value)
+                    )
+                file_path = _write_artifact_json(store, "file_layout_candidate", STEP_FILENAMES["file_layout_candidate"], file_candidate)
+                artifact_paths["file_layout_candidate"] = file_path
+                file_report_path = store.write_step_json(STEP_FILENAMES["file_layout_validation_report"], validation_report("5.5a_file_layout", file_diags))
+                artifact_paths["file_layout_validation_report"] = file_report_path
+                validator_stats.record(
+                    stage_key="implementation_plan_5_5a",
+                    substage="5.5a_file_layout",
+                    prompt_name="file_layout_override_patch_prompt" if needs_override else "",
+                    first_generation_passed=first_generation_passed,
+                    validator_error_triggered_repair=needs_override,
+                    repair_attempted=repair_attempted,
+                    repair_success=repair_success,
+                    final_validator_passed=stage_passed(file_diags),
+                    fallback_used=not repair_success,
+                    failure_code=next((diag.code for diag in file_diags if diag.level == "error"), None),
                 )
+                if has_errors(file_diags):
+                    diagnostics.extend(file_diags)
             else:
                 file_candidate = inherited_stage_candidate(
                     stage_label="5.5a_file_layout",

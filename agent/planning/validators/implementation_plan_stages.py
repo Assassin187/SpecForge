@@ -9,6 +9,7 @@ from ..schemas.implementation_plan import (
     CORE_DESIGN_CANDIDATE_SCHEMA_VERSION,
     DEPENDENCY_REPAIR_PATCH_SCHEMA_VERSION,
     FILE_LAYOUT_CANDIDATE_SCHEMA_VERSION,
+    FILE_LAYOUT_OVERRIDE_PATCH_SCHEMA_VERSION,
     FUNCTION_ANNOTATION_CANDIDATE_SCHEMA_VERSION,
     FUNCTION_BEHAVIOR_CONTRACT_PATCH_SCHEMA_VERSION,
     FUNCTION_INVENTORY_CANDIDATE_SCHEMA_VERSION,
@@ -2066,6 +2067,8 @@ def validate_calls_allowed_candidate(
                 if requirement_id not in service_requirement_ids:
                     diagnostics.append(PlanningDiagnostic("error", "unknown_call_service_requirement", f"caller '{caller}' references unknown service requirement '{requirement_id}'", path))
                 resolved_service_ids.add(requirement_id)
+            if edge.get("service_requirement_ids") and caller_fn.get("module_id") == callee_fn.get("module_id"):
+                diagnostics.append(PlanningDiagnostic("error", "cross_module_service_bound_to_same_module_call", f"caller '{caller}' cannot resolve cross-module service through same-module callee '{callee}'", path))
             if caller_fn.get("module_id") not in module_ids or callee_fn.get("module_id") not in module_ids:
                 diagnostics.append(PlanningDiagnostic("error", "call_unknown_module", f"call edge '{caller}' -> '{callee}' references unknown module", path))
             bindings = edge.get("param_bindings", [])
@@ -2189,6 +2192,36 @@ def validate_file_layout_candidate(candidate: dict[str, Any], draft: dict[str, A
                     path,
                 )
             )
+    return diagnostics
+
+
+def validate_file_layout_override_patch(patch: dict[str, Any], baseline: dict[str, Any], draft: dict[str, Any], *, path: str | None = None) -> list[PlanningDiagnostic]:
+    diagnostics = _shape(patch, FILE_LAYOUT_OVERRIDE_PATCH_SCHEMA_VERSION, path=path)
+    if has_errors(diagnostics):
+        return diagnostics
+    files = {str(item.get("file_id", "")): item for item in baseline.get("files", []) if isinstance(item, dict)}
+    module_ids = _module_artifact_ids(draft.get("module_artifacts", []))
+    functions = _function_by_id(draft)
+    for module_id in patch.get("force_single_unit_module_ids", []):
+        if module_id not in module_ids:
+            diagnostics.append(PlanningDiagnostic("error", "override_unknown_module", f"file layout override references unknown module '{module_id}'", path))
+    for override in patch.get("file_responsibility_overrides", []):
+        file_id = str(override.get("file_id", ""))
+        if file_id not in files:
+            diagnostics.append(PlanningDiagnostic("error", "override_unknown_file", f"file layout override references unknown file '{file_id}'", path))
+    for reassignment in patch.get("function_reassignments", []):
+        function_id = str(reassignment.get("function_id", ""))
+        target_file_id = str(reassignment.get("target_file_id", ""))
+        function = functions.get(function_id)
+        target_file = files.get(target_file_id)
+        if function is None:
+            diagnostics.append(PlanningDiagnostic("error", "override_unknown_function", f"file layout override references unknown function '{function_id}'", path))
+            continue
+        if target_file is None:
+            diagnostics.append(PlanningDiagnostic("error", "override_unknown_target_file", f"file layout override targets unknown file '{target_file_id}'", path))
+            continue
+        if str(function.get("module_id", "")) != str(target_file.get("module_id", "")):
+            diagnostics.append(PlanningDiagnostic("error", "override_cross_module_reassignment", f"function '{function_id}' may not move to file '{target_file_id}' in another module", path))
     return diagnostics
 
 

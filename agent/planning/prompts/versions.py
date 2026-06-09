@@ -18,5 +18,6 @@ PROMPT_REGISTRY = {
     "calls_allowed_candidate_prompt": PROMPT_VERSION,
     "runtime_entrypoint_candidate_prompt": PROMPT_VERSION,
     "file_layout_candidate_prompt": PROMPT_VERSION,
+    "file_layout_override_patch_prompt": PROMPT_VERSION,
     "dependency_repair_patch_prompt": PROMPT_VERSION,
 }
