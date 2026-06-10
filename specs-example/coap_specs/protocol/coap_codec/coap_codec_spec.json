@@ -1,0 +1,235 @@
+{
+  "KIND": "FILE_SPEC",
+  "FILE": {
+    "TRACE_ID": "coap/protocol/coap_codec",
+    "LANG": "C",
+    "ROLE": "CoAP binary datagram wire-format 编解码器",
+    "DOC_REF": []
+  },
+  "HEADER": {
+    "PATH": "../protocol/coap_codec.h",
+    "DEPENDENCY": [
+      "../protocol/coap_message.h"
+    ],
+    "DATA": [
+      {
+        "NAME": "coap_decode_status_t",
+        "KIND": "TYPE",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "CoAP datagram 解码结果",
+        "TYPE_SPEC": {
+          "TYPE_KIND": "ENUM",
+          "ENUM_VALUES": [
+            {
+              "NAME": "COAP_DECODE_OK",
+              "VALUE": 0,
+              "ROLE": "解码成功"
+            },
+            {
+              "NAME": "COAP_DECODE_INVALID",
+              "VALUE": 1,
+              "ROLE": "语义或保留编码无效"
+            },
+            {
+              "NAME": "COAP_DECODE_TRUNCATED",
+              "VALUE": 2,
+              "ROLE": "输入长度不足"
+            }
+          ]
+        }
+      }
+    ],
+    "INTERFACE": [
+      {
+        "SIGNATURE": "coap_decode_status_t coap_decode_message(const uint8_t* data, size_t len, coap_message_t* out)",
+        "NAME": "coap_decode_message",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "按单个 datagram 解码 4-byte header、token、ordered options、payload marker 与 payload；失败时释放 out",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "bool coap_encode_message(const coap_message_t* msg, coap_bytes_t* out)",
+        "NAME": "coap_encode_message",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "计算完整 datagram 大小，编码 header/token/ordered options，并仅在 payload 非空时写入 0xff marker",
+        "VISIBILITY": "public"
+      }
+    ]
+  },
+  "SOURCE": {
+    "PATH": "../protocol/coap_codec.c",
+    "DEPENDENCY": [
+      "../protocol/coap_codec.h"
+    ],
+    "DATA": [],
+    "INTERFACE": [
+      {
+        "TRACE_ID": "coap/protocol/coap_codec/option_ext_len",
+        "SIGNATURE": "static size_t option_ext_len(uint16_t value)",
+        "NAME": "option_ext_len",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "计算 option delta/length 使用的 extended byte 数",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "计算 option delta/length 使用的 extended byte 数"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "coap/protocol/coap_codec/encode_ext",
+        "SIGNATURE": "static bool encode_ext(uint16_t value, uint8_t nibble, uint8_t* out, size_t* out_len)",
+        "NAME": "encode_ext",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "按 nibble 13/14 编码 extended value；nibble 15 返回 false",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "按 nibble 13/14 编码 extended value；nibble 15 返回 false"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "coap/protocol/coap_codec/encode_nibble",
+        "SIGNATURE": "static uint8_t encode_nibble(uint16_t value)",
+        "NAME": "encode_nibble",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "将 option delta/length 映射为直接值、13 或 14 nibble",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "将 option delta/length 映射为直接值、13 或 14 nibble"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "coap/protocol/coap_codec/decode_ext",
+        "SIGNATURE": "static bool decode_ext(const uint8_t* data, size_t len, size_t* off, uint8_t nibble, uint16_t* out_value)",
+        "NAME": "decode_ext",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "从 datagram 解码 nibble 与 extended bytes，并推进 offset；nibble 15 或截断失败",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "从 datagram 解码 nibble 与 extended bytes，并推进 offset；nibble 15 或截断失败"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "coap/protocol/coap_codec/coap_decode_message",
+        "SIGNATURE": "coap_decode_status_t coap_decode_message(const uint8_t* data, size_t len, coap_message_t* out)",
+        "NAME": "coap_decode_message",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "按单个 datagram 解码 4-byte header、token、ordered options、payload marker 与 payload；失败时释放 out",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "按单个 datagram 解码 4-byte header、token、ordered options、payload marker 与 payload；失败时释放 out"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "coap/protocol/coap_codec/coap_encode_message",
+        "SIGNATURE": "bool coap_encode_message(const coap_message_t* msg, coap_bytes_t* out)",
+        "NAME": "coap_encode_message",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "计算完整 datagram 大小，编码 header/token/ordered options，并仅在 payload 非空时写入 0xff marker",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "计算完整 datagram 大小，编码 header/token/ordered options，并仅在 payload 非空时写入 0xff marker"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "public"
+      }
+    ]
+  },
+  "PUBLIC_SYMBOLS": [
+    {
+      "NAME": "coap_decode_status_t",
+      "KIND": "TYPE",
+      "ROLE": "CoAP datagram 解码结果"
+    },
+    {
+      "NAME": "coap_decode_message",
+      "KIND": "FUNC",
+      "SIGNATURE": "coap_decode_status_t coap_decode_message(const uint8_t* data, size_t len, coap_message_t* out)",
+      "ROLE": "按单个 datagram 解码 4-byte header、token、ordered options、payload marker 与 payload；失败时释放 out"
+    },
+    {
+      "NAME": "coap_encode_message",
+      "KIND": "FUNC",
+      "SIGNATURE": "bool coap_encode_message(const coap_message_t* msg, coap_bytes_t* out)",
+      "ROLE": "计算完整 datagram 大小，编码 header/token/ordered options，并仅在 payload 非空时写入 0xff marker"
+    }
+  ],
+  "CALL_CONTRACTS": [
+    {
+      "NAME": "coap_encode_message",
+      "SIGNATURE": "bool coap_encode_message(const coap_message_t* msg, coap_bytes_t* out)",
+      "OWNERSHIP": "成功返回的动态对象或缓冲由调用方按对应 destroy/free 契约释放",
+      "FAILURE": "分配、编码或初始化失败时返回 NULL/false，不转移所有权"
+    }
+  ]
+}

@@ -11,6 +11,7 @@ from openai import OpenAI, OpenAIError
 FIXED_MODEL = "qwen3-max-2026-01-23"
 # FIXED_MODEL = "qwen3.7-max-2026-05-20"
 QWEN_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+DEFAULT_API_KEY_ENV = "ALI_API"
 DEFAULT_RETRY_ATTEMPTS = 10
 DEFAULT_RETRY_DELAY = 2
 
@@ -63,10 +64,11 @@ def chat_with_llm_with_usage(
     max_completion_tokens: int | None = None,
     delay: int = DEFAULT_RETRY_DELAY,
     attempts: int = DEFAULT_RETRY_ATTEMPTS,
+    api_key_env: str = DEFAULT_API_KEY_ENV,
 ) -> LLMResponse:
-    api_key = os.getenv("ALI_API")
+    api_key = os.getenv(api_key_env)
     if not api_key:
-        raise RuntimeError("ALI_API is not set in the environment.")
+        raise RuntimeError(f"{api_key_env} is not set in the environment.")
 
     client = OpenAI(
         api_key=api_key,
@@ -127,6 +129,7 @@ def chat_with_llm(
     max_completion_tokens: int | None = None,
     delay: int = DEFAULT_RETRY_DELAY,
     attempts: int = DEFAULT_RETRY_ATTEMPTS,
+    api_key_env: str = DEFAULT_API_KEY_ENV,
 ) -> str:
     return chat_with_llm_with_usage(
         model,
@@ -138,13 +141,17 @@ def chat_with_llm(
         max_completion_tokens=max_completion_tokens,
         delay=delay,
         attempts=attempts,
+        api_key_env=api_key_env,
     ).content
 
 
 class FixedQwenClient:
+    def __init__(self, api_key_env: str = DEFAULT_API_KEY_ENV) -> None:
+        self.api_key_env = api_key_env
+
     def ensure_ready(self) -> None:
-        if not os.getenv("ALI_API"):
-            raise RuntimeError("ALI_API is not set in the environment.")
+        if not os.getenv(self.api_key_env):
+            raise RuntimeError(f"{self.api_key_env} is not set in the environment.")
 
     def generate(self, request: LLMRequest) -> str:
         return self.generate_with_usage(request).content
@@ -159,6 +166,7 @@ class FixedQwenClient:
             is_stream=request.is_stream,
             enable_thinking=request.enable_thinking,
             max_completion_tokens=request.max_completion_tokens,
+            api_key_env=self.api_key_env,
         )
         if not isinstance(response, LLMResponse):
             raise RuntimeError(f"Expected LLMResponse from chat_with_llm_with_usage, got {type(response)!r}")
@@ -169,5 +177,6 @@ class FixedQwenClient:
         return {
             "model": FIXED_MODEL,
             "base_url": QWEN_BASE_URL,
-            "ali_api_set": True,
+            "api_key_env": self.api_key_env,
+            "api_key_set": bool(os.getenv(self.api_key_env)),
         }

@@ -1,0 +1,38 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "coap/protocol/coap_message/coap_make_code",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "将 3-bit class 与 5-bit detail 合成为 CoAP code",
+  "SIGNATURE": {
+    "RAW": "uint8_t coap_make_code(uint8_t code_class, uint8_t detail)",
+    "NAME": "coap_make_code",
+    "RETURN": "uint8_t",
+    "PARAMS": [
+      {
+        "TYPE": "uint8_t",
+        "NAME": "code_class",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "uint8_t",
+        "NAME": "detail",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入来自函数参数：code_class、detail。",
+    "ACTION": "将 3-bit class 与 5-bit detail 合成为 CoAP code",
+    "OUTPUT": "返回计算得到的 uint8_t 值。",
+    "INVARIANTS_USED": [
+      "不得引入超出当前 minimum_v1 代码行为的协议语义"
+    ]
+  }
+}

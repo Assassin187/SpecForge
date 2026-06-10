@@ -1,0 +1,56 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "coap/protocol/coap_codec/decode_ext",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "从 datagram 解码 nibble 与 extended bytes，并推进 offset；nibble 15 或截断失败",
+  "SIGNATURE": {
+    "RAW": "static bool decode_ext(const uint8_t* data, size_t len, size_t* off, uint8_t nibble, uint16_t* out_value)",
+    "NAME": "decode_ext",
+    "RETURN": "bool",
+    "PARAMS": [
+      {
+        "TYPE": "const uint8_t*",
+        "NAME": "data",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "size_t",
+        "NAME": "len",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "size_t*",
+        "NAME": "off",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "uint8_t",
+        "NAME": "nibble",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "uint16_t*",
+        "NAME": "out_value",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入来自函数参数：data、len、off、nibble、out_value。",
+    "ACTION": "从 datagram 解码 nibble 与 extended bytes，并推进 offset；nibble 15 或截断失败",
+    "OUTPUT": "返回 true 表示条件成立或操作成功；返回 false 表示条件不成立、参数无效或操作失败，具体含义由 ROLE 限定。",
+    "INVARIANTS_USED": [
+      "不得引入超出当前 minimum_v1 代码行为的协议语义"
+    ]
+  }
+}

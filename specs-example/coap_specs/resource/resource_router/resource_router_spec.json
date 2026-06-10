@@ -1,0 +1,415 @@
+{
+  "KIND": "FILE_SPEC",
+  "FILE": {
+    "TRACE_ID": "coap/resource/resource_router",
+    "LANG": "C",
+    "ROLE": "CoAP resource registry：精确/前缀 path 匹配、method mask dispatch 与 core links 构造",
+    "DOC_REF": []
+  },
+  "HEADER": {
+    "PATH": "../resource/resource_router.h",
+    "DEPENDENCY": [
+      "../protocol/coap_message.h"
+    ],
+    "DATA": [
+      {
+        "NAME": "coap_request_t",
+        "KIND": "TYPE",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "从 decoded message 投影出的资源请求视图",
+        "TYPE_SPEC": {
+          "TYPE_KIND": "STRUCT",
+          "FIELDS": [
+            {
+              "NAME": "message",
+              "TYPE": "const coap_message_t*",
+              "ROLE": "原始 decoded message 借用指针"
+            },
+            {
+              "NAME": "method",
+              "TYPE": "coap_method_t",
+              "ROLE": "request method"
+            },
+            {
+              "NAME": "path",
+              "TYPE": "char*",
+              "ROLE": "动态 normalized URI path"
+            },
+            {
+              "NAME": "query",
+              "TYPE": "char*",
+              "ROLE": "动态 joined URI query"
+            },
+            {
+              "NAME": "content_format",
+              "TYPE": "uint16_t",
+              "ROLE": "Content-Format value"
+            },
+            {
+              "NAME": "has_content_format",
+              "TYPE": "bool",
+              "ROLE": "Content-Format 是否存在"
+            },
+            {
+              "NAME": "accept",
+              "TYPE": "uint16_t",
+              "ROLE": "Accept value"
+            },
+            {
+              "NAME": "has_accept",
+              "TYPE": "bool",
+              "ROLE": "Accept 是否存在"
+            }
+          ]
+        }
+      },
+      {
+        "NAME": "coap_resource_handler_fn",
+        "KIND": "TYPE",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "资源 handler callback 类型",
+        "TYPE_SPEC": {
+          "TYPE_KIND": "CALLBACK",
+          "CALLBACK_SIGNATURE": "bool (*coap_resource_handler_fn)(void* user, const coap_request_t* req, coap_message_t* resp)"
+        }
+      },
+      {
+        "NAME": "coap_resource_router_t",
+        "KIND": "TYPE",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "资源注册表与 dispatch 逻辑的不透明句柄",
+        "TYPE_SPEC": {
+          "TYPE_KIND": "OPAQUE"
+        }
+      }
+    ],
+    "INTERFACE": [
+      {
+        "SIGNATURE": "coap_resource_router_t* coap_resource_router_create(void)",
+        "NAME": "coap_resource_router_create",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "分配空 resource router",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "void coap_resource_router_destroy(coap_resource_router_t* router)",
+        "NAME": "coap_resource_router_destroy",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "释放每个 entry 的 path/attributes、entry 数组与 router",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "bool coap_resource_router_add(coap_resource_router_t* router, const char* path, bool prefix_match, uint32_t methods_mask, bool discoverable, const char* attributes, coap_resource_handler_fn handler, void* user)",
+        "NAME": "coap_resource_router_add",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "扩展 entry 数组并复制 path/attributes，保存匹配策略、method mask、handler 与 user",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "bool coap_resource_router_dispatch(coap_resource_router_t* router, const coap_request_t* req, coap_message_t* resp)",
+        "NAME": "coap_resource_router_dispatch",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "按注册顺序查找首个 path match；method 不允许时写 4.05，否则调用 handler；无 route 返回 false",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "char* coap_resource_router_build_core_links(const coap_resource_router_t* router)",
+        "NAME": "coap_resource_router_build_core_links",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "按注册顺序为 discoverable entries 构造逗号分隔 link-format 字符串；调用方负责 free",
+        "VISIBILITY": "public"
+      }
+    ]
+  },
+  "SOURCE": {
+    "PATH": "../resource/resource_router.c",
+    "DEPENDENCY": [
+      "../resource/resource_router.h"
+    ],
+    "DATA": [
+      {
+        "NAME": "coap_resource_entry_t",
+        "KIND": "TYPE",
+        "VISIBILITY": "PRIVATE",
+        "ROLE": "单个资源注册项：path、匹配策略、method mask、discovery 属性、handler 与 user"
+      },
+      {
+        "NAME": "struct coap_resource_router",
+        "KIND": "TYPE",
+        "VISIBILITY": "PRIVATE",
+        "ROLE": "动态资源 entry 数组及 count"
+      }
+    ],
+    "INTERFACE": [
+      {
+        "TRACE_ID": "coap/resource/resource_router/dup_string",
+        "SIGNATURE": "static char* dup_string(const char* s)",
+        "NAME": "dup_string",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "分配并复制 NUL-terminated 字符串；NULL 返回 NULL",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "分配并复制 NUL-terminated 字符串；NULL 返回 NULL"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "coap/resource/resource_router/path_matches",
+        "SIGNATURE": "static bool path_matches(const coap_resource_entry_t* e, const char* path)",
+        "NAME": "path_matches",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "执行 exact match 或 segment-boundary prefix match",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "执行 exact match 或 segment-boundary prefix match"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "coap/resource/resource_router/coap_resource_router_create",
+        "SIGNATURE": "coap_resource_router_t* coap_resource_router_create(void)",
+        "NAME": "coap_resource_router_create",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "分配空 resource router",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "分配空 resource router"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "coap/resource/resource_router/coap_resource_router_destroy",
+        "SIGNATURE": "void coap_resource_router_destroy(coap_resource_router_t* router)",
+        "NAME": "coap_resource_router_destroy",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "释放每个 entry 的 path/attributes、entry 数组与 router",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "释放每个 entry 的 path/attributes、entry 数组与 router"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "coap/resource/resource_router/coap_resource_router_add",
+        "SIGNATURE": "bool coap_resource_router_add(coap_resource_router_t* router, const char* path, bool prefix_match, uint32_t methods_mask, bool discoverable, const char* attributes, coap_resource_handler_fn handler, void* user)",
+        "NAME": "coap_resource_router_add",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "扩展 entry 数组并复制 path/attributes，保存匹配策略、method mask、handler 与 user",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "扩展 entry 数组并复制 path/attributes，保存匹配策略、method mask、handler 与 user"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "coap/resource/resource_router/coap_resource_router_dispatch",
+        "SIGNATURE": "bool coap_resource_router_dispatch(coap_resource_router_t* router, const coap_request_t* req, coap_message_t* resp)",
+        "NAME": "coap_resource_router_dispatch",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "按注册顺序查找首个 path match；method 不允许时写 4.05，否则调用 handler；无 route 返回 false",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "按注册顺序查找首个 path match；method 不允许时写 4.05，否则调用 handler；无 route 返回 false"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "coap/resource/resource_router/coap_resource_router_build_core_links",
+        "SIGNATURE": "char* coap_resource_router_build_core_links(const coap_resource_router_t* router)",
+        "NAME": "coap_resource_router_build_core_links",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "按注册顺序为 discoverable entries 构造逗号分隔 link-format 字符串；调用方负责 free",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "按注册顺序为 discoverable entries 构造逗号分隔 link-format 字符串；调用方负责 free"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "public"
+      }
+    ]
+  },
+  "PUBLIC_SYMBOLS": [
+    {
+      "NAME": "coap_request_t",
+      "KIND": "TYPE",
+      "ROLE": "从 decoded message 投影出的资源请求视图"
+    },
+    {
+      "NAME": "coap_resource_handler_fn",
+      "KIND": "TYPE",
+      "ROLE": "资源 handler callback 类型"
+    },
+    {
+      "NAME": "coap_resource_router_t",
+      "KIND": "TYPE",
+      "ROLE": "资源注册表与 dispatch 逻辑的不透明句柄"
+    },
+    {
+      "NAME": "coap_resource_router_create",
+      "KIND": "FUNC",
+      "SIGNATURE": "coap_resource_router_t* coap_resource_router_create(void)",
+      "ROLE": "分配空 resource router"
+    },
+    {
+      "NAME": "coap_resource_router_destroy",
+      "KIND": "FUNC",
+      "SIGNATURE": "void coap_resource_router_destroy(coap_resource_router_t* router)",
+      "ROLE": "释放每个 entry 的 path/attributes、entry 数组与 router"
+    },
+    {
+      "NAME": "coap_resource_router_add",
+      "KIND": "FUNC",
+      "SIGNATURE": "bool coap_resource_router_add(coap_resource_router_t* router, const char* path, bool prefix_match, uint32_t methods_mask, bool discoverable, const char* attributes, coap_resource_handler_fn handler, void* user)",
+      "ROLE": "扩展 entry 数组并复制 path/attributes，保存匹配策略、method mask、handler 与 user"
+    },
+    {
+      "NAME": "coap_resource_router_dispatch",
+      "KIND": "FUNC",
+      "SIGNATURE": "bool coap_resource_router_dispatch(coap_resource_router_t* router, const coap_request_t* req, coap_message_t* resp)",
+      "ROLE": "按注册顺序查找首个 path match；method 不允许时写 4.05，否则调用 handler；无 route 返回 false"
+    },
+    {
+      "NAME": "coap_resource_router_build_core_links",
+      "KIND": "FUNC",
+      "SIGNATURE": "char* coap_resource_router_build_core_links(const coap_resource_router_t* router)",
+      "ROLE": "按注册顺序为 discoverable entries 构造逗号分隔 link-format 字符串；调用方负责 free"
+    }
+  ],
+  "ACCESS_PATHS": [
+    {
+      "PATH": "coap_request_t.message",
+      "TYPE": "const coap_message_t*",
+      "ROLE": "原始 decoded message 借用指针"
+    },
+    {
+      "PATH": "coap_request_t.method",
+      "TYPE": "coap_method_t",
+      "ROLE": "request method"
+    },
+    {
+      "PATH": "coap_request_t.path",
+      "TYPE": "char*",
+      "ROLE": "动态 normalized URI path"
+    },
+    {
+      "PATH": "coap_request_t.query",
+      "TYPE": "char*",
+      "ROLE": "动态 joined URI query"
+    },
+    {
+      "PATH": "coap_request_t.content_format",
+      "TYPE": "uint16_t",
+      "ROLE": "Content-Format value"
+    },
+    {
+      "PATH": "coap_request_t.has_content_format",
+      "TYPE": "bool",
+      "ROLE": "Content-Format 是否存在"
+    },
+    {
+      "PATH": "coap_request_t.accept",
+      "TYPE": "uint16_t",
+      "ROLE": "Accept value"
+    },
+    {
+      "PATH": "coap_request_t.has_accept",
+      "TYPE": "bool",
+      "ROLE": "Accept 是否存在"
+    }
+  ],
+  "CALL_CONTRACTS": [
+    {
+      "NAME": "coap_resource_router_create",
+      "SIGNATURE": "coap_resource_router_t* coap_resource_router_create(void)",
+      "OWNERSHIP": "成功返回的动态对象或缓冲由调用方按对应 destroy/free 契约释放",
+      "FAILURE": "分配、编码或初始化失败时返回 NULL/false，不转移所有权"
+    },
+    {
+      "NAME": "coap_resource_router_build_core_links",
+      "SIGNATURE": "char* coap_resource_router_build_core_links(const coap_resource_router_t* router)",
+      "OWNERSHIP": "成功返回的动态对象或缓冲由调用方按对应 destroy/free 契约释放",
+      "FAILURE": "分配、编码或初始化失败时返回 NULL/false，不转移所有权"
+    }
+  ]
+}

@@ -48,6 +48,7 @@ def default_llm_stage_configs() -> dict[str, LLMStageConfig]:
 
 @dataclass(frozen=True)
 class PlanningConfig:
+    api_key_env: str = "ALI_API"
     llm_temperature: float = 0.2
     llm_top_p: float = 0.5
     llm_max_completion_tokens: int = 16384

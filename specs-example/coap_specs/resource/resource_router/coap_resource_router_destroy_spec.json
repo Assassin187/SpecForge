@@ -1,0 +1,41 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "coap/resource/resource_router/coap_resource_router_destroy",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "释放每个 entry 的 path/attributes、entry 数组与 router",
+  "SIGNATURE": {
+    "RAW": "void coap_resource_router_destroy(coap_resource_router_t* router)",
+    "NAME": "coap_resource_router_destroy",
+    "RETURN": "void",
+    "PARAMS": [
+      {
+        "TYPE": "coap_resource_router_t*",
+        "NAME": "router",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "coap_resource_router_t",
+        "ROLE": "资源注册表与 dispatch 逻辑的不透明句柄"
+      },
+      {
+        "NAME": "coap_resource_entry_t",
+        "ROLE": "本函数使用的模块内部数据结构"
+      }
+    ],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入来自函数参数：router。",
+    "ACTION": "释放每个 entry 的 path/attributes、entry 数组与 router",
+    "OUTPUT": "无直接返回值；结果通过对象状态或副作用体现。",
+    "INVARIANTS_USED": [
+      "不得引入超出当前 minimum_v1 代码行为的协议语义"
+    ]
+  }
+}

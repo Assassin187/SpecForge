@@ -1,0 +1,43 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "coap/protocol/coap_message/coap_message_free",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "通过 reset 释放 message 所有动态字段并恢复可复用空状态",
+  "SIGNATURE": {
+    "RAW": "void coap_message_free(coap_message_t* msg)",
+    "NAME": "coap_message_free",
+    "RETURN": "void",
+    "PARAMS": [
+      {
+        "TYPE": "coap_message_t*",
+        "NAME": "msg",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "coap_message_t",
+        "ROLE": "统一 CoAP message 对象，保存 header、token、options 与 payload"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "coap_message_reset",
+        "KIND": "CALL",
+        "ROLE": "调用 coap_message_reset 完成子步骤"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入来自函数参数：msg。",
+    "ACTION": "通过 reset 释放 message 所有动态字段并恢复可复用空状态",
+    "OUTPUT": "无直接返回值；结果通过对象状态或副作用体现。",
+    "INVARIANTS_USED": [
+      "不得引入超出当前 minimum_v1 代码行为的协议语义"
+    ]
+  }
+}

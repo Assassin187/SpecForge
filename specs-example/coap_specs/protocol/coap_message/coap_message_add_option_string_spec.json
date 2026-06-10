@@ -1,0 +1,55 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "coap/protocol/coap_message/coap_message_add_option_string",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "以字符串 bytes 添加 option；NULL 表示零长度 option",
+  "SIGNATURE": {
+    "RAW": "bool coap_message_add_option_string(coap_message_t* msg, uint16_t number, const char* s)",
+    "NAME": "coap_message_add_option_string",
+    "RETURN": "bool",
+    "PARAMS": [
+      {
+        "TYPE": "coap_message_t*",
+        "NAME": "msg",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "uint16_t",
+        "NAME": "number",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "const char*",
+        "NAME": "s",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "coap_message_t",
+        "ROLE": "统一 CoAP message 对象，保存 header、token、options 与 payload"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "coap_message_add_option",
+        "KIND": "CALL",
+        "ROLE": "调用 coap_message_add_option 完成子步骤"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入来自函数参数：msg、number、s。",
+    "ACTION": "以字符串 bytes 添加 option；NULL 表示零长度 option",
+    "OUTPUT": "返回 true 表示条件成立或操作成功；返回 false 表示条件不成立、参数无效或操作失败，具体含义由 ROLE 限定。",
+    "INVARIANTS_USED": [
+      "不得引入超出当前 minimum_v1 代码行为的协议语义"
+    ]
+  }
+}

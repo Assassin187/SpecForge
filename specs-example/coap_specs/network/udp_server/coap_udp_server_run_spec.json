@@ -1,0 +1,42 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "coap/network/udp_server/coap_udp_server_run",
+  "FUNCTION_TYPE": "EVENT",
+  "ROLE": "运行非阻塞 UDP epoll 事件循环，每个成功 recvfrom 的 datagram 立即回调上层",
+  "SIGNATURE": {
+    "RAW": "void coap_udp_server_run(coap_udp_server_t* s)",
+    "NAME": "coap_udp_server_run",
+    "RETURN": "void",
+    "PARAMS": [
+      {
+        "TYPE": "coap_udp_server_t*",
+        "NAME": "s",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "coap_udp_server_t",
+        "ROLE": "UDP/epoll server 不透明句柄"
+      },
+      {
+        "NAME": "coap_endpoint_t",
+        "ROLE": "UDP peer endpoint，保存 sockaddr_storage 与实际地址长度"
+      }
+    ],
+    "FUNC": [],
+    "VAR": []
+  },
+  "EVENT": {
+    "TRIGGER": "应用在 UDP server 启动成功后调用以进入事件循环",
+    "PRECONDITION": "callback 参数与所属 server/router 生命周期有效",
+    "INPUT": "输入来自运行时事件参数与当前 server/resource 状态",
+    "ACTION": "持续轮询 epoll，批量读取 datagram，并触发 on_datagram callback",
+    "STATE_CHANGE": "推进 running 状态下的网络事件处理",
+    "RESPONSE": "无直接返回值；收到的 datagram 通过 callback 上交",
+    "EVENT_TYPE": "RUNTIME_EVENT"
+  }
+}

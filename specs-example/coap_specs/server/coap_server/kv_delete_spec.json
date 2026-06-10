@@ -1,0 +1,47 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "coap/server/coap_server/kv_delete",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "删除匹配 KV entry，释放字段并压紧数组；未命中返回 false",
+  "SIGNATURE": {
+    "RAW": "static bool kv_delete(coap_server_t* s, const char* key)",
+    "NAME": "kv_delete",
+    "RETURN": "bool",
+    "PARAMS": [
+      {
+        "TYPE": "coap_server_t*",
+        "NAME": "s",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "const char*",
+        "NAME": "key",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "coap_server_t",
+        "ROLE": "CoAP server 进程级对象的不透明句柄"
+      },
+      {
+        "NAME": "kv_entry_t",
+        "ROLE": "本函数使用的模块内部数据结构"
+      }
+    ],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入来自函数参数：s、key。",
+    "ACTION": "删除匹配 KV entry，释放字段并压紧数组；未命中返回 false",
+    "OUTPUT": "返回 true 表示条件成立或操作成功；返回 false 表示条件不成立、参数无效或操作失败，具体含义由 ROLE 限定。",
+    "INVARIANTS_USED": [
+      "不得引入超出当前 minimum_v1 代码行为的协议语义"
+    ]
+  }
+}

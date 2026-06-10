@@ -48,6 +48,7 @@ def request_json_candidate(
             enable_thinking=enable_thinking,
             max_completion_tokens=config.llm_max_completion_tokens,
             attempts=1,
+            api_key_env=config.api_key_env,
         )
     except Exception as exc:  # noqa: BLE001
         return None, [PlanningDiagnostic("warning", "llm_request_failed", f"{prompt_name} failed: {exc}")], {

@@ -1,0 +1,37 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "coap/network/udp_server/coap_udp_server_stop",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "置 running=false，关闭 epoll fd 与 UDP fd，并将它们复位为 -1",
+  "SIGNATURE": {
+    "RAW": "void coap_udp_server_stop(coap_udp_server_t* s)",
+    "NAME": "coap_udp_server_stop",
+    "RETURN": "void",
+    "PARAMS": [
+      {
+        "TYPE": "coap_udp_server_t*",
+        "NAME": "s",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "coap_udp_server_t",
+        "ROLE": "UDP/epoll server 不透明句柄"
+      }
+    ],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入来自函数参数：s。",
+    "ACTION": "置 running=false，关闭 epoll fd 与 UDP fd，并将它们复位为 -1",
+    "OUTPUT": "无直接返回值；结果通过对象状态或副作用体现。",
+    "INVARIANTS_USED": [
+      "不得引入超出当前 minimum_v1 代码行为的协议语义"
+    ]
+  }
+}

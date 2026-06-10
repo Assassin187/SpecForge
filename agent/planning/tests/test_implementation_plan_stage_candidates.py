@@ -4235,6 +4235,97 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             broken["access_path_entries"][0]["access_kind"] = "read_write"
             self.assertTrue(_has(validate_wire_access_binding_patch(broken, draft, planning_ir), "wire_access_kind_conflict"))
 
+    def test_5_4d_rejects_blocking_unresolved_as_required_wire_coverage(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            planning_ir, _, _, _, draft, _, items = self._fixtures(Path(raw_tmp))
+            full = items["wire"]
+            required_fields = {entry["field_id"] for entry in full["wire_mapping_entries"]}
+            kept_fields = set(sorted(required_fields)[:2])
+            broken = copy.deepcopy(full)
+            broken["wire_mapping_entries"] = [entry for entry in broken["wire_mapping_entries"] if entry["field_id"] in kept_fields]
+            kept_wire_ids = {entry["wire_mapping_id"] for entry in broken["wire_mapping_entries"]}
+            broken["access_path_entries"] = [entry for entry in broken["access_path_entries"] if entry["field_id"] in kept_fields]
+            kept_access_ids = {entry["access_path_id"] for entry in broken["access_path_entries"]}
+            broken["function_binding_updates"] = [
+                {
+                    **update,
+                    "wire_mapping_ids": [wire_id for wire_id in update["wire_mapping_ids"] if wire_id in kept_wire_ids],
+                    "access_path_ids": [access_id for access_id in update["access_path_ids"] if access_id in kept_access_ids],
+                }
+                for update in broken["function_binding_updates"]
+                if any(wire_id in kept_wire_ids for wire_id in update["wire_mapping_ids"])
+            ]
+            broken["unresolved_questions"] = [
+                {
+                    "question_id": f"q:wire:{field_id}",
+                    "target_kind": "field",
+                    "target_id": field_id,
+                    "question": "How is this required wire field mapped?",
+                    "unresolved_reason": "LLM did not provide a mapping.",
+                    "blocking": True,
+                    "trace_ref_keys": [],
+                }
+                for field_id in sorted(required_fields - kept_fields)
+            ]
+
+            self.assertEqual(len(required_fields), 14)
+            self.assertEqual(len({entry["field_id"] for entry in broken["wire_mapping_entries"]}), 2)
+            self.assertEqual(len(broken["unresolved_questions"]), 12)
+            diags = validate_wire_access_binding_patch(broken, draft, planning_ir)
+            self.assertEqual(len([diag for diag in diags if diag.code == "uncovered_wire_field"]), 12)
+
+    def test_5_4d_accepts_full_real_wire_mapping(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            planning_ir, _, _, _, draft, _, items = self._fixtures(Path(raw_tmp))
+            wire = items["wire"]
+            self.assertEqual(len({entry["field_id"] for entry in wire["wire_mapping_entries"]}), 14)
+            self.assertFalse(wire["unresolved_questions"])
+            self.assertFalse(_has_error(validate_wire_access_binding_patch(wire, draft, planning_ir)))
+
+    def test_5_4d_does_not_reject_valid_recent_success_candidate(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            planning_ir, _, _, _, draft, _, items = self._fixtures(Path(raw_tmp))
+            recent_root = ROOT / "agent" / "planning" / "out" / "mqtt" / "broker__c__linux_epoll__minimum_v1" / "20260609_214554_036173_t" / "_step_logs"
+            if recent_root.exists():
+                recent = json.loads((recent_root / "007_5_4d_function_wire_access_binding_patch.json").read_text(encoding="utf-8"))
+                recent_draft = json.loads((recent_root / "007_implementation_plan.json").read_text(encoding="utf-8"))
+                recent_ir = json.loads((recent_root / "003_planning_ir.json").read_text(encoding="utf-8"))
+            else:
+                recent, recent_draft, recent_ir = items["wire"], draft, planning_ir
+
+            self.assertEqual(len({entry["field_id"] for entry in recent["wire_mapping_entries"]}), 14)
+            self.assertFalse(_has_error(validate_wire_access_binding_patch(recent, recent_draft, recent_ir)))
+
+    def test_final_and_stage_wire_coverage_policy_consistent(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            planning_ir, profile, _, _, draft, plan, items = self._fixtures(Path(raw_tmp))
+            missing_field = items["wire"]["wire_mapping_entries"][0]["field_id"]
+            broken_patch = copy.deepcopy(items["wire"])
+            broken_patch["wire_mapping_entries"] = [entry for entry in broken_patch["wire_mapping_entries"] if entry["field_id"] != missing_field]
+            broken_patch["access_path_entries"] = [entry for entry in broken_patch["access_path_entries"] if entry["field_id"] != missing_field]
+            broken_patch["unresolved_questions"] = [
+                {
+                    "question_id": "q:wire:missing",
+                    "target_kind": "field",
+                    "target_id": missing_field,
+                    "question": "How is this required wire field mapped?",
+                    "unresolved_reason": "LLM did not provide a mapping.",
+                    "blocking": True,
+                    "trace_ref_keys": [],
+                }
+            ]
+            broken_plan = copy.deepcopy(plan)
+            broken_plan["wire_mapping_table"] = [entry for entry in broken_plan["wire_mapping_table"] if entry["field_id"] != missing_field]
+            broken_plan["unresolved_questions"].extend(copy.deepcopy(broken_patch["unresolved_questions"]))
+            for function in broken_plan["function_contracts"]:
+                function["wire_mapping"] = [entry for entry in function.get("wire_mapping", []) if entry.get("field_id") != missing_field]
+
+            stage_diags = validate_wire_access_binding_patch(broken_patch, draft, planning_ir)
+            final_diags = validate_full_implementation_plan(broken_plan, profile=profile, planning_ir=planning_ir)
+            self.assertTrue(_has(stage_diags, "uncovered_wire_field"))
+            self.assertTrue(_has(final_diags, "uncovered_wire_field"))
+            self.assertTrue(_has(final_diags, "blocking_unresolved_questions"))
+
     def test_wire_access_merge_canonicalizes_helper_local_target_paths(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:
             planning_ir, _, _, _, draft, _, items = self._fixtures(Path(raw_tmp))

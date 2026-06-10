@@ -1,0 +1,44 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "coap/server/coap_server/coap_server_run",
+  "FUNCTION_TYPE": "EVENT",
+  "ROLE": "进入底层 UDP runtime 事件循环",
+  "SIGNATURE": {
+    "RAW": "void coap_server_run(coap_server_t* s)",
+    "NAME": "coap_server_run",
+    "RETURN": "void",
+    "PARAMS": [
+      {
+        "TYPE": "coap_server_t*",
+        "NAME": "s",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "coap_server_t",
+        "ROLE": "CoAP server 进程级对象的不透明句柄"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "coap_udp_server_run",
+        "KIND": "CALL",
+        "ROLE": "调用 coap_udp_server_run 完成子步骤"
+      }
+    ],
+    "VAR": []
+  },
+  "EVENT": {
+    "TRIGGER": "main 在 server 启动成功后调用",
+    "PRECONDITION": "callback 参数与所属 server/router 生命周期有效",
+    "INPUT": "输入来自运行时事件参数与当前 server/resource 状态",
+    "ACTION": "委托 coap_udp_server_run 进入 UDP 事件循环",
+    "STATE_CHANGE": "推进 server 运行期事件处理",
+    "RESPONSE": "无直接返回值",
+    "EVENT_TYPE": "RUNTIME_EVENT"
+  }
+}

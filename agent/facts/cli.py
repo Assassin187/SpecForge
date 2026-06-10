@@ -21,11 +21,13 @@ def build_parser() -> argparse.ArgumentParser:
     validate.add_argument("--protocol-name", required=True)
     validate.add_argument("--doc", action="append", required=True)
     validate.add_argument("--skip-llm-check", action="store_true")
+    validate.add_argument("--api-key-env", default="ALI_API", help="Environment variable containing the Qwen API key")
 
     extract = sub.add_parser("extract", help="Extract structured protocol facts from a document set")
     extract.add_argument("--protocol-name", required=True)
     extract.add_argument("--doc", action="append", required=True)
     extract.add_argument("--output-dir")
+    extract.add_argument("--api-key-env", default="ALI_API", help="Environment variable containing the Qwen API key")
 
     verify = sub.add_parser("verify", help="Verify protocol_facts.json completeness for planning")
     verify.add_argument("--output-dir", required=True)
@@ -45,7 +47,7 @@ def cmd_validate(args: argparse.Namespace) -> int:
     context = validate_document_inputs(
         args.protocol_name,
         [_path(path) for path in args.doc],
-        llm_client=FixedQwenClient(),
+        llm_client=FixedQwenClient(args.api_key_env),
         skip_llm_check=args.skip_llm_check,
     )
     _print_diagnostics(context.diagnostics)
@@ -70,7 +72,7 @@ def cmd_extract(args: argparse.Namespace) -> int:
         protocol_name=args.protocol_name,
         doc_paths=[_path(path) for path in args.doc],
         output_dir=output_dir,
-        llm_client=FixedQwenClient(),
+        llm_client=FixedQwenClient(args.api_key_env),
     )
     result = extractor.extract()
     _print_diagnostics(result.diagnostics)

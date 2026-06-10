@@ -1,0 +1,59 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "coap/network/udp_server/coap_udp_server_sendto",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "通过 server socket 向 peer 发送完整 datagram；EINTR 重试，EAGAIN/部分发送返回 false",
+  "SIGNATURE": {
+    "RAW": "bool coap_udp_server_sendto(coap_udp_server_t* s, const coap_endpoint_t* peer, const uint8_t* data, size_t len)",
+    "NAME": "coap_udp_server_sendto",
+    "RETURN": "bool",
+    "PARAMS": [
+      {
+        "TYPE": "coap_udp_server_t*",
+        "NAME": "s",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "const coap_endpoint_t*",
+        "NAME": "peer",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "const uint8_t*",
+        "NAME": "data",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "size_t",
+        "NAME": "len",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "coap_udp_server_t",
+        "ROLE": "UDP/epoll server 不透明句柄"
+      },
+      {
+        "NAME": "coap_endpoint_t",
+        "ROLE": "UDP peer endpoint，保存 sockaddr_storage 与实际地址长度"
+      }
+    ],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入来自函数参数：s、peer、data、len。",
+    "ACTION": "通过 server socket 向 peer 发送完整 datagram；EINTR 重试，EAGAIN/部分发送返回 false",
+    "OUTPUT": "返回 true 表示条件成立或操作成功；返回 false 表示条件不成立、参数无效或操作失败，具体含义由 ROLE 限定。",
+    "INVARIANTS_USED": [
+      "不得引入超出当前 minimum_v1 代码行为的协议语义"
+    ]
+  }
+}

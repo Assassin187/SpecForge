@@ -1,0 +1,47 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "coap/server/coap_server/find_kv",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "按 key 线性查找内存 KV entry；未命中返回 NULL",
+  "SIGNATURE": {
+    "RAW": "static kv_entry_t* find_kv(coap_server_t* s, const char* key)",
+    "NAME": "find_kv",
+    "RETURN": "kv_entry_t*",
+    "PARAMS": [
+      {
+        "TYPE": "coap_server_t*",
+        "NAME": "s",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "const char*",
+        "NAME": "key",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "coap_server_t",
+        "ROLE": "CoAP server 进程级对象的不透明句柄"
+      },
+      {
+        "NAME": "kv_entry_t",
+        "ROLE": "本函数使用的模块内部数据结构"
+      }
+    ],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入来自函数参数：s、key。",
+    "ACTION": "按 key 线性查找内存 KV entry；未命中返回 NULL",
+    "OUTPUT": "返回结果、已借用对象或新分配对象的指针；无结果或失败时返回 NULL，所有权由 ROLE/CALL_CONTRACTS 限定。",
+    "INVARIANTS_USED": [
+      "不得引入超出当前 minimum_v1 代码行为的协议语义"
+    ]
+  }
+}

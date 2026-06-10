@@ -113,6 +113,12 @@ python3 -m agent facts extract --protocol-name coap --doc ~/SpecForge/document/r
 python3 -m agent facts verify --output-dir ~/SpecForge/agent/facts/out/coap
 ```
 
+使用 `.bashrc` 中的另一个 Qwen API key 环境变量：
+
+```bash
+python3 -m agent facts extract --protocol-name coap --doc ~/SpecForge/document/rfc7252.txt --api-key-env ALI_API_2
+```
+
 也可以直接使用子包入口：
 
 ```bash

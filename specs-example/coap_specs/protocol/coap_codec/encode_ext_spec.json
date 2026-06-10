@@ -1,0 +1,50 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "coap/protocol/coap_codec/encode_ext",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "按 nibble 13/14 编码 extended value；nibble 15 返回 false",
+  "SIGNATURE": {
+    "RAW": "static bool encode_ext(uint16_t value, uint8_t nibble, uint8_t* out, size_t* out_len)",
+    "NAME": "encode_ext",
+    "RETURN": "bool",
+    "PARAMS": [
+      {
+        "TYPE": "uint16_t",
+        "NAME": "value",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "uint8_t",
+        "NAME": "nibble",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "uint8_t*",
+        "NAME": "out",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "size_t*",
+        "NAME": "out_len",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入来自函数参数：value、nibble、out、out_len。",
+    "ACTION": "按 nibble 13/14 编码 extended value；nibble 15 返回 false",
+    "OUTPUT": "返回 true 表示条件成立或操作成功；返回 false 表示条件不成立、参数无效或操作失败，具体含义由 ROLE 限定。",
+    "INVARIANTS_USED": [
+      "不得引入超出当前 minimum_v1 代码行为的协议语义"
+    ]
+  }
+}

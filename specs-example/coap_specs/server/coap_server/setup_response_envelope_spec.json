@@ -1,0 +1,54 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "coap/server/coap_server/setup_response_envelope",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "初始化 response，CON 映射为 ACK、其他有效请求映射为 NON，并复制 Message ID 与 Token",
+  "SIGNATURE": {
+    "RAW": "static void setup_response_envelope(const coap_message_t* req, coap_message_t* resp)",
+    "NAME": "setup_response_envelope",
+    "RETURN": "void",
+    "PARAMS": [
+      {
+        "TYPE": "const coap_message_t*",
+        "NAME": "req",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "coap_message_t*",
+        "NAME": "resp",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "coap_message_t",
+        "ROLE": "统一 CoAP message 对象，保存 header、token、options 与 payload"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "coap_message_init",
+        "KIND": "CALL",
+        "ROLE": "调用 coap_message_init 完成子步骤"
+      },
+      {
+        "NAME": "coap_message_set_token",
+        "KIND": "CALL",
+        "ROLE": "调用 coap_message_set_token 完成子步骤"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入来自函数参数：req、resp。",
+    "ACTION": "初始化 response，CON 映射为 ACK、其他有效请求映射为 NON，并复制 Message ID 与 Token",
+    "OUTPUT": "无直接返回值；结果通过对象状态或副作用体现。",
+    "INVARIANTS_USED": [
+      "response Message ID 与 Token 必须复制自 request"
+    ]
+  }
+}

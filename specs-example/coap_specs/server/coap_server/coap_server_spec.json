@@ -1,0 +1,619 @@
+{
+  "KIND": "FILE_SPEC",
+  "FILE": {
+    "TRACE_ID": "coap/server/coap_server",
+    "LANG": "C",
+    "ROLE": "CoAP server 协调层：datagram 请求处理、response envelope、资源 handlers 与内存 KV 生命周期",
+    "DOC_REF": []
+  },
+  "HEADER": {
+    "PATH": "../server/coap_server.h",
+    "DEPENDENCY": [],
+    "DATA": [
+      {
+        "NAME": "coap_server_t",
+        "KIND": "TYPE",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "CoAP server 进程级对象的不透明句柄",
+        "TYPE_SPEC": {
+          "TYPE_KIND": "OPAQUE"
+        }
+      }
+    ],
+    "INTERFACE": [
+      {
+        "SIGNATURE": "coap_server_t* coap_server_create(uint16_t port)",
+        "NAME": "coap_server_create",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "创建 server、router 与 UDP runtime，并注册 discovery/hello/echo/kv routes",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "void coap_server_destroy(coap_server_t* s)",
+        "NAME": "coap_server_destroy",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "停止 server，销毁 UDP/router，释放全部 KV entries 与 server",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "bool coap_server_start(coap_server_t* s)",
+        "NAME": "coap_server_start",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "启动底层 UDP runtime",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "void coap_server_run(coap_server_t* s)",
+        "NAME": "coap_server_run",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "EVENT",
+        "ROLE": "进入底层 UDP runtime 事件循环",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "void coap_server_stop(coap_server_t* s)",
+        "NAME": "coap_server_stop",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "停止底层 UDP runtime；空指针安全返回",
+        "VISIBILITY": "public"
+      }
+    ]
+  },
+  "SOURCE": {
+    "PATH": "../server/coap_server.c",
+    "DEPENDENCY": [
+      "../server/coap_server.h",
+      "../network/udp_server.h",
+      "../protocol/coap_codec.h",
+      "../resource/resource_router.h"
+    ],
+    "DATA": [
+      {
+        "NAME": "kv_entry_t",
+        "KIND": "TYPE",
+        "VISIBILITY": "PRIVATE",
+        "ROLE": "内存 KV entry：key、payload bytes 与可选 Content-Format"
+      },
+      {
+        "NAME": "struct coap_server",
+        "KIND": "TYPE",
+        "VISIBILITY": "PRIVATE",
+        "ROLE": "server 私有状态：port、UDP runtime、router 与 KV entries"
+      }
+    ],
+    "INTERFACE": [
+      {
+        "TRACE_ID": "coap/server/coap_server/dup_string",
+        "SIGNATURE": "static char* dup_string(const char* s)",
+        "NAME": "dup_string",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "分配并复制 NUL-terminated 字符串；NULL 返回 NULL",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "分配并复制 NUL-terminated 字符串；NULL 返回 NULL"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "coap/server/coap_server/response_set_text",
+        "SIGNATURE": "static bool response_set_text(coap_message_t* resp, uint8_t code, uint16_t format, const char* text)",
+        "NAME": "response_set_text",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "设置 response code、Content-Format option 与字符串 payload",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "设置 response code、Content-Format option 与字符串 payload"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "coap/server/coap_server/response_set_bytes",
+        "SIGNATURE": "static bool response_set_bytes(coap_message_t* resp, uint8_t code, uint16_t format, const uint8_t* data, size_t len)",
+        "NAME": "response_set_bytes",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "设置 response code、Content-Format option 与字节 payload",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "设置 response code、Content-Format option 与字节 payload"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "coap/server/coap_server/find_kv",
+        "SIGNATURE": "static kv_entry_t* find_kv(coap_server_t* s, const char* key)",
+        "NAME": "find_kv",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "按 key 线性查找内存 KV entry；未命中返回 NULL",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "按 key 线性查找内存 KV entry；未命中返回 NULL"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "coap/server/coap_server/kv_put",
+        "SIGNATURE": "static bool kv_put(coap_server_t* s, const char* key, const uint8_t* value, size_t len, bool has_content_format, uint16_t content_format, bool* created)",
+        "NAME": "kv_put",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "创建或更新 KV entry，复制 payload 与 Content-Format，并通过 created 报告是否新建",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "创建或更新 KV entry，复制 payload 与 Content-Format，并通过 created 报告是否新建"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "coap/server/coap_server/kv_delete",
+        "SIGNATURE": "static bool kv_delete(coap_server_t* s, const char* key)",
+        "NAME": "kv_delete",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "删除匹配 KV entry，释放字段并压紧数组；未命中返回 false",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "删除匹配 KV entry，释放字段并压紧数组；未命中返回 false"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "coap/server/coap_server/handle_discovery",
+        "SIGNATURE": "static bool handle_discovery(void* user, const coap_request_t* req, coap_message_t* resp)",
+        "NAME": "handle_discovery",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "EVENT",
+        "ROLE": "处理 /.well-known/core discovery 与 Accept 检查",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "处理 /.well-known/core discovery 与 Accept 检查"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "coap/server/coap_server/handle_hello",
+        "SIGNATURE": "static bool handle_hello(void* user, const coap_request_t* req, coap_message_t* resp)",
+        "NAME": "handle_hello",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "EVENT",
+        "ROLE": "返回 hello greeting，并在 query 非空时使用 query-received 文本",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "返回 hello greeting，并在 query 非空时使用 query-received 文本"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "coap/server/coap_server/handle_echo",
+        "SIGNATURE": "static bool handle_echo(void* user, const coap_request_t* req, coap_message_t* resp)",
+        "NAME": "handle_echo",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "EVENT",
+        "ROLE": "以 2.04 echo 请求 payload，保留 Content-Format 或默认 text/plain",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "以 2.04 echo 请求 payload，保留 Content-Format 或默认 text/plain"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "coap/server/coap_server/handle_kv",
+        "SIGNATURE": "static bool handle_kv(void* user, const coap_request_t* req, coap_message_t* resp)",
+        "NAME": "handle_kv",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "EVENT",
+        "ROLE": "实现 /kv collection 与 /kv/<key> 的 list/create/update/read/delete 行为",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "实现 /kv collection 与 /kv/<key> 的 list/create/update/read/delete 行为"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "coap/server/coap_server/setup_response_envelope",
+        "SIGNATURE": "static void setup_response_envelope(const coap_message_t* req, coap_message_t* resp)",
+        "NAME": "setup_response_envelope",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "初始化 response，CON 映射为 ACK、其他有效请求映射为 NON，并复制 Message ID 与 Token",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "初始化 response，CON 映射为 ACK、其他有效请求映射为 NON，并复制 Message ID 与 Token"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "coap/server/coap_server/build_request_view",
+        "SIGNATURE": "static bool build_request_view(const coap_message_t* req, coap_request_t* out)",
+        "NAME": "build_request_view",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "从 method message 构造 normalized path、joined query 与 Content-Format/Accept 视图",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "从 method message 构造 normalized path、joined query 与 Content-Format/Accept 视图"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "coap/server/coap_server/free_request_view",
+        "SIGNATURE": "static void free_request_view(coap_request_t* req)",
+        "NAME": "free_request_view",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "释放 request view 的 path/query 并将指针复位",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "释放 request view 的 path/query 并将指针复位"
+            }
+          ],
+          "IDEMPOTENT": true,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "coap/server/coap_server/send_response",
+        "SIGNATURE": "static void send_response(coap_server_t* s, const coap_endpoint_t* peer, const coap_message_t* resp)",
+        "NAME": "send_response",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "编码 response 并通过 UDP sendto 发往原 peer，随后释放编码缓冲",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "编码 response 并通过 UDP sendto 发往原 peer，随后释放编码缓冲"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "coap/server/coap_server/send_reset",
+        "SIGNATURE": "static void send_reset(coap_server_t* s, const coap_endpoint_t* peer, uint16_t message_id)",
+        "NAME": "send_reset",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "构造空 RST message 并发送到 peer",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "构造空 RST message 并发送到 peer"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "coap/server/coap_server/on_datagram",
+        "SIGNATURE": "static void on_datagram(void* user, const coap_endpoint_t* peer, const uint8_t* data, size_t len)",
+        "NAME": "on_datagram",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "EVENT",
+        "ROLE": "处理一个 UDP datagram：解码、malformed CON RST、non-method 静默忽略、资源 dispatch、回包与清理",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "处理一个 UDP datagram：解码、malformed CON RST、non-method 静默忽略、资源 dispatch、回包与清理"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "coap/server/coap_server/coap_server_create",
+        "SIGNATURE": "coap_server_t* coap_server_create(uint16_t port)",
+        "NAME": "coap_server_create",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "创建 server、router 与 UDP runtime，并注册 discovery/hello/echo/kv routes",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "创建 server、router 与 UDP runtime，并注册 discovery/hello/echo/kv routes"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "coap/server/coap_server/coap_server_destroy",
+        "SIGNATURE": "void coap_server_destroy(coap_server_t* s)",
+        "NAME": "coap_server_destroy",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "停止 server，销毁 UDP/router，释放全部 KV entries 与 server",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "停止 server，销毁 UDP/router，释放全部 KV entries 与 server"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "coap/server/coap_server/coap_server_start",
+        "SIGNATURE": "bool coap_server_start(coap_server_t* s)",
+        "NAME": "coap_server_start",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "启动底层 UDP runtime",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "启动底层 UDP runtime"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "coap/server/coap_server/coap_server_run",
+        "SIGNATURE": "void coap_server_run(coap_server_t* s)",
+        "NAME": "coap_server_run",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "EVENT",
+        "ROLE": "进入底层 UDP runtime 事件循环",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "进入底层 UDP runtime 事件循环"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "coap/server/coap_server/coap_server_stop",
+        "SIGNATURE": "void coap_server_stop(coap_server_t* s)",
+        "NAME": "coap_server_stop",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "停止底层 UDP runtime；空指针安全返回",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "停止底层 UDP runtime；空指针安全返回"
+            }
+          ],
+          "IDEMPOTENT": true,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "public"
+      }
+    ]
+  },
+  "PUBLIC_SYMBOLS": [
+    {
+      "NAME": "coap_server_t",
+      "KIND": "TYPE",
+      "ROLE": "CoAP server 进程级对象的不透明句柄"
+    },
+    {
+      "NAME": "coap_server_create",
+      "KIND": "FUNC",
+      "SIGNATURE": "coap_server_t* coap_server_create(uint16_t port)",
+      "ROLE": "创建 server、router 与 UDP runtime，并注册 discovery/hello/echo/kv routes"
+    },
+    {
+      "NAME": "coap_server_destroy",
+      "KIND": "FUNC",
+      "SIGNATURE": "void coap_server_destroy(coap_server_t* s)",
+      "ROLE": "停止 server，销毁 UDP/router，释放全部 KV entries 与 server"
+    },
+    {
+      "NAME": "coap_server_start",
+      "KIND": "FUNC",
+      "SIGNATURE": "bool coap_server_start(coap_server_t* s)",
+      "ROLE": "启动底层 UDP runtime"
+    },
+    {
+      "NAME": "coap_server_run",
+      "KIND": "FUNC",
+      "SIGNATURE": "void coap_server_run(coap_server_t* s)",
+      "ROLE": "进入底层 UDP runtime 事件循环"
+    },
+    {
+      "NAME": "coap_server_stop",
+      "KIND": "FUNC",
+      "SIGNATURE": "void coap_server_stop(coap_server_t* s)",
+      "ROLE": "停止底层 UDP runtime；空指针安全返回"
+    }
+  ],
+  "CALL_CONTRACTS": [
+    {
+      "NAME": "coap_server_create",
+      "SIGNATURE": "coap_server_t* coap_server_create(uint16_t port)",
+      "OWNERSHIP": "成功返回的动态对象或缓冲由调用方按对应 destroy/free 契约释放",
+      "FAILURE": "分配、编码或初始化失败时返回 NULL/false，不转移所有权"
+    }
+  ]
+}

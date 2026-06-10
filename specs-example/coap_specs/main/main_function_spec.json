@@ -1,0 +1,66 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "coap/main/main",
+  "FUNCTION_TYPE": "ENTRYPOINT",
+  "ROLE": "CoAP server 可执行程序入口，编排端口解析与 server 生命周期",
+  "SIGNATURE": {
+    "RAW": "int main(int argc, char** argv)",
+    "NAME": "main",
+    "RETURN": "int",
+    "PARAMS": [
+      {
+        "TYPE": "int",
+        "NAME": "argc",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "char**",
+        "NAME": "argv",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "coap_server_t",
+        "ROLE": "CoAP server 进程级对象的不透明句柄"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "coap_server_create",
+        "KIND": "CALL",
+        "ROLE": "调用 coap_server_create 完成子步骤"
+      },
+      {
+        "NAME": "coap_server_start",
+        "KIND": "CALL",
+        "ROLE": "调用 coap_server_start 完成子步骤"
+      },
+      {
+        "NAME": "coap_server_run",
+        "KIND": "CALL",
+        "ROLE": "调用 coap_server_run 完成子步骤"
+      },
+      {
+        "NAME": "coap_server_destroy",
+        "KIND": "CALL",
+        "ROLE": "调用 coap_server_destroy 完成子步骤"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入来自函数参数：argc、argv。",
+    "ACTION": "CoAP server 可执行程序入口，编排端口解析与 server 生命周期",
+    "OUTPUT": "创建或启动失败返回 1；正常运行并销毁 server 后返回 0。",
+    "INVARIANTS_USED": [
+      "默认监听端口为 5683",
+      "仅接受 1..65535 的命令行端口",
+      "启动失败时销毁已创建 server"
+    ]
+  }
+}

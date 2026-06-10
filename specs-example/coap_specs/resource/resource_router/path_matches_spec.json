@@ -1,0 +1,43 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "coap/resource/resource_router/path_matches",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "执行 exact match 或 segment-boundary prefix match",
+  "SIGNATURE": {
+    "RAW": "static bool path_matches(const coap_resource_entry_t* e, const char* path)",
+    "NAME": "path_matches",
+    "RETURN": "bool",
+    "PARAMS": [
+      {
+        "TYPE": "const coap_resource_entry_t*",
+        "NAME": "e",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "const char*",
+        "NAME": "path",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "coap_resource_entry_t",
+        "ROLE": "本函数使用的模块内部数据结构"
+      }
+    ],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入来自函数参数：e、path。",
+    "ACTION": "执行 exact match 或 segment-boundary prefix match",
+    "OUTPUT": "返回 true 表示条件成立或操作成功；返回 false 表示条件不成立、参数无效或操作失败，具体含义由 ROLE 限定。",
+    "INVARIANTS_USED": [
+      "不得引入超出当前 minimum_v1 代码行为的协议语义"
+    ]
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "coap/protocol/coap_message/coap_message_join_options",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "按出现顺序连接匹配 option；无匹配返回新分配空字符串，调用方负责 free",
+  "SIGNATURE": {
+    "RAW": "char* coap_message_join_options(const coap_message_t* msg, uint16_t number, char sep)",
+    "NAME": "coap_message_join_options",
+    "RETURN": "char*",
+    "PARAMS": [
+      {
+        "TYPE": "const coap_message_t*",
+        "NAME": "msg",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "uint16_t",
+        "NAME": "number",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "char",
+        "NAME": "sep",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "coap_message_t",
+        "ROLE": "统一 CoAP message 对象，保存 header、token、options 与 payload"
+      },
+      {
+        "NAME": "coap_option_t",
+        "ROLE": "解码后的单个 CoAP option，持有 value 动态副本"
+      }
+    ],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入来自函数参数：msg、number、sep。",
+    "ACTION": "按出现顺序连接匹配 option；无匹配返回新分配空字符串，调用方负责 free",
+    "OUTPUT": "返回结果、已借用对象或新分配对象的指针；无结果或失败时返回 NULL，所有权由 ROLE/CALL_CONTRACTS 限定。",
+    "INVARIANTS_USED": [
+      "不得引入超出当前 minimum_v1 代码行为的协议语义"
+    ]
+  }
+}

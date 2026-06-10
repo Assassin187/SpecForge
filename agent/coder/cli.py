@@ -35,6 +35,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--output-dir", default=str(default_output_dir()))
     parser.add_argument("--max-repair-rounds", type=int, default=3)
+    parser.add_argument("--api-key-env", default="ALI_API", help="Environment variable containing the Qwen API key")
 
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("validate", help="Validate specs and LLM adapter prerequisites")
@@ -66,7 +67,7 @@ def cmd_validate(args: argparse.Namespace) -> int:
     except Exception as exc:  # noqa: BLE001
         print(f"ERROR spec_discovery: {exc}")
         return 1
-    llm = FixedQwenClient()
+    llm = FixedQwenClient(args.api_key_env)
     _print_diagnostics(bundle)
     try:
         status = llm.self_check()
@@ -89,7 +90,7 @@ def cmd_generate(args: argparse.Namespace) -> int:
         return 1
     generator = ProjectGenerator(
         bundle=bundle,
-        llm_client=FixedQwenClient(),
+        llm_client=FixedQwenClient(args.api_key_env),
         output_dir=_path(args.output_dir),
         max_repair_rounds=args.max_repair_rounds,
     )

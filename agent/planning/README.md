@@ -664,6 +664,15 @@ python3 -m agent planning plan \
   --target-profile agent/planning/planning_target_profile_mqtt.json
 ```
 
+使用 `.bashrc` 中的另一个 Qwen API key 环境变量：
+
+```bash
+python3 -m agent planning plan \
+  --facts agent/facts/gold_facts/mqtt_min/protocol_facts.json \
+  --target-profile agent/planning/planning_target_profile_mqtt.json \
+  --api-key-env ALI_API_2
+```
+
 从中间阶段续跑：
 
 ```bash
@@ -714,7 +723,7 @@ python3 -m agent planning plan \
 
 如果不想使用自动选择的最近一次 run，可以用 `--resume-source-dir <previous_run_dir>` 明确指定继承来源；该目录必须包含 `_step_logs/`，并通过当前 facts/target 的 hash 和 compatibility 校验。
 
-运行需要环境变量 `ALI_API`。Protocol Profile 和 Architecture 属于 mandatory LLM 路径，无法在 retry 预算内获得合法输出会失败退出。5.3/5.4a 会强制发起 LLM semantic filling/annotation 请求，但 LLM JSON 耗尽后可通过 deterministic empty candidate + reconciliation 继续；若最终 inventory validator 仍有 blocking error，则当前 planning 失败。其他 Implementation Plan 子步骤输出不合法时使用 deterministic fallback 继续推进。
+运行默认读取环境变量 `ALI_API`；可通过 `--api-key-env <name>` 选择 `.bashrc` 中的其他 Qwen API key 环境变量。请求地址固定为 DashScope。Protocol Profile 和 Architecture 属于 mandatory LLM 路径，无法在 retry 预算内获得合法输出会失败退出。5.3/5.4a 会强制发起 LLM semantic filling/annotation 请求，但 LLM JSON 耗尽后可通过 deterministic empty candidate + reconciliation 继续；若最终 inventory validator 仍有 blocking error，则当前 planning 失败。其他 Implementation Plan 子步骤输出不合法时使用 deterministic fallback 继续推进。
 
 ### 验证已有输出目录
 

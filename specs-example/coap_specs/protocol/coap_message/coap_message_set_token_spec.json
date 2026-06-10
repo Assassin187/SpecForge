@@ -1,0 +1,49 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "coap/protocol/coap_message/coap_message_set_token",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "校验 token_len<=8，记录长度并在 token 非空时复制 bytes",
+  "SIGNATURE": {
+    "RAW": "bool coap_message_set_token(coap_message_t* msg, const uint8_t* token, size_t token_len)",
+    "NAME": "coap_message_set_token",
+    "RETURN": "bool",
+    "PARAMS": [
+      {
+        "TYPE": "coap_message_t*",
+        "NAME": "msg",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "const uint8_t*",
+        "NAME": "token",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "size_t",
+        "NAME": "token_len",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "coap_message_t",
+        "ROLE": "统一 CoAP message 对象，保存 header、token、options 与 payload"
+      }
+    ],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入来自函数参数：msg、token、token_len。",
+    "ACTION": "校验 token_len<=8，记录长度并在 token 非空时复制 bytes",
+    "OUTPUT": "返回 true 表示条件成立或操作成功；返回 false 表示条件不成立、参数无效或操作失败，具体含义由 ROLE 限定。",
+    "INVARIANTS_USED": [
+      "token_len 不得超过 COAP_MAX_TOKEN_LEN"
+    ]
+  }
+}

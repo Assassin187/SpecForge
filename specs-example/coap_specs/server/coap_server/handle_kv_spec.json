@@ -1,0 +1,93 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "coap/server/coap_server/handle_kv",
+  "FUNCTION_TYPE": "EVENT",
+  "ROLE": "实现 /kv collection 与 /kv/<key> 的 list/create/update/read/delete 行为",
+  "SIGNATURE": {
+    "RAW": "static bool handle_kv(void* user, const coap_request_t* req, coap_message_t* resp)",
+    "NAME": "handle_kv",
+    "RETURN": "bool",
+    "PARAMS": [
+      {
+        "TYPE": "void*",
+        "NAME": "user",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "const coap_request_t*",
+        "NAME": "req",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "coap_message_t*",
+        "NAME": "resp",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "coap_server_t",
+        "ROLE": "CoAP server 进程级对象的不透明句柄"
+      },
+      {
+        "NAME": "kv_entry_t",
+        "ROLE": "本函数使用的模块内部数据结构"
+      },
+      {
+        "NAME": "coap_request_t",
+        "ROLE": "从 decoded message 投影出的资源请求视图"
+      },
+      {
+        "NAME": "coap_message_t",
+        "ROLE": "统一 CoAP message 对象，保存 header、token、options 与 payload"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "find_kv",
+        "KIND": "CALL",
+        "ROLE": "调用 find_kv 完成子步骤"
+      },
+      {
+        "NAME": "kv_put",
+        "KIND": "CALL",
+        "ROLE": "调用 kv_put 完成子步骤"
+      },
+      {
+        "NAME": "kv_delete",
+        "KIND": "CALL",
+        "ROLE": "调用 kv_delete 完成子步骤"
+      },
+      {
+        "NAME": "response_set_text",
+        "KIND": "CALL",
+        "ROLE": "调用 response_set_text 完成子步骤"
+      },
+      {
+        "NAME": "response_set_bytes",
+        "KIND": "CALL",
+        "ROLE": "调用 response_set_bytes 完成子步骤"
+      },
+      {
+        "NAME": "coap_make_code",
+        "KIND": "CALL",
+        "ROLE": "调用 coap_make_code 完成子步骤"
+      }
+    ],
+    "VAR": []
+  },
+  "EVENT": {
+    "TRIGGER": "resource router 匹配 /kv 或 /kv/<key> 后触发",
+    "PRECONDITION": "callback 参数与所属 server/router 生命周期有效",
+    "INPUT": "输入来自运行时事件参数与当前 server/resource 状态",
+    "ACTION": "按 method 与 key suffix 执行 list/create/update/read/delete",
+    "STATE_CHANGE": "可能创建、更新或删除内存 kv_entry",
+    "RESPONSE": "返回对应 2.xx、4.xx 或 5.00 code",
+    "EVENT_TYPE": "RUNTIME_EVENT"
+  }
+}

@@ -176,7 +176,7 @@ spec 解析和静态诊断的核心文件。
 - 在 `agent` 项目内部直接实现 `chat_with_llm`
 - 直接通过 OpenAI Python SDK 调用 DashScope 的 OpenAI-compatible 接口
 - 对外暴露统一的 `FixedQwenClient`
-- 在运行前检查 `ALI_API` 是否存在
+- 在运行前检查所选 Qwen API key 环境变量是否存在
 
 当前设计特点：
 
@@ -318,7 +318,7 @@ python3 -m agent.facts validate --protocol-name coap --doc ~/SpecForge/document/
 
 ## 前置条件
 
-- 已设置环境变量 `ALI_API`
+- 已设置环境变量 `ALI_API`，或使用 `--api-key-env <name>` 选择其他已设置的 Qwen API key 环境变量
 - Python 3.12
 - 本机可访问 DashScope/OpenAI-compatible 接口
 

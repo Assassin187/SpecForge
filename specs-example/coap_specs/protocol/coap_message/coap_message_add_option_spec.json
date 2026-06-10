@@ -1,0 +1,65 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "coap/protocol/coap_message/coap_message_add_option",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "扩展 option 数组并复制 option value，成功后递增 option_count",
+  "SIGNATURE": {
+    "RAW": "bool coap_message_add_option(coap_message_t* msg, uint16_t number, const uint8_t* value, size_t len)",
+    "NAME": "coap_message_add_option",
+    "RETURN": "bool",
+    "PARAMS": [
+      {
+        "TYPE": "coap_message_t*",
+        "NAME": "msg",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "uint16_t",
+        "NAME": "number",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "const uint8_t*",
+        "NAME": "value",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "size_t",
+        "NAME": "len",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "coap_message_t",
+        "ROLE": "统一 CoAP message 对象，保存 header、token、options 与 payload"
+      },
+      {
+        "NAME": "coap_option_t",
+        "ROLE": "解码后的单个 CoAP option，持有 value 动态副本"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "xrealloc",
+        "KIND": "CALL",
+        "ROLE": "调用 xrealloc 完成子步骤"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入来自函数参数：msg、number、value、len。",
+    "ACTION": "扩展 option 数组并复制 option value，成功后递增 option_count",
+    "OUTPUT": "返回 true 表示条件成立或操作成功；返回 false 表示条件不成立、参数无效或操作失败，具体含义由 ROLE 限定。",
+    "INVARIANTS_USED": [
+      "len 必须可由 uint16_t 表达"
+    ]
+  }
+}

@@ -1,0 +1,134 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "coap/server/coap_server/on_datagram",
+  "FUNCTION_TYPE": "EVENT",
+  "ROLE": "处理一个 UDP datagram：解码、malformed CON RST、non-method 静默忽略、资源 dispatch、回包与清理",
+  "SIGNATURE": {
+    "RAW": "static void on_datagram(void* user, const coap_endpoint_t* peer, const uint8_t* data, size_t len)",
+    "NAME": "on_datagram",
+    "RETURN": "void",
+    "PARAMS": [
+      {
+        "TYPE": "void*",
+        "NAME": "user",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "const coap_endpoint_t*",
+        "NAME": "peer",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "const uint8_t*",
+        "NAME": "data",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "size_t",
+        "NAME": "len",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "coap_server_t",
+        "ROLE": "CoAP server 进程级对象的不透明句柄"
+      },
+      {
+        "NAME": "coap_endpoint_t",
+        "ROLE": "UDP peer endpoint，保存 sockaddr_storage 与实际地址长度"
+      },
+      {
+        "NAME": "coap_message_t",
+        "ROLE": "统一 CoAP message 对象，保存 header、token、options 与 payload"
+      },
+      {
+        "NAME": "coap_request_t",
+        "ROLE": "从 decoded message 投影出的资源请求视图"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "coap_decode_message",
+        "KIND": "CALL",
+        "ROLE": "调用 coap_decode_message 完成子步骤"
+      },
+      {
+        "NAME": "send_reset",
+        "KIND": "CALL",
+        "ROLE": "调用 send_reset 完成子步骤"
+      },
+      {
+        "NAME": "coap_endpoint_to_string",
+        "KIND": "CALL",
+        "ROLE": "调用 coap_endpoint_to_string 完成子步骤"
+      },
+      {
+        "NAME": "coap_code_class",
+        "KIND": "CALL",
+        "ROLE": "调用 coap_code_class 完成子步骤"
+      },
+      {
+        "NAME": "coap_code_detail",
+        "KIND": "CALL",
+        "ROLE": "调用 coap_code_detail 完成子步骤"
+      },
+      {
+        "NAME": "coap_code_is_method",
+        "KIND": "CALL",
+        "ROLE": "调用 coap_code_is_method 完成子步骤"
+      },
+      {
+        "NAME": "setup_response_envelope",
+        "KIND": "CALL",
+        "ROLE": "调用 setup_response_envelope 完成子步骤"
+      },
+      {
+        "NAME": "build_request_view",
+        "KIND": "CALL",
+        "ROLE": "调用 build_request_view 完成子步骤"
+      },
+      {
+        "NAME": "coap_resource_router_dispatch",
+        "KIND": "CALL",
+        "ROLE": "调用 coap_resource_router_dispatch 完成子步骤"
+      },
+      {
+        "NAME": "send_response",
+        "KIND": "CALL",
+        "ROLE": "调用 send_response 完成子步骤"
+      },
+      {
+        "NAME": "free_request_view",
+        "KIND": "CALL",
+        "ROLE": "调用 free_request_view 完成子步骤"
+      },
+      {
+        "NAME": "coap_message_free",
+        "KIND": "CALL",
+        "ROLE": "调用 coap_message_free 完成子步骤"
+      },
+      {
+        "NAME": "coap_make_code",
+        "KIND": "CALL",
+        "ROLE": "调用 coap_make_code 完成子步骤"
+      }
+    ],
+    "VAR": []
+  },
+  "EVENT": {
+    "TRIGGER": "UDP runtime 从 peer 收到一个非空 datagram 后触发",
+    "PRECONDITION": "callback 参数与所属 server/router 生命周期有效",
+    "INPUT": "输入来自运行时事件参数与当前 server/resource 状态",
+    "ACTION": "解码请求，执行错误路径或资源 dispatch，并发送响应后释放 datagram 级对象",
+    "STATE_CHANGE": "可能修改 /kv 内存状态；datagram 级临时对象在返回前释放",
+    "RESPONSE": "向原 peer 发送 ACK/NON/RST，或按既定策略静默忽略",
+    "EVENT_TYPE": "RUNTIME_EVENT"
+  }
+}

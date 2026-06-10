@@ -1,0 +1,88 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "coap/server/coap_server/kv_put",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "创建或更新 KV entry，复制 payload 与 Content-Format，并通过 created 报告是否新建",
+  "SIGNATURE": {
+    "RAW": "static bool kv_put(coap_server_t* s, const char* key, const uint8_t* value, size_t len, bool has_content_format, uint16_t content_format, bool* created)",
+    "NAME": "kv_put",
+    "RETURN": "bool",
+    "PARAMS": [
+      {
+        "TYPE": "coap_server_t*",
+        "NAME": "s",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "const char*",
+        "NAME": "key",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "const uint8_t*",
+        "NAME": "value",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "size_t",
+        "NAME": "len",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "bool",
+        "NAME": "has_content_format",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "uint16_t",
+        "NAME": "content_format",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "bool*",
+        "NAME": "created",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "coap_server_t",
+        "ROLE": "CoAP server 进程级对象的不透明句柄"
+      },
+      {
+        "NAME": "kv_entry_t",
+        "ROLE": "本函数使用的模块内部数据结构"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "find_kv",
+        "KIND": "CALL",
+        "ROLE": "调用 find_kv 完成子步骤"
+      },
+      {
+        "NAME": "dup_string",
+        "KIND": "CALL",
+        "ROLE": "调用 dup_string 完成子步骤"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入来自函数参数：s、key、value、len、has_content_format、content_format、created。",
+    "ACTION": "创建或更新 KV entry，复制 payload 与 Content-Format，并通过 created 报告是否新建",
+    "OUTPUT": "返回 true 表示条件成立或操作成功；返回 false 表示条件不成立、参数无效或操作失败，具体含义由 ROLE 限定。",
+    "INVARIANTS_USED": [
+      "不得引入超出当前 minimum_v1 代码行为的协议语义"
+    ]
+  }
+}

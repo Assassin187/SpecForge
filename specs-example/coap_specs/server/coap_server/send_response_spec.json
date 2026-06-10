@@ -1,0 +1,77 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "coap/server/coap_server/send_response",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "编码 response 并通过 UDP sendto 发往原 peer，随后释放编码缓冲",
+  "SIGNATURE": {
+    "RAW": "static void send_response(coap_server_t* s, const coap_endpoint_t* peer, const coap_message_t* resp)",
+    "NAME": "send_response",
+    "RETURN": "void",
+    "PARAMS": [
+      {
+        "TYPE": "coap_server_t*",
+        "NAME": "s",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "const coap_endpoint_t*",
+        "NAME": "peer",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "const coap_message_t*",
+        "NAME": "resp",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "coap_server_t",
+        "ROLE": "CoAP server 进程级对象的不透明句柄"
+      },
+      {
+        "NAME": "coap_endpoint_t",
+        "ROLE": "UDP peer endpoint，保存 sockaddr_storage 与实际地址长度"
+      },
+      {
+        "NAME": "coap_message_t",
+        "ROLE": "统一 CoAP message 对象，保存 header、token、options 与 payload"
+      },
+      {
+        "NAME": "coap_bytes_t",
+        "ROLE": "编码结果动态字节缓冲，由 coap_bytes_free 释放"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "coap_encode_message",
+        "KIND": "CALL",
+        "ROLE": "调用 coap_encode_message 完成子步骤"
+      },
+      {
+        "NAME": "coap_udp_server_sendto",
+        "KIND": "CALL",
+        "ROLE": "调用 coap_udp_server_sendto 完成子步骤"
+      },
+      {
+        "NAME": "coap_bytes_free",
+        "KIND": "CALL",
+        "ROLE": "调用 coap_bytes_free 完成子步骤"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入来自函数参数：s、peer、resp。",
+    "ACTION": "编码 response 并通过 UDP sendto 发往原 peer，随后释放编码缓冲",
+    "OUTPUT": "无直接返回值；结果通过对象状态或副作用体现。",
+    "INVARIANTS_USED": [
+      "不得引入超出当前 minimum_v1 代码行为的协议语义"
+    ]
+  }
+}

@@ -1,0 +1,89 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "coap/resource/resource_router/coap_resource_router_add",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "扩展 entry 数组并复制 path/attributes，保存匹配策略、method mask、handler 与 user",
+  "SIGNATURE": {
+    "RAW": "bool coap_resource_router_add(coap_resource_router_t* router, const char* path, bool prefix_match, uint32_t methods_mask, bool discoverable, const char* attributes, coap_resource_handler_fn handler, void* user)",
+    "NAME": "coap_resource_router_add",
+    "RETURN": "bool",
+    "PARAMS": [
+      {
+        "TYPE": "coap_resource_router_t*",
+        "NAME": "router",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "const char*",
+        "NAME": "path",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "bool",
+        "NAME": "prefix_match",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "uint32_t",
+        "NAME": "methods_mask",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "bool",
+        "NAME": "discoverable",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "const char*",
+        "NAME": "attributes",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "coap_resource_handler_fn",
+        "NAME": "handler",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "void*",
+        "NAME": "user",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "coap_resource_router_t",
+        "ROLE": "资源注册表与 dispatch 逻辑的不透明句柄"
+      },
+      {
+        "NAME": "coap_resource_entry_t",
+        "ROLE": "本函数使用的模块内部数据结构"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "dup_string",
+        "KIND": "CALL",
+        "ROLE": "调用 dup_string 完成子步骤"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入来自函数参数：router、path、prefix_match、methods_mask、discoverable、attributes、handler、user。",
+    "ACTION": "扩展 entry 数组并复制 path/attributes，保存匹配策略、method mask、handler 与 user",
+    "OUTPUT": "返回 true 表示条件成立或操作成功；返回 false 表示条件不成立、参数无效或操作失败，具体含义由 ROLE 限定。",
+    "INVARIANTS_USED": [
+      "不得引入超出当前 minimum_v1 代码行为的协议语义"
+    ]
+  }
+}

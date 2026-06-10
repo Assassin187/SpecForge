@@ -1,0 +1,430 @@
+{
+  "KIND": "FILE_SPEC",
+  "FILE": {
+    "TRACE_ID": "coap/network/udp_server",
+    "LANG": "C",
+    "ROLE": "无连接 UDP runtime：绑定 IPv4 socket，使用 epoll 接收 datagram，并按 peer endpoint 回包",
+    "DOC_REF": []
+  },
+  "HEADER": {
+    "PATH": "../network/udp_server.h",
+    "DEPENDENCY": [],
+    "DATA": [
+      {
+        "NAME": "coap_endpoint_t",
+        "KIND": "TYPE",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "UDP peer endpoint，保存 sockaddr_storage 与实际地址长度",
+        "TYPE_SPEC": {
+          "TYPE_KIND": "STRUCT",
+          "FIELDS": [
+            {
+              "NAME": "addr",
+              "TYPE": "struct sockaddr_storage",
+              "ROLE": "peer socket address"
+            },
+            {
+              "NAME": "addr_len",
+              "TYPE": "socklen_t",
+              "ROLE": "addr 中有效地址长度"
+            }
+          ]
+        }
+      },
+      {
+        "NAME": "coap_udp_on_datagram_fn",
+        "KIND": "TYPE",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "收到完整 UDP datagram 时通知上层的 callback 类型",
+        "TYPE_SPEC": {
+          "TYPE_KIND": "CALLBACK",
+          "CALLBACK_SIGNATURE": "void (*coap_udp_on_datagram_fn)(void* user, const coap_endpoint_t* peer, const uint8_t* data, size_t len)"
+        }
+      },
+      {
+        "NAME": "coap_udp_callbacks_t",
+        "KIND": "TYPE",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "UDP runtime callback 集合",
+        "TYPE_SPEC": {
+          "TYPE_KIND": "STRUCT",
+          "FIELDS": [
+            {
+              "NAME": "on_datagram",
+              "TYPE": "coap_udp_on_datagram_fn",
+              "ROLE": "完整 datagram callback"
+            }
+          ]
+        }
+      },
+      {
+        "NAME": "coap_udp_server_t",
+        "KIND": "TYPE",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "UDP/epoll server 不透明句柄",
+        "TYPE_SPEC": {
+          "TYPE_KIND": "OPAQUE"
+        }
+      }
+    ],
+    "INTERFACE": [
+      {
+        "SIGNATURE": "const char* coap_endpoint_to_string(const coap_endpoint_t* peer, char* buf, size_t buf_sz)",
+        "NAME": "coap_endpoint_to_string",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "将 IPv4/IPv6 peer endpoint 格式化为 host:port；非法参数返回空字符串",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "coap_udp_server_t* coap_udp_server_create(uint16_t port, coap_udp_callbacks_t cb, void* user)",
+        "NAME": "coap_udp_server_create",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "分配 UDP server，保存 port/callback/user，并初始化 fd 为 -1",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "void coap_udp_server_destroy(coap_udp_server_t* s)",
+        "NAME": "coap_udp_server_destroy",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "停止并释放 UDP server；空指针安全返回",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "bool coap_udp_server_start(coap_udp_server_t* s)",
+        "NAME": "coap_udp_server_start",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "创建非阻塞 IPv4 UDP socket，bind 端口，注册 EPOLLIN 并置 running=true",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "void coap_udp_server_stop(coap_udp_server_t* s)",
+        "NAME": "coap_udp_server_stop",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "置 running=false，关闭 epoll fd 与 UDP fd，并将它们复位为 -1",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "bool coap_udp_server_sendto(coap_udp_server_t* s, const coap_endpoint_t* peer, const uint8_t* data, size_t len)",
+        "NAME": "coap_udp_server_sendto",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "通过 server socket 向 peer 发送完整 datagram；EINTR 重试，EAGAIN/部分发送返回 false",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "void coap_udp_server_run(coap_udp_server_t* s)",
+        "NAME": "coap_udp_server_run",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "EVENT",
+        "ROLE": "运行非阻塞 UDP epoll 事件循环，每个成功 recvfrom 的 datagram 立即回调上层",
+        "VISIBILITY": "public"
+      }
+    ]
+  },
+  "SOURCE": {
+    "PATH": "../network/udp_server.c",
+    "DEPENDENCY": [
+      "../network/udp_server.h"
+    ],
+    "DATA": [
+      {
+        "NAME": "MAX_EVENTS",
+        "KIND": "CONST",
+        "VISIBILITY": "PRIVATE",
+        "ROLE": "单次 epoll_wait 最大事件数 16"
+      },
+      {
+        "NAME": "MAX_DATAGRAM_SIZE",
+        "KIND": "CONST",
+        "VISIBILITY": "PRIVATE",
+        "ROLE": "接收 datagram 固定缓冲上限 1500 bytes"
+      },
+      {
+        "NAME": "struct coap_udp_server",
+        "KIND": "TYPE",
+        "VISIBILITY": "PRIVATE",
+        "ROLE": "UDP server 私有状态：端口、callback、fd、epoll fd 与 running"
+      }
+    ],
+    "INTERFACE": [
+      {
+        "TRACE_ID": "coap/network/udp_server/set_nonblocking",
+        "SIGNATURE": "static bool set_nonblocking(int fd)",
+        "NAME": "set_nonblocking",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "为 socket fd 追加 O_NONBLOCK flag",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "为 socket fd 追加 O_NONBLOCK flag"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "coap/network/udp_server/coap_endpoint_to_string",
+        "SIGNATURE": "const char* coap_endpoint_to_string(const coap_endpoint_t* peer, char* buf, size_t buf_sz)",
+        "NAME": "coap_endpoint_to_string",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "将 IPv4/IPv6 peer endpoint 格式化为 host:port；非法参数返回空字符串",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "将 IPv4/IPv6 peer endpoint 格式化为 host:port；非法参数返回空字符串"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "coap/network/udp_server/coap_udp_server_create",
+        "SIGNATURE": "coap_udp_server_t* coap_udp_server_create(uint16_t port, coap_udp_callbacks_t cb, void* user)",
+        "NAME": "coap_udp_server_create",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "分配 UDP server，保存 port/callback/user，并初始化 fd 为 -1",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "分配 UDP server，保存 port/callback/user，并初始化 fd 为 -1"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "coap/network/udp_server/coap_udp_server_destroy",
+        "SIGNATURE": "void coap_udp_server_destroy(coap_udp_server_t* s)",
+        "NAME": "coap_udp_server_destroy",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "停止并释放 UDP server；空指针安全返回",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "停止并释放 UDP server；空指针安全返回"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "coap/network/udp_server/coap_udp_server_start",
+        "SIGNATURE": "bool coap_udp_server_start(coap_udp_server_t* s)",
+        "NAME": "coap_udp_server_start",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "创建非阻塞 IPv4 UDP socket，bind 端口，注册 EPOLLIN 并置 running=true",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "创建非阻塞 IPv4 UDP socket，bind 端口，注册 EPOLLIN 并置 running=true"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "coap/network/udp_server/coap_udp_server_stop",
+        "SIGNATURE": "void coap_udp_server_stop(coap_udp_server_t* s)",
+        "NAME": "coap_udp_server_stop",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "置 running=false，关闭 epoll fd 与 UDP fd，并将它们复位为 -1",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "置 running=false，关闭 epoll fd 与 UDP fd，并将它们复位为 -1"
+            }
+          ],
+          "IDEMPOTENT": true,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "coap/network/udp_server/coap_udp_server_sendto",
+        "SIGNATURE": "bool coap_udp_server_sendto(coap_udp_server_t* s, const coap_endpoint_t* peer, const uint8_t* data, size_t len)",
+        "NAME": "coap_udp_server_sendto",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "通过 server socket 向 peer 发送完整 datagram；EINTR 重试，EAGAIN/部分发送返回 false",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "通过 server socket 向 peer 发送完整 datagram；EINTR 重试，EAGAIN/部分发送返回 false"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "coap/network/udp_server/coap_udp_server_run",
+        "SIGNATURE": "void coap_udp_server_run(coap_udp_server_t* s)",
+        "NAME": "coap_udp_server_run",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "EVENT",
+        "ROLE": "运行非阻塞 UDP epoll 事件循环，每个成功 recvfrom 的 datagram 立即回调上层",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "运行非阻塞 UDP epoll 事件循环，每个成功 recvfrom 的 datagram 立即回调上层"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "public"
+      }
+    ]
+  },
+  "PUBLIC_SYMBOLS": [
+    {
+      "NAME": "coap_endpoint_t",
+      "KIND": "TYPE",
+      "ROLE": "UDP peer endpoint，保存 sockaddr_storage 与实际地址长度"
+    },
+    {
+      "NAME": "coap_udp_on_datagram_fn",
+      "KIND": "TYPE",
+      "ROLE": "收到完整 UDP datagram 时通知上层的 callback 类型"
+    },
+    {
+      "NAME": "coap_udp_callbacks_t",
+      "KIND": "TYPE",
+      "ROLE": "UDP runtime callback 集合"
+    },
+    {
+      "NAME": "coap_udp_server_t",
+      "KIND": "TYPE",
+      "ROLE": "UDP/epoll server 不透明句柄"
+    },
+    {
+      "NAME": "coap_endpoint_to_string",
+      "KIND": "FUNC",
+      "SIGNATURE": "const char* coap_endpoint_to_string(const coap_endpoint_t* peer, char* buf, size_t buf_sz)",
+      "ROLE": "将 IPv4/IPv6 peer endpoint 格式化为 host:port；非法参数返回空字符串"
+    },
+    {
+      "NAME": "coap_udp_server_create",
+      "KIND": "FUNC",
+      "SIGNATURE": "coap_udp_server_t* coap_udp_server_create(uint16_t port, coap_udp_callbacks_t cb, void* user)",
+      "ROLE": "分配 UDP server，保存 port/callback/user，并初始化 fd 为 -1"
+    },
+    {
+      "NAME": "coap_udp_server_destroy",
+      "KIND": "FUNC",
+      "SIGNATURE": "void coap_udp_server_destroy(coap_udp_server_t* s)",
+      "ROLE": "停止并释放 UDP server；空指针安全返回"
+    },
+    {
+      "NAME": "coap_udp_server_start",
+      "KIND": "FUNC",
+      "SIGNATURE": "bool coap_udp_server_start(coap_udp_server_t* s)",
+      "ROLE": "创建非阻塞 IPv4 UDP socket，bind 端口，注册 EPOLLIN 并置 running=true"
+    },
+    {
+      "NAME": "coap_udp_server_stop",
+      "KIND": "FUNC",
+      "SIGNATURE": "void coap_udp_server_stop(coap_udp_server_t* s)",
+      "ROLE": "置 running=false，关闭 epoll fd 与 UDP fd，并将它们复位为 -1"
+    },
+    {
+      "NAME": "coap_udp_server_sendto",
+      "KIND": "FUNC",
+      "SIGNATURE": "bool coap_udp_server_sendto(coap_udp_server_t* s, const coap_endpoint_t* peer, const uint8_t* data, size_t len)",
+      "ROLE": "通过 server socket 向 peer 发送完整 datagram；EINTR 重试，EAGAIN/部分发送返回 false"
+    },
+    {
+      "NAME": "coap_udp_server_run",
+      "KIND": "FUNC",
+      "SIGNATURE": "void coap_udp_server_run(coap_udp_server_t* s)",
+      "ROLE": "运行非阻塞 UDP epoll 事件循环，每个成功 recvfrom 的 datagram 立即回调上层"
+    }
+  ],
+  "ACCESS_PATHS": [
+    {
+      "PATH": "coap_endpoint_t.addr",
+      "TYPE": "struct sockaddr_storage",
+      "ROLE": "peer socket address"
+    },
+    {
+      "PATH": "coap_endpoint_t.addr_len",
+      "TYPE": "socklen_t",
+      "ROLE": "addr 中有效地址长度"
+    },
+    {
+      "PATH": "coap_udp_callbacks_t.on_datagram",
+      "TYPE": "coap_udp_on_datagram_fn",
+      "ROLE": "完整 datagram callback"
+    }
+  ],
+  "CALL_CONTRACTS": [
+    {
+      "NAME": "coap_udp_server_create",
+      "SIGNATURE": "coap_udp_server_t* coap_udp_server_create(uint16_t port, coap_udp_callbacks_t cb, void* user)",
+      "OWNERSHIP": "成功返回的动态对象或缓冲由调用方按对应 destroy/free 契约释放",
+      "FAILURE": "分配、编码或初始化失败时返回 NULL/false，不转移所有权"
+    }
+  ]
+}

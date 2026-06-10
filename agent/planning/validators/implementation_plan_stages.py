@@ -1979,9 +1979,8 @@ def validate_wire_access_binding_patch(patch: dict[str, Any], draft: dict[str, A
         for access_id in update["access_path_ids"]:
             if access_id not in access_ids:
                 diagnostics.append(PlanningDiagnostic("error", "unknown_access_path_id", f"function binding references unknown access path '{access_id}'", path))
-    unresolved = _unresolved_targets(patch)
-    for field_id in sorted(field_ids - mapped_fields - unresolved):
-        diagnostics.append(PlanningDiagnostic("error", "uncovered_wire_field", f"wire field '{field_id}' is not covered by parser/serializer or unresolved_questions", path))
+    for field_id in sorted(field_ids - mapped_fields):
+        diagnostics.append(PlanningDiagnostic("error", "uncovered_wire_field", f"wire field '{field_id}' is not covered by parser/serializer mapping", path))
     return diagnostics
 
 

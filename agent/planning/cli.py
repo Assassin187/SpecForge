@@ -28,6 +28,7 @@ def build_parser() -> argparse.ArgumentParser:
     plan.add_argument("--resume-from-stage", choices=RESUME_STAGE_OPTIONS)
     plan.add_argument("--resume-source-dir", help="Planning Agent output directory to inherit artifacts from")
     plan.add_argument("--stop-after-stage", choices=STOP_AFTER_STAGE_OPTIONS)
+    plan.add_argument("--api-key-env", default="ALI_API", help="Environment variable containing the Qwen API key")
 
     verify = sub.add_parser("verify", help="Verify an existing Planning Agent output directory")
     verify.add_argument("--output-dir", required=True)
@@ -65,7 +66,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
         _path(args.facts),
         _path(args.target_profile),
         output_dir=_path(args.output_dir) if args.output_dir else None,
-        config=PlanningConfig(),
+        config=PlanningConfig(api_key_env=args.api_key_env),
     )
     result = agent.plan(
         resume_from_stage=args.resume_from_stage,

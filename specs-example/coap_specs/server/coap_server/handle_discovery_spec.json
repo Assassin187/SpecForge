@@ -1,0 +1,74 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "coap/server/coap_server/handle_discovery",
+  "FUNCTION_TYPE": "EVENT",
+  "ROLE": "处理 /.well-known/core discovery 与 Accept 检查",
+  "SIGNATURE": {
+    "RAW": "static bool handle_discovery(void* user, const coap_request_t* req, coap_message_t* resp)",
+    "NAME": "handle_discovery",
+    "RETURN": "bool",
+    "PARAMS": [
+      {
+        "TYPE": "void*",
+        "NAME": "user",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "const coap_request_t*",
+        "NAME": "req",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "coap_message_t*",
+        "NAME": "resp",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "coap_server_t",
+        "ROLE": "CoAP server 进程级对象的不透明句柄"
+      },
+      {
+        "NAME": "coap_request_t",
+        "ROLE": "从 decoded message 投影出的资源请求视图"
+      },
+      {
+        "NAME": "coap_message_t",
+        "ROLE": "统一 CoAP message 对象，保存 header、token、options 与 payload"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "coap_resource_router_build_core_links",
+        "KIND": "CALL",
+        "ROLE": "调用 coap_resource_router_build_core_links 完成子步骤"
+      },
+      {
+        "NAME": "response_set_text",
+        "KIND": "CALL",
+        "ROLE": "调用 response_set_text 完成子步骤"
+      },
+      {
+        "NAME": "coap_make_code",
+        "KIND": "CALL",
+        "ROLE": "调用 coap_make_code 完成子步骤"
+      }
+    ],
+    "VAR": []
+  },
+  "EVENT": {
+    "TRIGGER": "resource router 匹配 GET /.well-known/core 后触发",
+    "PRECONDITION": "callback 参数与所属 server/router 生命周期有效",
+    "INPUT": "输入来自运行时事件参数与当前 server/resource 状态",
+    "ACTION": "检查 Accept 并构造 discoverable resource links",
+    "STATE_CHANGE": "不修改持久资源状态",
+    "RESPONSE": "返回 2.05 link-format、4.06 或 5.00",
+    "EVENT_TYPE": "RUNTIME_EVENT"
+  }
+}

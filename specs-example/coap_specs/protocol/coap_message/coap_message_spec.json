@@ -1,0 +1,1006 @@
+{
+  "KIND": "FILE_SPEC",
+  "FILE": {
+    "TRACE_ID": "coap/protocol/coap_message",
+    "LANG": "C",
+    "ROLE": "CoAP message 数据模型、动态内存生命周期、option helper 与 code helper",
+    "DOC_REF": []
+  },
+  "HEADER": {
+    "PATH": "../protocol/coap_message.h",
+    "DEPENDENCY": [],
+    "DATA": [
+      {
+        "NAME": "COAP_MAX_TOKEN_LEN",
+        "KIND": "CONST",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "CoAP token 最大长度 8 bytes"
+      },
+      {
+        "NAME": "coap_type_t",
+        "KIND": "TYPE",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "CoAP message type",
+        "TYPE_SPEC": {
+          "TYPE_KIND": "ENUM",
+          "ENUM_VALUES": [
+            {
+              "NAME": "COAP_TYPE_CON",
+              "VALUE": 0,
+              "ROLE": "Confirmable"
+            },
+            {
+              "NAME": "COAP_TYPE_NON",
+              "VALUE": 1,
+              "ROLE": "Non-confirmable"
+            },
+            {
+              "NAME": "COAP_TYPE_ACK",
+              "VALUE": 2,
+              "ROLE": "Acknowledgement"
+            },
+            {
+              "NAME": "COAP_TYPE_RST",
+              "VALUE": 3,
+              "ROLE": "Reset"
+            }
+          ]
+        }
+      },
+      {
+        "NAME": "coap_method_t",
+        "KIND": "TYPE",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "当前 server 支持的 request method code",
+        "TYPE_SPEC": {
+          "TYPE_KIND": "ENUM",
+          "ENUM_VALUES": [
+            {
+              "NAME": "COAP_METHOD_GET",
+              "VALUE": 1,
+              "ROLE": "GET"
+            },
+            {
+              "NAME": "COAP_METHOD_POST",
+              "VALUE": 2,
+              "ROLE": "POST"
+            },
+            {
+              "NAME": "COAP_METHOD_PUT",
+              "VALUE": 3,
+              "ROLE": "PUT"
+            },
+            {
+              "NAME": "COAP_METHOD_DELETE",
+              "VALUE": 4,
+              "ROLE": "DELETE"
+            }
+          ]
+        }
+      },
+      {
+        "NAME": "coap_option_number_t",
+        "KIND": "TYPE",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "当前实现识别的 option number",
+        "TYPE_SPEC": {
+          "TYPE_KIND": "ENUM",
+          "ENUM_VALUES": [
+            {
+              "NAME": "COAP_OPT_URI_PATH",
+              "VALUE": 11,
+              "ROLE": "Uri-Path"
+            },
+            {
+              "NAME": "COAP_OPT_CONTENT_FORMAT",
+              "VALUE": 12,
+              "ROLE": "Content-Format"
+            },
+            {
+              "NAME": "COAP_OPT_URI_QUERY",
+              "VALUE": 15,
+              "ROLE": "Uri-Query"
+            },
+            {
+              "NAME": "COAP_OPT_ACCEPT",
+              "VALUE": 17,
+              "ROLE": "Accept"
+            }
+          ]
+        }
+      },
+      {
+        "NAME": "coap_content_format_t",
+        "KIND": "TYPE",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "当前资源 handler 使用的 Content-Format 值",
+        "TYPE_SPEC": {
+          "TYPE_KIND": "ENUM",
+          "ENUM_VALUES": [
+            {
+              "NAME": "COAP_FORMAT_TEXT_PLAIN",
+              "VALUE": 0,
+              "ROLE": "text/plain"
+            },
+            {
+              "NAME": "COAP_FORMAT_LINK_FORMAT",
+              "VALUE": 40,
+              "ROLE": "application/link-format"
+            },
+            {
+              "NAME": "COAP_FORMAT_OCTET_STREAM",
+              "VALUE": 42,
+              "ROLE": "application/octet-stream"
+            },
+            {
+              "NAME": "COAP_FORMAT_APPLICATION_JSON",
+              "VALUE": 50,
+              "ROLE": "application/json"
+            }
+          ]
+        }
+      },
+      {
+        "NAME": "coap_option_t",
+        "KIND": "TYPE",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "解码后的单个 CoAP option，持有 value 动态副本",
+        "TYPE_SPEC": {
+          "TYPE_KIND": "STRUCT",
+          "FIELDS": [
+            {
+              "NAME": "number",
+              "TYPE": "uint16_t",
+              "ROLE": "绝对 option number"
+            },
+            {
+              "NAME": "length",
+              "TYPE": "uint16_t",
+              "ROLE": "value 长度"
+            },
+            {
+              "NAME": "value",
+              "TYPE": "uint8_t*",
+              "ROLE": "动态分配的 option bytes"
+            }
+          ]
+        }
+      },
+      {
+        "NAME": "coap_message_t",
+        "KIND": "TYPE",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "统一 CoAP message 对象，保存 header、token、options 与 payload",
+        "TYPE_SPEC": {
+          "TYPE_KIND": "STRUCT",
+          "FIELDS": [
+            {
+              "NAME": "version",
+              "TYPE": "uint8_t",
+              "ROLE": "CoAP version"
+            },
+            {
+              "NAME": "type",
+              "TYPE": "coap_type_t",
+              "ROLE": "message type"
+            },
+            {
+              "NAME": "code",
+              "TYPE": "uint8_t",
+              "ROLE": "method/response code"
+            },
+            {
+              "NAME": "message_id",
+              "TYPE": "uint16_t",
+              "ROLE": "Message ID"
+            },
+            {
+              "NAME": "token_len",
+              "TYPE": "uint8_t",
+              "ROLE": "token 有效长度"
+            },
+            {
+              "NAME": "token",
+              "TYPE": "uint8_t[COAP_MAX_TOKEN_LEN]",
+              "ROLE": "token bytes"
+            },
+            {
+              "NAME": "options",
+              "TYPE": "coap_option_t*",
+              "ROLE": "按 wire order 保存的动态 option 数组"
+            },
+            {
+              "NAME": "option_count",
+              "TYPE": "size_t",
+              "ROLE": "option 数量"
+            },
+            {
+              "NAME": "payload",
+              "TYPE": "uint8_t*",
+              "ROLE": "动态 payload bytes"
+            },
+            {
+              "NAME": "payload_len",
+              "TYPE": "size_t",
+              "ROLE": "payload 长度"
+            }
+          ]
+        }
+      },
+      {
+        "NAME": "coap_bytes_t",
+        "KIND": "TYPE",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "编码结果动态字节缓冲，由 coap_bytes_free 释放",
+        "TYPE_SPEC": {
+          "TYPE_KIND": "STRUCT",
+          "FIELDS": [
+            {
+              "NAME": "data",
+              "TYPE": "uint8_t*",
+              "ROLE": "动态编码 bytes"
+            },
+            {
+              "NAME": "len",
+              "TYPE": "size_t",
+              "ROLE": "bytes 长度"
+            }
+          ]
+        }
+      }
+    ],
+    "INTERFACE": [
+      {
+        "SIGNATURE": "void coap_message_init(coap_message_t* msg)",
+        "NAME": "coap_message_init",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "将 message 清零并设置 version=1；空指针安全返回",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "void coap_message_reset(coap_message_t* msg)",
+        "NAME": "coap_message_reset",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "释放所有 option value、option 数组和 payload，再恢复 version=1 的空 message",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "void coap_message_free(coap_message_t* msg)",
+        "NAME": "coap_message_free",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "通过 reset 释放 message 所有动态字段并恢复可复用空状态",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "bool coap_message_set_token(coap_message_t* msg, const uint8_t* token, size_t token_len)",
+        "NAME": "coap_message_set_token",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "校验 token_len<=8，记录长度并在 token 非空时复制 bytes",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "bool coap_message_set_payload(coap_message_t* msg, const uint8_t* data, size_t len)",
+        "NAME": "coap_message_set_payload",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "释放旧 payload；空数据清空 payload，否则分配并复制新 bytes",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "bool coap_message_set_payload_string(coap_message_t* msg, const char* s)",
+        "NAME": "coap_message_set_payload_string",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "将字符串内容作为不含 NUL 的 payload；NULL 表示空 payload",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "bool coap_message_add_option(coap_message_t* msg, uint16_t number, const uint8_t* value, size_t len)",
+        "NAME": "coap_message_add_option",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "扩展 option 数组并复制 option value，成功后递增 option_count",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "bool coap_message_add_option_string(coap_message_t* msg, uint16_t number, const char* s)",
+        "NAME": "coap_message_add_option_string",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "以字符串 bytes 添加 option；NULL 表示零长度 option",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "bool coap_message_add_option_uint(coap_message_t* msg, uint16_t number, uint32_t value)",
+        "NAME": "coap_message_add_option_uint",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "使用最短 big-endian unsigned integer encoding 添加 option；0 编码为零长度",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "bool coap_message_get_uint_option(const coap_message_t* msg, uint16_t number, uint32_t* out)",
+        "NAME": "coap_message_get_uint_option",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "查找首个匹配 option，并将最长 4-byte big-endian value 解码为 uint32_t",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "char* coap_message_join_options(const coap_message_t* msg, uint16_t number, char sep)",
+        "NAME": "coap_message_join_options",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "按出现顺序连接匹配 option；无匹配返回新分配空字符串，调用方负责 free",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "uint8_t coap_make_code(uint8_t code_class, uint8_t detail)",
+        "NAME": "coap_make_code",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "将 3-bit class 与 5-bit detail 合成为 CoAP code",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "uint8_t coap_code_class(uint8_t code)",
+        "NAME": "coap_code_class",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "提取 CoAP code 的 3-bit class",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "uint8_t coap_code_detail(uint8_t code)",
+        "NAME": "coap_code_detail",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "提取 CoAP code 的 5-bit detail",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "bool coap_code_is_method(uint8_t code)",
+        "NAME": "coap_code_is_method",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "判断 code 是否是 class 0 且 detail 为 GET/POST/PUT/DELETE",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "void coap_bytes_free(coap_bytes_t* bytes)",
+        "NAME": "coap_bytes_free",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "释放编码结果 data，并将 data/len 复位",
+        "VISIBILITY": "public"
+      }
+    ]
+  },
+  "SOURCE": {
+    "PATH": "../protocol/coap_message.c",
+    "DEPENDENCY": [
+      "../protocol/coap_message.h"
+    ],
+    "DATA": [],
+    "INTERFACE": [
+      {
+        "TRACE_ID": "coap/protocol/coap_message/xrealloc",
+        "SIGNATURE": "static void* xrealloc(void* p, size_t n)",
+        "NAME": "xrealloc",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "调用 realloc 调整内部动态数组容量",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "调用 realloc 调整内部动态数组容量"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "coap/protocol/coap_message/coap_message_init",
+        "SIGNATURE": "void coap_message_init(coap_message_t* msg)",
+        "NAME": "coap_message_init",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "将 message 清零并设置 version=1；空指针安全返回",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "将 message 清零并设置 version=1；空指针安全返回"
+            }
+          ],
+          "IDEMPOTENT": true,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "coap/protocol/coap_message/coap_message_reset",
+        "SIGNATURE": "void coap_message_reset(coap_message_t* msg)",
+        "NAME": "coap_message_reset",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "释放所有 option value、option 数组和 payload，再恢复 version=1 的空 message",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "释放所有 option value、option 数组和 payload，再恢复 version=1 的空 message"
+            }
+          ],
+          "IDEMPOTENT": true,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "coap/protocol/coap_message/coap_message_free",
+        "SIGNATURE": "void coap_message_free(coap_message_t* msg)",
+        "NAME": "coap_message_free",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "通过 reset 释放 message 所有动态字段并恢复可复用空状态",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "通过 reset 释放 message 所有动态字段并恢复可复用空状态"
+            }
+          ],
+          "IDEMPOTENT": true,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "coap/protocol/coap_message/coap_message_set_token",
+        "SIGNATURE": "bool coap_message_set_token(coap_message_t* msg, const uint8_t* token, size_t token_len)",
+        "NAME": "coap_message_set_token",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "校验 token_len<=8，记录长度并在 token 非空时复制 bytes",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "校验 token_len<=8，记录长度并在 token 非空时复制 bytes"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "coap/protocol/coap_message/coap_message_set_payload",
+        "SIGNATURE": "bool coap_message_set_payload(coap_message_t* msg, const uint8_t* data, size_t len)",
+        "NAME": "coap_message_set_payload",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "释放旧 payload；空数据清空 payload，否则分配并复制新 bytes",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "释放旧 payload；空数据清空 payload，否则分配并复制新 bytes"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "coap/protocol/coap_message/coap_message_set_payload_string",
+        "SIGNATURE": "bool coap_message_set_payload_string(coap_message_t* msg, const char* s)",
+        "NAME": "coap_message_set_payload_string",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "将字符串内容作为不含 NUL 的 payload；NULL 表示空 payload",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "将字符串内容作为不含 NUL 的 payload；NULL 表示空 payload"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "coap/protocol/coap_message/coap_message_add_option",
+        "SIGNATURE": "bool coap_message_add_option(coap_message_t* msg, uint16_t number, const uint8_t* value, size_t len)",
+        "NAME": "coap_message_add_option",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "扩展 option 数组并复制 option value，成功后递增 option_count",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "扩展 option 数组并复制 option value，成功后递增 option_count"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "coap/protocol/coap_message/coap_message_add_option_string",
+        "SIGNATURE": "bool coap_message_add_option_string(coap_message_t* msg, uint16_t number, const char* s)",
+        "NAME": "coap_message_add_option_string",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "以字符串 bytes 添加 option；NULL 表示零长度 option",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "以字符串 bytes 添加 option；NULL 表示零长度 option"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "coap/protocol/coap_message/coap_message_add_option_uint",
+        "SIGNATURE": "bool coap_message_add_option_uint(coap_message_t* msg, uint16_t number, uint32_t value)",
+        "NAME": "coap_message_add_option_uint",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "使用最短 big-endian unsigned integer encoding 添加 option；0 编码为零长度",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "使用最短 big-endian unsigned integer encoding 添加 option；0 编码为零长度"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "coap/protocol/coap_message/coap_message_get_uint_option",
+        "SIGNATURE": "bool coap_message_get_uint_option(const coap_message_t* msg, uint16_t number, uint32_t* out)",
+        "NAME": "coap_message_get_uint_option",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "查找首个匹配 option，并将最长 4-byte big-endian value 解码为 uint32_t",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "查找首个匹配 option，并将最长 4-byte big-endian value 解码为 uint32_t"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "coap/protocol/coap_message/coap_message_join_options",
+        "SIGNATURE": "char* coap_message_join_options(const coap_message_t* msg, uint16_t number, char sep)",
+        "NAME": "coap_message_join_options",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "按出现顺序连接匹配 option；无匹配返回新分配空字符串，调用方负责 free",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "按出现顺序连接匹配 option；无匹配返回新分配空字符串，调用方负责 free"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "coap/protocol/coap_message/coap_make_code",
+        "SIGNATURE": "uint8_t coap_make_code(uint8_t code_class, uint8_t detail)",
+        "NAME": "coap_make_code",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "将 3-bit class 与 5-bit detail 合成为 CoAP code",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "将 3-bit class 与 5-bit detail 合成为 CoAP code"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "coap/protocol/coap_message/coap_code_class",
+        "SIGNATURE": "uint8_t coap_code_class(uint8_t code)",
+        "NAME": "coap_code_class",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "提取 CoAP code 的 3-bit class",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "提取 CoAP code 的 3-bit class"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "coap/protocol/coap_message/coap_code_detail",
+        "SIGNATURE": "uint8_t coap_code_detail(uint8_t code)",
+        "NAME": "coap_code_detail",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "提取 CoAP code 的 5-bit detail",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "提取 CoAP code 的 5-bit detail"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "coap/protocol/coap_message/coap_code_is_method",
+        "SIGNATURE": "bool coap_code_is_method(uint8_t code)",
+        "NAME": "coap_code_is_method",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "判断 code 是否是 class 0 且 detail 为 GET/POST/PUT/DELETE",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "判断 code 是否是 class 0 且 detail 为 GET/POST/PUT/DELETE"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "coap/protocol/coap_message/coap_bytes_free",
+        "SIGNATURE": "void coap_bytes_free(coap_bytes_t* bytes)",
+        "NAME": "coap_bytes_free",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "释放编码结果 data，并将 data/len 复位",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "释放编码结果 data，并将 data/len 复位"
+            }
+          ],
+          "IDEMPOTENT": true,
+          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
+        },
+        "VISIBILITY": "public"
+      }
+    ]
+  },
+  "PUBLIC_SYMBOLS": [
+    {
+      "NAME": "COAP_MAX_TOKEN_LEN",
+      "KIND": "CONST",
+      "ROLE": "CoAP token 最大长度 8 bytes"
+    },
+    {
+      "NAME": "coap_type_t",
+      "KIND": "TYPE",
+      "ROLE": "CoAP message type"
+    },
+    {
+      "NAME": "coap_method_t",
+      "KIND": "TYPE",
+      "ROLE": "当前 server 支持的 request method code"
+    },
+    {
+      "NAME": "coap_option_number_t",
+      "KIND": "TYPE",
+      "ROLE": "当前实现识别的 option number"
+    },
+    {
+      "NAME": "coap_content_format_t",
+      "KIND": "TYPE",
+      "ROLE": "当前资源 handler 使用的 Content-Format 值"
+    },
+    {
+      "NAME": "coap_option_t",
+      "KIND": "TYPE",
+      "ROLE": "解码后的单个 CoAP option，持有 value 动态副本"
+    },
+    {
+      "NAME": "coap_message_t",
+      "KIND": "TYPE",
+      "ROLE": "统一 CoAP message 对象，保存 header、token、options 与 payload"
+    },
+    {
+      "NAME": "coap_bytes_t",
+      "KIND": "TYPE",
+      "ROLE": "编码结果动态字节缓冲，由 coap_bytes_free 释放"
+    },
+    {
+      "NAME": "coap_message_init",
+      "KIND": "FUNC",
+      "SIGNATURE": "void coap_message_init(coap_message_t* msg)",
+      "ROLE": "将 message 清零并设置 version=1；空指针安全返回"
+    },
+    {
+      "NAME": "coap_message_reset",
+      "KIND": "FUNC",
+      "SIGNATURE": "void coap_message_reset(coap_message_t* msg)",
+      "ROLE": "释放所有 option value、option 数组和 payload，再恢复 version=1 的空 message"
+    },
+    {
+      "NAME": "coap_message_free",
+      "KIND": "FUNC",
+      "SIGNATURE": "void coap_message_free(coap_message_t* msg)",
+      "ROLE": "通过 reset 释放 message 所有动态字段并恢复可复用空状态"
+    },
+    {
+      "NAME": "coap_message_set_token",
+      "KIND": "FUNC",
+      "SIGNATURE": "bool coap_message_set_token(coap_message_t* msg, const uint8_t* token, size_t token_len)",
+      "ROLE": "校验 token_len<=8，记录长度并在 token 非空时复制 bytes"
+    },
+    {
+      "NAME": "coap_message_set_payload",
+      "KIND": "FUNC",
+      "SIGNATURE": "bool coap_message_set_payload(coap_message_t* msg, const uint8_t* data, size_t len)",
+      "ROLE": "释放旧 payload；空数据清空 payload，否则分配并复制新 bytes"
+    },
+    {
+      "NAME": "coap_message_set_payload_string",
+      "KIND": "FUNC",
+      "SIGNATURE": "bool coap_message_set_payload_string(coap_message_t* msg, const char* s)",
+      "ROLE": "将字符串内容作为不含 NUL 的 payload；NULL 表示空 payload"
+    },
+    {
+      "NAME": "coap_message_add_option",
+      "KIND": "FUNC",
+      "SIGNATURE": "bool coap_message_add_option(coap_message_t* msg, uint16_t number, const uint8_t* value, size_t len)",
+      "ROLE": "扩展 option 数组并复制 option value，成功后递增 option_count"
+    },
+    {
+      "NAME": "coap_message_add_option_string",
+      "KIND": "FUNC",
+      "SIGNATURE": "bool coap_message_add_option_string(coap_message_t* msg, uint16_t number, const char* s)",
+      "ROLE": "以字符串 bytes 添加 option；NULL 表示零长度 option"
+    },
+    {
+      "NAME": "coap_message_add_option_uint",
+      "KIND": "FUNC",
+      "SIGNATURE": "bool coap_message_add_option_uint(coap_message_t* msg, uint16_t number, uint32_t value)",
+      "ROLE": "使用最短 big-endian unsigned integer encoding 添加 option；0 编码为零长度"
+    },
+    {
+      "NAME": "coap_message_get_uint_option",
+      "KIND": "FUNC",
+      "SIGNATURE": "bool coap_message_get_uint_option(const coap_message_t* msg, uint16_t number, uint32_t* out)",
+      "ROLE": "查找首个匹配 option，并将最长 4-byte big-endian value 解码为 uint32_t"
+    },
+    {
+      "NAME": "coap_message_join_options",
+      "KIND": "FUNC",
+      "SIGNATURE": "char* coap_message_join_options(const coap_message_t* msg, uint16_t number, char sep)",
+      "ROLE": "按出现顺序连接匹配 option；无匹配返回新分配空字符串，调用方负责 free"
+    },
+    {
+      "NAME": "coap_make_code",
+      "KIND": "FUNC",
+      "SIGNATURE": "uint8_t coap_make_code(uint8_t code_class, uint8_t detail)",
+      "ROLE": "将 3-bit class 与 5-bit detail 合成为 CoAP code"
+    },
+    {
+      "NAME": "coap_code_class",
+      "KIND": "FUNC",
+      "SIGNATURE": "uint8_t coap_code_class(uint8_t code)",
+      "ROLE": "提取 CoAP code 的 3-bit class"
+    },
+    {
+      "NAME": "coap_code_detail",
+      "KIND": "FUNC",
+      "SIGNATURE": "uint8_t coap_code_detail(uint8_t code)",
+      "ROLE": "提取 CoAP code 的 5-bit detail"
+    },
+    {
+      "NAME": "coap_code_is_method",
+      "KIND": "FUNC",
+      "SIGNATURE": "bool coap_code_is_method(uint8_t code)",
+      "ROLE": "判断 code 是否是 class 0 且 detail 为 GET/POST/PUT/DELETE"
+    },
+    {
+      "NAME": "coap_bytes_free",
+      "KIND": "FUNC",
+      "SIGNATURE": "void coap_bytes_free(coap_bytes_t* bytes)",
+      "ROLE": "释放编码结果 data，并将 data/len 复位"
+    }
+  ],
+  "ACCESS_PATHS": [
+    {
+      "PATH": "coap_option_t.number",
+      "TYPE": "uint16_t",
+      "ROLE": "绝对 option number"
+    },
+    {
+      "PATH": "coap_option_t.length",
+      "TYPE": "uint16_t",
+      "ROLE": "value 长度"
+    },
+    {
+      "PATH": "coap_option_t.value",
+      "TYPE": "uint8_t*",
+      "ROLE": "动态分配的 option bytes"
+    },
+    {
+      "PATH": "coap_message_t.version",
+      "TYPE": "uint8_t",
+      "ROLE": "CoAP version"
+    },
+    {
+      "PATH": "coap_message_t.type",
+      "TYPE": "coap_type_t",
+      "ROLE": "message type"
+    },
+    {
+      "PATH": "coap_message_t.code",
+      "TYPE": "uint8_t",
+      "ROLE": "method/response code"
+    },
+    {
+      "PATH": "coap_message_t.message_id",
+      "TYPE": "uint16_t",
+      "ROLE": "Message ID"
+    },
+    {
+      "PATH": "coap_message_t.token_len",
+      "TYPE": "uint8_t",
+      "ROLE": "token 有效长度"
+    },
+    {
+      "PATH": "coap_message_t.token",
+      "TYPE": "uint8_t[COAP_MAX_TOKEN_LEN]",
+      "ROLE": "token bytes"
+    },
+    {
+      "PATH": "coap_message_t.options",
+      "TYPE": "coap_option_t*",
+      "ROLE": "按 wire order 保存的动态 option 数组"
+    },
+    {
+      "PATH": "coap_message_t.option_count",
+      "TYPE": "size_t",
+      "ROLE": "option 数量"
+    },
+    {
+      "PATH": "coap_message_t.payload",
+      "TYPE": "uint8_t*",
+      "ROLE": "动态 payload bytes"
+    },
+    {
+      "PATH": "coap_message_t.payload_len",
+      "TYPE": "size_t",
+      "ROLE": "payload 长度"
+    },
+    {
+      "PATH": "coap_bytes_t.data",
+      "TYPE": "uint8_t*",
+      "ROLE": "动态编码 bytes"
+    },
+    {
+      "PATH": "coap_bytes_t.len",
+      "TYPE": "size_t",
+      "ROLE": "bytes 长度"
+    }
+  ],
+  "CALL_CONTRACTS": [
+    {
+      "NAME": "coap_message_join_options",
+      "SIGNATURE": "char* coap_message_join_options(const coap_message_t* msg, uint16_t number, char sep)",
+      "OWNERSHIP": "成功返回的动态对象或缓冲由调用方按对应 destroy/free 契约释放",
+      "FAILURE": "分配、编码或初始化失败时返回 NULL/false，不转移所有权"
+    }
+  ]
+}

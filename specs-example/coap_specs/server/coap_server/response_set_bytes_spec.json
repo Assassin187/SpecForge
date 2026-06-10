@@ -1,0 +1,72 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "coap/server/coap_server/response_set_bytes",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "设置 response code、Content-Format option 与字节 payload",
+  "SIGNATURE": {
+    "RAW": "static bool response_set_bytes(coap_message_t* resp, uint8_t code, uint16_t format, const uint8_t* data, size_t len)",
+    "NAME": "response_set_bytes",
+    "RETURN": "bool",
+    "PARAMS": [
+      {
+        "TYPE": "coap_message_t*",
+        "NAME": "resp",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "uint8_t",
+        "NAME": "code",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "uint16_t",
+        "NAME": "format",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "const uint8_t*",
+        "NAME": "data",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "size_t",
+        "NAME": "len",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "coap_message_t",
+        "ROLE": "统一 CoAP message 对象，保存 header、token、options 与 payload"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "coap_message_add_option_uint",
+        "KIND": "CALL",
+        "ROLE": "调用 coap_message_add_option_uint 完成子步骤"
+      },
+      {
+        "NAME": "coap_message_set_payload",
+        "KIND": "CALL",
+        "ROLE": "调用 coap_message_set_payload 完成子步骤"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入来自函数参数：resp、code、format、data、len。",
+    "ACTION": "设置 response code、Content-Format option 与字节 payload",
+    "OUTPUT": "返回 true 表示条件成立或操作成功；返回 false 表示条件不成立、参数无效或操作失败，具体含义由 ROLE 限定。",
+    "INVARIANTS_USED": [
+      "不得引入超出当前 minimum_v1 代码行为的协议语义"
+    ]
+  }
+}

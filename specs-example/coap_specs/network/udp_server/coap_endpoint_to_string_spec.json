@@ -1,0 +1,49 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "coap/network/udp_server/coap_endpoint_to_string",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "将 IPv4/IPv6 peer endpoint 格式化为 host:port；非法参数返回空字符串",
+  "SIGNATURE": {
+    "RAW": "const char* coap_endpoint_to_string(const coap_endpoint_t* peer, char* buf, size_t buf_sz)",
+    "NAME": "coap_endpoint_to_string",
+    "RETURN": "const char*",
+    "PARAMS": [
+      {
+        "TYPE": "const coap_endpoint_t*",
+        "NAME": "peer",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "char*",
+        "NAME": "buf",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "size_t",
+        "NAME": "buf_sz",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "coap_endpoint_t",
+        "ROLE": "UDP peer endpoint，保存 sockaddr_storage 与实际地址长度"
+      }
+    ],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入来自函数参数：peer、buf、buf_sz。",
+    "ACTION": "将 IPv4/IPv6 peer endpoint 格式化为 host:port；非法参数返回空字符串",
+    "OUTPUT": "返回结果、已借用对象或新分配对象的指针；无结果或失败时返回 NULL，所有权由 ROLE/CALL_CONTRACTS 限定。",
+    "INVARIANTS_USED": [
+      "不得引入超出当前 minimum_v1 代码行为的协议语义"
+    ]
+  }
+}

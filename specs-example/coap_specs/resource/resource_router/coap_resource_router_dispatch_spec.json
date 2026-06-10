@@ -1,0 +1,72 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "coap/resource/resource_router/coap_resource_router_dispatch",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "按注册顺序查找首个 path match；method 不允许时写 4.05，否则调用 handler；无 route 返回 false",
+  "SIGNATURE": {
+    "RAW": "bool coap_resource_router_dispatch(coap_resource_router_t* router, const coap_request_t* req, coap_message_t* resp)",
+    "NAME": "coap_resource_router_dispatch",
+    "RETURN": "bool",
+    "PARAMS": [
+      {
+        "TYPE": "coap_resource_router_t*",
+        "NAME": "router",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "const coap_request_t*",
+        "NAME": "req",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "coap_message_t*",
+        "NAME": "resp",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "coap_resource_router_t",
+        "ROLE": "资源注册表与 dispatch 逻辑的不透明句柄"
+      },
+      {
+        "NAME": "coap_resource_entry_t",
+        "ROLE": "本函数使用的模块内部数据结构"
+      },
+      {
+        "NAME": "coap_request_t",
+        "ROLE": "从 decoded message 投影出的资源请求视图"
+      },
+      {
+        "NAME": "coap_message_t",
+        "ROLE": "统一 CoAP message 对象，保存 header、token、options 与 payload"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "path_matches",
+        "KIND": "CALL",
+        "ROLE": "调用 path_matches 完成子步骤"
+      },
+      {
+        "NAME": "coap_make_code",
+        "KIND": "CALL",
+        "ROLE": "调用 coap_make_code 完成子步骤"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入来自函数参数：router、req、resp。",
+    "ACTION": "按注册顺序查找首个 path match；method 不允许时写 4.05，否则调用 handler；无 route 返回 false",
+    "OUTPUT": "返回 true 表示条件成立或操作成功；返回 false 表示条件不成立、参数无效或操作失败，具体含义由 ROLE 限定。",
+    "INVARIANTS_USED": [
+      "不得引入超出当前 minimum_v1 代码行为的协议语义"
+    ]
+  }
+}

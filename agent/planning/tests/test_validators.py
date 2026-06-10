@@ -10,13 +10,14 @@ from unittest.mock import patch
 
 from agent.planning.adapters.facts_input import build_planning_ir
 from agent.planning.adapters.target_profile import load_target_profile
-from agent.planning.config import PlanningConfig
+from agent.planning.config import LLMStageConfig, PlanningConfig
 from agent.planning.diagnostics import PlanningDiagnostic
 from agent.planning.orchestrator import PlanningAgent, STEP_FILENAMES, request_architecture_json_candidate
 from agent.planning.prompts.templates import architecture_candidate_messages, core_design_candidate_messages
 from agent.planning.stages.architecture import build_architecture_context, select_architecture
 from agent.planning.stages.constraints import activate_constraints
 from agent.planning.stages.implementation_plan_context import build_core_design_context
+from agent.planning.stages.implementation_plan_merger import fallback_wire_access_binding
 from agent.planning.stages.protocol_profile import build_protocol_profile
 from agent.planning.tests.current_flow_fixtures import (
     current_architecture_candidates,
@@ -152,6 +153,75 @@ class PlanningValidatorTests(unittest.TestCase):
                     function["wire_mapping"] = [item for item in function.get("wire_mapping", []) if item.get("field_id") != removed["field_id"]]
             diags = validate_implementation_plan(broken, profile=profile, planning_ir=planning_ir)
             self.assertTrue(any(diag.code == "uncovered_wire_field" for diag in diags), [diag.__dict__ for diag in diags])
+
+    def test_5_4d_fallback_triggers_when_llm_under_maps_required_fields(self) -> None:
+        facts = ROOT / "agent" / "facts" / "gold_facts" / "mqtt_min" / "protocol_facts.json"
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            tmp = Path(raw_tmp)
+            target = _target_profile(tmp)
+            planning_ir, _, _, architecture_candidates, _, implementation_plan = _build_artifacts(tmp)
+            full_wire = fallback_wire_access_binding(implementation_plan, planning_ir)
+            kept_fields = set(sorted({entry["field_id"] for entry in full_wire["wire_mapping_entries"]})[:2])
+            under_mapped = copy.deepcopy(full_wire)
+            under_mapped["wire_mapping_entries"] = [entry for entry in under_mapped["wire_mapping_entries"] if entry["field_id"] in kept_fields]
+            under_mapped["access_path_entries"] = [entry for entry in under_mapped["access_path_entries"] if entry["field_id"] in kept_fields]
+            kept_wire_ids = {entry["wire_mapping_id"] for entry in under_mapped["wire_mapping_entries"]}
+            kept_access_ids = {entry["access_path_id"] for entry in under_mapped["access_path_entries"]}
+            under_mapped["function_binding_updates"] = [
+                {
+                    **update,
+                    "wire_mapping_ids": [wire_id for wire_id in update["wire_mapping_ids"] if wire_id in kept_wire_ids],
+                    "access_path_ids": [access_id for access_id in update["access_path_ids"] if access_id in kept_access_ids],
+                }
+                for update in under_mapped["function_binding_updates"]
+                if any(wire_id in kept_wire_ids for wire_id in update["wire_mapping_ids"])
+            ]
+            under_mapped["unresolved_questions"] = [
+                {
+                    "question_id": f"q:wire:{field_id}",
+                    "target_kind": "field",
+                    "target_id": field_id,
+                    "question": "How is this required wire field mapped?",
+                    "unresolved_reason": "LLM did not provide a mapping.",
+                    "blocking": True,
+                    "trace_ref_keys": [],
+                }
+                for field_id in sorted({entry["field_id"] for entry in full_wire["wire_mapping_entries"]} - kept_fields)
+            ]
+            wire_attempts = 0
+
+            def fake_request(*, prompt_name, messages, config, temperature=None, enable_thinking=False):
+                nonlocal wire_attempts
+                if prompt_name == "protocol_profile_patch_prompt":
+                    return _noop_profile_patch_candidate(), [], {"mocked": True}
+                if prompt_name == "architecture_candidate_prompt":
+                    return architecture_candidates, [], {"mocked": True}
+                if prompt_name == "architecture_ranking_prompt":
+                    return {"schema_version": "architecture_ranking/v1", "scores": [], "selected_candidate_id": "missing"}, [], {"mocked": True}
+                inventory_candidate = _fallback_inventory_candidate(prompt_name, messages, implementation_plan)
+                if inventory_candidate is not None:
+                    return inventory_candidate, [], {"mocked": True}
+                if prompt_name == "wire_access_binding_patch_prompt":
+                    wire_attempts += 1
+                    return copy.deepcopy(under_mapped), [], {"mocked": True}
+                return None, [], {"mocked": True}
+
+            config = PlanningConfig(llm_stage_configs={"implementation_plan_5_4d": LLMStageConfig(max_retries=2)})
+            with patch("agent.planning.orchestrator.request_json_candidate", side_effect=fake_request):
+                result = PlanningAgent(facts, target, output_dir=tmp / "run", config=config).plan()
+
+            self.assertTrue(result.success, [diag.__dict__ for diag in result.diagnostics])
+            self.assertEqual(wire_attempts, 2)
+            wire = json.loads((result.output_dir / "_step_logs" / STEP_FILENAMES["wire_access_binding_patch"]).read_text(encoding="utf-8"))
+            self.assertEqual(len({entry["field_id"] for entry in wire["wire_mapping_entries"]}), 14)
+            self.assertFalse(wire["unresolved_questions"])
+            repair_stats = json.loads((result.output_dir / "_step_logs" / STEP_FILENAMES["planning_repair_statistics"]).read_text(encoding="utf-8"))
+            wire_stats = next(item for item in repair_stats["substage_invocations"] if item["substage"] == "5.4d_wire_access_binding")
+            self.assertTrue(wire_stats["fallback_used"])
+            report = json.loads((result.output_dir / "_validation_reports" / STEP_FILENAMES["planning_validation_report"]).read_text(encoding="utf-8"))
+            self.assertFalse(any(item["code"] in {"uncovered_wire_field", "blocking_unresolved_questions"} for item in report["diagnostics"]))
+            self.assertTrue((result.output_dir / "coder_manifest.json").exists())
+            self.assertTrue((result.output_dir / "spec_bundle").exists())
 
     def test_architecture_context_is_compact_and_prompt_marks_hints_non_binding(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:

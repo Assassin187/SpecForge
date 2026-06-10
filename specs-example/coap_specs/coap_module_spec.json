@@ -1,0 +1,450 @@
+{
+  "KIND": "PROTOCOL_MODULE_SPEC",
+  "PROTOCOL": {
+    "NAME": "CoAP",
+    "SPEC_VERSION": "minimum_v1",
+    "ROLES": [
+      "SERVER"
+    ],
+    "SCOPE": "Minimal CoAP over plain UDP server subset matching protocol-example/coap; external clients are used for validation."
+  },
+  "MODULES": [
+    {
+      "NAME": "network",
+      "ROLE": "UDP/epoll datagram runtime：接收一个完整 datagram 并携带 peer endpoint 上交；只负责 bytes 与网络生命周期，不解析 CoAP。",
+      "DEPENDENCIES": [],
+      "ARTIFACTS": [
+        {
+          "NAME": "coap_endpoint_t",
+          "KIND": "TYPE",
+          "ROLE": "UDP peer endpoint，保存 sockaddr_storage 与实际地址长度"
+        },
+        {
+          "NAME": "coap_udp_on_datagram_fn",
+          "KIND": "TYPE",
+          "ROLE": "收到完整 UDP datagram 时通知上层的 callback 类型"
+        },
+        {
+          "NAME": "coap_udp_callbacks_t",
+          "KIND": "TYPE",
+          "ROLE": "UDP runtime callback 集合"
+        },
+        {
+          "NAME": "coap_udp_server_t",
+          "KIND": "TYPE",
+          "ROLE": "UDP/epoll server 不透明句柄"
+        },
+        {
+          "NAME": "coap_endpoint_to_string",
+          "KIND": "FUNC",
+          "ROLE": "将 IPv4/IPv6 peer endpoint 格式化为 host:port；非法参数返回空字符串"
+        },
+        {
+          "NAME": "coap_udp_server_create",
+          "KIND": "FUNC",
+          "ROLE": "分配 UDP server，保存 port/callback/user，并初始化 fd 为 -1"
+        },
+        {
+          "NAME": "coap_udp_server_destroy",
+          "KIND": "FUNC",
+          "ROLE": "停止并释放 UDP server；空指针安全返回"
+        },
+        {
+          "NAME": "coap_udp_server_start",
+          "KIND": "FUNC",
+          "ROLE": "创建非阻塞 IPv4 UDP socket，bind 端口，注册 EPOLLIN 并置 running=true"
+        },
+        {
+          "NAME": "coap_udp_server_stop",
+          "KIND": "FUNC",
+          "ROLE": "置 running=false，关闭 epoll fd 与 UDP fd，并将它们复位为 -1"
+        },
+        {
+          "NAME": "coap_udp_server_sendto",
+          "KIND": "FUNC",
+          "ROLE": "通过 server socket 向 peer 发送完整 datagram；EINTR 重试，EAGAIN/部分发送返回 false"
+        },
+        {
+          "NAME": "coap_udp_server_run",
+          "KIND": "FUNC",
+          "ROLE": "运行非阻塞 UDP epoll 事件循环，每个成功 recvfrom 的 datagram 立即回调上层"
+        }
+      ],
+      "FILES": [
+        "../network/udp_server.h",
+        "../network/udp_server.c"
+      ],
+      "DOC_REF": []
+    },
+    {
+      "NAME": "protocol",
+      "ROLE": "CoAP message 数据模型与 binary wire-format 编解码；不得依赖 UDP runtime、resource router 或 server handlers。",
+      "DEPENDENCIES": [],
+      "ARTIFACTS": [
+        {
+          "NAME": "COAP_MAX_TOKEN_LEN",
+          "KIND": "CONST",
+          "ROLE": "CoAP token 最大长度 8 bytes"
+        },
+        {
+          "NAME": "coap_type_t",
+          "KIND": "TYPE",
+          "ROLE": "CoAP message type"
+        },
+        {
+          "NAME": "coap_method_t",
+          "KIND": "TYPE",
+          "ROLE": "当前 server 支持的 request method code"
+        },
+        {
+          "NAME": "coap_option_number_t",
+          "KIND": "TYPE",
+          "ROLE": "当前实现识别的 option number"
+        },
+        {
+          "NAME": "coap_content_format_t",
+          "KIND": "TYPE",
+          "ROLE": "当前资源 handler 使用的 Content-Format 值"
+        },
+        {
+          "NAME": "coap_option_t",
+          "KIND": "TYPE",
+          "ROLE": "解码后的单个 CoAP option，持有 value 动态副本"
+        },
+        {
+          "NAME": "coap_message_t",
+          "KIND": "TYPE",
+          "ROLE": "统一 CoAP message 对象，保存 header、token、options 与 payload"
+        },
+        {
+          "NAME": "coap_bytes_t",
+          "KIND": "TYPE",
+          "ROLE": "编码结果动态字节缓冲，由 coap_bytes_free 释放"
+        },
+        {
+          "NAME": "coap_message_init",
+          "KIND": "FUNC",
+          "ROLE": "将 message 清零并设置 version=1；空指针安全返回"
+        },
+        {
+          "NAME": "coap_message_reset",
+          "KIND": "FUNC",
+          "ROLE": "释放所有 option value、option 数组和 payload，再恢复 version=1 的空 message"
+        },
+        {
+          "NAME": "coap_message_free",
+          "KIND": "FUNC",
+          "ROLE": "通过 reset 释放 message 所有动态字段并恢复可复用空状态"
+        },
+        {
+          "NAME": "coap_message_set_token",
+          "KIND": "FUNC",
+          "ROLE": "校验 token_len<=8，记录长度并在 token 非空时复制 bytes"
+        },
+        {
+          "NAME": "coap_message_set_payload",
+          "KIND": "FUNC",
+          "ROLE": "释放旧 payload；空数据清空 payload，否则分配并复制新 bytes"
+        },
+        {
+          "NAME": "coap_message_set_payload_string",
+          "KIND": "FUNC",
+          "ROLE": "将字符串内容作为不含 NUL 的 payload；NULL 表示空 payload"
+        },
+        {
+          "NAME": "coap_message_add_option",
+          "KIND": "FUNC",
+          "ROLE": "扩展 option 数组并复制 option value，成功后递增 option_count"
+        },
+        {
+          "NAME": "coap_message_add_option_string",
+          "KIND": "FUNC",
+          "ROLE": "以字符串 bytes 添加 option；NULL 表示零长度 option"
+        },
+        {
+          "NAME": "coap_message_add_option_uint",
+          "KIND": "FUNC",
+          "ROLE": "使用最短 big-endian unsigned integer encoding 添加 option；0 编码为零长度"
+        },
+        {
+          "NAME": "coap_message_get_uint_option",
+          "KIND": "FUNC",
+          "ROLE": "查找首个匹配 option，并将最长 4-byte big-endian value 解码为 uint32_t"
+        },
+        {
+          "NAME": "coap_message_join_options",
+          "KIND": "FUNC",
+          "ROLE": "按出现顺序连接匹配 option；无匹配返回新分配空字符串，调用方负责 free"
+        },
+        {
+          "NAME": "coap_make_code",
+          "KIND": "FUNC",
+          "ROLE": "将 3-bit class 与 5-bit detail 合成为 CoAP code"
+        },
+        {
+          "NAME": "coap_code_class",
+          "KIND": "FUNC",
+          "ROLE": "提取 CoAP code 的 3-bit class"
+        },
+        {
+          "NAME": "coap_code_detail",
+          "KIND": "FUNC",
+          "ROLE": "提取 CoAP code 的 5-bit detail"
+        },
+        {
+          "NAME": "coap_code_is_method",
+          "KIND": "FUNC",
+          "ROLE": "判断 code 是否是 class 0 且 detail 为 GET/POST/PUT/DELETE"
+        },
+        {
+          "NAME": "coap_bytes_free",
+          "KIND": "FUNC",
+          "ROLE": "释放编码结果 data，并将 data/len 复位"
+        },
+        {
+          "NAME": "coap_decode_status_t",
+          "KIND": "TYPE",
+          "ROLE": "CoAP datagram 解码结果"
+        },
+        {
+          "NAME": "coap_decode_message",
+          "KIND": "FUNC",
+          "ROLE": "按单个 datagram 解码 4-byte header、token、ordered options、payload marker 与 payload；失败时释放 out"
+        },
+        {
+          "NAME": "coap_encode_message",
+          "KIND": "FUNC",
+          "ROLE": "计算完整 datagram 大小，编码 header/token/ordered options，并仅在 payload 非空时写入 0xff marker"
+        }
+      ],
+      "FILES": [
+        "../protocol/coap_message.h",
+        "../protocol/coap_message.c",
+        "../protocol/coap_codec.h",
+        "../protocol/coap_codec.c"
+      ],
+      "DOC_REF": []
+    },
+    {
+      "NAME": "resource",
+      "ROLE": "资源注册与 dispatch：规范化 request view 由上层传入，按 path/method 选择 handler，并生成 discovery links。",
+      "DEPENDENCIES": [
+        "protocol"
+      ],
+      "ARTIFACTS": [
+        {
+          "NAME": "coap_request_t",
+          "KIND": "TYPE",
+          "ROLE": "从 decoded message 投影出的资源请求视图"
+        },
+        {
+          "NAME": "coap_resource_handler_fn",
+          "KIND": "TYPE",
+          "ROLE": "资源 handler callback 类型"
+        },
+        {
+          "NAME": "coap_resource_router_t",
+          "KIND": "TYPE",
+          "ROLE": "资源注册表与 dispatch 逻辑的不透明句柄"
+        },
+        {
+          "NAME": "coap_resource_router_create",
+          "KIND": "FUNC",
+          "ROLE": "分配空 resource router"
+        },
+        {
+          "NAME": "coap_resource_router_destroy",
+          "KIND": "FUNC",
+          "ROLE": "释放每个 entry 的 path/attributes、entry 数组与 router"
+        },
+        {
+          "NAME": "coap_resource_router_add",
+          "KIND": "FUNC",
+          "ROLE": "扩展 entry 数组并复制 path/attributes，保存匹配策略、method mask、handler 与 user"
+        },
+        {
+          "NAME": "coap_resource_router_dispatch",
+          "KIND": "FUNC",
+          "ROLE": "按注册顺序查找首个 path match；method 不允许时写 4.05，否则调用 handler；无 route 返回 false"
+        },
+        {
+          "NAME": "coap_resource_router_build_core_links",
+          "KIND": "FUNC",
+          "ROLE": "按注册顺序为 discoverable entries 构造逗号分隔 link-format 字符串；调用方负责 free"
+        }
+      ],
+      "FILES": [
+        "../resource/resource_router.h",
+        "../resource/resource_router.c"
+      ],
+      "DOC_REF": []
+    },
+    {
+      "NAME": "server_app",
+      "ROLE": "server 入口与协议处理协调：解码 datagram、构建 response envelope、执行资源 handlers、维护内存 KV 并回包。",
+      "DEPENDENCIES": [
+        "network",
+        "protocol",
+        "resource"
+      ],
+      "ARTIFACTS": [
+        {
+          "NAME": "coap_server_t",
+          "KIND": "TYPE",
+          "ROLE": "CoAP server 进程级对象的不透明句柄"
+        },
+        {
+          "NAME": "coap_server_create",
+          "KIND": "FUNC",
+          "ROLE": "创建 server、router 与 UDP runtime，并注册 discovery/hello/echo/kv routes"
+        },
+        {
+          "NAME": "coap_server_destroy",
+          "KIND": "FUNC",
+          "ROLE": "停止 server，销毁 UDP/router，释放全部 KV entries 与 server"
+        },
+        {
+          "NAME": "coap_server_start",
+          "KIND": "FUNC",
+          "ROLE": "启动底层 UDP runtime"
+        },
+        {
+          "NAME": "coap_server_run",
+          "KIND": "FUNC",
+          "ROLE": "进入底层 UDP runtime 事件循环"
+        },
+        {
+          "NAME": "coap_server_stop",
+          "KIND": "FUNC",
+          "ROLE": "停止底层 UDP runtime；空指针安全返回"
+        }
+      ],
+      "FILES": [
+        "../main.c",
+        "../server/coap_server.h",
+        "../server/coap_server.c"
+      ],
+      "DOC_REF": []
+    }
+  ],
+  "GENERATION_ORDER": [
+    "network",
+    "protocol",
+    "resource",
+    "server_app"
+  ],
+  "CONSISTENCY_RULES": [
+    {
+      "ID": "C1",
+      "RULE": "每个 UDP datagram 恰好作为一个完整 CoAP message 独立解码；不得维护 stream buffer、fragment reassembly 或 per-peer connection state。",
+      "DOC_REF": []
+    },
+    {
+      "ID": "C2",
+      "RULE": "CoAP wire-format 解析与编码仅允许位于 protocol 模块；network/resource/server_app 必须通过 coap_decode_message 与 coap_encode_message 使用协议 bytes。",
+      "DOC_REF": []
+    },
+    {
+      "ID": "C3",
+      "RULE": "有效 CON method request 的 response 使用 ACK；有效 NON method request 的 response 使用 NON；response 必须复制 request Token 与 Message ID。",
+      "DOC_REF": []
+    },
+    {
+      "ID": "C4",
+      "RULE": "/kv 数据只保存在 coap_server_t 的进程内存中，直到 DELETE 或 server destruction；不得引入持久化。",
+      "DOC_REF": []
+    },
+    {
+      "ID": "C5",
+      "RULE": "minimum_v1 不实现 DTLS、Observe、Block1/Block2、deduplication cache、CON retransmission、ack tracking 或 separate response。",
+      "DOC_REF": []
+    },
+    {
+      "ID": "C6",
+      "RULE": "不得新增 4.13 Payload Too Large response path；成功解码但 code 不是 GET/POST/PUT/DELETE 的 message 保持静默忽略。",
+      "DOC_REF": []
+    },
+    {
+      "ID": "C7",
+      "RULE": "只能使用 canonical header 中声明的 public types、fields、enum values 与 functions；不得臆造额外 CoAP surface。",
+      "DOC_REF": []
+    }
+  ],
+  "TEST_VECTORS": [
+    {
+      "NAME": "malformed_confirmable_reset",
+      "INPUT": {
+        "datagram_hex": "49ff1234",
+        "peer": "127.0.0.1:9999"
+      },
+      "EXPECT": {
+        "response_type": "RST",
+        "response_code": 0,
+        "message_id": 4660
+      }
+    },
+    {
+      "NAME": "non_method_silent_ignore",
+      "INPUT": {
+        "decoded_type": "CON",
+        "code": 0,
+        "message_id": 1
+      },
+      "EXPECT": {
+        "response": "none",
+        "state_change": "none"
+      }
+    },
+    {
+      "NAME": "resource_route_miss",
+      "INPUT": {
+        "method": "GET",
+        "path": "/missing"
+      },
+      "EXPECT": {
+        "response_code": "4.04"
+      }
+    },
+    {
+      "NAME": "resource_method_not_allowed",
+      "INPUT": {
+        "method": "DELETE",
+        "path": "/hello"
+      },
+      "EXPECT": {
+        "response_code": "4.05"
+      }
+    },
+    {
+      "NAME": "discovery_accept_mismatch",
+      "INPUT": {
+        "method": "GET",
+        "path": "/.well-known/core",
+        "accept": 50
+      },
+      "EXPECT": {
+        "response_code": "4.06"
+      }
+    },
+    {
+      "NAME": "kv_lifecycle",
+      "INPUT": {
+        "steps": [
+          "PUT /kv/demo payload=value",
+          "GET /kv/demo",
+          "DELETE /kv/demo",
+          "GET /kv/demo"
+        ]
+      },
+      "EXPECT": {
+        "response_codes": [
+          "2.01",
+          "2.05",
+          "2.02",
+          "4.04"
+        ],
+        "persistence": "process_memory_only"
+      }
+    }
+  ]
+}

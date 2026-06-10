@@ -1,0 +1,32 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "coap/server/coap_server/dup_string",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "分配并复制 NUL-terminated 字符串；NULL 返回 NULL",
+  "SIGNATURE": {
+    "RAW": "static char* dup_string(const char* s)",
+    "NAME": "dup_string",
+    "RETURN": "char*",
+    "PARAMS": [
+      {
+        "TYPE": "const char*",
+        "NAME": "s",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入来自函数参数：s。",
+    "ACTION": "分配并复制 NUL-terminated 字符串；NULL 返回 NULL",
+    "OUTPUT": "返回结果、已借用对象或新分配对象的指针；无结果或失败时返回 NULL，所有权由 ROLE/CALL_CONTRACTS 限定。",
+    "INVARIANTS_USED": [
+      "不得引入超出当前 minimum_v1 代码行为的协议语义"
+    ]
+  }
+}

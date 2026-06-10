@@ -1,0 +1,41 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "coap/resource/resource_router/coap_resource_router_build_core_links",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "按注册顺序为 discoverable entries 构造逗号分隔 link-format 字符串；调用方负责 free",
+  "SIGNATURE": {
+    "RAW": "char* coap_resource_router_build_core_links(const coap_resource_router_t* router)",
+    "NAME": "coap_resource_router_build_core_links",
+    "RETURN": "char*",
+    "PARAMS": [
+      {
+        "TYPE": "const coap_resource_router_t*",
+        "NAME": "router",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "coap_resource_router_t",
+        "ROLE": "资源注册表与 dispatch 逻辑的不透明句柄"
+      },
+      {
+        "NAME": "coap_resource_entry_t",
+        "ROLE": "本函数使用的模块内部数据结构"
+      }
+    ],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入来自函数参数：router。",
+    "ACTION": "按注册顺序为 discoverable entries 构造逗号分隔 link-format 字符串；调用方负责 free",
+    "OUTPUT": "返回结果、已借用对象或新分配对象的指针；无结果或失败时返回 NULL，所有权由 ROLE/CALL_CONTRACTS 限定。",
+    "INVARIANTS_USED": [
+      "不得引入超出当前 minimum_v1 代码行为的协议语义"
+    ]
+  }
+}

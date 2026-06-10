@@ -1,0 +1,41 @@
+{
+  "KIND": "FILE_SPEC",
+  "FILE": {
+    "TRACE_ID": "coap/main",
+    "LANG": "C",
+    "ROLE": "CoAP server 进程入口：解析可选端口，创建、启动、运行并销毁 server",
+    "DOC_REF": []
+  },
+  "SOURCE": {
+    "PATH": "../main.c",
+    "DEPENDENCY": [
+      "../server/coap_server.h"
+    ],
+    "DATA": [],
+    "INTERFACE": [
+      {
+        "TRACE_ID": "coap/main/main",
+        "SIGNATURE": "int main(int argc, char** argv)",
+        "NAME": "main",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ENTRYPOINT",
+        "ROLE": "CoAP server 可执行程序入口，编排端口解析与 server 生命周期",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "argc/argv 由 C 运行时提供；argv[1] 可选表示监听端口"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "创建或启动失败返回 1；正常运行并销毁 server 后返回 0"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "PROCESS_ENTRYPOINT"
+        },
+        "VISIBILITY": "private"
+      }
+    ]
+  }
+}

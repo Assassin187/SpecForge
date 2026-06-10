@@ -1,0 +1,37 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "coap/protocol/coap_message/coap_message_init",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "将 message 清零并设置 version=1；空指针安全返回",
+  "SIGNATURE": {
+    "RAW": "void coap_message_init(coap_message_t* msg)",
+    "NAME": "coap_message_init",
+    "RETURN": "void",
+    "PARAMS": [
+      {
+        "TYPE": "coap_message_t*",
+        "NAME": "msg",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "coap_message_t",
+        "ROLE": "统一 CoAP message 对象，保存 header、token、options 与 payload"
+      }
+    ],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入来自函数参数：msg。",
+    "ACTION": "将 message 清零并设置 version=1；空指针安全返回",
+    "OUTPUT": "无直接返回值；结果通过对象状态或副作用体现。",
+    "INVARIANTS_USED": [
+      "不得引入超出当前 minimum_v1 代码行为的协议语义"
+    ]
+  }
+}

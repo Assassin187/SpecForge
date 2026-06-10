@@ -1,0 +1,43 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "coap/server/coap_server/coap_server_start",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "启动底层 UDP runtime",
+  "SIGNATURE": {
+    "RAW": "bool coap_server_start(coap_server_t* s)",
+    "NAME": "coap_server_start",
+    "RETURN": "bool",
+    "PARAMS": [
+      {
+        "TYPE": "coap_server_t*",
+        "NAME": "s",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "coap_server_t",
+        "ROLE": "CoAP server 进程级对象的不透明句柄"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "coap_udp_server_start",
+        "KIND": "CALL",
+        "ROLE": "调用 coap_udp_server_start 完成子步骤"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入来自函数参数：s。",
+    "ACTION": "启动底层 UDP runtime",
+    "OUTPUT": "返回 true 表示条件成立或操作成功；返回 false 表示条件不成立、参数无效或操作失败，具体含义由 ROLE 限定。",
+    "INVARIANTS_USED": [
+      "不得引入超出当前 minimum_v1 代码行为的协议语义"
+    ]
+  }
+}

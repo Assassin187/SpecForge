@@ -1,0 +1,37 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "coap/server/coap_server/free_request_view",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "释放 request view 的 path/query 并将指针复位",
+  "SIGNATURE": {
+    "RAW": "static void free_request_view(coap_request_t* req)",
+    "NAME": "free_request_view",
+    "RETURN": "void",
+    "PARAMS": [
+      {
+        "TYPE": "coap_request_t*",
+        "NAME": "req",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "coap_request_t",
+        "ROLE": "从 decoded message 投影出的资源请求视图"
+      }
+    ],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入来自函数参数：req。",
+    "ACTION": "释放 request view 的 path/query 并将指针复位",
+    "OUTPUT": "无直接返回值；结果通过对象状态或副作用体现。",
+    "INVARIANTS_USED": [
+      "不得引入超出当前 minimum_v1 代码行为的协议语义"
+    ]
+  }
+}

@@ -1,0 +1,291 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "coap/protocol/coap_codec/coap_decode_message",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "按单个 datagram 解码 4-byte header、token、ordered options、payload marker 与 payload；失败时释放 out",
+  "SIGNATURE": {
+    "RAW": "coap_decode_status_t coap_decode_message(const uint8_t* data, size_t len, coap_message_t* out)",
+    "NAME": "coap_decode_message",
+    "RETURN": "coap_decode_status_t",
+    "PARAMS": [
+      {
+        "TYPE": "const uint8_t*",
+        "NAME": "data",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "size_t",
+        "NAME": "len",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "coap_message_t*",
+        "NAME": "out",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "coap_message_t",
+        "ROLE": "统一 CoAP message 对象，保存 header、token、options 与 payload"
+      },
+      {
+        "NAME": "coap_option_t",
+        "ROLE": "解码后的单个 CoAP option，持有 value 动态副本"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "coap_message_init",
+        "KIND": "CALL",
+        "ROLE": "调用 coap_message_init 完成子步骤"
+      },
+      {
+        "NAME": "decode_ext",
+        "KIND": "CALL",
+        "ROLE": "调用 decode_ext 完成子步骤"
+      },
+      {
+        "NAME": "coap_message_add_option",
+        "KIND": "CALL",
+        "ROLE": "调用 coap_message_add_option 完成子步骤"
+      },
+      {
+        "NAME": "coap_message_set_payload",
+        "KIND": "CALL",
+        "ROLE": "调用 coap_message_set_payload 完成子步骤"
+      },
+      {
+        "NAME": "coap_message_free",
+        "KIND": "CALL",
+        "ROLE": "调用 coap_message_free 完成子步骤"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入来自函数参数：data、len、out。",
+    "ACTION": "按单个 datagram 解码 4-byte header、token、ordered options、payload marker 与 payload；失败时释放 out",
+    "OUTPUT": "返回 COAP_DECODE_OK、COAP_DECODE_INVALID 或 COAP_DECODE_TRUNCATED。",
+    "INVARIANTS_USED": [
+      "version 必须为 1",
+      "token_len 不得超过 8",
+      "option nibble 15 非法",
+      "输入不跨 datagram 累积"
+    ]
+  },
+  "WIRE_MAPPING": [
+    {
+      "PACKET": "CoAP datagram",
+      "WIRE_FIELD": "header.version",
+      "STRATEGY": "store_in_field",
+      "TARGET": "coap_message_t.version",
+      "RULE": "bits 7..6; must equal 1"
+    },
+    {
+      "PACKET": "CoAP datagram",
+      "WIRE_FIELD": "header.type",
+      "STRATEGY": "store_in_field",
+      "TARGET": "coap_message_t.type",
+      "RULE": "bits 5..4"
+    },
+    {
+      "PACKET": "CoAP datagram",
+      "WIRE_FIELD": "header.token_length",
+      "STRATEGY": "store_in_field",
+      "TARGET": "coap_message_t.token_len",
+      "RULE": "low nibble; reject values above 8"
+    },
+    {
+      "PACKET": "CoAP datagram",
+      "WIRE_FIELD": "header.code",
+      "STRATEGY": "store_in_field",
+      "TARGET": "coap_message_t.code",
+      "RULE": "byte 1"
+    },
+    {
+      "PACKET": "CoAP datagram",
+      "WIRE_FIELD": "header.message_id",
+      "STRATEGY": "store_in_field",
+      "TARGET": "coap_message_t.message_id",
+      "RULE": "bytes 2..3 big-endian"
+    },
+    {
+      "PACKET": "CoAP datagram",
+      "WIRE_FIELD": "token",
+      "STRATEGY": "store_in_field",
+      "TARGET": "coap_message_t.token",
+      "RULE": "copy token_len bytes"
+    },
+    {
+      "PACKET": "CoAP datagram",
+      "WIRE_FIELD": "options",
+      "STRATEGY": "store_in_field",
+      "TARGET": "coap_message_t.options",
+      "RULE": "accumulate delta into absolute number; support nibble 13/14 and reject 15"
+    },
+    {
+      "PACKET": "CoAP datagram",
+      "WIRE_FIELD": "payload_marker",
+      "STRATEGY": "parse_and_skip",
+      "RULE": "0xff ends options; remaining bytes are payload"
+    },
+    {
+      "PACKET": "CoAP datagram",
+      "WIRE_FIELD": "payload",
+      "STRATEGY": "store_in_field",
+      "TARGET": "coap_message_t.payload",
+      "RULE": "copy all bytes remaining after payload marker"
+    }
+  ],
+  "ACCESS_PATHS": [
+    {
+      "PATH": "coap_option_t.number",
+      "TYPE": "uint16_t",
+      "ROLE": "绝对 option number"
+    },
+    {
+      "PATH": "coap_option_t.length",
+      "TYPE": "uint16_t",
+      "ROLE": "value 长度"
+    },
+    {
+      "PATH": "coap_option_t.value",
+      "TYPE": "uint8_t*",
+      "ROLE": "动态分配的 option bytes"
+    },
+    {
+      "PATH": "coap_message_t.version",
+      "TYPE": "uint8_t",
+      "ROLE": "CoAP version"
+    },
+    {
+      "PATH": "coap_message_t.type",
+      "TYPE": "coap_type_t",
+      "ROLE": "message type"
+    },
+    {
+      "PATH": "coap_message_t.code",
+      "TYPE": "uint8_t",
+      "ROLE": "method/response code"
+    },
+    {
+      "PATH": "coap_message_t.message_id",
+      "TYPE": "uint16_t",
+      "ROLE": "Message ID"
+    },
+    {
+      "PATH": "coap_message_t.token_len",
+      "TYPE": "uint8_t",
+      "ROLE": "token 有效长度"
+    },
+    {
+      "PATH": "coap_message_t.token",
+      "TYPE": "uint8_t[COAP_MAX_TOKEN_LEN]",
+      "ROLE": "token bytes"
+    },
+    {
+      "PATH": "coap_message_t.options",
+      "TYPE": "coap_option_t*",
+      "ROLE": "按 wire order 保存的动态 option 数组"
+    },
+    {
+      "PATH": "coap_message_t.option_count",
+      "TYPE": "size_t",
+      "ROLE": "option 数量"
+    },
+    {
+      "PATH": "coap_message_t.payload",
+      "TYPE": "uint8_t*",
+      "ROLE": "动态 payload bytes"
+    },
+    {
+      "PATH": "coap_message_t.payload_len",
+      "TYPE": "size_t",
+      "ROLE": "payload 长度"
+    },
+    {
+      "PATH": "coap_bytes_t.data",
+      "TYPE": "uint8_t*",
+      "ROLE": "动态编码 bytes"
+    },
+    {
+      "PATH": "coap_bytes_t.len",
+      "TYPE": "size_t",
+      "ROLE": "bytes 长度"
+    }
+  ],
+  "TEST_VECTORS": [
+    {
+      "NAME": "valid_get_with_token_path_and_payload",
+      "INPUT": {
+        "hex": "41011234aab568656c6c6fff78"
+      },
+      "EXPECT": {
+        "status": "COAP_DECODE_OK",
+        "type": "COAP_TYPE_CON",
+        "code": 1,
+        "message_id": 4660,
+        "token_hex": "aa",
+        "uri_path": "hello",
+        "payload_hex": "78"
+      }
+    },
+    {
+      "NAME": "extended_option_delta_13",
+      "INPUT": {
+        "hex": "40010001d10078"
+      },
+      "EXPECT": {
+        "status": "COAP_DECODE_OK",
+        "options": [
+          {
+            "number": 13,
+            "value_hex": "78"
+          }
+        ]
+      }
+    },
+    {
+      "NAME": "invalid_version",
+      "INPUT": {
+        "hex": "80010001"
+      },
+      "EXPECT": {
+        "status": "COAP_DECODE_INVALID"
+      }
+    },
+    {
+      "NAME": "invalid_token_length_9",
+      "INPUT": {
+        "hex": "49010001"
+      },
+      "EXPECT": {
+        "status": "COAP_DECODE_INVALID"
+      }
+    },
+    {
+      "NAME": "truncated_token",
+      "INPUT": {
+        "hex": "42010001aa"
+      },
+      "EXPECT": {
+        "status": "COAP_DECODE_TRUNCATED"
+      }
+    },
+    {
+      "NAME": "reserved_option_nibble",
+      "INPUT": {
+        "hex": "40010001f0"
+      },
+      "EXPECT": {
+        "status": "COAP_DECODE_INVALID"
+      }
+    }
+  ]
+}

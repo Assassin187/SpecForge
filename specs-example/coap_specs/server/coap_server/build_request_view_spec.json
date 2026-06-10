@@ -1,0 +1,68 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "coap/server/coap_server/build_request_view",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "从 method message 构造 normalized path、joined query 与 Content-Format/Accept 视图",
+  "SIGNATURE": {
+    "RAW": "static bool build_request_view(const coap_message_t* req, coap_request_t* out)",
+    "NAME": "build_request_view",
+    "RETURN": "bool",
+    "PARAMS": [
+      {
+        "TYPE": "const coap_message_t*",
+        "NAME": "req",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "coap_request_t*",
+        "NAME": "out",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "coap_message_t",
+        "ROLE": "统一 CoAP message 对象，保存 header、token、options 与 payload"
+      },
+      {
+        "NAME": "coap_request_t",
+        "ROLE": "从 decoded message 投影出的资源请求视图"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "coap_code_is_method",
+        "KIND": "CALL",
+        "ROLE": "调用 coap_code_is_method 完成子步骤"
+      },
+      {
+        "NAME": "coap_message_join_options",
+        "KIND": "CALL",
+        "ROLE": "调用 coap_message_join_options 完成子步骤"
+      },
+      {
+        "NAME": "coap_message_get_uint_option",
+        "KIND": "CALL",
+        "ROLE": "调用 coap_message_get_uint_option 完成子步骤"
+      },
+      {
+        "NAME": "dup_string",
+        "KIND": "CALL",
+        "ROLE": "调用 dup_string 完成子步骤"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入来自函数参数：req、out。",
+    "ACTION": "从 method message 构造 normalized path、joined query 与 Content-Format/Accept 视图",
+    "OUTPUT": "返回 true 表示条件成立或操作成功；返回 false 表示条件不成立、参数无效或操作失败，具体含义由 ROLE 限定。",
+    "INVARIANTS_USED": [
+      "不得引入超出当前 minimum_v1 代码行为的协议语义"
+    ]
+  }
+}
