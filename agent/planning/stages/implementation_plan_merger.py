@@ -141,6 +141,25 @@ def _version_from_text(*values: Any) -> str:
     return ""
 
 
+def _default_port_from_facts(facts: dict[str, Any]) -> int | None:
+    if str(facts.get("name", "")).strip().lower() == "default_port":
+        match = re.search(r"\b(\d{1,5})\b", str(facts.get("value_or_rule", "")))
+        if match and 1 <= int(match.group(1)) <= 65535:
+            return int(match.group(1))
+    for value in facts.values():
+        if isinstance(value, dict):
+            nested = _default_port_from_facts(value)
+            if nested is not None:
+                return nested
+        elif isinstance(value, list):
+            for item in value:
+                if isinstance(item, dict):
+                    nested = _default_port_from_facts(item)
+                    if nested is not None:
+                        return nested
+    return None
+
+
 def _protocol_metadata(planning_ir: dict[str, Any], profile: dict[str, Any], protocol: str) -> dict[str, Any]:
     facts = planning_ir.get("protocol_facts", {}) if isinstance(planning_ir.get("protocol_facts"), dict) else {}
     meta = facts.get("protocol_meta", {}) if isinstance(facts.get("protocol_meta"), dict) else {}
@@ -170,13 +189,17 @@ def _protocol_metadata(planning_ir: dict[str, Any], profile: dict[str, Any], pro
         profile.get("target_role"),
         meta.get("roles"),
     )
-    return {
+    result = {
         "name": _first_text(meta.get("protocol_name"), profile.get("protocol_name"), target.get("protocol_name"), protocol),
         "protocol_version": version,
         "roles": roles,
         "scope": scope,
         "source": "planning_ir.protocol_facts.protocol_meta+target_directives",
     }
+    default_port = _default_port_from_facts(facts)
+    if default_port is not None:
+        result["default_port"] = default_port
+    return result
 
 
 def build_plan_skeleton(
@@ -340,7 +363,11 @@ def fallback_core_design(draft: dict[str, Any], planning_ir: dict[str, Any], con
                 "status": "inferred",
             }
         ],
-        "test_plan_seed": [{"test_id": "test:coder_loader_compatibility", "purpose": "Generated specs must load through agent.coder.specs.", "trace_ref_keys": [], "status": "supported"}],
+        "test_plan_seed": [
+            {"test_id": "test:coder_loader_compatibility", "purpose": "Generated specs must load through agent.coder.specs.", "trace_ref_keys": [], "status": "supported"},
+            {"test_id": "test:runtime_successful_interaction", "purpose": "Start the deployable protocol runtime and complete one successful external protocol interaction.", "trace_ref_keys": [], "status": "supported"},
+            {"test_id": "test:runtime_malformed_survival", "purpose": "Send malformed protocol input and verify the runtime remains available for a later valid interaction.", "trace_ref_keys": [], "status": "supported"},
+        ],
         "traceability": {"trace_ref_keys": _constraint_ids(constraints), "notes": "Deterministic fallback core design."},
         "assumptions": [],
         "unresolved_questions": [],

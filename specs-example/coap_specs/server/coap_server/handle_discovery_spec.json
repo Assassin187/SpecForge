@@ -2,7 +2,7 @@
   "KIND": "FUNCTION_SPEC",
   "TRACE_ID": "coap/server/coap_server/handle_discovery",
   "FUNCTION_TYPE": "EVENT",
-  "ROLE": "处理 /.well-known/core discovery 与 Accept 检查",
+  "ROLE": "处理 /.well-known/core discovery；Accept 存在且不是 COAP_FORMAT_LINK_FORMAT 时返回 4.06",
   "SIGNATURE": {
     "RAW": "static bool handle_discovery(void* user, const coap_request_t* req, coap_message_t* resp)",
     "NAME": "handle_discovery",
@@ -66,7 +66,7 @@
     "TRIGGER": "resource router 匹配 GET /.well-known/core 后触发",
     "PRECONDITION": "callback 参数与所属 server/router 生命周期有效",
     "INPUT": "输入来自运行时事件参数与当前 server/resource 状态",
-    "ACTION": "检查 Accept 并构造 discoverable resource links",
+    "ACTION": "如果 req->has_accept 且 req->accept != COAP_FORMAT_LINK_FORMAT，则设置 resp->code = coap_make_code(4, 6) 并返回 true；否则构造 discoverable resource links，成功时返回 2.05 link-format，分配失败时返回 5.00",
     "STATE_CHANGE": "不修改持久资源状态",
     "RESPONSE": "返回 2.05 link-format、4.06 或 5.00",
     "EVENT_TYPE": "RUNTIME_EVENT"

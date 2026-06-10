@@ -12,9 +12,10 @@
     "DATA": [
       {
         "NAME": "COAP_MAX_TOKEN_LEN",
-        "KIND": "CONST",
+        "KIND": "MACRO",
         "VISIBILITY": "PUBLIC",
-        "ROLE": "CoAP token 最大长度 8 bytes"
+        "ROLE": "CoAP token 最大长度 8 bytes",
+        "VALUE": "8"
       },
       {
         "NAME": "coap_type_t",
@@ -201,7 +202,8 @@
             },
             {
               "NAME": "token",
-              "TYPE": "uint8_t[COAP_MAX_TOKEN_LEN]",
+              "TYPE": "uint8_t",
+              "ARRAY_LEN": "COAP_MAX_TOKEN_LEN",
               "ROLE": "token bytes"
             },
             {
@@ -783,7 +785,7 @@
   "PUBLIC_SYMBOLS": [
     {
       "NAME": "COAP_MAX_TOKEN_LEN",
-      "KIND": "CONST",
+      "KIND": "MACRO",
       "ROLE": "CoAP token 最大长度 8 bytes"
     },
     {
@@ -961,7 +963,7 @@
     },
     {
       "PATH": "coap_message_t.token",
-      "TYPE": "uint8_t[COAP_MAX_TOKEN_LEN]",
+      "TYPE": "uint8_t*",
       "ROLE": "token bytes"
     },
     {

@@ -76,7 +76,7 @@ python3 -m agent verify
 当前生成输出默认落在：
 
 ```text
-~/SpecForge/agent/out/mqtt_broker_<timestamp>
+~/SpecForge/agent/out/<protocol>_<role>_<timestamp>
 ```
 
 生成目录里目前已经能看到：
@@ -302,7 +302,7 @@ python3 -m agent.facts validate --protocol-name coap --doc ~/SpecForge/document/
 
 - module spec：`~/SpecForge/specs-example/mqtt_specs/mqtt_module_spec.json`
 - spec root：`~/SpecForge/specs-example/mqtt_specs`
-- output dir：`~/SpecForge/agent/out/mqtt_broker_<timestamp>`
+- output dir：`~/SpecForge/agent/out/<protocol>_<role>_<timestamp>`
 - max repair rounds：`3`
 
 与模型接入相关的环境变量：

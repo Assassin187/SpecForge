@@ -2,7 +2,7 @@
   "KIND": "FUNCTION_SPEC",
   "TRACE_ID": "coap/resource/resource_router/coap_resource_router_dispatch",
   "FUNCTION_TYPE": "ALGORITHM",
-  "ROLE": "按注册顺序查找首个 path match；method 不允许时写 4.05，否则调用 handler；无 route 返回 false",
+  "ROLE": "按注册顺序查找首个 path match；用 1u << req->method 检查 methods_mask，method 不允许时写 4.05，否则调用 handler；无 route 返回 false",
   "SIGNATURE": {
     "RAW": "bool coap_resource_router_dispatch(coap_resource_router_t* router, const coap_request_t* req, coap_message_t* resp)",
     "NAME": "coap_resource_router_dispatch",
@@ -63,10 +63,10 @@
   },
   "LOGIC": {
     "INPUT": "输入来自函数参数：router、req、resp。",
-    "ACTION": "按注册顺序查找首个 path match；method 不允许时写 4.05，否则调用 handler；无 route 返回 false",
+    "ACTION": "按注册顺序查找首个 path match；计算 method_bit = 1u << req->method 并检查 entry->methods_mask；method 不允许时用 coap_make_code(4, 5) 写 4.05，否则调用 handler；无 route 返回 false",
     "OUTPUT": "返回 true 表示条件成立或操作成功；返回 false 表示条件不成立、参数无效或操作失败，具体含义由 ROLE 限定。",
     "INVARIANTS_USED": [
-      "不得引入超出当前 minimum_v1 代码行为的协议语义"
+      "methods_mask 的 bit 编码必须与 coap_server_create 的 route 注册一致：1u << COAP_METHOD_*"
     ]
   }
 }

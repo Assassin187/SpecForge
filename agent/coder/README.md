@@ -12,7 +12,7 @@
 
 ## 当前工作流程（PPT 版）
 
-`coder` 的端到端流程可以理解为：**加载 SPEC → 校验一致性 → 按模块生成工程 → 编译 → 按错误修复 → 输出 manifest 与日志**。
+`coder` 的端到端流程可以理解为：**加载 SPEC → 校验一致性 → 按模块生成工程 → 编译 → 按错误修复 → 编译成功后执行非阻断行为检查 → 输出 manifest 与日志**。
 
 ```mermaid
 flowchart TD
@@ -36,7 +36,8 @@ flowchart TD
     L --> M[Makefile 本地生成]
     M --> N[make mqtt_broker]
 
-    N -->|成功| O[写 run_manifest.json]
+    N -->|成功| V[执行协议行为检查<br/>逐项记录 pass/fail]
+    V --> O[写 run_manifest.json<br/>行为结果不改变生成成功状态]
     N -->|失败| P[抽取项目内 gcc error 文件]
     P -->|header 错误| X2[停止 repair<br/>记录 blocking header]
     P -->|source 错误| Q[LLM repair 普通 .c]
@@ -49,8 +50,8 @@ flowchart TD
 默认输出目录由 CLI 在运行时生成，形如：
 
 ```text
-agent/out/mqtt_broker_YYYYMMDD_HHMMSS/
-├── mqtt/                    # project_dir，真正生成出的协议工程
+agent/out/<protocol>_<role>_YYYYMMDD_HHMMSS/
+├── <protocol>/              # project_dir，真正生成出的协议工程
 │   ├── Makefile
 │   ├── main.c
 │   ├── network/
@@ -87,6 +88,8 @@ flowchart LR
 | repair 文件 | LLM 修复 | 当前 `.c` 文件内容、压缩后的编译错误、canonical header、依赖 header | 是 |
 
 > `.h`、`main.c` 和 Makefile 是本地确定性生成产物，不进入 LLM repair。若编译错误指向项目 header，`generate` 会停止 repair，并在 manifest 中记录 `deterministic_header_compile_error`，提示需要修复 specs 或 header lowering。
+
+> `generate` 的成功条件仅为最终编译成功。编译成功后会自动执行预设协议行为检查，并逐项记录到控制台、`behavior_verification.json` 和 manifest；行为检查失败不会触发 repair、不会覆盖 compile repair 状态，也不会改变 `generate` 的成功状态或退出码。
 
 ### 单个模块内的生成顺序
 
@@ -240,7 +243,7 @@ python3 -m agent coder \
 
 ```
 
-`validate` 负责发现输入规格的结构/一致性问题；`generate` 在通过校验后生成一次运行目录。生成的协议工程位于运行目录下的协议名子目录（例如 `mqtt/`），日志位于同级 `_agent_logs/`，`run_manifest.json` 也写入 `_agent_logs/`。日志只保留 prompt、编译输出、manifest 等诊断材料，不再镜像保存生成出的 `.c/.h`/Makefile 内容；manifest 中包含逐次 LLM 调用、按阶段汇总和最终总计的 token 用量。
+`validate` 负责发现输入规格的结构/一致性问题；`generate` 在通过校验后生成一次运行目录，并以最终编译结果判定生成成功。编译成功后的协议行为检查仅作为非阻断检查项。生成的协议工程位于运行目录下的协议名子目录（例如 `mqtt/`），日志位于同级 `_agent_logs/`，`run_manifest.json` 也写入 `_agent_logs/`。日志只保留 prompt、编译输出、manifest 等诊断材料，不再镜像保存生成出的 `.c/.h`/Makefile 内容；manifest 中包含逐次 LLM 调用、按阶段汇总和最终总计的 token 用量。
 
 ## 常见输入问题（会影响生成质量）
 

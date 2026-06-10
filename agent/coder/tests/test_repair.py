@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 import tempfile
 import unittest
@@ -13,9 +14,11 @@ from agent.coder.generation import (
     ProjectGenerator,
     _compact_compile_diagnostics,
     _validate_repair_candidate,
+    render_header,
 )
 from agent.coder.llm_client import LLMRequest, LLMResponse, LLMUsage
 from agent.coder.models import FileSpec, ModuleEntry, ProtocolMeta, SpecBundle
+from agent.coder.verifier import VerificationResult
 from agent.common.llm_client import _is_retryable_openai_error
 
 
@@ -44,6 +47,7 @@ def _file_spec(source_path: str, header_path: str) -> FileSpec:
         header_path=header_path,
         source_path=source_path,
         header_dependencies=[],
+        header_system_dependencies=[],
         source_dependencies=[header_path],
         header_data=[],
         source_data=[],
@@ -163,6 +167,99 @@ class CoderRepairTests(unittest.TestCase):
             "self_include_response",
         )
         self.assertEqual(_validate_repair_candidate("protocol/coap_message.c", "same\n", "same\n")[1], "unchanged_response")
+
+    def test_render_header_supports_system_dependencies_and_array_members(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            tmp = Path(raw_tmp)
+            bundle = _bundle(tmp)
+            file_spec = _file_spec("protocol/coap_message.c", "protocol/coap_message.h")
+            file_spec = FileSpec(
+                **{
+                    **file_spec.__dict__,
+                    "header_system_dependencies": ["sys/socket.h"],
+                    "header_data": [
+                        {"NAME": "COAP_MAX_TOKEN_LEN", "KIND": "MACRO", "VISIBILITY": "PUBLIC", "VALUE": "8"},
+                        {
+                            "NAME": "coap_message_t",
+                            "KIND": "TYPE",
+                            "VISIBILITY": "PUBLIC",
+                            "TYPE_SPEC": {
+                                "TYPE_KIND": "STRUCT",
+                                "FIELDS": [
+                                    {"NAME": "token", "TYPE": "uint8_t", "ARRAY_LEN": "COAP_MAX_TOKEN_LEN"},
+                                ],
+                            },
+                        },
+                    ],
+                }
+            )
+
+            rendered = render_header(bundle, file_spec)
+
+        self.assertIn("#include <sys/socket.h>", rendered)
+        self.assertIn("#define COAP_MAX_TOKEN_LEN 8", rendered)
+        self.assertIn("uint8_t token[COAP_MAX_TOKEN_LEN];", rendered)
+
+    def test_dependency_headers_expand_project_quoted_includes(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            tmp = Path(raw_tmp)
+            generator = ProjectGenerator(_bundle(tmp), FakeLLM(""), tmp / "out")
+            generator.project_dir.mkdir(parents=True)
+            (generator.project_dir / "protocol").mkdir()
+            (generator.project_dir / "server").mkdir()
+            (generator.project_dir / "server/server.h").write_text('#include "protocol/coap_codec.h"\n', encoding="utf-8")
+            (generator.project_dir / "protocol/coap_codec.h").write_text('#include "protocol/coap_message.h"\n', encoding="utf-8")
+            (generator.project_dir / "protocol/coap_message.h").write_text("typedef int coap_message_t;\n", encoding="utf-8")
+
+            headers = generator._dependency_headers(["server/server.h"])
+
+        self.assertIn("server/server.h", headers)
+        self.assertIn("protocol/coap_codec.h", headers)
+        self.assertIn("protocol/coap_message.h", headers)
+
+    def test_behavior_failure_does_not_fail_compiled_generation(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            tmp = Path(raw_tmp)
+            generator = ProjectGenerator(_bundle(tmp), FakeLLM("int generated;\n"), tmp / "out")
+            behavior = VerificationResult(
+                False,
+                [],
+                scenarios=[{"name": "coap_get_hello", "status": "failed", "detail": "bad response"}],
+            )
+
+            with patch("agent.coder.generation._compile_project", return_value=_completed(0)):
+                with patch("agent.coder.verifier.ProjectVerifier.verify_behavior", return_value=behavior):
+                    result = generator.generate()
+
+            manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+
+        self.assertTrue(result.success)
+        self.assertEqual(result.repair_stop_reason, "compile_succeeded")
+        self.assertTrue(manifest["generation_success"])
+        self.assertTrue(manifest["compile_success"])
+        self.assertTrue(manifest["verification_run"])
+        self.assertFalse(manifest["verification_success"])
+        self.assertEqual(manifest["repair"]["stop_reason"], "compile_succeeded")
+        self.assertEqual(manifest["verification"]["scenarios"][0]["status"], "failed")
+
+    def test_behavior_checks_do_not_run_when_generation_does_not_compile(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            tmp = Path(raw_tmp)
+            generator = ProjectGenerator(_bundle(tmp), FakeLLM("int generated;\n"), tmp / "out", max_repair_rounds=0)
+
+            with patch("agent.coder.generation._compile_project", return_value=_completed(1, stderr="compile failed")):
+                with patch("agent.coder.verifier.ProjectVerifier.verify_behavior") as verify_behavior:
+                    result = generator.generate()
+
+            manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+
+        self.assertFalse(result.success)
+        self.assertEqual(result.repair_stop_reason, "max_rounds_exhausted")
+        self.assertFalse(manifest["generation_success"])
+        self.assertFalse(manifest["compile_success"])
+        self.assertFalse(manifest["verification_run"])
+        self.assertIsNone(manifest["verification_success"])
+        verify_behavior.assert_not_called()
 
     def test_openai_error_retry_classification(self) -> None:
         class StatusError(OpenAIError):

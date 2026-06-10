@@ -129,8 +129,13 @@ def render_header(bundle: SpecBundle, file_spec: FileSpec) -> str:
         lines.append(f'#include "{dependency}"')
     if file_spec.header_dependencies:
         lines.append("")
-    for header in std_headers:
+    for header in file_spec.header_system_dependencies:
         lines.append(f"#include <{header}>")
+    if file_spec.header_system_dependencies:
+        lines.append("")
+    for header in std_headers:
+        if header not in file_spec.header_system_dependencies:
+            lines.append(f"#include <{header}>")
     if std_headers:
         lines.append("")
     lines.extend(
@@ -197,6 +202,7 @@ def render_main_c(bundle: SpecBundle) -> str:
     start_fn = _find_interface_name(app_spec, "_start")
     run_fn = _find_interface_name(app_spec, "_run") or _find_interface_name(app_spec, "_serve")
     destroy_fn = _find_interface_name(app_spec, "_destroy")
+    default_port = bundle.protocol.default_port or 1884
 
     lines = [
         f'#include "{app_spec.header_path}"',
@@ -207,12 +213,12 @@ def render_main_c(bundle: SpecBundle) -> str:
         "",
         "static uint16_t parse_port(int argc, char** argv) {",
         "    if (argc < 2) {",
-        "        return 1884;",
+        f"        return {default_port};",
         "    }",
         "    char* end = NULL;",
         "    unsigned long raw = strtoul(argv[1], &end, 10);",
         "    if (!argv[1][0] || (end && *end != '\\0') || raw == 0 || raw > 65535UL) {",
-        "        return 1884;",
+        f"        return {default_port};",
         "    }",
         "    return (uint16_t)raw;",
         "}",
@@ -264,7 +270,7 @@ def render_makefile(bundle: SpecBundle) -> str:
     body = separator.join(unique_srcs)
     binary_name = _bundle_binary_name(bundle)
     return f"""CC ?= gcc
-CFLAGS ?= -std=c11 -O2 -Wall -Wextra -pedantic -D_POSIX_C_SOURCE=200809L -I.
+CFLAGS ?= -std=c11 -O2 -Wall -Wextra -Werror=implicit-function-declaration -pedantic -D_POSIX_C_SOURCE=200809L -I.
 LDFLAGS ?=
 
 BROKER_SRCS = \\
@@ -477,10 +483,23 @@ class ProjectGenerator:
 
     def _dependency_headers(self, dependencies: list[str]) -> dict[str, str]:
         contents: dict[str, str] = {}
-        for dependency in dependencies:
+        seen: set[str] = set()
+
+        def visit(dependency: str) -> None:
+            dependency = normalize_repo_path(dependency)
+            if not dependency or dependency in seen:
+                return
+            seen.add(dependency)
             path = self.project_dir / dependency
-            if path.exists():
-                contents[dependency] = path.read_text(encoding="utf-8")
+            if not path.exists():
+                return
+            text = path.read_text(encoding="utf-8")
+            contents[dependency] = text
+            for match in re.finditer(r'^\s*#\s*include\s+"([^"]+)"', text, flags=re.MULTILINE):
+                visit(match.group(1))
+
+        for dependency in dependencies:
+            visit(dependency)
         return contents
 
     def _register_usage(self, stage: str, call_type: str, subject: str, usage: LLMUsage) -> None:
@@ -600,6 +619,37 @@ class ProjectGenerator:
         print("[agent.generate] compile=initial", flush=True)
         repair_outcome = self._repair_until_compiles(repaired_files, binary_name)
         compile_result = repair_outcome.compile_result
+        success = compile_result.returncode == 0
+        verification_run = False
+        verification_success: bool | None = None
+        verification_scenarios: list[dict[str, str]] = []
+        verification_diagnostics: list[dict[str, Any]] = []
+        if compile_result.returncode == 0:
+            from .verifier import ProjectVerifier
+
+            behavior_result = ProjectVerifier(self.bundle, self.output_dir).verify_behavior()
+            verification_run = True
+            verification_success = behavior_result.ok
+            verification_scenarios = behavior_result.scenarios
+            verification_diagnostics = [diag.__dict__ for diag in behavior_result.diagnostics]
+            for scenario in verification_scenarios:
+                print(
+                    f"[agent.generate] behavior={scenario['name']} status={scenario['status']} detail={scenario['detail']}",
+                    flush=True,
+                )
+            self.logs.write_named(
+                "behavior_verification.json",
+                json.dumps(
+                    {
+                        "success": verification_success,
+                        "scenarios": verification_scenarios,
+                        "diagnostics": verification_diagnostics,
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+                + "\n",
+            )
         manifest = {
             "model": "qwen3-max-2026-01-23",
             "llm_client": "agent.coder.llm_client.chat_with_llm",
@@ -611,7 +661,14 @@ class ProjectGenerator:
             "generation_order": self.bundle.generation_order,
             "modules": [module.name for module in self.bundle.modules_in_order],
             "repaired_files": repaired_files,
+            "generation_success": success,
             "compile_success": compile_result.returncode == 0,
+            "verification_run": verification_run,
+            "verification_success": verification_success,
+            "verification": {
+                "scenarios": verification_scenarios,
+                "diagnostics": verification_diagnostics,
+            },
             "repair": {
                 "stop_reason": repair_outcome.stop_reason,
                 "rounds_attempted": repair_outcome.rounds_attempted,
@@ -625,7 +682,7 @@ class ProjectGenerator:
         }
         manifest_path = self.logs.write_named("run_manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2) + "\n")
         return GenerationResult(
-            success=compile_result.returncode == 0,
+            success=success,
             manifest_path=manifest_path,
             compile_stdout=compile_result.stdout,
             compile_stderr=compile_result.stderr,

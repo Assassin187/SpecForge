@@ -75,7 +75,7 @@
         "peer_closed points to a local bool initialized false before the call"
       ],
       "RETURN": "true means read phase completed or would block; false means fatal read error",
-      "FAILURE": "On false or peer_closed=true, caller must close_connection(s, c)"
+      "FAILURE": "On false, caller closes the connection immediately. On peer_closed=true with buffered input, caller invokes on_data before close_connection(s, c)."
     },
     {
       "NAME": "mqtt_connection_flush",
@@ -99,7 +99,7 @@
     "TRIGGER": "服务器 start 成功后由上层调用进入运行阶段",
     "PRECONDITION": "s 非空且 s->running=true，epoll/listen fd 已初始化",
     "INPUT": "输入为服务器对象 s；事件输入由 epoll_wait 返回",
-    "ACTION": "循环 epoll_wait：监听 fd 触发 accept_loop；连接 fd 触发 read/flush/错误处理；调用 on_data/on_close 回调；并在每轮末尾主动推进待写队列与兴趣集更新",
+    "ACTION": "循环 epoll_wait：监听 fd 触发 accept_loop；连接 fd 可读时调用 mqtt_connection_read，成功且 input buffer 非空时必须调用 on_data，即使 peer_closed=true；处理 buffered input 后才关闭 peer_closed 连接。任一 on_data callback 可能向其他连接入队，因此每轮事件处理后必须扫描所有仍存活连接，主动 flush 每个待写队列并更新其 epoll interest，而不是只处理当前事件连接。",
     "STATE_CHANGE": "连接链表随接入/关闭动态变化，连接缓冲区与发送队列持续更新",
     "RESPONSE": "无直接返回值；通过回调与网络 I/O 驱动上层协议行为，循环在 stop 后退出",
     "EVENT_TYPE": "RUNTIME_EVENT"

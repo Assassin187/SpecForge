@@ -173,7 +173,7 @@
     },
     {
       "PATH": "coap_message_t.token",
-      "TYPE": "uint8_t[COAP_MAX_TOKEN_LEN]",
+      "TYPE": "uint8_t*",
       "ROLE": "token bytes"
     },
     {

@@ -59,10 +59,33 @@
   },
   "LOGIC": {
     "INPUT": "输入来自函数参数：req、out。",
-    "ACTION": "从 method message 构造 normalized path、joined query 与 Content-Format/Accept 视图",
+    "ACTION": "从 method message 构造 normalized path、joined query 与 Content-Format/Accept 视图。Uri-Path segments 以 '/' 连接；无 Uri-Path 时 path 必须为 '/'；存在 segments 时 path 必须以且仅以一个 '/' 开头，例如 segment 'hello' 精确生成 '/hello'。",
     "OUTPUT": "返回 true 表示条件成立或操作成功；返回 false 表示条件不成立、参数无效或操作失败，具体含义由 ROLE 限定。",
     "INVARIANTS_USED": [
-      "不得引入超出当前 minimum_v1 代码行为的协议语义"
+      "不得引入超出当前 minimum_v1 代码行为的协议语义",
+      "normalized path 与 resource router 注册路径使用相同的 leading-slash 表示"
     ]
-  }
+  },
+  "TEST_VECTORS": [
+    {
+      "NAME": "hello_path_normalization",
+      "INPUT": {
+        "uri_path_segments": [
+          "hello"
+        ]
+      },
+      "EXPECT": {
+        "path": "/hello"
+      }
+    },
+    {
+      "NAME": "root_path_normalization",
+      "INPUT": {
+        "uri_path_segments": []
+      },
+      "EXPECT": {
+        "path": "/"
+      }
+    }
+  ]
 }

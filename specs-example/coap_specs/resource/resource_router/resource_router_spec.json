@@ -113,7 +113,7 @@
         "NAME": "coap_resource_router_dispatch",
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
-        "ROLE": "按注册顺序查找首个 path match；method 不允许时写 4.05，否则调用 handler；无 route 返回 false",
+        "ROLE": "按注册顺序查找首个 path match；用 1u << req->method 检查 methods_mask，method 不允许时写 4.05，否则调用 handler；无 route 返回 false",
         "VISIBILITY": "public"
       },
       {
@@ -267,7 +267,7 @@
         "NAME": "coap_resource_router_dispatch",
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
-        "ROLE": "按注册顺序查找首个 path match；method 不允许时写 4.05，否则调用 handler；无 route 返回 false",
+        "ROLE": "按注册顺序查找首个 path match；用 1u << req->method 检查 methods_mask，method 不允许时写 4.05，否则调用 handler；无 route 返回 false",
         "CONTRACT": {
           "PRECONDITION": [
             {
@@ -276,7 +276,7 @@
           ],
           "POSTCONDITION": [
             {
-              "TEXT": "按注册顺序查找首个 path match；method 不允许时写 4.05，否则调用 handler；无 route 返回 false"
+              "TEXT": "按注册顺序查找首个 path match；用 1u << req->method 检查 methods_mask，method 不允许时写 4.05，否则调用 handler；无 route 返回 false"
             }
           ],
           "IDEMPOTENT": false,
@@ -347,7 +347,7 @@
       "NAME": "coap_resource_router_dispatch",
       "KIND": "FUNC",
       "SIGNATURE": "bool coap_resource_router_dispatch(coap_resource_router_t* router, const coap_request_t* req, coap_message_t* resp)",
-      "ROLE": "按注册顺序查找首个 path match；method 不允许时写 4.05，否则调用 handler；无 route 返回 false"
+      "ROLE": "按注册顺序查找首个 path match；用 1u << req->method 检查 methods_mask，method 不允许时写 4.05，否则调用 handler；无 route 返回 false"
     },
     {
       "NAME": "coap_resource_router_build_core_links",

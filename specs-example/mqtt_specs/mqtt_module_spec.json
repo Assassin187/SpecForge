@@ -6,6 +6,7 @@
     "ROLES": [
       "BROKER"
     ],
+    "DEFAULT_PORT": 1884,
     "SCOPE": "MQTT 3.1.1 Broker subset only; client/subscriber generation is out of scope and external MQTT clients are used for validation."
   },
   "MODULES": [
@@ -332,6 +333,62 @@
       "NAME": "mqtt_topic_filter_t",
       "KIND": "TYPE",
       "REASON": "订阅项公开类型是 mqtt_subscribe_topic_t；topic tree 内部不暴露 filter 类型"
+    }
+  ],
+  "TEST_VECTORS": [
+    {
+      "NAME": "runtime_cross_client_pubsub",
+      "LEVEL": "RUNTIME",
+      "INPUT": {
+        "steps": [
+          "connect subscriber and receive CONNACK",
+          "subscribe to specforge/runtime and receive SUBACK",
+          "connect publisher and publish payload hello"
+        ]
+      },
+      "EXPECT": {
+        "subscriber_publish_topic": "specforge/runtime",
+        "subscriber_publish_payload": "hello"
+      },
+      "TRACE_REFS": [
+        "mqtt/network/tcp_server/mqtt_tcp_server_run",
+        "mqtt/broker/mqtt_broker_handle_publish"
+      ]
+    },
+    {
+      "NAME": "runtime_eof_preserves_buffered_packet",
+      "LEVEL": "RUNTIME",
+      "INPUT": {
+        "steps": [
+          "publisher sends a complete PUBLISH packet",
+          "publisher immediately closes the TCP connection"
+        ]
+      },
+      "EXPECT": {
+        "subscriber_receives_publish": true,
+        "broker_survives": true
+      },
+      "TRACE_REFS": [
+        "mqtt/network/connection/mqtt_connection_read",
+        "mqtt/network/tcp_server/mqtt_tcp_server_run"
+      ]
+    },
+    {
+      "NAME": "runtime_malformed_packet_survival",
+      "LEVEL": "RUNTIME",
+      "INPUT": {
+        "steps": [
+          "send malformed MQTT packet on one connection",
+          "connect a fresh valid client"
+        ]
+      },
+      "EXPECT": {
+        "fresh_client_receives_connack": true,
+        "broker_survives": true
+      },
+      "TRACE_REFS": [
+        "mqtt/network/tcp_server/mqtt_tcp_server_run"
+      ]
     }
   ]
 }

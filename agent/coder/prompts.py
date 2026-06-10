@@ -15,8 +15,10 @@ Rules:
 - Treat the provided canonical header content as the only source of truth for public structs, enums, typedefs, and function signatures.
 - Never invent public struct fields, enum constants, or callback shapes that are not present in the canonical header.
 - Respect the consistency rules strictly.
+- Treat applicable TEST_VECTORS as hard behavioral requirements and reason through them before emitting code.
 - Do not reference any external implementation or repository.
 - Keep code portable to Linux with C11.
+- Include the standard/POSIX headers required for every called function; implicit function declarations are forbidden.
 - You may add private helper functions, private structs, and local comments when needed.
 - Never change public symbol names or function signatures.
 """
@@ -31,6 +33,7 @@ def _machine_constraints(bundle: SpecBundle, file_spec: FileSpec, function_specs
     file_raw = file_spec.raw
     constraints: dict[str, Any] = {
         "MODULE_FORBIDDEN_SYMBOLS": bundle.module_spec_path and _module_forbidden_symbols(bundle),
+        "MODULE_TEST_VECTORS": _module_test_vectors(bundle),
         "FILE_PUBLIC_SYMBOLS": file_raw.get("PUBLIC_SYMBOLS", []),
         "FILE_ACCESS_PATHS": file_raw.get("ACCESS_PATHS", []),
         "FILE_FORBIDDEN_SYMBOLS": file_raw.get("FORBIDDEN_SYMBOLS", []),
@@ -59,6 +62,14 @@ def _module_forbidden_symbols(bundle: SpecBundle) -> list[Any]:
     except Exception:  # noqa: BLE001
         return []
     return raw.get("FORBIDDEN_SYMBOLS", [])
+
+
+def _module_test_vectors(bundle: SpecBundle) -> list[Any]:
+    try:
+        raw = json.loads(bundle.module_spec_path.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        return []
+    return raw.get("TEST_VECTORS", [])
 
 
 def _function_summary(file_spec: FileSpec, function_specs: list[FunctionSpec], bundle: SpecBundle) -> str:
@@ -145,6 +156,8 @@ Requirements:
 - Use only the public struct fields and enum constants that exist in the canonical header.
 - Use only the allowed access paths listed in the machine-readable constraints when touching public structs.
 - Treat FORBIDDEN_SYMBOLS as hard errors; never emit those names or field paths.
+- Satisfy every applicable MODULE_TEST_VECTORS, FILE_TEST_VECTORS, and function TEST_VECTORS entry.
+- Include the standard/POSIX headers required for every called function; implicit function declarations are forbidden.
 - Do not emit Markdown.
 """
     return [
@@ -199,7 +212,7 @@ Compiler errors:
 Current file content:
 {current_content}
 
-Before changing code, prefer fixes that replace forbidden or nonexistent access paths with the allowed paths from Machine-readable constraints and Dependency headers. Output the full corrected file contents only, with no Markdown fences.
+Before changing code, prefer fixes that replace forbidden or nonexistent access paths with the allowed paths from Machine-readable constraints and Dependency headers. Preserve every applicable TEST_VECTORS behavior and include all headers required for called functions. Output the full corrected file contents only, with no Markdown fences.
 """
     return [
         {"role": "system", "content": SYSTEM_PROMPT},

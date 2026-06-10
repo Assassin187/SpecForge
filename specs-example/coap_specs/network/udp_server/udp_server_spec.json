@@ -9,6 +9,9 @@
   "HEADER": {
     "PATH": "../network/udp_server.h",
     "DEPENDENCY": [],
+    "SYSTEM_DEPENDENCY": [
+      "sys/socket.h"
+    ],
     "DATA": [
       {
         "NAME": "coap_endpoint_t",

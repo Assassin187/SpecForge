@@ -741,6 +741,8 @@ def compile_spec_bundle(implementation_plan: dict[str, Any], output_dir: str | P
             "NAME": safe_slug(item.get("test_id") or item.get("name") or f"test_{index}"),
             "INPUT": {"scenario": str(item.get("purpose", "")), "trace_ref_keys": item.get("trace_ref_keys", []) if isinstance(item.get("trace_ref_keys"), list) else []},
             "EXPECT": {"status": str(item.get("status", "inferred")), "coder_action": "preserve_protocol_behavior"},
+            "LEVEL": str(item.get("level", "RUNTIME")).upper(),
+            "TRACE_REFS": item.get("trace_ref_keys", []) if isinstance(item.get("trace_ref_keys"), list) else [],
         }
         for index, item in enumerate(implementation_plan.get("test_plan", []))
         if isinstance(item, dict) and str(item.get("purpose", "")).strip()

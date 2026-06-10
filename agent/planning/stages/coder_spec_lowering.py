@@ -395,6 +395,11 @@ def lower_protocol_meta_for_coder(planning_source: dict[str, Any]) -> dict[str, 
         directive_value("scope"),
     )
     result = {"NAME": name, "SPEC_VERSION": version or "unspecified", "ROLES": unique_roles}
+    default_port = protocol_metadata.get("default_port")
+    if not isinstance(default_port, int):
+        default_port = fact_meta.get("default_port")
+    if isinstance(default_port, int) and 1 <= default_port <= 65535:
+        result["DEFAULT_PORT"] = default_port
     if scope:
         result["SCOPE"] = scope
     return result

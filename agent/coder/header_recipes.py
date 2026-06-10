@@ -17,6 +17,7 @@ def _typedef_callback(signature: str) -> str:
 def _render_member(item: dict[str, object], indent: str = "    ") -> list[str]:
     member_name = str(item.get("NAME", "")).strip()
     member_type = str(item.get("TYPE", "")).strip()
+    array_len = str(item.get("ARRAY_LEN", "")).strip()
     nested_spec = item.get("TYPE_SPEC")
     if not member_name:
         return []
@@ -41,6 +42,8 @@ def _render_member(item: dict[str, object], indent: str = "    ") -> list[str]:
             return lines
     if not member_type:
         return []
+    if array_len:
+        return [f"{indent}{member_type} {member_name}[{array_len}];"]
     return [f"{indent}{member_type} {member_name};"]
 
 

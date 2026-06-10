@@ -190,6 +190,17 @@
         },
         "EXPECT": {
           "type": "object"
+        },
+        "LEVEL": {
+          "type": "string",
+          "enum": ["FUNCTION", "RUNTIME"]
+        },
+        "TRACE_REFS": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
         }
       }
     },
@@ -302,6 +313,13 @@
           "type": "string",
           "minLength": 1
         },
+        "VALUE": {
+          "type": [
+            "string",
+            "integer",
+            "boolean"
+          ]
+        },
         "TYPE_SPEC": {
           "$ref": "#/$defs/type_spec"
         }
@@ -321,6 +339,10 @@
           "minLength": 1
         },
         "TYPE": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ARRAY_LEN": {
           "type": "string",
           "minLength": 1
         },
@@ -462,6 +484,12 @@
           "minLength": 1
         },
         "DEPENDENCY": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "SYSTEM_DEPENDENCY": {
           "type": "array",
           "items": {
             "type": "string"

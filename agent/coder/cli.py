@@ -5,7 +5,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from .generation import ProjectGenerator
+from .generation import ProjectGenerator, _bundle_binary_name
 from .llm_client import FixedQwenClient
 from .specs import load_spec_bundle, load_spec_bundle_from_root
 from .verifier import ProjectVerifier
@@ -20,26 +20,27 @@ def _path(value: str) -> Path:
     return Path(value).expanduser()
 
 
-def default_output_dir() -> Path:
+def default_output_dir(bundle=None) -> Path:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return DEFAULT_OUTPUT_ROOT / f"mqtt_broker_{timestamp}"
+    prefix = _bundle_binary_name(bundle) if bundle is not None else "mqtt_broker"
+    return DEFAULT_OUTPUT_ROOT / f"{prefix}_{timestamp}"
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="MQTT spec-to-code agent")
+    parser = argparse.ArgumentParser(description="Protocol spec-to-code agent")
     parser.add_argument("--spec-root", default=str(DEFAULT_SPEC_ROOT))
     parser.add_argument(
         "--module-spec",
         default=None,
         help="Optional override; by default coder auto-discovers the module spec under --spec-root.",
     )
-    parser.add_argument("--output-dir", default=str(default_output_dir()))
+    parser.add_argument("--output-dir", default=None)
     parser.add_argument("--max-repair-rounds", type=int, default=3)
     parser.add_argument("--api-key-env", default="ALI_API", help="Environment variable containing the Qwen API key")
 
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("validate", help="Validate specs and LLM adapter prerequisites")
-    sub.add_parser("generate", help="Generate the MQTT broker project from specs")
+    sub.add_parser("generate", help="Generate the protocol project from specs")
     sub.add_parser("verify", help="Verify generated project structure, build, and smoke test")
     return parser
 
@@ -91,7 +92,7 @@ def cmd_generate(args: argparse.Namespace) -> int:
     generator = ProjectGenerator(
         bundle=bundle,
         llm_client=FixedQwenClient(args.api_key_env),
-        output_dir=_path(args.output_dir),
+        output_dir=_path(args.output_dir) if args.output_dir else default_output_dir(bundle),
         max_repair_rounds=args.max_repair_rounds,
     )
     result = generator.generate()
@@ -99,7 +100,9 @@ def cmd_generate(args: argparse.Namespace) -> int:
     print(result.compile_stdout)
     if result.compile_stderr:
         print(result.compile_stderr)
-    if not result.success:
+    if result.success:
+        print("Generation succeeded: final compile passed.")
+    else:
         print(f"Repair stop reason: {result.repair_stop_reason}")
         if result.repair_blocking_files:
             print("Repair blocking files:")
@@ -115,8 +118,10 @@ def cmd_verify(args: argparse.Namespace) -> int:
         print(f"ERROR spec_discovery: {exc}")
         return 1
     _print_diagnostics(bundle)
-    verifier = ProjectVerifier(bundle, _path(args.output_dir))
+    verifier = ProjectVerifier(bundle, _path(args.output_dir) if args.output_dir else default_output_dir(bundle))
     result = verifier.verify()
+    for scenario in result.scenarios:
+        print(f"{scenario['status'].upper()} {scenario['name']}: {scenario['detail']}")
     for diag in result.diagnostics:
         prefix = diag.level.upper()
         path = f" [{diag.path}]" if diag.path else ""

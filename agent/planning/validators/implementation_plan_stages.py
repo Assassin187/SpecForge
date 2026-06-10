@@ -2391,6 +2391,17 @@ def validate_full_implementation_plan(plan: dict[str, Any], *, profile: dict[str
     target_role = str(profile.get("target_role", {}).get("value", profile.get("target_role", "")) if isinstance(profile.get("target_role"), dict) else profile.get("target_role", "")).strip()
     if target_role and not (entrypoints and main_files):
         diagnostics.append(PlanningDiagnostic("error", "missing_runtime_entrypoint", f"deployable target role '{target_role}' requires a runtime entrypoint main.c", path))
+    if target_role.lower() in {"broker", "server"}:
+        runtime_tests = [
+            item
+            for item in plan.get("test_plan", [])
+            if isinstance(item, dict) and str(item.get("level", "runtime")).strip().lower() == "runtime"
+        ]
+        purposes = [str(item.get("purpose", "")).lower() for item in runtime_tests]
+        if not any(any(word in purpose for word in ("success", "valid", "interaction", "publish", "request")) for purpose in purposes):
+            diagnostics.append(PlanningDiagnostic("error", "readiness_missing_runtime_success_test", f"deployable target role '{target_role}' requires a successful runtime interaction test", path))
+        if not any(any(word in purpose for word in ("malformed", "invalid", "error", "unknown", "not found")) for purpose in purposes):
+            diagnostics.append(PlanningDiagnostic("error", "readiness_missing_runtime_error_test", f"deployable target role '{target_role}' requires a malformed/error runtime test", path))
     key_module_ids = {str(item.get("module_id", "")) for item in main_files if str(item.get("module_id", "")).strip()}
     if entrypoints:
         key_module_ids.update(str(item.get("module_id", "")) for item in entrypoints if str(item.get("module_id", "")).strip())

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +27,10 @@ def normalize_repo_path(path: str) -> str:
     while normalized.startswith("./"):
         normalized = normalized[2:]
     return normalized
+
+
+def normalize_system_header(path: str) -> str:
+    return path.strip().removeprefix("<").removesuffix(">")
 
 
 def normalize_signature(signature: str) -> str:
@@ -94,6 +100,7 @@ def _parse_file_spec(path: Path, raw: dict[str, Any], diags: list[Diagnostic]) -
         header = {}
     source = _require_object(raw, "SOURCE", path, diags)
     header_dependency = header.get("DEPENDENCY", [])
+    header_system_dependency = header.get("SYSTEM_DEPENDENCY", [])
     header_data = header.get("DATA", [])
     header_interface = header.get("INTERFACE", [])
     return FileSpec(
@@ -103,6 +110,7 @@ def _parse_file_spec(path: Path, raw: dict[str, Any], diags: list[Diagnostic]) -
         header_path=normalize_repo_path(str(header.get("PATH", ""))),
         source_path=normalize_repo_path(str(source.get("PATH", ""))),
         header_dependencies=[normalize_repo_path(str(item)) for item in header_dependency] if isinstance(header_dependency, list) else [],
+        header_system_dependencies=[normalize_system_header(str(item)) for item in header_system_dependency] if isinstance(header_system_dependency, list) else [],
         source_dependencies=[normalize_repo_path(str(item)) for item in _require_list(source, "DEPENDENCY", path, diags)],
         header_data=header_data if isinstance(header_data, list) else [],
         source_data=_require_list(source, "DATA", path, diags),
@@ -138,6 +146,7 @@ def _parse_module_spec(path: Path, raw: dict[str, Any], diags: list[Diagnostic])
         name=str(protocol_raw.get("NAME", "")),
         spec_version=str(protocol_raw.get("SPEC_VERSION", "")),
         roles=[str(role) for role in protocol_raw.get("ROLES", []) if str(role).strip()],
+        default_port=protocol_raw.get("DEFAULT_PORT") if isinstance(protocol_raw.get("DEFAULT_PORT"), int) else None,
     )
     modules_raw = _require_list(raw, "MODULES", path, diags)
     modules = [
@@ -208,6 +217,23 @@ def _iter_type_paths(type_name: str, type_spec: dict[str, Any], prefix: str | No
         if isinstance(nested, dict):
             paths.update(_iter_type_paths(type_name, nested, member_path))
     return paths
+
+
+def _iter_type_members(type_spec: dict[str, Any]) -> list[dict[str, Any]]:
+    kind = str(type_spec.get("TYPE_KIND", "")).upper()
+    member_key = "FIELDS" if kind == "STRUCT" else "VARIANTS" if kind == "UNION" else ""
+    members = type_spec.get(member_key, [])
+    if not isinstance(members, list):
+        return []
+    out: list[dict[str, Any]] = []
+    for member in members:
+        if not isinstance(member, dict):
+            continue
+        out.append(member)
+        nested = member.get("TYPE_SPEC")
+        if isinstance(nested, dict):
+            out.extend(_iter_type_members(nested))
+    return out
 
 
 def _public_symbols_and_paths(bundle: SpecBundle) -> tuple[set[str], set[str]]:
@@ -293,6 +319,14 @@ def _validate_file_specs(bundle: SpecBundle) -> None:
         if file_spec.source_path and not file_spec.header_path and not is_main_source:
             bundle.diagnostics.append(Diagnostic("error", "missing_header_path", f"Non-main file spec '{trace_id}' is missing HEADER.PATH", str(file_spec.spec_path)))
         for data_item in file_spec.header_data:
+            type_spec = data_item.get("TYPE_SPEC")
+            if isinstance(type_spec, dict):
+                for member in _iter_type_members(type_spec):
+                    member_type = str(member.get("TYPE", "")).strip()
+                    if re.search(r"\[[^\]]+\]", member_type):
+                        bundle.diagnostics.append(Diagnostic("error", "unsupported_array_type_spelling", "Array fields must use TYPE plus ARRAY_LEN instead of embedding [] in TYPE", str(file_spec.spec_path)))
+                    if member_type in {"struct sockaddr_storage", "socklen_t"} and "sys/socket.h" not in file_spec.header_system_dependencies:
+                        bundle.diagnostics.append(Diagnostic("error", "missing_system_header_dependency", f"Public header field type '{member_type}' requires HEADER.SYSTEM_DEPENDENCY to include sys/socket.h", str(file_spec.spec_path)))
             if data_item.get("KIND") != "TYPE" or str(data_item.get("VISIBILITY", "")).upper() != "PUBLIC":
                 continue
             if isinstance(data_item.get("TYPE_SPEC"), dict):
@@ -379,6 +413,50 @@ def _validate_machine_constraints(bundle: SpecBundle) -> None:
             bundle.diagnostics.append(Diagnostic("warning", "missing_test_vectors", f"Protocol codec '{file_spec.trace_id}' should define TEST_VECTORS", str(file_spec.spec_path)))
 
 
+def _validate_rendered_headers_compile(bundle: SpecBundle) -> None:
+    if bundle.has_errors():
+        return
+    from .generation import render_header
+
+    with tempfile.TemporaryDirectory() as raw_tmp:
+        tmp = Path(raw_tmp)
+        for file_spec in bundle.file_specs_by_trace.values():
+            if not file_spec.header_path:
+                continue
+            target = tmp / file_spec.header_path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(render_header(bundle, file_spec), encoding="utf-8")
+
+        for file_spec in bundle.file_specs_by_trace.values():
+            if not file_spec.header_path:
+                continue
+            check_path = tmp / f"check_{file_spec.header_path.replace('/', '_')}.c"
+            check_path.write_text(f'#include "{file_spec.header_path}"\nint main(void) {{ return 0; }}\n', encoding="utf-8")
+            result = subprocess.run(
+                [
+                    "cc",
+                    "-std=c11",
+                    "-Wall",
+                    "-Wextra",
+                    "-pedantic",
+                    "-D_POSIX_C_SOURCE=200809L",
+                    "-I.",
+                    "-c",
+                    str(check_path.relative_to(tmp)),
+                    "-o",
+                    "/dev/null",
+                ],
+                cwd=tmp,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if result.returncode != 0:
+                detail = (result.stderr or result.stdout).strip().splitlines()
+                message = detail[0] if detail else "rendered header did not compile"
+                bundle.diagnostics.append(Diagnostic("error", "rendered_header_compile_error", message, file_spec.header_path))
+
+
 def _validate_uniqueness(bundle: SpecBundle) -> None:
     seen_paths: dict[str, str] = {}
     for file_spec in bundle.file_specs_by_trace.values():
@@ -410,12 +488,12 @@ def discover_module_spec(spec_root: str | Path) -> Path:
     return candidates[0]
 
 
-def load_spec_bundle_from_root(spec_root: str | Path) -> SpecBundle:
+def load_spec_bundle_from_root(spec_root: str | Path, *, validate_rendered_headers: bool = True) -> SpecBundle:
     root = Path(spec_root)
-    return load_spec_bundle(discover_module_spec(root), root)
+    return load_spec_bundle(discover_module_spec(root), root, validate_rendered_headers=validate_rendered_headers)
 
 
-def load_spec_bundle(module_spec_path: str | Path, spec_root: str | Path) -> SpecBundle:
+def load_spec_bundle(module_spec_path: str | Path, spec_root: str | Path, *, validate_rendered_headers: bool = True) -> SpecBundle:
     module_spec = Path(module_spec_path)
     root = Path(spec_root)
     diagnostics: list[Diagnostic] = []
@@ -472,6 +550,8 @@ def load_spec_bundle(module_spec_path: str | Path, spec_root: str | Path) -> Spe
     _validate_file_specs(bundle)
     _validate_function_specs(bundle)
     _validate_machine_constraints(bundle)
+    if validate_rendered_headers:
+        _validate_rendered_headers_compile(bundle)
     return bundle
 
 

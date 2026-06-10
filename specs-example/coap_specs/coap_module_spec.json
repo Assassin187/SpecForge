@@ -6,6 +6,7 @@
     "ROLES": [
       "SERVER"
     ],
+    "DEFAULT_PORT": 5683,
     "SCOPE": "Minimal CoAP over plain UDP server subset matching protocol-example/coap; external clients are used for validation."
   },
   "MODULES": [
@@ -368,9 +369,66 @@
       "ID": "C7",
       "RULE": "只能使用 canonical header 中声明的 public types、fields、enum values 与 functions；不得臆造额外 CoAP surface。",
       "DOC_REF": []
+    },
+    {
+      "ID": "C8",
+      "RULE": "CoAP option enum 唯一公开命名为 COAP_OPT_URI_PATH、COAP_OPT_CONTENT_FORMAT、COAP_OPT_URI_QUERY、COAP_OPT_ACCEPT；不得使用 COAP_OPTION_* 别名。",
+      "DOC_REF": []
+    },
+    {
+      "ID": "C9",
+      "RULE": "resource methods_mask 是 bitset：注册时必须使用 1u << COAP_METHOD_*，dispatch 时也用同一 bit encoding 检查；不得直接 OR 原始 method 值。",
+      "DOC_REF": []
     }
   ],
   "TEST_VECTORS": [
+    {
+      "NAME": "runtime_get_hello",
+      "LEVEL": "RUNTIME",
+      "INPUT": {
+        "method": "GET",
+        "path": "/hello"
+      },
+      "EXPECT": {
+        "response_code": "2.05",
+        "content_format": "text/plain",
+        "payload": "hello from CoAP server"
+      },
+      "TRACE_REFS": [
+        "coap/server/coap_server/build_request_view",
+        "coap/server/coap_server/handle_hello"
+      ]
+    },
+    {
+      "NAME": "runtime_get_unknown",
+      "LEVEL": "RUNTIME",
+      "INPUT": {
+        "method": "GET",
+        "path": "/unknown"
+      },
+      "EXPECT": {
+        "response_code": "4.04"
+      },
+      "TRACE_REFS": [
+        "coap/server/coap_server/build_request_view",
+        "coap/resource/resource_router/coap_resource_router_dispatch"
+      ]
+    },
+    {
+      "NAME": "runtime_extended_option_decode",
+      "LEVEL": "RUNTIME",
+      "INPUT": {
+        "method": "GET",
+        "uri_path_option_length": 13
+      },
+      "EXPECT": {
+        "response_code": "4.04",
+        "response_type": "ACK"
+      },
+      "TRACE_REFS": [
+        "coap/protocol/coap_codec/coap_decode_message"
+      ]
+    },
     {
       "NAME": "malformed_confirmable_reset",
       "INPUT": {
@@ -445,6 +503,33 @@
         ],
         "persistence": "process_memory_only"
       }
+    }
+  ],
+  "FORBIDDEN_SYMBOLS": [
+    {
+      "NAME": "COAP_OPTION_URI_PATH",
+      "KIND": "ENUM",
+      "REASON": "CoAP option enum 唯一公开命名是 COAP_OPT_URI_PATH"
+    },
+    {
+      "NAME": "COAP_OPTION_URI_QUERY",
+      "KIND": "ENUM",
+      "REASON": "CoAP option enum 唯一公开命名是 COAP_OPT_URI_QUERY"
+    },
+    {
+      "NAME": "COAP_OPTION_CONTENT_FORMAT",
+      "KIND": "ENUM",
+      "REASON": "CoAP option enum 唯一公开命名是 COAP_OPT_CONTENT_FORMAT"
+    },
+    {
+      "NAME": "COAP_OPTION_ACCEPT",
+      "KIND": "ENUM",
+      "REASON": "CoAP option enum 唯一公开命名是 COAP_OPT_ACCEPT"
+    },
+    {
+      "NAME": "coap_make_code(4, 0, 0)",
+      "KIND": "CALL",
+      "REASON": "coap_make_code 只接受 code_class 和 detail 两个参数"
     }
   ]
 }

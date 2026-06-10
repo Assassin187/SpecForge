@@ -130,6 +130,13 @@
         },
         "EXPECT": {
           "type": "object"
+        },
+        "LEVEL": {
+          "type": "string",
+          "enum": ["FUNCTION", "RUNTIME"]
+        },
+        "TRACE_REFS": {
+          "$ref": "#/$defs/string_array"
         }
       }
     },
@@ -162,6 +169,11 @@
         "SPEC_VERSION": {
           "type": "string",
           "minLength": 1
+        },
+        "DEFAULT_PORT": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
         },
         "ROLES": {
           "$ref": "#/$defs/string_array"

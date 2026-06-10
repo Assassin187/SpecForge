@@ -70,7 +70,7 @@
   },
   "LOGIC": {
     "INPUT": "输入来自函数参数：data、len、out。",
-    "ACTION": "按单个 datagram 解码 4-byte header、token、ordered options、payload marker 与 payload；失败时释放 out",
+    "ACTION": "按单个 datagram 解码 4-byte header、token、ordered options、payload marker 与 payload；失败时释放 out。解析 option extended delta/length 时必须调用 decode_ext(data, len, &offset, nibble, &value)，data 与 len 保持完整 datagram 不变，offset 始终是 absolute offset；不得传入 data+offset 或 len-offset 后继续使用 absolute offset。",
     "OUTPUT": "返回 COAP_DECODE_OK、COAP_DECODE_INVALID 或 COAP_DECODE_TRUNCATED。",
     "INVARIANTS_USED": [
       "version 必须为 1",
@@ -186,7 +186,7 @@
     },
     {
       "PATH": "coap_message_t.token",
-      "TYPE": "uint8_t[COAP_MAX_TOKEN_LEN]",
+      "TYPE": "uint8_t*",
       "ROLE": "token bytes"
     },
     {

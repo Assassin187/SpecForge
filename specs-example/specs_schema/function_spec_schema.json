@@ -295,6 +295,17 @@
         },
         "EXPECT": {
           "type": "object"
+        },
+        "LEVEL": {
+          "type": "string",
+          "enum": ["FUNCTION", "RUNTIME"]
+        },
+        "TRACE_REFS": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
         }
       }
     },

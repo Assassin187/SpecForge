@@ -10,6 +10,7 @@ class ProtocolMeta:
     name: str
     spec_version: str
     roles: list[str]
+    default_port: int | None = None
 
 
 @dataclass(frozen=True)
@@ -68,6 +69,7 @@ class FileSpec:
     header_path: str
     source_path: str
     header_dependencies: list[str]
+    header_system_dependencies: list[str]
     source_dependencies: list[str]
     header_data: list[dict[str, Any]]
     source_data: list[dict[str, Any]]

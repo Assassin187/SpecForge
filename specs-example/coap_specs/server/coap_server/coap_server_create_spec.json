@@ -2,7 +2,7 @@
   "KIND": "FUNCTION_SPEC",
   "TRACE_ID": "coap/server/coap_server/coap_server_create",
   "FUNCTION_TYPE": "ALGORITHM",
-  "ROLE": "创建 server、router 与 UDP runtime，并注册 discovery/hello/echo/kv routes",
+  "ROLE": "创建 server、router 与 UDP runtime，并用 1u << COAP_METHOD_* bitset 注册 discovery/hello/echo/kv routes",
   "SIGNATURE": {
     "RAW": "coap_server_t* coap_server_create(uint16_t port)",
     "NAME": "coap_server_create",
@@ -57,10 +57,10 @@
   },
   "LOGIC": {
     "INPUT": "输入来自函数参数：port。",
-    "ACTION": "创建 server、router 与 UDP runtime，并注册 discovery/hello/echo/kv routes",
+    "ACTION": "创建 server、router 与 UDP runtime；构造 get_mask = 1u << COAP_METHOD_GET、echo_mask = (1u << COAP_METHOD_POST) | (1u << COAP_METHOD_PUT)、read_write_mask 覆盖 GET/POST/PUT/DELETE，并用这些 bitset 注册 discovery/hello/echo/kv routes",
     "OUTPUT": "返回结果、已借用对象或新分配对象的指针；无结果或失败时返回 NULL，所有权由 ROLE/CALL_CONTRACTS 限定。",
     "INVARIANTS_USED": [
-      "不得引入超出当前 minimum_v1 代码行为的协议语义"
+      "methods_mask 的 bit 编码必须与 resource_router dispatch 一致：1u << COAP_METHOD_*"
     ]
   }
 }

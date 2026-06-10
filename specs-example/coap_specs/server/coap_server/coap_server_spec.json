@@ -26,7 +26,7 @@
         "NAME": "coap_server_create",
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
-        "ROLE": "创建 server、router 与 UDP runtime，并注册 discovery/hello/echo/kv routes",
+        "ROLE": "创建 server、router 与 UDP runtime，并用 1u << COAP_METHOD_* bitset 注册 discovery/hello/echo/kv routes",
         "VISIBILITY": "public"
       },
       {
@@ -68,6 +68,7 @@
     "DEPENDENCY": [
       "../server/coap_server.h",
       "../network/udp_server.h",
+      "../protocol/coap_message.h",
       "../protocol/coap_codec.h",
       "../resource/resource_router.h"
     ],
@@ -230,7 +231,7 @@
         "NAME": "handle_discovery",
         "KIND": "FUNC",
         "FUNCTION_TYPE": "EVENT",
-        "ROLE": "处理 /.well-known/core discovery 与 Accept 检查",
+        "ROLE": "处理 /.well-known/core discovery；Accept 存在且不是 COAP_FORMAT_LINK_FORMAT 时返回 4.06",
         "CONTRACT": {
           "PRECONDITION": [
             {
@@ -239,7 +240,7 @@
           ],
           "POSTCONDITION": [
             {
-              "TEXT": "处理 /.well-known/core discovery 与 Accept 检查"
+              "TEXT": "处理 /.well-known/core discovery；Accept 存在且不是 COAP_FORMAT_LINK_FORMAT 时返回 4.06"
             }
           ],
           "IDEMPOTENT": false,
@@ -460,7 +461,7 @@
         "NAME": "coap_server_create",
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
-        "ROLE": "创建 server、router 与 UDP runtime，并注册 discovery/hello/echo/kv routes",
+        "ROLE": "创建 server、router 与 UDP runtime，并用 1u << COAP_METHOD_* bitset 注册 discovery/hello/echo/kv routes",
         "CONTRACT": {
           "PRECONDITION": [
             {
@@ -469,7 +470,7 @@
           ],
           "POSTCONDITION": [
             {
-              "TEXT": "创建 server、router 与 UDP runtime，并注册 discovery/hello/echo/kv routes"
+              "TEXT": "创建 server、router 与 UDP runtime，并用 1u << COAP_METHOD_* bitset 注册 discovery/hello/echo/kv routes"
             }
           ],
           "IDEMPOTENT": false,

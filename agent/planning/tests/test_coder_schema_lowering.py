@@ -17,7 +17,7 @@ from agent.planning.stages.coder_spec_lowering import (
     normalize_param_ownership_for_coder,
 )
 from agent.planning.stages.protocol_profile import build_protocol_profile
-from agent.planning.stages.implementation_plan_merger import normalize_file_layout_candidate
+from agent.planning.stages.implementation_plan_merger import _protocol_metadata, normalize_file_layout_candidate
 from agent.planning.stages.specs_compiler import compile_spec_bundle
 from agent.planning.tests.current_flow_fixtures import current_architecture_candidates, current_implementation_plan
 from agent.planning.validators.coder_compat import validate_coder_compatibility
@@ -161,8 +161,21 @@ def _zap_plan() -> dict:
 
 class CoderSchemaLoweringTests(unittest.TestCase):
     def test_existing_example_specs_are_schema_valid(self) -> None:
-        diagnostics = validate_coder_spec_bundle_against_schema(ROOT / "specs-example" / "mqtt_specs")
-        self.assertFalse([diag.__dict__ for diag in diagnostics if diag.level == "error"])
+        for protocol in ("mqtt", "coap"):
+            diagnostics = validate_coder_spec_bundle_against_schema(ROOT / "specs-example" / f"{protocol}_specs")
+            self.assertFalse([diag.__dict__ for diag in diagnostics if diag.level == "error"])
+
+    def test_protocol_metadata_extracts_default_port_from_facts(self) -> None:
+        planning_ir = {
+            "protocol_facts": {
+                "protocol_meta": {"protocol_name": "CoAP"},
+                "timers_and_constants": [{"name": "default_port", "value_or_rule": "5683 unless overridden"}],
+            }
+        }
+
+        metadata = _protocol_metadata(planning_ir, {}, "coap")
+
+        self.assertEqual(metadata["default_port"], 5683)
 
     def test_normalizers_match_coder_schema_enums(self) -> None:
         self.assertEqual(normalize_param_ownership_for_coder("borrowed"), "BORROWED")
