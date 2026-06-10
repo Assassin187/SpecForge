@@ -18,6 +18,10 @@ from .specs import (
     normalize_repo_path,
 )
 
+MAX_REPAIR_DIAGNOSTIC_BYTES = 64 * 1024
+MAX_REPAIR_REQUEST_BYTES = 4 * 1024 * 1024
+MAX_REPAIR_RESPONSE_BYTES = 1024 * 1024
+
 
 @dataclass
 class GenerationResult:
@@ -26,6 +30,17 @@ class GenerationResult:
     compile_stdout: str
     compile_stderr: str
     repaired_files: list[str]
+    repair_stop_reason: str
+    repair_blocking_files: list[str]
+
+
+@dataclass
+class RepairOutcome:
+    compile_result: subprocess.CompletedProcess[str]
+    stop_reason: str
+    rounds_attempted: int
+    blocking_files: list[str]
+    rejected_candidates: list[dict[str, str]]
 
 
 class GenerationLogger:
@@ -279,15 +294,153 @@ def _compile_project(output_dir: Path, binary_name: str) -> subprocess.Completed
     )
 
 
-def _extract_error_files(stdout: str, stderr: str) -> list[str]:
+_DIAGNOSTIC_RE = re.compile(r"^(.+\.(?:c|h)):\d+:\d+: ((?:fatal )?error|warning|note):")
+
+
+def _project_relative_path(raw_path: str, project_dir: Path) -> str | None:
+    raw_path = raw_path.strip()
+    if not raw_path:
+        return None
+    path = Path(raw_path)
+    try:
+        absolute = path.resolve(strict=False) if path.is_absolute() else (project_dir / path).resolve(strict=False)
+        relative = absolute.relative_to(project_dir.resolve(strict=False))
+    except ValueError:
+        return None
+    return normalize_repo_path(relative.as_posix())
+
+
+def _extract_project_error_files(stdout: str, stderr: str, project_dir: Path) -> list[str]:
     combined = f"{stdout}\n{stderr}"
-    pattern = re.compile(r"(?m)^([A-Za-z0-9_./-]+\.(?:c|h)):\d+:\d+: error:")
-    found = []
-    for match in pattern.finditer(combined):
-        path = normalize_repo_path(match.group(1))
-        if path not in found:
-            found.append(path)
+    found: list[str] = []
+    for line in combined.splitlines():
+        match = _DIAGNOSTIC_RE.match(line)
+        if not match or "error" not in match.group(2):
+            continue
+        relative = _project_relative_path(match.group(1), project_dir)
+        if relative and relative not in found:
+            found.append(relative)
     return found
+
+
+def _classify_repair_targets(
+    stdout: str,
+    stderr: str,
+    project_dir: Path,
+    bundle: SpecBundle,
+) -> tuple[list[str], list[str]]:
+    repairable: list[str] = []
+    blocking_headers: list[str] = []
+    for relative in _extract_project_error_files(stdout, stderr, project_dir):
+        if relative.endswith(".h"):
+            if relative not in blocking_headers:
+                blocking_headers.append(relative)
+            continue
+        file_spec = bundle.file_specs_by_source_path.get(relative)
+        if (
+            file_spec is not None
+            and relative.endswith(".c")
+            and file_spec.header_path
+            and Path(relative).name != "main.c"
+            and relative not in repairable
+        ):
+            repairable.append(relative)
+    return repairable, blocking_headers
+
+
+def _diagnostic_blocks(stdout: str, stderr: str, project_dir: Path) -> list[tuple[str, str, str]]:
+    blocks: list[tuple[str, str, str]] = []
+    current_path: str | None = None
+    current_level = ""
+    current_lines: list[str] = []
+
+    def flush() -> None:
+        nonlocal current_path, current_level, current_lines
+        if current_path and current_lines:
+            blocks.append((current_path, current_level, "\n".join(current_lines)))
+        current_path = None
+        current_level = ""
+        current_lines = []
+
+    for line in f"{stdout}\n{stderr}".splitlines():
+        match = _DIAGNOSTIC_RE.match(line)
+        if match:
+            flush()
+            relative = _project_relative_path(match.group(1), project_dir)
+            if relative is None:
+                continue
+            current_path = relative
+            current_level = match.group(2)
+            current_lines = [line]
+        elif current_path:
+            current_lines.append(line)
+    flush()
+    return blocks
+
+
+def _compact_compile_diagnostics(
+    stdout: str,
+    stderr: str,
+    target_path: str,
+    project_dir: Path,
+    max_bytes: int = MAX_REPAIR_DIAGNOSTIC_BYTES,
+) -> str:
+    blocks = _diagnostic_blocks(stdout, stderr, project_dir)
+    selected = [block for path, _, block in blocks if path == target_path]
+    if not selected:
+        selected = [block for _, level, block in blocks if "error" in level]
+    if not selected:
+        selected = [block for _, _, block in blocks]
+
+    retained: list[str] = []
+    seen: set[str] = set()
+    used = 0
+    omitted = 0
+    for block in selected:
+        if block in seen:
+            omitted += 1
+            continue
+        seen.add(block)
+        encoded_len = len((block + "\n\n").encode("utf-8"))
+        if retained and used + encoded_len > max_bytes:
+            omitted += 1
+            continue
+        if not retained and encoded_len > max_bytes:
+            data = block.encode("utf-8")[:max_bytes]
+            retained.append(data.decode("utf-8", errors="ignore"))
+            omitted += 1
+            used = max_bytes
+            continue
+        retained.append(block)
+        used += encoded_len
+
+    text = "\n\n".join(retained)
+    if omitted:
+        suffix = f"\n\n[diagnostics truncated: retained <= {max_bytes} bytes, omitted {omitted} diagnostic blocks]"
+        available = max_bytes - len(suffix.encode("utf-8"))
+        if len(text.encode("utf-8")) > available:
+            text = text.encode("utf-8")[:max(0, available)].decode("utf-8", errors="ignore")
+        text += suffix
+    return text
+
+
+def _messages_size_bytes(messages: list[dict[str, str]]) -> int:
+    return len(json.dumps(messages, ensure_ascii=False).encode("utf-8"))
+
+
+def _validate_repair_candidate(target_path: str, current_content: str, candidate: str) -> tuple[bool, str]:
+    if not candidate.strip():
+        return False, "empty_response"
+    if len(candidate.encode("utf-8")) > MAX_REPAIR_RESPONSE_BYTES:
+        return False, "response_too_large"
+    if candidate == current_content:
+        return False, "unchanged_response"
+    if candidate.lstrip().startswith("#pragma once"):
+        return False, "header_like_response"
+    include_pattern = re.compile(r'^\s*#\s*include\s+[<"]' + re.escape(normalize_repo_path(target_path)) + r'[>"]', re.MULTILINE)
+    if include_pattern.search(candidate):
+        return False, "self_include_response"
+    return True, ""
 
 
 class ProjectGenerator:
@@ -445,7 +598,8 @@ class ProjectGenerator:
         repaired_files: list[str] = []
         binary_name = _bundle_binary_name(self.bundle)
         print("[agent.generate] compile=initial", flush=True)
-        compile_result = self._repair_until_compiles(repaired_files, binary_name)
+        repair_outcome = self._repair_until_compiles(repaired_files, binary_name)
+        compile_result = repair_outcome.compile_result
         manifest = {
             "model": "qwen3-max-2026-01-23",
             "llm_client": "agent.coder.llm_client.chat_with_llm",
@@ -458,6 +612,12 @@ class ProjectGenerator:
             "modules": [module.name for module in self.bundle.modules_in_order],
             "repaired_files": repaired_files,
             "compile_success": compile_result.returncode == 0,
+            "repair": {
+                "stop_reason": repair_outcome.stop_reason,
+                "rounds_attempted": repair_outcome.rounds_attempted,
+                "blocking_files": repair_outcome.blocking_files,
+                "rejected_candidates": repair_outcome.rejected_candidates,
+            },
             "llm_call_usage": self.llm_call_usage,
             "stage_token_usage": self.stage_token_usage,
             "workflow_token_usage": _usage_to_dict(self.workflow_usage),
@@ -470,24 +630,36 @@ class ProjectGenerator:
             compile_stdout=compile_result.stdout,
             compile_stderr=compile_result.stderr,
             repaired_files=repaired_files,
+            repair_stop_reason=repair_outcome.stop_reason,
+            repair_blocking_files=repair_outcome.blocking_files,
         )
 
-    def _repair_until_compiles(self, repaired_files: list[str], binary_name: str) -> subprocess.CompletedProcess[str]:
+    def _repair_until_compiles(self, repaired_files: list[str], binary_name: str) -> RepairOutcome:
         last_result = _compile_project(self.project_dir, binary_name)
         self.logs.write("compile_stdout_0", last_result.stdout)
         self.logs.write("compile_stderr_0", last_result.stderr)
         if last_result.returncode == 0:
-            return last_result
+            return RepairOutcome(last_result, "compile_succeeded", 0, [], [])
+
+        rejected_candidates: list[dict[str, str]] = []
 
         for round_idx in range(1, self.max_repair_rounds + 1):
-            failing_files = _extract_error_files(last_result.stdout, last_result.stderr)
-            if not failing_files:
-                return last_result
-            print(f"[agent.generate] repair_round={round_idx} files={','.join(failing_files)}", flush=True)
-            for relative_path in failing_files:
-                file_spec = self.bundle.file_specs_by_source_path.get(relative_path) or self.bundle.file_specs_by_header_path.get(relative_path)
-                if file_spec is None:
-                    continue
+            repairable_sources, blocking_headers = _classify_repair_targets(
+                last_result.stdout,
+                last_result.stderr,
+                self.project_dir,
+                self.bundle,
+            )
+            if blocking_headers:
+                print(f"[agent.generate] repair_blocked=headers files={','.join(blocking_headers)}", flush=True)
+                return RepairOutcome(last_result, "deterministic_header_compile_error", round_idx - 1, blocking_headers, rejected_candidates)
+            if not repairable_sources:
+                return RepairOutcome(last_result, "no_repairable_sources", round_idx - 1, [], rejected_candidates)
+
+            print(f"[agent.generate] repair_round={round_idx} files={','.join(repairable_sources)}", flush=True)
+            changed = False
+            for relative_path in repairable_sources:
+                file_spec = self.bundle.file_specs_by_source_path[relative_path]
                 print(f"[agent.generate] repair file={relative_path} start", flush=True)
                 module = self._module_for_spec(file_spec)
                 current_path = self.project_dir / relative_path
@@ -496,6 +668,17 @@ class ProjectGenerator:
                     continue
                 current_content = current_path.read_text(encoding="utf-8")
                 dependency_headers = self._dependency_headers(file_spec.source_dependencies or file_spec.header_dependencies)
+                canonical_header = ""
+                if file_spec.header_path:
+                    header_path = self.project_dir / file_spec.header_path
+                    if header_path.exists():
+                        canonical_header = header_path.read_text(encoding="utf-8")
+                compact_errors = _compact_compile_diagnostics(
+                    last_result.stdout,
+                    last_result.stderr,
+                    relative_path,
+                    self.project_dir,
+                )
                 print(
                     f"[agent.generate] repair file={relative_path} prompt_build deps={len(dependency_headers)}",
                     flush=True,
@@ -504,32 +687,65 @@ class ProjectGenerator:
                     self.bundle,
                     module,
                     file_spec,
+                    relative_path,
+                    canonical_header,
                     current_content,
-                    f"{last_result.stdout}\n{last_result.stderr}",
+                    compact_errors,
                     dependency_headers,
                 )
+                request_size = _messages_size_bytes(messages)
+                if request_size > MAX_REPAIR_REQUEST_BYTES:
+                    self.logs.write(
+                        f"repair_prompt_rejected_size_{round_idx}_{relative_path}",
+                        json.dumps(
+                            {
+                                "target_path": relative_path,
+                                "request_bytes": request_size,
+                                "max_request_bytes": MAX_REPAIR_REQUEST_BYTES,
+                            },
+                            ensure_ascii=False,
+                            indent=2,
+                        ),
+                    )
+                    return RepairOutcome(last_result, "repair_request_too_large", round_idx - 1, [], rejected_candidates)
                 print(f"[agent.generate] repair file={relative_path} prompt_built messages={len(messages)}", flush=True)
                 self.logs.write(f"repair_prompt_{round_idx}_{relative_path}", json.dumps(messages, ensure_ascii=False, indent=2))
                 print(f"[agent.generate] repair file={relative_path} prompt_logged", flush=True)
                 print(f"[agent.generate] repair file={relative_path} llm_request_start", flush=True)
-                response = self._generate_with_usage(
-                    "repair",
-                    f"repair_round_{round_idx}",
-                    relative_path,
-                    LLMRequest(messages=messages, top_p=0.2, temperature=0.2, is_stream=True),
-                )
+                try:
+                    response = self._generate_with_usage(
+                        "repair",
+                        f"repair_round_{round_idx}",
+                        relative_path,
+                        LLMRequest(messages=messages, top_p=0.2, temperature=0.2, is_stream=True),
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    self.logs.write(
+                        f"repair_llm_error_{round_idx}_{relative_path}",
+                        f"{type(exc).__name__}: {exc}\n",
+                    )
+                    return RepairOutcome(last_result, "repair_llm_error", round_idx - 1, [], rejected_candidates)
                 print(
                     f"[agent.generate] repair file={relative_path} llm_response_done chars={len(response.content)} tokens={response.usage.total_tokens}",
                     flush=True,
                 )
-                current_path.write_text(_strip_fences(response.content), encoding="utf-8")
+                candidate = _strip_fences(response.content)
+                candidate_ok, reject_reason = _validate_repair_candidate(relative_path, current_content, candidate)
+                if not candidate_ok:
+                    rejected_candidates.append({"path": relative_path, "reason": reject_reason})
+                    print(f"[agent.generate] repair file={relative_path} rejected={reject_reason}", flush=True)
+                    continue
+                current_path.write_text(candidate, encoding="utf-8")
                 print(f"[agent.generate] repair file={relative_path} file_written", flush=True)
+                changed = True
                 if relative_path not in repaired_files:
                     repaired_files.append(relative_path)
+            if not changed:
+                return RepairOutcome(last_result, "no_repair_progress", round_idx, [], rejected_candidates)
             last_result = _compile_project(self.project_dir, binary_name)
             print(f"[agent.generate] compile=repair_round_{round_idx} returncode={last_result.returncode}", flush=True)
             self.logs.write(f"compile_stdout_{round_idx}", last_result.stdout)
             self.logs.write(f"compile_stderr_{round_idx}", last_result.stderr)
             if last_result.returncode == 0:
-                return last_result
-        return last_result
+                return RepairOutcome(last_result, "compile_succeeded", round_idx, [], rejected_candidates)
+        return RepairOutcome(last_result, "max_rounds_exhausted", self.max_repair_rounds, [], rejected_candidates)

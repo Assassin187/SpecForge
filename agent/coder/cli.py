@@ -99,6 +99,12 @@ def cmd_generate(args: argparse.Namespace) -> int:
     print(result.compile_stdout)
     if result.compile_stderr:
         print(result.compile_stderr)
+    if not result.success:
+        print(f"Repair stop reason: {result.repair_stop_reason}")
+        if result.repair_blocking_files:
+            print("Repair blocking files:")
+            for path in result.repair_blocking_files:
+                print(f"- {path}")
     return 0 if result.success else 1
 
 

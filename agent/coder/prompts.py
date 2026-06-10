@@ -157,16 +157,20 @@ def build_repair_prompt(
     bundle: SpecBundle,
     module: ModuleEntry,
     file_spec: FileSpec,
+    target_path: str,
+    canonical_header: str,
     current_content: str,
     compile_errors: str,
     dependency_headers: dict[str, str],
 ) -> list[dict[str, str]]:
+    if target_path != file_spec.source_path or not target_path.endswith(".c"):
+        raise ValueError(f"repair target must be the source path for a .c file: {target_path}")
     repair_function_specs = [
         spec
         for item in file_spec.source_interfaces
         if (spec := bundle.function_specs_by_trace.get(item.trace_id)) is not None
     ]
-    content = f"""Repair the file `{file_spec.source_path}` so the project compiles.
+    content = f"""Repair the source file `{target_path}` so the project compiles.
 
 Module:
 - name: {module.name}
@@ -176,6 +180,9 @@ File:
 - trace_id: {file_spec.trace_id}
 - role: {file_spec.role}
 - source dependencies: {", ".join(file_spec.source_dependencies) or "none"}
+
+Canonical header content:
+{canonical_header}
 
 Consistency rules:
 {_json(bundle.consistency_rules)}

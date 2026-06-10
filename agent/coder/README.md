@@ -37,8 +37,9 @@ flowchart TD
     M --> N[make mqtt_broker]
 
     N -->|成功| O[写 run_manifest.json]
-    N -->|失败| P[抽取 gcc error 文件]
-    P --> Q[LLM repair 指定文件]
+    N -->|失败| P[抽取项目内 gcc error 文件]
+    P -->|header 错误| X2[停止 repair<br/>记录 blocking header]
+    P -->|source 错误| Q[LLM repair 普通 .c]
     Q --> N
     O --> R[输出工程 + _agent_logs]
 ```
@@ -83,7 +84,9 @@ flowchart LR
 | 普通 `.c` | LLM 生成 | File Spec、Function Spec、已生成 header、依赖 header、Consistency Rules | 是 |
 | `main.c` | 本地模板生成 | broker/app 模块公开类型与 create/start/run/destroy 接口 | 否 |
 | `Makefile` | 本地模板生成 | `GENERATION_ORDER` 后的模块文件列表、协议角色 | 否 |
-| repair 文件 | LLM 修复 | 当前文件内容、编译错误、依赖 header | 是 |
+| repair 文件 | LLM 修复 | 当前 `.c` 文件内容、压缩后的编译错误、canonical header、依赖 header | 是 |
+
+> `.h`、`main.c` 和 Makefile 是本地确定性生成产物，不进入 LLM repair。若编译错误指向项目 header，`generate` 会停止 repair，并在 manifest 中记录 `deterministic_header_compile_error`，提示需要修复 specs 或 header lowering。
 
 ### 单个模块内的生成顺序
 

@@ -5,7 +5,7 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
-from openai import OpenAI, OpenAIError
+from openai import APIConnectionError, OpenAI, OpenAIError
 
 
 FIXED_MODEL = "qwen3-max-2026-01-23"
@@ -52,6 +52,17 @@ def _coerce_usage(usage_obj: Any) -> LLMUsage:
         completion_tokens=completion_tokens,
         total_tokens=total_tokens,
     )
+
+
+def _is_retryable_openai_error(exc: OpenAIError) -> bool:
+    if isinstance(exc, APIConnectionError):
+        return True
+    status_code = getattr(exc, "status_code", None)
+    if status_code is None:
+        return False
+    if status_code in {408, 409, 429}:
+        return True
+    return int(status_code) >= 500
 
 
 def chat_with_llm_with_usage(
@@ -110,12 +121,12 @@ def chat_with_llm_with_usage(
                 usage=_coerce_usage(getattr(response, "usage", None)),
             )
         except OpenAIError as exc:
-            if attempt < attempts - 1:
+            if _is_retryable_openai_error(exc) and attempt < attempts - 1:
                 print(f"Model response request failed (attempt {attempt + 1}/{attempts}), retrying in {delay} seconds...")
                 print(f"Error message: {type(exc).__name__}: {exc}")
                 time.sleep(delay)
             else:
-                print("Failed after multiple model response requests, about to throw exception and exit...")
+                print("Model response request failed, about to throw exception and exit...")
                 raise
 
 
