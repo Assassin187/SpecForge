@@ -234,11 +234,16 @@ python3 -m agent coder \
 
 python3 -m agent coder \
   --api-key-env ALI_API_2 \
+  --spec-root /home/ljf/SpecForge/agent/planning/out/mqtt/broker__c__linux_epoll__minimum_v1/20260609_205409_170615_t/spec_bundle \
+  generate
+
+python3 -m agent coder \
+  --api-key-env ALI_API_2 \
   --spec-root ~/SpecForge/specs-example/mqtt_specs \
   generate
 
 python3 -m agent coder \
-  --spec-root ~/SpecForge/specs-example/coap_specs \
+  --spec-root /home/ljf/SpecForge/agent/planning/out/mqtt/broker__c__linux_epoll__minimum_v1/20260609_214554_036173_t/spec_bundle \
   generate
 
 ```
