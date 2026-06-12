@@ -292,6 +292,8 @@ def _lifecycle_for_type(type_item: dict[str, Any]) -> dict[str, list[str]]:
     for key in ("created_by", "initialized_by", "destroyed_by", "freed_by"):
         lifecycle.setdefault(key, [])
         lifecycle[key] = [str(item) for item in lifecycle[key] if str(item).strip() and not _is_non_function_lifecycle_name(item)]
+    if str(type_item.get("kind", "")) == "callback_type":
+        return _empty_type_lifecycle()
     text = f"{type_item.get('name', '')} {type_item.get('kind', '')} {type_item.get('purpose', '')}".lower()
     fields = type_item.get("fields", [])
     owns_data = str(type_item.get("kind", "")) in {"owned_buffer", "result_struct"} or any(isinstance(field, dict) and _field_owns_releasable_data(field) for field in fields)

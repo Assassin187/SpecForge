@@ -185,6 +185,8 @@ def normalize_type_inventory_candidate(candidate: dict[str, Any]) -> dict[str, A
                     continue
                 kept_dependencies.append(str(dependency))
             type_item["dependencies"] = kept_dependencies
+        if str(type_item.get("kind", "")) == "callback_type":
+            type_item["lifecycle"] = _empty_type_lifecycle()
         if not _is_public_type_item(type_item):
             type_item["dependencies"] = [
                 str(dependency)
@@ -721,17 +723,18 @@ def derive_type_obligations(draft: dict[str, Any], module_artifact: dict[str, An
     for type_item in draft.get("type_inventory", []):
         if not isinstance(type_item, dict) or str(type_item.get("module_id", "")) != module_id:
             continue
+        is_callback_type = type_item.get("kind") == "callback_type"
         lifecycle = type_item.get("lifecycle", {}) if isinstance(type_item.get("lifecycle"), dict) else {}
         actions: list[tuple[str, str, str, str]] = []
-        if lifecycle.get("created_by"):
+        if not is_callback_type and lifecycle.get("created_by"):
             actions.append(("create", "Type lifecycle declares creator functions.", "resource_lifecycle", "public" if type_item.get("visibility") == "public" else "module_internal"))
-        if lifecycle.get("initialized_by"):
+        if not is_callback_type and lifecycle.get("initialized_by"):
             actions.append(("initialize", "Type lifecycle declares initializer functions.", "resource_lifecycle", "public" if type_item.get("visibility") == "public" else "module_internal"))
-        if lifecycle.get("destroyed_by"):
+        if not is_callback_type and lifecycle.get("destroyed_by"):
             actions.append(("destroy", "Type lifecycle declares destroy functions.", "resource_lifecycle", "public" if type_item.get("visibility") == "public" else "module_internal"))
-        if lifecycle.get("freed_by") or type_item.get("kind") in {"owned_buffer", "result_struct"} or _has_owned_pointer_field(type_item):
+        if not is_callback_type and (lifecycle.get("freed_by") or type_item.get("kind") in {"owned_buffer", "result_struct"} or _has_owned_pointer_field(type_item)):
             actions.append(("release_owned_data", "Owned pointer/string/buffer fields require a cleanup/free path.", "resource_lifecycle", "public" if type_item.get("visibility") == "public" else "module_internal"))
-        if type_item.get("kind") == "callback_type":
+        if is_callback_type:
             actions.append(("register_callback", "Callback boundary types require registration or adapter functions.", "public_api", "public" if type_item.get("visibility") == "public" else "module_internal"))
         for action, reason, kind, visibility in actions:
             key = (str(type_item.get("type_id", "")), action)

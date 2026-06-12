@@ -1826,10 +1826,12 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
                 "kind": "callback_type",
                 "fields": [],
                 "callback_signature": {"return_type": "void", "params": [{"name": "user", "type": "void*", "type_ref": "void", "ownership": "BORROWED"}]},
-                "lifecycle": {"created_by": [], "initialized_by": [], "destroyed_by": [], "freed_by": []},
+                "lifecycle": {"created_by": ["mqtt_callback_create"], "initialized_by": [], "destroyed_by": ["mqtt_transport_close"], "freed_by": ["mqtt_transport_close"]},
                 "related_functions": ["mqtt_decoder_register_callback"],
             }
         )
+        normalized_callback = normalize_type_inventory_candidate({"types": [copy.deepcopy(callback)]})["types"][0]
+        self.assertEqual(normalized_callback["lifecycle"], {"created_by": [], "initialized_by": [], "destroyed_by": [], "freed_by": []})
         draft = {"protocol_name": "mqtt", "module_artifacts": [module], "type_inventory": [packet, callback]}
         obligations = derive_type_obligations(draft, module)
         actions = {item["action"] for item in obligations}
@@ -1837,6 +1839,8 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
         self.assertIn("destroy", actions)
         self.assertIn("release_owned_data", actions)
         self.assertIn("register_callback", actions)
+        callback_obligations = [item for item in obligations if item["type_id"] == "type:codec:mqtt_on_packet_fn"]
+        self.assertEqual([item["action"] for item in callback_obligations], ["register_callback"])
         context = build_function_inventory_context(draft, module)
         self.assertEqual(context["type_obligations"], obligations)
 
