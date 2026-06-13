@@ -67,24 +67,31 @@ timeout 45m python -m agent.coder \
 - per-profile coder manifests under `experiments/specs_optimization/gold_degradation/coder_runs/`
 - command logs under `experiments/specs_optimization/gold_degradation/run_logs/`
 
+指标口径：
+
+- `spec load` 和 `rendered header` 来自每个 profile 的 `manifest.json` 中 `validation` 结果。
+- `compile`、`repair iterations`、`smoke` 来自每个 coder run 的 `_agent_logs/run_manifest.json`。
+- `compile errors`、`missing symbol/type`、`dependency/header errors`、`hallucinated symbol count` 来自 `_agent_logs/*compile_stderr*.txt` 的正则归类；它们是诊断性指标，不是新的 validator。
+- 每行原始 evidence 可通过 `results.json` 的 `coder_run_manifest` 字段回溯到对应 run；profile mutation 则回溯到 `experiments/specs_optimization/gold_degradation/<protocol>/<profile>/manifest.json`。
+
 ## 3. Results Matrix
 
-| protocol | profile | spec load | rendered header | compile | repair iterations | smoke | LoC | compile errors | missing symbol/type | dependency/header errors | hallucinated symbol count | key errors |
-|---|---|---|---|---|---:|---|---:|---:|---:|---:|---:|---|
-| MQTT | Gold-Full | pass | pass | pass | 1 | 4/4 pass | 2454 | 1 | 2 | 2 | 2 | initial source compile error repaired |
-| MQTT | Gold-No-Behavior-Detail | pass | pass | fail | 3 | n/a | 2327 | 3 | 3 | 0 | 3 | `network/tcp_server.c` used undeclared `accept4`; repair made no progress |
-| MQTT | Gold-No-Wire-Binding | pass | pass | pass | 1 | 4/4 pass | 2426 | 6 | 6 | 0 | 2 | prior source compile errors repaired |
-| MQTT | Gold-No-Calls | pass | pass | pass | 0 | 3/4 fail | 2421 | 0 | 0 | 0 | 0 | mosquitto interop timed out |
-| MQTT | Gold-Min-Interface | pass | pass | fail | 3 | n/a | 2195 | 4 | 3 | 0 | 3 | repeated undeclared `accept4`; max repair rounds exhausted |
-| MQTT | Gold-No-TestVectors | pass | pass | pass | 1 | 4/4 pass | 2483 | 1 | 1 | 0 | 1 | initial source compile error repaired |
-| MQTT | Gold-Sidecar-Only-Traceability | pass | pass | pass | 0 | 4/4 pass | 2449 | 0 | 0 | 0 | 0 | none |
-| CoAP | Gold-Full | pass | pass | pass | 0 | 4/4 pass | 1639 | 0 | 0 | 0 | 0 | none |
-| CoAP | Gold-No-Behavior-Detail | pass | pass | pass | 0 | 2/4 fail | 1646 | 0 | 0 | 0 | 0 | `coap_extended_option` timed out |
-| CoAP | Gold-No-Wire-Binding | pass | pass | pass | 1 | 4/4 pass | 1633 | 1 | 0 | 0 | 0 | prior source compile error repaired |
-| CoAP | Gold-No-Calls | pass | pass | pass | 1 | 4/4 pass | 1676 | 3 | 6 | 3 | 6 | missing stdlib/stdio includes repaired |
-| CoAP | Gold-Min-Interface | pass | pass | pass | 0 | 0/4 fail | 1719 | 0 | 0 | 0 | 0 | `/hello` response behavior failed |
-| CoAP | Gold-No-TestVectors | pass | pass | pass | 0 | 0/4 fail | 1641 | 0 | 0 | 0 | 0 | `/hello` response envelope or `2.05` code invalid |
-| CoAP | Gold-Sidecar-Only-Traceability | pass | pass | pass | 0 | 4/4 pass | 1664 | 0 | 0 | 0 | 0 | none |
+| protocol | profile | spec load | rendered header | compile | repair iterations | smoke | LoC | compile errors | missing symbol/type | dependency/header errors | hallucinated symbol count | key errors | interpretation |
+|---|---|---|---|---|---:|---|---:|---:|---:|---:|---:|---|---|
+| MQTT | Gold-Full | pass | pass | pass | 1 | 4/4 pass | 2454 | 1 | 2 | 2 | 2 | initial source compile error repaired | baseline stable, though source repair is still needed |
+| MQTT | Gold-No-Behavior-Detail | pass | pass | fail | 3 | n/a | 2327 | 3 | 3 | 0 | 3 | `network/tcp_server.c` used undeclared `accept4`; repair made no progress | behavior weakening correlates with source-level implementation drift |
+| MQTT | Gold-No-Wire-Binding | pass | pass | pass | 1 | 4/4 pass | 2426 | 6 | 6 | 0 | 2 | prior source compile errors repaired | `WIRE_MAPPING` removal did not hurt final compile/smoke in this run |
+| MQTT | Gold-No-Calls | pass | pass | pass | 0 | 3/4 fail | 2421 | 0 | 0 | 0 | 0 | mosquitto interop timed out | calls are not compile-hard, but may anchor interop behavior |
+| MQTT | Gold-Min-Interface | pass | pass | fail | 3 | n/a | 2195 | 4 | 3 | 0 | 3 | repeated undeclared `accept4`; max repair rounds exhausted | aggressive minimization removes too much source guidance |
+| MQTT | Gold-No-TestVectors | pass | pass | pass | 1 | 4/4 pass | 2483 | 1 | 1 | 0 | 1 | initial source compile error repaired | MQTT smoke did not depend on test vectors in this single run |
+| MQTT | Gold-Sidecar-Only-Traceability | pass | pass | pass | 0 | 4/4 pass | 2449 | 0 | 0 | 0 | 0 | none | `DOC_REF`/traceability is safe to sidecar for coder usability |
+| CoAP | Gold-Full | pass | pass | pass | 0 | 4/4 pass | 1639 | 0 | 0 | 0 | 0 | none | baseline stable with no repair |
+| CoAP | Gold-No-Behavior-Detail | pass | pass | pass | 0 | 2/4 fail | 1646 | 0 | 0 | 0 | 0 | `coap_extended_option` timed out | behavior detail affects deeper protocol scenarios |
+| CoAP | Gold-No-Wire-Binding | pass | pass | pass | 1 | 4/4 pass | 1633 | 1 | 0 | 0 | 0 | prior source compile error repaired | `WIRE_MAPPING` removal did not hurt final compile/smoke in this run |
+| CoAP | Gold-No-Calls | pass | pass | pass | 1 | 4/4 pass | 1676 | 3 | 6 | 3 | 6 | missing stdlib/stdio includes repaired | calls/rely are useful quality hints but not final-pass requirements here |
+| CoAP | Gold-Min-Interface | pass | pass | pass | 0 | 0/4 fail | 1719 | 0 | 0 | 0 | 0 | `/hello` response behavior failed | compile alone is insufficient; minimized specs lose behavior anchoring |
+| CoAP | Gold-No-TestVectors | pass | pass | pass | 0 | 0/4 fail | 1641 | 0 | 0 | 0 | 0 | `/hello` response envelope or `2.05` code invalid | test vectors appear behavior-critical for CoAP |
+| CoAP | Gold-Sidecar-Only-Traceability | pass | pass | pass | 0 | 4/4 pass | 1664 | 0 | 0 | 0 | 0 | none | `DOC_REF`/traceability is safe to sidecar for coder usability |
 
 ## 4. Failure Pattern Analysis
 
@@ -103,11 +110,11 @@ timeout 45m python -m agent.coder \
 
 按 profile 看：
 
-- `no_behavior_detail`：MQTT 触发 source compile failure，表现为 `network/tcp_server.c` repeatedly hallucinated/used undeclared `accept4`；CoAP compile pass 但 extended-option smoke timeout。
-- `no_wire_binding`：MQTT、CoAP 均 compile + smoke pass；只有可修复 source compile warning/error。
-- `no_calls`：MQTT compile pass 但 mosquitto interop timeout；CoAP compile + smoke pass，但 initial compile 有 missing include / implicit declaration，被 repair 修复。
+- `no_behavior_detail`：MQTT 触发 source compile failure，表现为 `network/tcp_server.c` repeatedly hallucinated/used undeclared `accept4`；CoAP compile pass 但 extended-option smoke timeout。这说明 behavior detail 的作用不只是“解释性文字”，它会影响生成出的 concrete implementation choice。
+- `no_wire_binding`：MQTT、CoAP 均 compile + smoke pass；只有可修复 source compile warning/error。由于 `ACCESS_PATHS` 被保留，本结果只能说明 function-level `WIRE_MAPPING` 不是本轮 hard requirement，不能推出 wire/access 信息整体可删除。
+- `no_calls`：MQTT compile pass 但 mosquitto interop timeout；CoAP compile + smoke pass，但 initial compile 有 missing include / implicit declaration，被 repair 修复。calls/rely 信息更像 implementation quality guard，而不是 loader/header hard gate。
 - `min_interface`：MQTT compile failed after 3 repair rounds；CoAP compile pass 但 0/4 smoke pass。
-- `no_test_vectors`：MQTT compile + smoke pass；CoAP compile pass 但 0/4 smoke pass。
+- `no_test_vectors`：MQTT compile + smoke pass；CoAP compile pass 但 0/4 smoke pass。协议差异明显，说明 test vectors 是否可移入 sidecar 需要按协议和 coder prompt 消费方式验证。
 - `sidecar_only_traceability`：MQTT、CoAP 均 compile + smoke pass。
 
 ### 4.3 硬必需字段
@@ -135,6 +142,8 @@ timeout 45m python -m agent.coder \
 - 反对“一刀切压缩”的证据：behavior detail 删除会造成 MQTT compile failure 和 CoAP smoke failure；CoAP test vectors 删除会造成 smoke 0/4；`min_interface` 对 MQTT/CoAP 都明显退化。
 
 因此 Step 3 的结论是：strict specs 中确有 traceability/wire 细节可下沉候选，但 behavior/test-vector/call 类字段仍有 coder usability 价值。是否移动到 sidecar 或保留为 strict fields 需要 Step 4 结合 planning-vs-gold 和 oracle diagnosis 进一步验证。
+
+更具体地说，当前证据支持一种分层方向：`DOC_REF` 这类 traceability 字段优先 sidecar；`WIRE_MAPPING` 可考虑作为 validator/sidecar 候选；behavior、test vectors、calls/rely 暂不适合直接删除，而应在 Step 4 中检查 planning 是否能稳定生成同等质量的信息。
 
 ## 5. Blockers 与工具记录
 

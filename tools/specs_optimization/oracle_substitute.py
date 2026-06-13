@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import shutil
 import sys
@@ -17,10 +18,6 @@ if str(REPO_ROOT) not in sys.path:
 
 KNOWN_KINDS = {"PROTOCOL_MODULE_SPEC", "FILE_SPEC", "FUNCTION_SPEC"}
 STRATEGIES = ("P+GoldDependency", "P+GoldType", "P+GoldSignature")
-SKELETON_FIELDS = {
-    "P+GoldType": ["HEADER.DATA public TYPE entries", "HEADER.DATA.TYPE_SPEC"],
-    "P+GoldSignature": ["HEADER.INTERFACE[].SIGNATURE", "SOURCE.INTERFACE[].SIGNATURE", "FUNCTION_SPEC.SIGNATURE"],
-}
 
 
 class FailClosed(RuntimeError):
@@ -215,6 +212,38 @@ def replace_field(
     note_replacement(manifest, path, display_field or field, before, container[field], match_reason)
 
 
+def is_public_type(item: Any) -> bool:
+    return (
+        isinstance(item, dict)
+        and item.get("KIND") == "TYPE"
+        and str(item.get("VISIBILITY", "")).upper() == "PUBLIC"
+        and bool(item.get("NAME"))
+    )
+
+
+def is_type_artifact(item: Any) -> bool:
+    return isinstance(item, dict) and item.get("KIND") == "TYPE" and bool(item.get("NAME"))
+
+
+def replace_list_partition(
+    container: dict[str, Any],
+    path: str,
+    field: str,
+    predicate,
+    replacement_items: list[dict[str, Any]],
+    manifest: dict[str, Any],
+    match_reason: str,
+    display_field: str,
+) -> None:
+    before = container.get(field, [])
+    if not isinstance(before, list):
+        manifest["unmatched"].append({"path": path, "field": display_field, "reason": f"{field} is not a list"})
+        return
+    kept = [copy.deepcopy(item) for item in before if not predicate(item)]
+    container[field] = kept + [copy.deepcopy(item) for item in replacement_items]
+    note_replacement(manifest, path, display_field, before, container[field], match_reason)
+
+
 def apply_gold_dependency(output_bundle: dict[str, Any], gold_bundle: dict[str, Any], manifest: dict[str, Any]) -> None:
     gold_modules = module_by_name(gold_bundle)
     output_module_path = str(output_bundle["module_path"].relative_to(output_bundle["root"]))
@@ -250,6 +279,117 @@ def apply_gold_dependency(output_bundle: dict[str, Any], gold_bundle: dict[str, 
             replace_field(source, record["relative_path"], "DEPENDENCY", gold_source.get("DEPENDENCY", []), manifest, reason, "SOURCE.DEPENDENCY")
         elif isinstance(source, dict):
             manifest["unmatched"].append({"path": record["relative_path"], "field": "SOURCE.DEPENDENCY", "reason": "matched gold file has no SOURCE block"})
+
+
+def apply_gold_type(output_bundle: dict[str, Any], gold_bundle: dict[str, Any], manifest: dict[str, Any]) -> None:
+    gold_modules = module_by_name(gold_bundle)
+    output_module_path = str(output_bundle["module_path"].relative_to(output_bundle["root"]))
+    for index, module in enumerate(output_bundle["module"].get("MODULES", [])):
+        if not isinstance(module, dict):
+            continue
+        name = str(module.get("NAME", ""))
+        gold_module = gold_modules.get(name)
+        if not gold_module:
+            manifest["unmatched"].append({"path": output_module_path, "field": f"MODULES[{index}].ARTIFACTS TYPE", "reason": f"no gold module named '{name}'"})
+            continue
+        gold_type_artifacts = [item for item in gold_module.get("ARTIFACTS", []) if is_type_artifact(item)]
+        replace_list_partition(
+            module,
+            output_module_path,
+            "ARTIFACTS",
+            is_type_artifact,
+            gold_type_artifacts,
+            manifest,
+            "module_name_exact",
+            f"MODULES[{index}].ARTIFACTS TYPE",
+        )
+
+    indexes = gold_file_indexes(gold_bundle)
+    for record in file_records(output_bundle):
+        gold_record, reason = match_gold_file(record, indexes)
+        if gold_record is None:
+            manifest["unmatched"].append({"path": record["relative_path"], "field": "HEADER.DATA public TYPE", "reason": reason})
+            continue
+        header = record["raw"].get("HEADER")
+        gold_header = gold_record["raw"].get("HEADER")
+        if isinstance(header, dict) and isinstance(gold_header, dict):
+            gold_public_types = [item for item in gold_header.get("DATA", []) if is_public_type(item)]
+            replace_list_partition(
+                header,
+                record["relative_path"],
+                "DATA",
+                is_public_type,
+                gold_public_types,
+                manifest,
+                reason,
+                "HEADER.DATA public TYPE",
+            )
+        elif isinstance(header, dict):
+            manifest["unmatched"].append({"path": record["relative_path"], "field": "HEADER.DATA public TYPE", "reason": "matched gold file has no HEADER block"})
+
+
+def unique_functions_by_name(bundle: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], set[str]]:
+    grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for item in bundle["functions"]:
+        signature = item["raw"].get("SIGNATURE", {})
+        if isinstance(signature, dict) and signature.get("NAME"):
+            grouped[str(signature["NAME"])].append(item)
+    unique = {name: items[0] for name, items in grouped.items() if len(items) == 1}
+    ambiguous = {name for name, items in grouped.items() if len(items) > 1}
+    return unique, ambiguous
+
+
+def gold_signature_by_name(bundle: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], set[str]]:
+    functions, ambiguous = unique_functions_by_name(bundle)
+    signatures: dict[str, dict[str, Any]] = {}
+    for name, item in functions.items():
+        signature = item["raw"].get("SIGNATURE")
+        if isinstance(signature, dict):
+            signatures[name] = signature
+    return signatures, ambiguous
+
+
+def apply_gold_signature(output_bundle: dict[str, Any], gold_bundle: dict[str, Any], manifest: dict[str, Any]) -> None:
+    gold_signatures, ambiguous_gold = gold_signature_by_name(gold_bundle)
+    output_functions, ambiguous_output = unique_functions_by_name(output_bundle)
+    for name in sorted(ambiguous_gold):
+        manifest["unmatched"].append({"path": str(gold_bundle["root"]), "field": f"FUNCTION_SPEC.SIGNATURE[{name}]", "reason": "ambiguous gold function name"})
+    for name in sorted(ambiguous_output):
+        manifest["unmatched"].append({"path": str(output_bundle["root"]), "field": f"FUNCTION_SPEC.SIGNATURE[{name}]", "reason": "ambiguous planning function name"})
+
+    for name, item in output_functions.items():
+        gold_signature = gold_signatures.get(name)
+        if gold_signature is None:
+            manifest["unmatched"].append({"path": item["relative_path"], "field": "FUNCTION_SPEC.SIGNATURE", "reason": f"no unique gold function named '{name}'"})
+            continue
+        replace_field(item["raw"], item["relative_path"], "SIGNATURE", copy.deepcopy(gold_signature), manifest, "function_name_exact", "FUNCTION_SPEC.SIGNATURE")
+
+    for record in file_records(output_bundle):
+        raw = record["raw"]
+        for block_name in ("HEADER", "SOURCE"):
+            block = raw.get(block_name)
+            if not isinstance(block, dict):
+                continue
+            interfaces = block.get("INTERFACE", [])
+            if not isinstance(interfaces, list):
+                manifest["unmatched"].append({"path": record["relative_path"], "field": f"{block_name}.INTERFACE", "reason": "INTERFACE is not a list"})
+                continue
+            for index, interface in enumerate(interfaces):
+                if not isinstance(interface, dict):
+                    continue
+                name = str(interface.get("NAME", ""))
+                if name in ambiguous_output:
+                    manifest["unmatched"].append({"path": record["relative_path"], "field": f"{block_name}.INTERFACE[{index}].SIGNATURE", "reason": f"ambiguous planning function name '{name}'"})
+                    continue
+                gold_signature = gold_signatures.get(name)
+                if gold_signature is None:
+                    manifest["unmatched"].append({"path": record["relative_path"], "field": f"{block_name}.INTERFACE[{index}].SIGNATURE", "reason": f"no unique gold function named '{name}'"})
+                    continue
+                raw_signature = gold_signature.get("RAW")
+                if not isinstance(raw_signature, str) or not raw_signature:
+                    manifest["unmatched"].append({"path": record["relative_path"], "field": f"{block_name}.INTERFACE[{index}].SIGNATURE", "reason": f"gold function '{name}' has no RAW signature"})
+                    continue
+                replace_field(interface, record["relative_path"], "SIGNATURE", raw_signature, manifest, "function_name_exact", f"{block_name}.INTERFACE[{index}].SIGNATURE")
 
 
 def validate_output(spec_root: Path, schema_root: Path) -> dict[str, Any]:
@@ -339,15 +479,19 @@ def run_strategy(args: argparse.Namespace) -> dict[str, Any]:
         for item in output_bundle["files"]:
             write_json(item["path"], item["raw"])
         write_json(output_bundle["module_path"], output_bundle["module"])
+    elif args.strategy == "P+GoldType":
+        apply_gold_type(output_bundle, gold_bundle, manifest)
+        for item in output_bundle["files"]:
+            write_json(item["path"], item["raw"])
+        write_json(output_bundle["module_path"], output_bundle["module"])
+    elif args.strategy == "P+GoldSignature":
+        apply_gold_signature(output_bundle, gold_bundle, manifest)
+        for item in output_bundle["files"]:
+            write_json(item["path"], item["raw"])
+        for item in output_bundle["functions"]:
+            write_json(item["path"], item["raw"])
     else:
-        manifest["status"] = "skipped"
-        for field in SKELETON_FIELDS[args.strategy]:
-            manifest["skipped"].append(
-                {
-                    "field": field,
-                    "reason": "skeleton only in Step 2; replacement requires closure and compatibility checks to avoid partial oracle drift",
-                }
-            )
+        raise FailClosed(f"Unsupported strategy: {args.strategy}")
 
     if args.validate:
         manifest["validation"] = validate_output(specs_dir, schema_root)
