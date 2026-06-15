@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .generation import ProjectGenerator, _bundle_binary_name
 from .llm_client import FixedQwenClient
+from .protocol_behavior_val import _RUNNERS, verify_protocol_behavior
 from .specs import load_spec_bundle, load_spec_bundle_from_root
 from .verifier import ProjectVerifier
 
@@ -42,6 +43,14 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("validate", help="Validate specs and LLM adapter prerequisites")
     sub.add_parser("generate", help="Generate the protocol project from specs")
     sub.add_parser("verify", help="Verify generated project structure, build, and smoke test")
+
+    test_parser = sub.add_parser("test", help="Run protocol behavior smoke tests against an existing project")
+    test_parser.add_argument("--protocol", required=True, choices=list(_RUNNERS.keys()),
+                             help="Protocol slug to test")
+    test_parser.add_argument("--project-dir", required=True, type=_path,
+                             help="Path to the project directory containing the compiled binary")
+    test_parser.add_argument("--binary", required=True,
+                             help="Name of the binary executable (e.g. mqtt_broker)")
     return parser
 
 
@@ -133,6 +142,35 @@ def cmd_verify(args: argparse.Namespace) -> int:
     return 0 if result.ok else 1
 
 
+def cmd_test(args: argparse.Namespace) -> int:
+    """Run protocol behavior smoke tests against an existing compiled project.
+
+    Does NOT require specs — only needs the protocol slug, project directory,
+    and binary name.  Skips structure verification and compilation entirely.
+    """
+    project_dir = args.project_dir
+    if not project_dir.is_dir():
+        print(f"ERROR: project directory not found: {project_dir}")
+        return 1
+
+    binary_path = project_dir / args.binary
+    if not binary_path.is_file():
+        print(f"ERROR: binary not found: {binary_path}")
+        return 1
+
+    ok, scenarios, error = verify_protocol_behavior(
+        args.protocol, project_dir, args.binary,
+    )
+
+    for scenario in scenarios:
+        print(f"{scenario['status'].upper():7s} {scenario['name']}: {scenario['detail']}")
+
+    if error:
+        print(f"ERROR: {error}")
+
+    return 0 if ok else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -142,5 +180,7 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_generate(args)
     if args.command == "verify":
         return cmd_verify(args)
+    if args.command == "test":
+        return cmd_test(args)
     parser.error(f"Unsupported command: {args.command}")
     return 2

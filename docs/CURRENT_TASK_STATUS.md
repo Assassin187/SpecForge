@@ -12,7 +12,7 @@
 当前执行状态：
 
 ```text
-准备进入 Step 1：修复 P0 deterministic closure 与 readiness gate
+Step 1 partially completed：dependency fallback fail-closed 与 cross-layer dependency diagnostics 已完成
 ```
 
 说明：
@@ -110,15 +110,16 @@ agent/coder/header_recipes.py
 本步骤任务清单：
 
 ```text
-[ ] dependency fallback fail closed
+[x] dependency fallback fail closed
+[x] cross-layer dependency consistency diagnostics
 [ ] 分离 header_public_deps 与 source_call_deps
 [ ] public type dependency lowering
 [ ] system type registry
 [ ] final rendered header validation strict gate
 [ ] dummy header translation unit compile
-[ ] Step 1 fixture tests
+[x] Step 1 dependency fixture tests
 [ ] MQTT sample validation rerun
-[ ] 当前状态文件更新
+[x] 当前状态文件更新
 ```
 
 ## 4. Step 1 完成指标
@@ -126,14 +127,14 @@ agent/coder/header_recipes.py
 只有同时满足以下条件，才能标记 Step 1 完成：
 
 ```text
-[ ] 新增 fail-closed dependency tests 通过。
+[x] 新增 fail-closed dependency tests 通过。
 [ ] system type fixture 通过 rendered header validation。
 [ ] external public type fixture 通过 rendered header validation。
 [ ] final planning readiness 启用 strict rendered header gate。
 [ ] dummy header translation unit compile 已接入或可由 readiness 调用。
 [ ] 旧 MQTT planning sample 的 header closure failure 不再被 final success 漏掉。
 [ ] 若 fresh MQTT planning 失败，失败原因是 blocking diagnostic，而非 silent false success。
-[ ] 本文件已更新，记录命令、结果、剩余 blocker。
+[x] 本文件已更新，记录命令、结果、剩余 blocker。
 ```
 
 ## 5. 建议下一轮 Codex 会话入口
@@ -198,6 +199,127 @@ Step 1 尚未开始。
 从 Step 1 的 dependency fallback fail closed 与 rendered header validation 审计开始。
 ```
 
+### Session 001
+
+日期：
+
+```text
+2026-06-15
+```
+
+本轮目标：
+
+```text
+只执行 Step 1 的 dependency fallback fail-closed 与 cross-layer dependency consistency diagnostics。
+```
+
+已修改文件：
+
+```text
+agent/planning/stages/dependencies.py
+agent/planning/stages/implementation_plan_merger.py
+agent/planning/validators/dependencies.py
+agent/planning/tests/test_implementation_plan_stage_candidates.py
+docs/CURRENT_TASK_STATUS.md
+```
+
+已完成内容：
+
+```text
+1. apply_deterministic_dependency_fallback 不再清空 calls_allowed/imports_allowed。
+2. dependency repair mark_unresolved 与 deterministic fallback 产生 blocking unresolved dependency diagnostic。
+3. validate_dependency_graph 增加 call_contracts/calls_allowed/function_edges 一致性检查。
+4. validate_dependency_graph 增加 signature_dependencies/imports_allowed/provider file 一致性检查。
+5. validate_dependency_graph 增加 module_artifacts[].dependencies unknown module 检查。
+6. dependency_validation_report summary 增加 calls_allowed、call_contracts、signature_dependencies、imports_allowed 计数。
+```
+
+已运行命令：
+
+```text
+python -m unittest agent.planning.tests.test_implementation_plan_stage_candidates.ImplementationPlanStageCandidateTests.test_dependency_validation_rejects_call_contracts_without_calls_allowed agent.planning.tests.test_implementation_plan_stage_candidates.ImplementationPlanStageCandidateTests.test_dependency_validation_rejects_signature_dependencies_without_imports agent.planning.tests.test_implementation_plan_stage_candidates.ImplementationPlanStageCandidateTests.test_dependency_validation_accepts_consistent_call_and_signature_graph agent.planning.tests.test_implementation_plan_stage_candidates.ImplementationPlanStageCandidateTests.test_dependency_fallback_preserves_inputs_and_marks_blocking
+python -m unittest agent.planning.tests.test_implementation_plan_stage_candidates
+python -m unittest agent.planning.tests.test_coder_schema_lowering
+```
+
+检查结果：
+
+```text
+新增 4 个 dependency regression tests 通过。
+agent.planning.tests.test_implementation_plan_stage_candidates：115 tests passed。
+agent.planning.tests.test_coder_schema_lowering：23 tests passed。
+```
+
+未完成项：
+
+```text
+1. HEADER.DEPENDENCY 与 SOURCE.DEPENDENCY 来源仍待分离。
+2. public type dependency lowering 仍待补齐。
+3. system type registry 与 HEADER.SYSTEM_DEPENDENCY lowering 仍待补齐。
+4. final rendered header validation strict gate 仍待接入。
+5. dummy header translation unit compile 仍待接入。
+6. MQTT fresh/sample planning validation rerun 尚未执行。
+```
+
+下一轮入口：
+
+```text
+继续 Step 1 的 header_public_deps/source_call_deps 分离、public/system type closure、rendered header strict validation。
+```
+
+### Session 002
+
+日期：
+
+```text
+2026-06-15
+```
+
+本轮目标：
+
+```text
+修复 review 发现的 signature dependency provider file 误推断问题。
+```
+
+已修改文件：
+
+```text
+agent/planning/validators/dependencies.py
+agent/planning/tests/test_implementation_plan_stage_candidates.py
+docs/CURRENT_TASK_STATUS.md
+```
+
+已完成内容：
+
+```text
+1. 不再用 module 的 first file 猜测 signature dependency provider file。
+2. 只有 exports_type_ids 能明确定位 provider file 时才检查跨文件 imports_allowed。
+3. 跨模块但无法定位 provider file 仍产生 blocking diagnostic。
+4. 同模块未导出的 source-local signature dependency 不再被误判为缺 import。
+```
+
+已运行命令：
+
+```text
+python -m unittest agent.planning.tests.test_implementation_plan_stage_candidates.ImplementationPlanStageCandidateTests.test_dependency_validation_rejects_signature_dependencies_without_imports agent.planning.tests.test_implementation_plan_stage_candidates.ImplementationPlanStageCandidateTests.test_dependency_validation_accepts_consistent_call_and_signature_graph agent.planning.tests.test_implementation_plan_stage_candidates.ImplementationPlanStageCandidateTests.test_dependency_validation_allows_same_module_unexported_signature_dependency
+python -m unittest agent.planning.tests.test_implementation_plan_stage_candidates agent.planning.tests.test_coder_schema_lowering
+git diff --check
+```
+
+检查结果：
+
+```text
+定向 3 个 dependency tests passed。
+agent.planning.tests.test_implementation_plan_stage_candidates + test_coder_schema_lowering：139 tests passed。
+git diff --check clean。
+```
+
+未完成项：
+
+```text
+同 Session 001：header/source dependency lowering、public/system type closure、rendered header strict validation、dummy header TU compile、MQTT fresh/sample validation rerun 仍待后续处理。
+```
+
 ## 7. 风险与注意事项
 
 ### 7.1 更严格 validation 会暴露更多失败
@@ -234,8 +356,8 @@ dependency_graph.function_edges=[]
 ## 8. 当前状态摘要
 
 ```text
-当前完成度：准备阶段完成，修复尚未开始。
+当前完成度：Step 1 partially completed，dependency fallback/cross-layer dependency diagnostics 已完成。
 当前主线：Step 1 P0 deterministic closure / readiness gate。
-当前最重要 blocker：planning final success 与 coder-compatible readiness 脱节。
-下一步：审计并修复 dependency fallback、dependency lowering、system type registry、rendered header strict validation。
+当前最重要 blocker：header/source dependency lowering、public/system type closure、rendered header strict validation 尚未闭合。
+下一步：修复 HEADER.DEPENDENCY 与 SOURCE.DEPENDENCY 来源混用、system type registry、rendered header strict validation。
 ```

@@ -82,6 +82,8 @@ def derive_dependency_graph(plan: dict[str, Any]) -> dict[str, Any]:
 
 def build_dependency_validation_report(plan: dict[str, Any], diagnostics: list[Any]) -> dict[str, Any]:
     graph = plan.get("dependency_graph", {})
+    functions = [item for item in plan.get("function_contracts", []) if isinstance(item, dict)]
+    files = [item for item in plan.get("file_layout", {}).get("files", []) if isinstance(item, dict)]
     return {
         "schema_version": "dependency_validation_report/v1",
         "status": "failed" if diagnostics else "passed",
@@ -89,6 +91,10 @@ def build_dependency_validation_report(plan: dict[str, Any], diagnostics: list[A
             "module_edge_count": len(graph.get("module_edges", [])) if isinstance(graph, dict) else 0,
             "file_edge_count": len(graph.get("file_edges", [])) if isinstance(graph, dict) else 0,
             "function_edge_count": len(graph.get("function_edges", [])) if isinstance(graph, dict) else 0,
+            "calls_allowed_count": sum(len(item.get("calls_allowed", [])) for item in functions if isinstance(item.get("calls_allowed", []), list)),
+            "call_contract_count": sum(len(item.get("call_contracts", [])) for item in functions if isinstance(item.get("call_contracts", []), list)),
+            "signature_dependency_count": sum(len(item.get("signature_dependencies", [])) for item in functions if isinstance(item.get("signature_dependencies", []), list)),
+            "imports_allowed_count": sum(len(item.get("imports_allowed", [])) for item in files if isinstance(item.get("imports_allowed", []), list)),
             "diagnostic_count": len(diagnostics),
         },
         "diagnostics": [

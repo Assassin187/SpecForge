@@ -2960,7 +2960,17 @@ def apply_dependency_repair_patch(draft: dict[str, Any], patch: dict[str, Any]) 
                     function["file_id"] = action.get("new_implementation_file_id", function.get("file_id", ""))
                     function["declared_in"] = action.get("new_declaration_file_id", function.get("declared_in", ""))
         elif action.get("action_kind") == "mark_unresolved":
-            result.setdefault("unresolved_questions", []).append({"target_id": action.get("target_id", ""), "question": action.get("reason", ""), "stage": "5.6_dependency_repair"})
+            result.setdefault("unresolved_questions", []).append(
+                {
+                    "target_id": action.get("target_id", ""),
+                    "target_kind": action.get("target_kind", "dependency_error"),
+                    "question": action.get("reason", ""),
+                    "unresolved_reason": action.get("reason", ""),
+                    "stage": "5.6_dependency_repair",
+                    "blocking": True,
+                    "suggested_repair": "repair dependency inputs instead of accepting an empty dependency graph",
+                }
+            )
     result.setdefault("unresolved_questions", []).extend(patch.get("unresolved_questions", []))
     return result
 
@@ -2986,17 +2996,16 @@ def fallback_dependency_repair_patch(draft: dict[str, Any], dependency_errors: l
 
 def apply_deterministic_dependency_fallback(draft: dict[str, Any], dependency_errors: list[dict[str, Any]]) -> dict[str, Any]:
     result = deepcopy(draft)
-    for function in result.get("function_contracts", []):
-        if isinstance(function, dict):
-            function["calls_allowed"] = []
-    for file_item in result.get("file_layout", {}).get("files", []):
-        if isinstance(file_item, dict):
-            file_item["imports_allowed"] = []
     result.setdefault("unresolved_questions", []).extend(
         {
             "target_id": str(error.get("path") or error.get("code", "dependency_graph")),
-            "question": str(error.get("message", "Dependency validation failed; deterministic fallback removed dependency inputs.")),
+            "target_kind": "dependency_error",
+            "question": str(error.get("message", "Dependency validation failed.")),
+            "unresolved_reason": str(error.get("message", "Dependency validation failed.")),
             "stage": "5.6_dependency_repair",
+            "blocking": True,
+            "dependency_error_code": str(error.get("code", "dependency_validation_error")),
+            "suggested_repair": "repair calls_allowed, imports_allowed, signature_dependencies, or call_contracts; do not clear dependency inputs",
         }
         for error in dependency_errors
     )

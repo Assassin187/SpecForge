@@ -52,6 +52,7 @@ from agent.planning.stages.inventory_reconciliation import reconcile_function_an
 from agent.planning.stages.function_inventory_decomposition import DECOMPOSITION_RULES, select_top_decomposition_hints
 from agent.planning.stages.dependencies import derive_dependency_graph
 from agent.planning.stages.implementation_plan_merger import (
+    apply_deterministic_dependency_fallback,
     build_plan_skeleton,
     fallback_calls_allowed,
     fallback_core_design,
@@ -105,6 +106,7 @@ from agent.planning.validators.implementation_plan_stages import (
     validation_report,
     function_inventory_decomposition_report,
 )
+from agent.planning.validators.dependencies import validate_dependency_graph
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -3511,6 +3513,150 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
         graph = derive_dependency_graph(plan)
         self.assertFalse([edge for edge in graph["module_edges"] if edge["kind"] == "state_access"])
         self.assertNotIn("state_access", graph["derived_from"])
+
+    def test_dependency_validation_rejects_call_contracts_without_calls_allowed(self) -> None:
+        caller = _inventory_function("parse", "codec", function_id="fn:codec:parse", kind="parser")
+        callee = _inventory_function("read_u8", "codec", function_id="fn:codec:read_u8", kind="internal_helper", public=False)
+        caller["file_id"] = "file:codec/parser"
+        callee["file_id"] = "file:codec/parser"
+        caller["calls_allowed"] = []
+        caller["call_contracts"] = [_call_edge(callee["function_id"], [])]
+        callee["calls_allowed"] = []
+        callee["call_contracts"] = []
+        plan = {
+            "module_artifacts": [{"module_id": "codec"}],
+            "file_layout": {
+                "files": [
+                    {"file_id": "file:codec/parser", "module_id": "codec", "imports_allowed": [], "header_path": "codec/parser.h"},
+                ]
+            },
+            "function_contracts": [caller, callee],
+        }
+        plan["dependency_graph"] = derive_dependency_graph(plan)
+
+        diagnostics = validate_dependency_graph(plan)
+        self.assertTrue(_has(diagnostics, "dependency_call_contracts_without_calls_allowed"))
+        self.assertTrue(_has(diagnostics, "dependency_call_contract_not_allowed"))
+        self.assertTrue(_has(diagnostics, "dependency_graph_missing_function_edges"))
+
+    def test_dependency_validation_rejects_signature_dependencies_without_imports(self) -> None:
+        function = _inventory_function("encode", "codec", function_id="fn:codec:encode", kind="serializer")
+        function["file_id"] = "file:codec/encoder"
+        function["calls_allowed"] = []
+        function["call_contracts"] = []
+        function["signature_dependencies"] = [
+            {
+                "symbol_name": "shared_packet_t",
+                "symbol_kind": "type",
+                "type_ref": "type:shared:packet",
+                "owner_module_id": "shared",
+                "dependency_scope": "header",
+                "reason": "public encode signature uses shared packet type",
+            }
+        ]
+        plan = {
+            "module_artifacts": [{"module_id": "codec"}, {"module_id": "shared"}],
+            "file_layout": {
+                "files": [
+                    {"file_id": "file:codec/encoder", "module_id": "codec", "imports_allowed": [], "header_path": "codec/encoder.h"},
+                    {"file_id": "file:shared/types", "module_id": "shared", "imports_allowed": [], "header_path": "shared/types.h", "exports_type_ids": ["type:shared:packet"]},
+                ]
+            },
+            "function_contracts": [function],
+        }
+        plan["dependency_graph"] = derive_dependency_graph(plan)
+
+        diagnostics = validate_dependency_graph(plan)
+        self.assertTrue(_has(diagnostics, "dependency_signature_missing_import"))
+
+    def test_dependency_validation_accepts_consistent_call_and_signature_graph(self) -> None:
+        caller = _inventory_function("encode", "codec", function_id="fn:codec:encode", kind="serializer")
+        callee = _inventory_function("shared_validate", "shared", function_id="fn:shared:validate", kind="validator")
+        caller["file_id"] = "file:codec/encoder"
+        callee["file_id"] = "file:shared/types"
+        caller["calls_allowed"] = [callee["function_id"]]
+        caller["call_contracts"] = [_call_edge(callee["function_id"], [])]
+        caller["signature_dependencies"] = [
+            {
+                "symbol_name": "shared_packet_t",
+                "symbol_kind": "type",
+                "type_ref": "type:shared:packet",
+                "owner_module_id": "shared",
+                "dependency_scope": "header",
+                "reason": "public encode signature uses shared packet type",
+            }
+        ]
+        callee["calls_allowed"] = []
+        callee["call_contracts"] = []
+        callee["signature_dependencies"] = []
+        plan = {
+            "module_artifacts": [{"module_id": "codec"}, {"module_id": "shared"}],
+            "file_layout": {
+                "files": [
+                    {"file_id": "file:codec/encoder", "module_id": "codec", "imports_allowed": ["file:shared/types"], "header_path": "codec/encoder.h"},
+                    {"file_id": "file:shared/types", "module_id": "shared", "imports_allowed": [], "header_path": "shared/types.h", "exports_type_ids": ["type:shared:packet"]},
+                ]
+            },
+            "function_contracts": [caller, callee],
+        }
+        plan["dependency_graph"] = derive_dependency_graph(plan)
+
+        diagnostics = validate_dependency_graph(plan)
+        self.assertFalse(_has_error(diagnostics), [diag.__dict__ for diag in diagnostics])
+
+    def test_dependency_validation_allows_same_module_unexported_signature_dependency(self) -> None:
+        function = _inventory_function("parse", "codec", function_id="fn:codec:parse", kind="parser")
+        function["file_id"] = "file:codec/parser"
+        function["calls_allowed"] = []
+        function["call_contracts"] = []
+        function["signature_dependencies"] = [
+            {
+                "symbol_name": "codec_cursor_t",
+                "symbol_kind": "type",
+                "type_ref": "type:codec:cursor",
+                "owner_module_id": "codec",
+                "dependency_scope": "source",
+                "reason": "source-local parser cursor",
+            }
+        ]
+        plan = {
+            "module_artifacts": [{"module_id": "codec"}],
+            "file_layout": {
+                "files": [
+                    {"file_id": "file:codec/common", "module_id": "codec", "imports_allowed": [], "header_path": "codec/common.h", "exports_type_ids": []},
+                    {"file_id": "file:codec/parser", "module_id": "codec", "imports_allowed": [], "header_path": "codec/parser.h", "exports_type_ids": []},
+                ]
+            },
+            "function_contracts": [function],
+        }
+        plan["dependency_graph"] = derive_dependency_graph(plan)
+
+        diagnostics = validate_dependency_graph(plan)
+        self.assertFalse(_has(diagnostics, "dependency_signature_missing_import"), [diag.__dict__ for diag in diagnostics])
+        self.assertFalse(_has(diagnostics, "dependency_signature_unresolved_provider_file"), [diag.__dict__ for diag in diagnostics])
+
+    def test_dependency_fallback_preserves_inputs_and_marks_blocking(self) -> None:
+        draft = {
+            "function_contracts": [
+                {"function_id": "fn:codec:parse", "calls_allowed": ["fn:codec:read_u8"]},
+                {"function_id": "fn:codec:read_u8", "calls_allowed": []},
+            ],
+            "file_layout": {
+                "files": [
+                    {"file_id": "file:codec/parser", "imports_allowed": ["file:codec/primitives"]},
+                    {"file_id": "file:codec/primitives", "imports_allowed": []},
+                ]
+            },
+            "unresolved_questions": [],
+        }
+        result = apply_deterministic_dependency_fallback(
+            draft,
+            [{"code": "dependency_cycle", "message": "dependency cycle", "path": "plan.json"}],
+        )
+        self.assertEqual(result["function_contracts"][0]["calls_allowed"], ["fn:codec:read_u8"])
+        self.assertEqual(result["file_layout"]["files"][0]["imports_allowed"], ["file:codec/primitives"])
+        self.assertTrue(any(item.get("blocking") for item in result["unresolved_questions"] if isinstance(item, dict)))
+        self.assertEqual(result["unresolved_questions"][-1]["dependency_error_code"], "dependency_cycle")
 
     def test_file_layout_allows_multiple_source_header_pairs_per_module_and_warns_on_mechanical_layout(self) -> None:
         functions = [
