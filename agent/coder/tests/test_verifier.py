@@ -8,6 +8,7 @@ from unittest.mock import patch
 from agent.coder.cli import default_output_dir
 from agent.coder.generation import render_main_c, render_makefile
 from agent.coder.models import FileSpec, HeaderInterface, ModuleEntry, ProtocolMeta, SpecBundle
+from agent.coder.protocol_behavior_val import coap
 from agent.coder.verifier import ProjectVerifier
 
 
@@ -57,7 +58,7 @@ class VerifierTests(unittest.TestCase):
     def test_behavior_failure_is_validation_failure(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:
             verifier = ProjectVerifier(_bundle(Path(raw_tmp)), raw_tmp)
-            with patch.object(verifier, "_coap_smoke", side_effect=RuntimeError("bad response")):
+            with patch.object(coap, "run", side_effect=RuntimeError("bad response")):
                 result = verifier.verify_behavior()
 
         self.assertFalse(result.ok)
