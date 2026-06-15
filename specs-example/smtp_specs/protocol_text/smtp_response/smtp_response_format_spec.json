@@ -1,0 +1,73 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "smtp/protocol_text/smtp_response/smtp_response_format",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "格式化单行 SMTP 响应为 '<code> <text>\\r\\n'",
+  "SIGNATURE": {
+    "RAW": "int smtp_response_format(char* out, size_t out_len, int code, const char* text)",
+    "NAME": "smtp_response_format",
+    "RETURN": "int",
+    "PARAMS": [
+      {
+        "TYPE": "char*",
+        "NAME": "out",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "size_t",
+        "NAME": "out_len",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "int",
+        "NAME": "code",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "const char*",
+        "NAME": "text",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入为 int smtp_response_format(char* out, size_t out_len, int code, const char* text) 的参数集合。",
+    "ACTION": "格式化单行 SMTP 响应为 '<code> <text>\\r\\n'",
+    "OUTPUT": "按签名返回成功/失败、对象指针、格式化长度或无返回值；失败路径遵循当前 C 实现。",
+    "INVARIANTS_USED": [
+      "不引入当前源码不存在的 SMTP 扩展或额外协议状态。",
+      "所有缓冲写入必须受目标容量约束保护。"
+    ]
+  },
+  "WIRE_MAPPING": [
+    {
+      "PACKET": "SMTP_RESPONSE",
+      "WIRE_FIELD": "status_line",
+      "STRATEGY": "parse_and_skip",
+      "RULE": "输出格式固定为三位/整数 code、空格、text、CRLF"
+    }
+  ],
+  "TEST_VECTORS": [
+    {
+      "NAME": "format_noop_ok",
+      "LEVEL": "FUNCTION",
+      "INPUT": {
+        "code": 250,
+        "text": "OK"
+      },
+      "EXPECT": {
+        "return_positive": true,
+        "output": "250 OK\\r\\n"
+      }
+    }
+  ]
+}

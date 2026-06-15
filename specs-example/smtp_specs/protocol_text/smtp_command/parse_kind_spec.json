@@ -1,0 +1,47 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "smtp/protocol_text/smtp_command/parse_kind",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "将大写命令 verb 映射为 smtp_command_kind_t，未命中返回 SMTP_CMD_UNKNOWN",
+  "SIGNATURE": {
+    "RAW": "static smtp_command_kind_t parse_kind(const char* cmd)",
+    "NAME": "parse_kind",
+    "RETURN": "smtp_command_kind_t",
+    "PARAMS": [
+      {
+        "TYPE": "const char*",
+        "NAME": "cmd",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "smtp_command_kind_t",
+        "ROLE": "该函数读取或维护的结构化状态"
+      }
+    ],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入为 static smtp_command_kind_t parse_kind(const char* cmd) 的参数集合。",
+    "ACTION": "将大写命令 verb 映射为 smtp_command_kind_t，未命中返回 SMTP_CMD_UNKNOWN",
+    "OUTPUT": "按签名返回成功/失败、对象指针、格式化长度或无返回值；失败路径遵循当前 C 实现。",
+    "INVARIANTS_USED": [
+      "不引入当前源码不存在的 SMTP 扩展或额外协议状态。",
+      "所有缓冲写入必须受目标容量约束保护。"
+    ]
+  },
+  "WIRE_MAPPING": [
+    {
+      "PACKET": "SMTP_COMMAND",
+      "WIRE_FIELD": "verb",
+      "STRATEGY": "store_in_field",
+      "RULE": "HELO/EHLO/MAIL/RCPT/DATA/RSET/NOOP/QUIT/AUTH/VRFY 映射到对应 enum",
+      "TARGET": "smtp_command_t.kind"
+    }
+  ]
+}

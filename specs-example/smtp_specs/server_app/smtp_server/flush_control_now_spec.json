@@ -1,0 +1,64 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "smtp/server_app/smtp_server/flush_control_now",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "立即 flush session 输出队列并根据 pending 状态更新写兴趣",
+  "SIGNATURE": {
+    "RAW": "static int flush_control_now(smtp_server_t* server, smtp_session_t* session)",
+    "NAME": "flush_control_now",
+    "RETURN": "int",
+    "PARAMS": [
+      {
+        "TYPE": "smtp_server_t*",
+        "NAME": "server",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "smtp_session_t*",
+        "NAME": "session",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "smtp_server_t",
+        "ROLE": "该函数读取或维护的结构化状态"
+      },
+      {
+        "NAME": "smtp_session_t",
+        "ROLE": "该函数读取或维护的结构化状态"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "smtp_connection_flush",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      },
+      {
+        "NAME": "smtp_connection_has_pending",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      },
+      {
+        "NAME": "smtp_tcp_server_update_interest",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入为 static int flush_control_now(smtp_server_t* server, smtp_session_t* session) 的参数集合。",
+    "ACTION": "立即 flush session 输出队列并根据 pending 状态更新写兴趣",
+    "OUTPUT": "按签名返回成功/失败、对象指针、格式化长度或无返回值；失败路径遵循当前 C 实现。",
+    "INVARIANTS_USED": [
+      "不引入当前源码不存在的 SMTP 扩展或额外协议状态。",
+      "所有缓冲写入必须受目标容量约束保护。"
+    ]
+  }
+}

@@ -1,0 +1,241 @@
+{
+  "KIND": "FILE_SPEC",
+  "FILE": {
+    "TRACE_ID": "smtp/storage/mail_store",
+    "LANG": "C",
+    "ROLE": "本地邮件落盘模块：确保 mail_root 目录存在并把 envelope metadata 与 DATA 写为 .eml 文件",
+    "DOC_REF": []
+  },
+  "SOURCE": {
+    "PATH": "../storage/mail_store.c",
+    "DEPENDENCY": [
+      "../storage/mail_store.h"
+    ],
+    "DATA": [],
+    "INTERFACE": [
+      {
+        "TRACE_ID": "smtp/storage/mail_store/ensure_dir_recursive",
+        "SIGNATURE": "static int ensure_dir_recursive(const char* path)",
+        "NAME": "ensure_dir_recursive",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "递归创建 root_dir 路径中的各级目录",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": true,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "smtp/storage/mail_store/write_all",
+        "SIGNATURE": "static int write_all(int fd, const void* data, size_t len)",
+        "NAME": "write_all",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "处理 EINTR 并完整写出 len 字节",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "smtp/storage/mail_store/smtp_mail_store_init",
+        "SIGNATURE": "int smtp_mail_store_init(const char* root_dir)",
+        "NAME": "smtp_mail_store_init",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "初始化邮件根目录，等价调用 ensure_dir_recursive",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": true,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "smtp/storage/mail_store/smtp_mail_store_write",
+        "SIGNATURE": "int smtp_mail_store_write(const char* root_dir, const smtp_mail_t* mail, char* out_path, size_t out_path_len)",
+        "NAME": "smtp_mail_store_write",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "生成唯一 .eml 文件并写入 envelope headers、空行和 DATA 内容",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "public"
+      }
+    ]
+  },
+  "HEADER": {
+    "PATH": "../storage/mail_store.h",
+    "DEPENDENCY": [],
+    "SYSTEM_DEPENDENCY": [],
+    "DATA": [
+      {
+        "NAME": "smtp_mail_t",
+        "KIND": "TYPE",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "待落盘邮件视图，包含 envelope 信息和原始 DATA 内容",
+        "TYPE_SPEC": {
+          "TYPE_KIND": "STRUCT",
+          "FIELDS": [
+            {
+              "NAME": "helo_name",
+              "TYPE": "const char*",
+              "ROLE": "HELO/EHLO 名称，可为 NULL"
+            },
+            {
+              "NAME": "auth_user",
+              "TYPE": "const char*",
+              "ROLE": "认证用户名，可为空"
+            },
+            {
+              "NAME": "mail_from",
+              "TYPE": "const char*",
+              "ROLE": "MAIL FROM 地址，必填"
+            },
+            {
+              "NAME": "rcpt_to",
+              "TYPE": "const char* const*",
+              "ROLE": "RCPT TO 地址数组，必填"
+            },
+            {
+              "NAME": "rcpt_count",
+              "TYPE": "size_t",
+              "ROLE": "收件人数"
+            },
+            {
+              "NAME": "data",
+              "TYPE": "const char*",
+              "ROLE": "DATA 内容，必填"
+            },
+            {
+              "NAME": "data_len",
+              "TYPE": "size_t",
+              "ROLE": "DATA 内容长度"
+            }
+          ]
+        }
+      }
+    ],
+    "INTERFACE": [
+      {
+        "SIGNATURE": "int smtp_mail_store_init(const char* root_dir)",
+        "NAME": "smtp_mail_store_init",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "初始化邮件根目录，等价调用 ensure_dir_recursive",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "int smtp_mail_store_write(const char* root_dir, const smtp_mail_t* mail, char* out_path, size_t out_path_len)",
+        "NAME": "smtp_mail_store_write",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "生成唯一 .eml 文件并写入 envelope headers、空行和 DATA 内容",
+        "VISIBILITY": "public"
+      }
+    ]
+  },
+  "ACCESS_PATHS": [
+    {
+      "PATH": "smtp_mail_t.helo_name",
+      "TYPE": "const char*",
+      "ROLE": "HELO/EHLO 名称"
+    },
+    {
+      "PATH": "smtp_mail_t.auth_user",
+      "TYPE": "const char*",
+      "ROLE": "认证用户"
+    },
+    {
+      "PATH": "smtp_mail_t.mail_from",
+      "TYPE": "const char*",
+      "ROLE": "envelope sender"
+    },
+    {
+      "PATH": "smtp_mail_t.rcpt_to",
+      "TYPE": "const char* const*",
+      "ROLE": "recipient 指针数组"
+    },
+    {
+      "PATH": "smtp_mail_t.rcpt_count",
+      "TYPE": "size_t",
+      "ROLE": "recipient 数量"
+    },
+    {
+      "PATH": "smtp_mail_t.data",
+      "TYPE": "const char*",
+      "ROLE": "DATA 内容"
+    },
+    {
+      "PATH": "smtp_mail_t.data_len",
+      "TYPE": "size_t",
+      "ROLE": "DATA 长度"
+    },
+    {
+      "PATH": "mail->rcpt_to[i]",
+      "TYPE": "const char*",
+      "ROLE": "写入每个 X-SMTP-Envelope-To header"
+    }
+  ],
+  "TEST_VECTORS": [
+    {
+      "NAME": "write_envelope_headers",
+      "LEVEL": "RUNTIME",
+      "INPUT": {
+        "mail_from": "alice@example.com",
+        "rcpt_to": [
+          "bob@example.com"
+        ]
+      },
+      "EXPECT": {
+        "file_contains": [
+          "X-SMTP-Envelope-From",
+          "X-SMTP-Envelope-To"
+        ]
+      }
+    }
+  ]
+}

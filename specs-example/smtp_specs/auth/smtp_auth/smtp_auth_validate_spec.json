@@ -1,0 +1,52 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "smtp/auth/smtp_auth/smtp_auth_validate",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "验证 user/pass 是否等于 smtpuser/smtppass",
+  "SIGNATURE": {
+    "RAW": "int smtp_auth_validate(const char* user, const char* pass)",
+    "NAME": "smtp_auth_validate",
+    "RETURN": "int",
+    "PARAMS": [
+      {
+        "TYPE": "const char*",
+        "NAME": "user",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "const char*",
+        "NAME": "pass",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入为 int smtp_auth_validate(const char* user, const char* pass) 的参数集合。",
+    "ACTION": "验证 user/pass 是否等于 smtpuser/smtppass",
+    "OUTPUT": "按签名返回成功/失败、对象指针、格式化长度或无返回值；失败路径遵循当前 C 实现。",
+    "INVARIANTS_USED": [
+      "不引入当前源码不存在的 SMTP 扩展或额外协议状态。",
+      "所有缓冲写入必须受目标容量约束保护。"
+    ]
+  },
+  "TEST_VECTORS": [
+    {
+      "NAME": "reject_wrong_password",
+      "LEVEL": "FUNCTION",
+      "INPUT": {
+        "user": "smtpuser",
+        "pass": "wrong"
+      },
+      "EXPECT": {
+        "return": 0
+      }
+    }
+  ]
+}

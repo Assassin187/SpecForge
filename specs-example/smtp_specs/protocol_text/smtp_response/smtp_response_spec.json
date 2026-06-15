@@ -1,0 +1,117 @@
+{
+  "KIND": "FILE_SPEC",
+  "FILE": {
+    "TRACE_ID": "smtp/protocol_text/smtp_response",
+    "LANG": "C",
+    "ROLE": "SMTP 文本响应格式化模块：生成单行 code text 与 EHLO 多行 capability 响应",
+    "DOC_REF": []
+  },
+  "SOURCE": {
+    "PATH": "../protocol/smtp_response.c",
+    "DEPENDENCY": [
+      "../protocol/smtp_response.h"
+    ],
+    "DATA": [],
+    "INTERFACE": [
+      {
+        "TRACE_ID": "smtp/protocol_text/smtp_response/smtp_response_format",
+        "SIGNATURE": "int smtp_response_format(char* out, size_t out_len, int code, const char* text)",
+        "NAME": "smtp_response_format",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "格式化单行 SMTP 响应为 '<code> <text>\\r\\n'",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": true,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "smtp/protocol_text/smtp_response/smtp_response_format_ehlo_caps",
+        "SIGNATURE": "int smtp_response_format_ehlo_caps(char* out, size_t out_len, const char* hostname, size_t max_size)",
+        "NAME": "smtp_response_format_ehlo_caps",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "格式化 EHLO capability 多行响应，声明 AUTH LOGIN PLAIN、SIZE 和 8BITMIME",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": true,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "public"
+      }
+    ]
+  },
+  "HEADER": {
+    "PATH": "../protocol/smtp_response.h",
+    "DEPENDENCY": [],
+    "SYSTEM_DEPENDENCY": [],
+    "DATA": [],
+    "INTERFACE": [
+      {
+        "SIGNATURE": "int smtp_response_format(char* out, size_t out_len, int code, const char* text)",
+        "NAME": "smtp_response_format",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "格式化单行 SMTP 响应为 '<code> <text>\\r\\n'",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "int smtp_response_format_ehlo_caps(char* out, size_t out_len, const char* hostname, size_t max_size)",
+        "NAME": "smtp_response_format_ehlo_caps",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "格式化 EHLO capability 多行响应，声明 AUTH LOGIN PLAIN、SIZE 和 8BITMIME",
+        "VISIBILITY": "public"
+      }
+    ]
+  },
+  "TEST_VECTORS": [
+    {
+      "NAME": "format_250",
+      "LEVEL": "FUNCTION",
+      "INPUT": {
+        "code": 250,
+        "text": "OK"
+      },
+      "EXPECT": {
+        "bytes": "250 OK\\r\\n"
+      }
+    },
+    {
+      "NAME": "ehlo_caps",
+      "LEVEL": "FUNCTION",
+      "INPUT": {
+        "hostname": "localhost",
+        "max_size": 1048576
+      },
+      "EXPECT": {
+        "contains": [
+          "250-localhost",
+          "250-AUTH LOGIN PLAIN",
+          "250-SIZE 1048576",
+          "250 8BITMIME"
+        ]
+      }
+    }
+  ]
+}

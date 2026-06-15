@@ -1,0 +1,61 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "smtp/network/connection/smtp_connection_read",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "从非阻塞 socket 尽可能读取字节追加到输入缓冲",
+  "SIGNATURE": {
+    "RAW": "int smtp_connection_read(smtp_connection_t* conn)",
+    "NAME": "smtp_connection_read",
+    "RETURN": "int",
+    "PARAMS": [
+      {
+        "TYPE": "smtp_connection_t*",
+        "NAME": "conn",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "smtp_connection_t",
+        "ROLE": "该函数读取或维护的结构化状态"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "ensure_cap",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      },
+      {
+        "NAME": "recv",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入为 int smtp_connection_read(smtp_connection_t* conn) 的参数集合。",
+    "ACTION": "循环 recv；EINTR 重试，EAGAIN/EWOULDBLOCK 在无新数据时返回 -2，对端关闭返回 0，错误返回 -1。",
+    "OUTPUT": "按签名返回成功/失败、对象指针、格式化长度或无返回值；失败路径遵循当前 C 实现。",
+    "INVARIANTS_USED": [
+      "不引入当前源码不存在的 SMTP 扩展或额外协议状态。",
+      "所有缓冲写入必须受目标容量约束保护。"
+    ]
+  },
+  "ACCESS_PATHS": [
+    {
+      "PATH": "conn->in_buf",
+      "TYPE": "uint8_t*",
+      "ROLE": "追加收到的字节"
+    },
+    {
+      "PATH": "conn->in_len",
+      "TYPE": "size_t",
+      "ROLE": "增加输入长度"
+    }
+  ]
+}

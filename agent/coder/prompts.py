@@ -118,6 +118,11 @@ def build_source_prompt(
     generated_header: str,
     dependency_headers: dict[str, str],
 ) -> list[dict[str, str]]:
+    primary_include_requirement = (
+        f"- Include `{file_spec.header_path}` as the primary include."
+        if file_spec.header_path
+        else "- This is a source-only file; include the headers listed in source dependencies as needed."
+    )
     content = f"""Generate the full C source file `{file_spec.source_path}`.
 
 Module:
@@ -150,7 +155,7 @@ Relevant dependency headers:
 {_json({key: value for key, value in dependency_headers.items() if key != file_spec.header_path})}
 
 Requirements:
-- Include `{file_spec.header_path}` as the primary include.
+{primary_include_requirement}
 - Match the canonical signatures exactly.
 - Keep all public APIs compatible with the generated header.
 - Use only the public struct fields and enum constants that exist in the canonical header.

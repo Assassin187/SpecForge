@@ -1,0 +1,66 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "smtp/network/tcp_server/smtp_tcp_server_create",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "创建 TCP server 运行时对象并记录端口、回调和 user 指针",
+  "SIGNATURE": {
+    "RAW": "smtp_tcp_server_t* smtp_tcp_server_create(uint16_t port, smtp_tcp_callbacks_t callbacks, void* user)",
+    "NAME": "smtp_tcp_server_create",
+    "RETURN": "smtp_tcp_server_t*",
+    "PARAMS": [
+      {
+        "TYPE": "uint16_t",
+        "NAME": "port",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "smtp_tcp_callbacks_t",
+        "NAME": "callbacks",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "void*",
+        "NAME": "user",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "smtp_tcp_server_t",
+        "ROLE": "该函数读取或维护的结构化状态"
+      },
+      {
+        "NAME": "smtp_tcp_callbacks_t",
+        "ROLE": "该函数读取或维护的结构化状态"
+      }
+    ],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入为 smtp_tcp_server_t* smtp_tcp_server_create(uint16_t port, smtp_tcp_callbacks_t callbacks, void* user) 的参数集合。",
+    "ACTION": "创建 TCP server 运行时对象并记录端口、回调和 user 指针",
+    "OUTPUT": "按签名返回成功/失败、对象指针、格式化长度或无返回值；失败路径遵循当前 C 实现。",
+    "INVARIANTS_USED": [
+      "不引入当前源码不存在的 SMTP 扩展或额外协议状态。",
+      "所有缓冲写入必须受目标容量约束保护。"
+    ]
+  },
+  "ACCESS_PATHS": [
+    {
+      "PATH": "server->listen_fd",
+      "TYPE": "int",
+      "ROLE": "初始化为 -1"
+    },
+    {
+      "PATH": "server->epoll_fd",
+      "TYPE": "int",
+      "ROLE": "初始化为 -1"
+    }
+  ]
+}

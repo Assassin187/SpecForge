@@ -1,0 +1,59 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "smtp/protocol_text/smtp_response/smtp_response_format_ehlo_caps",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "格式化 EHLO capability 多行响应，声明 AUTH LOGIN PLAIN、SIZE 和 8BITMIME",
+  "SIGNATURE": {
+    "RAW": "int smtp_response_format_ehlo_caps(char* out, size_t out_len, const char* hostname, size_t max_size)",
+    "NAME": "smtp_response_format_ehlo_caps",
+    "RETURN": "int",
+    "PARAMS": [
+      {
+        "TYPE": "char*",
+        "NAME": "out",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "size_t",
+        "NAME": "out_len",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "const char*",
+        "NAME": "hostname",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "size_t",
+        "NAME": "max_size",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入为 int smtp_response_format_ehlo_caps(char* out, size_t out_len, const char* hostname, size_t max_size) 的参数集合。",
+    "ACTION": "格式化 EHLO capability 多行响应，声明 AUTH LOGIN PLAIN、SIZE 和 8BITMIME",
+    "OUTPUT": "按签名返回成功/失败、对象指针、格式化长度或无返回值；失败路径遵循当前 C 实现。",
+    "INVARIANTS_USED": [
+      "不引入当前源码不存在的 SMTP 扩展或额外协议状态。",
+      "所有缓冲写入必须受目标容量约束保护。"
+    ]
+  },
+  "WIRE_MAPPING": [
+    {
+      "PACKET": "SMTP_RESPONSE",
+      "WIRE_FIELD": "ehlo_capabilities",
+      "STRATEGY": "parse_and_skip",
+      "RULE": "前三行使用 250- continuation，最后一行使用 250 空格终止"
+    }
+  ]
+}

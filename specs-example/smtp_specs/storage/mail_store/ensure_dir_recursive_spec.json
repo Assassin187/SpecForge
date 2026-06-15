@@ -1,0 +1,39 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "smtp/storage/mail_store/ensure_dir_recursive",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "递归创建 root_dir 路径中的各级目录",
+  "SIGNATURE": {
+    "RAW": "static int ensure_dir_recursive(const char* path)",
+    "NAME": "ensure_dir_recursive",
+    "RETURN": "int",
+    "PARAMS": [
+      {
+        "TYPE": "const char*",
+        "NAME": "path",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [],
+    "FUNC": [
+      {
+        "NAME": "mkdir",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入为 static int ensure_dir_recursive(const char* path) 的参数集合。",
+    "ACTION": "递归创建 root_dir 路径中的各级目录",
+    "OUTPUT": "按签名返回成功/失败、对象指针、格式化长度或无返回值；失败路径遵循当前 C 实现。",
+    "INVARIANTS_USED": [
+      "不引入当前源码不存在的 SMTP 扩展或额外协议状态。",
+      "所有缓冲写入必须受目标容量约束保护。"
+    ]
+  }
+}

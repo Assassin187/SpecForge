@@ -1,0 +1,77 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "smtp/auth/smtp_auth/smtp_auth_decode_base64",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "忽略空白并解码 base64 文本到 out 缓冲",
+  "SIGNATURE": {
+    "RAW": "int smtp_auth_decode_base64(const char* input, unsigned char* out, size_t out_cap, size_t* out_len)",
+    "NAME": "smtp_auth_decode_base64",
+    "RETURN": "int",
+    "PARAMS": [
+      {
+        "TYPE": "const char*",
+        "NAME": "input",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "unsigned char*",
+        "NAME": "out",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "size_t",
+        "NAME": "out_cap",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "size_t*",
+        "NAME": "out_len",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [],
+    "FUNC": [
+      {
+        "NAME": "b64_value",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入为 int smtp_auth_decode_base64(const char* input, unsigned char* out, size_t out_cap, size_t* out_len) 的参数集合。",
+    "ACTION": "忽略空白并解码 base64 文本到 out 缓冲",
+    "OUTPUT": "按签名返回成功/失败、对象指针、格式化长度或无返回值；失败路径遵循当前 C 实现。",
+    "INVARIANTS_USED": [
+      "不引入当前源码不存在的 SMTP 扩展或额外协议状态。",
+      "所有缓冲写入必须受目标容量约束保护。"
+    ]
+  },
+  "WIRE_MAPPING": [
+    {
+      "PACKET": "AUTH",
+      "WIRE_FIELD": "base64_payload",
+      "STRATEGY": "parse_and_skip",
+      "RULE": "非法字符返回 -1，padding '=' 终止解码，输出长度写入 out_len"
+    }
+  ],
+  "TEST_VECTORS": [
+    {
+      "NAME": "decode_user",
+      "LEVEL": "FUNCTION",
+      "INPUT": {
+        "input": "c210cHVzZXI="
+      },
+      "EXPECT": {
+        "bytes": "smtpuser"
+      }
+    }
+  ]
+}

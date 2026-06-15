@@ -1,0 +1,210 @@
+{
+  "KIND": "FILE_SPEC",
+  "FILE": {
+    "TRACE_ID": "smtp/auth/smtp_auth",
+    "LANG": "C",
+    "ROLE": "SMTP AUTH helper：固定账号验证、base64 解码与 AUTH PLAIN blob 解析",
+    "DOC_REF": []
+  },
+  "SOURCE": {
+    "PATH": "../auth/smtp_auth.c",
+    "DEPENDENCY": [
+      "../auth/smtp_auth.h"
+    ],
+    "DATA": [
+      {
+        "NAME": "k_user",
+        "KIND": "VAR",
+        "VISIBILITY": "PRIVATE",
+        "ROLE": "固定测试用户名 smtpuser"
+      },
+      {
+        "NAME": "k_pass",
+        "KIND": "VAR",
+        "VISIBILITY": "PRIVATE",
+        "ROLE": "固定测试密码 smtppass"
+      }
+    ],
+    "INTERFACE": [
+      {
+        "TRACE_ID": "smtp/auth/smtp_auth/smtp_auth_default_user",
+        "SIGNATURE": "const char* smtp_auth_default_user(void)",
+        "NAME": "smtp_auth_default_user",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "返回内置测试用户名 smtpuser",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": true,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "smtp/auth/smtp_auth/smtp_auth_validate",
+        "SIGNATURE": "int smtp_auth_validate(const char* user, const char* pass)",
+        "NAME": "smtp_auth_validate",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "验证 user/pass 是否等于 smtpuser/smtppass",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": true,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "smtp/auth/smtp_auth/b64_value",
+        "SIGNATURE": "static int b64_value(char c)",
+        "NAME": "b64_value",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "把单个 base64 字符映射为 6-bit 值，'=' 返回 padding 标记",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": true,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "smtp/auth/smtp_auth/smtp_auth_decode_base64",
+        "SIGNATURE": "int smtp_auth_decode_base64(const char* input, unsigned char* out, size_t out_cap, size_t* out_len)",
+        "NAME": "smtp_auth_decode_base64",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "忽略空白并解码 base64 文本到 out 缓冲",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": true,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "smtp/auth/smtp_auth/smtp_auth_parse_plain_blob",
+        "SIGNATURE": "int smtp_auth_parse_plain_blob(const unsigned char* blob, size_t blob_len, char* out_user, size_t out_user_len, char* out_pass, size_t out_pass_len)",
+        "NAME": "smtp_auth_parse_plain_blob",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "解析 AUTH PLAIN blob：NUL、user、NUL、pass",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": true,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "public"
+      }
+    ]
+  },
+  "HEADER": {
+    "PATH": "../auth/smtp_auth.h",
+    "DEPENDENCY": [],
+    "SYSTEM_DEPENDENCY": [],
+    "DATA": [],
+    "INTERFACE": [
+      {
+        "SIGNATURE": "const char* smtp_auth_default_user(void)",
+        "NAME": "smtp_auth_default_user",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "返回内置测试用户名 smtpuser",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "int smtp_auth_validate(const char* user, const char* pass)",
+        "NAME": "smtp_auth_validate",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "验证 user/pass 是否等于 smtpuser/smtppass",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "int smtp_auth_decode_base64(const char* input, unsigned char* out, size_t out_cap, size_t* out_len)",
+        "NAME": "smtp_auth_decode_base64",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "忽略空白并解码 base64 文本到 out 缓冲",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "int smtp_auth_parse_plain_blob(const unsigned char* blob, size_t blob_len, char* out_user, size_t out_user_len, char* out_pass, size_t out_pass_len)",
+        "NAME": "smtp_auth_parse_plain_blob",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "解析 AUTH PLAIN blob：NUL、user、NUL、pass",
+        "VISIBILITY": "public"
+      }
+    ]
+  },
+  "TEST_VECTORS": [
+    {
+      "NAME": "default_login_valid",
+      "LEVEL": "FUNCTION",
+      "INPUT": {
+        "user": "smtpuser",
+        "pass": "smtppass"
+      },
+      "EXPECT": {
+        "valid": true
+      }
+    },
+    {
+      "NAME": "plain_blob",
+      "LEVEL": "FUNCTION",
+      "INPUT": {
+        "base64": "AHNtdHB1c2VyAHNtdHBwYXNz"
+      },
+      "EXPECT": {
+        "user": "smtpuser",
+        "pass": "smtppass"
+      }
+    }
+  ]
+}

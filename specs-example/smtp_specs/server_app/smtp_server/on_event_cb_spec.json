@@ -1,0 +1,119 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "smtp/server_app/smtp_server/on_event_cb",
+  "FUNCTION_TYPE": "EVENT",
+  "ROLE": "TCP event 回调：处理可写 flush、可读 read/pop_line，并分派 DATA/AUTH/command",
+  "SIGNATURE": {
+    "RAW": "static void on_event_cb(void* user, int fd, uint32_t events)",
+    "NAME": "on_event_cb",
+    "RETURN": "void",
+    "PARAMS": [
+      {
+        "TYPE": "void*",
+        "NAME": "user",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "int",
+        "NAME": "fd",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "uint32_t",
+        "NAME": "events",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "smtp_server_t",
+        "ROLE": "该函数读取或维护的结构化状态"
+      },
+      {
+        "NAME": "smtp_session_t",
+        "ROLE": "该函数读取或维护的结构化状态"
+      },
+      {
+        "NAME": "smtp_command_t",
+        "ROLE": "该函数读取或维护的结构化状态"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "find_session",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      },
+      {
+        "NAME": "smtp_connection_flush",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      },
+      {
+        "NAME": "smtp_connection_has_pending",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      },
+      {
+        "NAME": "smtp_tcp_server_update_interest",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      },
+      {
+        "NAME": "smtp_connection_read",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      },
+      {
+        "NAME": "smtp_connection_pop_line",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      },
+      {
+        "NAME": "handle_data_line",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      },
+      {
+        "NAME": "handle_auth_continuation",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      },
+      {
+        "NAME": "smtp_command_parse",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      },
+      {
+        "NAME": "handle_command",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      },
+      {
+        "NAME": "flush_control_now",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      },
+      {
+        "NAME": "close_control",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      }
+    ],
+    "VAR": []
+  },
+  "EVENT": {
+    "TRIGGER": "当 SMTP_IO_WRITABLE 置位时 flush 输出；当 SMTP_IO_READABLE 置位时读取 socket 并循环弹出完整行，超长行返回 500，DATA mode 优先交给 handle_data_line，AUTH continuation 交给 handle_auth_continuation，否则解析命令并调用 handle_command。",
+    "PRECONDITION": "相关 server/session/connection 对象已创建；NULL 输入按当前实现的保护分支处理。",
+    "INPUT": "输入为 static void on_event_cb(void* user, int fd, uint32_t events) 的参数集合。",
+    "ACTION": "当 SMTP_IO_WRITABLE 置位时 flush 输出；当 SMTP_IO_READABLE 置位时读取 socket 并循环弹出完整行，超长行返回 500，DATA mode 优先交给 handle_data_line，AUTH continuation 交给 handle_auth_continuation，否则解析命令并调用 handle_command。",
+    "STATE_CHANGE": "可能更新 TCP 事件循环、SMTP session、输出队列或连接集合状态。",
+    "RESPONSE": "通过返回值、连接关闭、队列响应或回调副作用体现处理结果。",
+    "EVENT_TYPE": "RUNTIME_EVENT"
+  }
+}

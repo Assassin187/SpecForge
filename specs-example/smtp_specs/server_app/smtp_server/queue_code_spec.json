@@ -1,0 +1,79 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "smtp/server_app/smtp_server/queue_code",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "格式化 SMTP 响应码行并排队发送",
+  "SIGNATURE": {
+    "RAW": "static int queue_code(smtp_server_t* server, smtp_session_t* session, int code, const char* text)",
+    "NAME": "queue_code",
+    "RETURN": "int",
+    "PARAMS": [
+      {
+        "TYPE": "smtp_server_t*",
+        "NAME": "server",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "smtp_session_t*",
+        "NAME": "session",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "int",
+        "NAME": "code",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "const char*",
+        "NAME": "text",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "smtp_server_t",
+        "ROLE": "该函数读取或维护的结构化状态"
+      },
+      {
+        "NAME": "smtp_session_t",
+        "ROLE": "该函数读取或维护的结构化状态"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "smtp_response_format",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      },
+      {
+        "NAME": "queue_raw",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入为 static int queue_code(smtp_server_t* server, smtp_session_t* session, int code, const char* text) 的参数集合。",
+    "ACTION": "格式化 SMTP 响应码行并排队发送",
+    "OUTPUT": "按签名返回成功/失败、对象指针、格式化长度或无返回值；失败路径遵循当前 C 实现。",
+    "INVARIANTS_USED": [
+      "不引入当前源码不存在的 SMTP 扩展或额外协议状态。",
+      "所有缓冲写入必须受目标容量约束保护。"
+    ]
+  },
+  "WIRE_MAPPING": [
+    {
+      "PACKET": "SMTP_RESPONSE",
+      "WIRE_FIELD": "status_line",
+      "STRATEGY": "parse_and_skip",
+      "RULE": "使用 smtp_response_format 生成 '<code> <text>\\r\\n'"
+    }
+  ]
+}

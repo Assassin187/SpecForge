@@ -1,0 +1,51 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "smtp/storage/mail_store/write_all",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "处理 EINTR 并完整写出 len 字节",
+  "SIGNATURE": {
+    "RAW": "static int write_all(int fd, const void* data, size_t len)",
+    "NAME": "write_all",
+    "RETURN": "int",
+    "PARAMS": [
+      {
+        "TYPE": "int",
+        "NAME": "fd",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "const void*",
+        "NAME": "data",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "size_t",
+        "NAME": "len",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [],
+    "FUNC": [
+      {
+        "NAME": "write",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入为 static int write_all(int fd, const void* data, size_t len) 的参数集合。",
+    "ACTION": "处理 EINTR 并完整写出 len 字节",
+    "OUTPUT": "按签名返回成功/失败、对象指针、格式化长度或无返回值；失败路径遵循当前 C 实现。",
+    "INVARIANTS_USED": [
+      "不引入当前源码不存在的 SMTP 扩展或额外协议状态。",
+      "所有缓冲写入必须受目标容量约束保护。"
+    ]
+  }
+}

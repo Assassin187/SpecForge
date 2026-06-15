@@ -1,0 +1,26 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "smtp/auth/smtp_auth/smtp_auth_default_user",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "返回内置测试用户名 smtpuser",
+  "SIGNATURE": {
+    "RAW": "const char* smtp_auth_default_user(void)",
+    "NAME": "smtp_auth_default_user",
+    "RETURN": "const char*",
+    "PARAMS": []
+  },
+  "RELY": {
+    "STRUCT": [],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入为 const char* smtp_auth_default_user(void) 的参数集合。",
+    "ACTION": "返回内置测试用户名 smtpuser",
+    "OUTPUT": "按签名返回成功/失败、对象指针、格式化长度或无返回值；失败路径遵循当前 C 实现。",
+    "INVARIANTS_USED": [
+      "不引入当前源码不存在的 SMTP 扩展或额外协议状态。",
+      "所有缓冲写入必须受目标容量约束保护。"
+    ]
+  }
+}

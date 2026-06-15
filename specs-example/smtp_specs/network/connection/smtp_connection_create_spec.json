@@ -1,0 +1,45 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "smtp/network/connection/smtp_connection_create",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "为已建立 fd 创建 smtp_connection_t 并初始化缓冲状态",
+  "SIGNATURE": {
+    "RAW": "smtp_connection_t* smtp_connection_create(int fd)",
+    "NAME": "smtp_connection_create",
+    "RETURN": "smtp_connection_t*",
+    "PARAMS": [
+      {
+        "TYPE": "int",
+        "NAME": "fd",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "smtp_connection_t",
+        "ROLE": "该函数读取或维护的结构化状态"
+      }
+    ],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入为 smtp_connection_t* smtp_connection_create(int fd) 的参数集合。",
+    "ACTION": "为已建立 fd 创建 smtp_connection_t 并初始化缓冲状态",
+    "OUTPUT": "按签名返回成功/失败、对象指针、格式化长度或无返回值；失败路径遵循当前 C 实现。",
+    "INVARIANTS_USED": [
+      "不引入当前源码不存在的 SMTP 扩展或额外协议状态。",
+      "所有缓冲写入必须受目标容量约束保护。"
+    ]
+  },
+  "ACCESS_PATHS": [
+    {
+      "PATH": "conn->fd",
+      "TYPE": "int",
+      "ROLE": "写入传入 fd"
+    }
+  ]
+}

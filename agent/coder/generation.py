@@ -343,13 +343,7 @@ def _classify_repair_targets(
                 blocking_headers.append(relative)
             continue
         file_spec = bundle.file_specs_by_source_path.get(relative)
-        if (
-            file_spec is not None
-            and relative.endswith(".c")
-            and file_spec.header_path
-            and Path(relative).name != "main.c"
-            and relative not in repairable
-        ):
+        if file_spec is not None and relative.endswith(".c") and relative not in repairable:
             repairable.append(relative)
     return repairable, blocking_headers
 
@@ -560,25 +554,27 @@ class ProjectGenerator:
                 print(f"[agent.generate] header={header_path} done", flush=True)
 
             for source_path in source_paths:
-                if Path(source_path).name == "main.c":
+                file_spec = self.bundle.file_specs_by_source_path.get(source_path)
+                if file_spec is None and Path(source_path).name == "main.c":
                     print(f"[agent.generate] source={source_path} start", flush=True)
                     main_content = render_main_c(self.bundle)
                     self._write_file(source_path, main_content)
                     print(f"[agent.generate] source={source_path} done", flush=True)
                     continue
-                file_spec = self.bundle.file_specs_by_source_path.get(source_path)
                 if file_spec is None:
                     continue
                 print(f"[agent.generate] source={source_path} start", flush=True)
                 module_entry = self._module_for_spec(file_spec)
                 function_specs = function_specs_for_file(self.bundle, file_spec)
-                header_content = generated_headers.get(file_spec.header_path)
-                if header_content is None:
-                    print(f"[agent.generate] source={source_path} header_missing_generate={file_spec.header_path}", flush=True)
-                    header_content = render_header(self.bundle, file_spec)
-                    self._write_file(file_spec.header_path, header_content)
-                    generated_headers[file_spec.header_path] = header_content
-                    print(f"[agent.generate] source={source_path} header_generated={file_spec.header_path}", flush=True)
+                header_content = ""
+                if file_spec.header_path:
+                    header_content = generated_headers.get(file_spec.header_path, "")
+                    if not header_content:
+                        print(f"[agent.generate] source={source_path} header_missing_generate={file_spec.header_path}", flush=True)
+                        header_content = render_header(self.bundle, file_spec)
+                        self._write_file(file_spec.header_path, header_content)
+                        generated_headers[file_spec.header_path] = header_content
+                        print(f"[agent.generate] source={source_path} header_generated={file_spec.header_path}", flush=True)
                 dependency_headers = self._dependency_headers(file_spec.source_dependencies)
                 print(
                     f"[agent.generate] source={source_path} prompt_build functions={len(function_specs)} deps={len(dependency_headers)}",

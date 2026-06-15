@@ -1,0 +1,48 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "smtp/session/smtp_session/smtp_session_destroy",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "销毁 session 及其 smtp_connection_t",
+  "SIGNATURE": {
+    "RAW": "void smtp_session_destroy(smtp_session_t* session)",
+    "NAME": "smtp_session_destroy",
+    "RETURN": "void",
+    "PARAMS": [
+      {
+        "TYPE": "smtp_session_t*",
+        "NAME": "session",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "smtp_session_t",
+        "ROLE": "该函数读取或维护的结构化状态"
+      },
+      {
+        "NAME": "smtp_connection_t",
+        "ROLE": "该函数读取或维护的结构化状态"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "smtp_connection_destroy",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入为 void smtp_session_destroy(smtp_session_t* session) 的参数集合。",
+    "ACTION": "销毁 session 及其 smtp_connection_t",
+    "OUTPUT": "按签名返回成功/失败、对象指针、格式化长度或无返回值；失败路径遵循当前 C 实现。",
+    "INVARIANTS_USED": [
+      "不引入当前源码不存在的 SMTP 扩展或额外协议状态。",
+      "所有缓冲写入必须受目标容量约束保护。"
+    ]
+  }
+}

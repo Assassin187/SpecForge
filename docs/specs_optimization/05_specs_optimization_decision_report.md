@@ -68,6 +68,22 @@ Step 3 对 MQTT、CoAP 的 14 个 protocol/profile 组合执行 schema、loader�
 
 这些结果提供的是 single-run LLM coder experiment 证据，受 nondeterminism 影响，但足以反对立即一刀切压缩 strict specs。
 
+### 2.3.1 Paper Table: Specs Structure Impact on Coder Outcomes
+
+下表将 Step 3 的 degradation experiment 压缩为论文可读的结构消融结果。`load/header` 表示 schema、coder loader 与 rendered header validation；`compile/repair` 和 `smoke` 来自 bounded coder runs。该表只说明 coder usability impact，不把 example specs 的 code-derived implementation detail 视为 protocol facts。
+
+| specs structure tested | degradation profile | load/header impact | compile/repair impact | smoke/behavior impact | design implication |
+|---|---|---|---|---|---|
+| Full coder-facing specs | `Gold-Full` | MQTT/CoAP both pass | MQTT pass after 1 repair; CoAP pass with 0 repairs | MQTT 4/4; CoAP 4/4 | Full example specs remain a reliable coder baseline. |
+| Behavior contracts: `LOGIC`, `EVENT`, `SOURCE.INTERFACE.CONTRACT` | `Gold-No-Behavior-Detail` | MQTT/CoAP both pass | MQTT fails after 3 repair rounds; CoAP compiles with 0 repairs | CoAP drops to 2/4 | Behavior detail is not a loader/header requirement, but it materially affects source generation and protocol behavior. |
+| Wire binding: function-level `WIRE_MAPPING` with `ACCESS_PATHS` retained | `Gold-No-Wire-Binding` | MQTT/CoAP both pass | MQTT and CoAP both compile after 1 repair | MQTT 4/4; CoAP 4/4 | `WIRE_MAPPING` is not a hard coder requirement in this setting; it is a candidate for validator/sidecar treatment if access projections remain available. |
+| Call guidance: `RELY.FUNC` and `CALL_CONTRACTS` | `Gold-No-Calls` | MQTT/CoAP both pass | MQTT compiles with 0 repairs; CoAP compiles after 1 repair | MQTT drops to 3/4; CoAP 4/4 | Calls/rely fields act more like implementation-quality and interoperability guards than strict load/header gates. |
+| Test scenarios: `TEST_VECTORS` | `Gold-No-TestVectors` | MQTT/CoAP both pass | MQTT compiles after 1 repair; CoAP compiles with 0 repairs | MQTT 4/4; CoAP drops to 0/4 | Test vectors are protocol-sensitive behavior anchors; they should not be removed wholesale from coder-facing information. |
+| Traceability metadata: module/file `DOC_REF` moved to sidecar | `Gold-Sidecar-Only-Traceability` | MQTT/CoAP both pass | MQTT/CoAP both compile with 0 repairs | MQTT 4/4; CoAP 4/4 | Traceability is safe to move out of strict coder specs and into sidecar artifacts. |
+| Aggressively minimized strict specs | `Gold-Min-Interface` | MQTT/CoAP both pass | MQTT fails after 3 repair rounds; CoAP compiles with 0 repairs | CoAP drops to 0/4 | A minimal-interface strict spec is too weak for reliable coder generation; broad schema compression is not supported. |
+
+Paper-level takeaway: specs structure has asymmetric effects. Identity/layout/header fields are hard prerequisites for loading and deterministic rendering; traceability fields can move to sidecars; behavior, test vectors, and call guidance are not always compile-hard, but they substantially affect repair effort, interoperability, and smoke-test behavior. This supports a layered design rather than a uniformly minimal coder-facing schema.
+
 ### 2.4 Step 4: Planning-vs-Gold + Oracle Diagnosis
 
 Step 4 的 MQTT planning-vs-gold diff 和三组 oracle substitution 显示，当前 planning failure 更接近 closure/validator 与 architecture/file-layout mismatch，而不是 specs 结构整体过重。

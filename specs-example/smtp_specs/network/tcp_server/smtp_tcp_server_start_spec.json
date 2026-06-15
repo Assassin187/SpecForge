@@ -1,0 +1,66 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "smtp/network/tcp_server/smtp_tcp_server_start",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "初始化监听 socket 和 epoll，并把 listen_fd 注册为 EPOLLIN",
+  "SIGNATURE": {
+    "RAW": "int smtp_tcp_server_start(smtp_tcp_server_t* server)",
+    "NAME": "smtp_tcp_server_start",
+    "RETURN": "int",
+    "PARAMS": [
+      {
+        "TYPE": "smtp_tcp_server_t*",
+        "NAME": "server",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "smtp_tcp_server_t",
+        "ROLE": "该函数读取或维护的结构化状态"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "setup_listener",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      },
+      {
+        "NAME": "epoll_create1",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      },
+      {
+        "NAME": "epoll_ctl",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入为 int smtp_tcp_server_start(smtp_tcp_server_t* server) 的参数集合。",
+    "ACTION": "初始化监听 socket 和 epoll，并把 listen_fd 注册为 EPOLLIN",
+    "OUTPUT": "按签名返回成功/失败、对象指针、格式化长度或无返回值；失败路径遵循当前 C 实现。",
+    "INVARIANTS_USED": [
+      "不引入当前源码不存在的 SMTP 扩展或额外协议状态。",
+      "所有缓冲写入必须受目标容量约束保护。"
+    ]
+  },
+  "ACCESS_PATHS": [
+    {
+      "PATH": "server->listen_fd",
+      "TYPE": "int",
+      "ROLE": "监听 fd 必须有效"
+    },
+    {
+      "PATH": "server->epoll_fd",
+      "TYPE": "int",
+      "ROLE": "写入 epoll fd"
+    }
+  ]
+}

@@ -1,0 +1,111 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "smtp/server_app/smtp_server/handle_data_line",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "处理 DATA mode 中的行：非终止行追加，'.' 终止并尝试落盘",
+  "SIGNATURE": {
+    "RAW": "static void handle_data_line(smtp_server_t* server, smtp_session_t* session, const char* line)",
+    "NAME": "handle_data_line",
+    "RETURN": "void",
+    "PARAMS": [
+      {
+        "TYPE": "smtp_server_t*",
+        "NAME": "server",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "smtp_session_t*",
+        "NAME": "session",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "const char*",
+        "NAME": "line",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "smtp_server_t",
+        "ROLE": "该函数读取或维护的结构化状态"
+      },
+      {
+        "NAME": "smtp_session_t",
+        "ROLE": "该函数读取或维护的结构化状态"
+      },
+      {
+        "NAME": "smtp_mail_t",
+        "ROLE": "该函数读取或维护的结构化状态"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "append_message_line",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      },
+      {
+        "NAME": "smtp_mail_store_write",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      },
+      {
+        "NAME": "smtp_session_reset_transaction",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      },
+      {
+        "NAME": "queue_code",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入为 static void handle_data_line(smtp_server_t* server, smtp_session_t* session, const char* line) 的参数集合。",
+    "ACTION": "处理 DATA mode 中的行：非终止行追加，'.' 终止并尝试落盘",
+    "OUTPUT": "按签名返回成功/失败、对象指针、格式化长度或无返回值；失败路径遵循当前 C 实现。",
+    "INVARIANTS_USED": [
+      "不引入当前源码不存在的 SMTP 扩展或额外协议状态。",
+      "所有缓冲写入必须受目标容量约束保护。"
+    ]
+  },
+  "ACCESS_PATHS": [
+    {
+      "PATH": "session->in_data_mode",
+      "TYPE": "bool",
+      "ROLE": "终止行时置 false"
+    },
+    {
+      "PATH": "session->message_too_large",
+      "TYPE": "bool",
+      "ROLE": "决定是否返回 552"
+    },
+    {
+      "PATH": "session->message_buf",
+      "TYPE": "char*",
+      "ROLE": "落盘 DATA 内容"
+    }
+  ],
+  "WIRE_MAPPING": [
+    {
+      "PACKET": "SMTP_DATA",
+      "WIRE_FIELD": "terminator",
+      "STRATEGY": "parse_and_skip",
+      "RULE": "单独一行 '.' 结束 DATA"
+    },
+    {
+      "PACKET": "SMTP_DATA",
+      "WIRE_FIELD": "message_data",
+      "STRATEGY": "store_in_field",
+      "RULE": "终止前所有行累积到 session->message_buf",
+      "TARGET": "session->message_buf"
+    }
+  ]
+}

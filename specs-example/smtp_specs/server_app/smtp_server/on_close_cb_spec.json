@@ -1,0 +1,50 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "smtp/server_app/smtp_server/on_close_cb",
+  "FUNCTION_TYPE": "EVENT",
+  "ROLE": "TCP close 回调：从 server session 链表移除 fd 对应 session",
+  "SIGNATURE": {
+    "RAW": "static void on_close_cb(void* user, int fd)",
+    "NAME": "on_close_cb",
+    "RETURN": "void",
+    "PARAMS": [
+      {
+        "TYPE": "void*",
+        "NAME": "user",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "int",
+        "NAME": "fd",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "smtp_server_t",
+        "ROLE": "该函数读取或维护的结构化状态"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "remove_session",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      }
+    ],
+    "VAR": []
+  },
+  "EVENT": {
+    "TRIGGER": "tcp_server 关闭客户端后调用，释放对应 SMTP session。",
+    "PRECONDITION": "相关 server/session/connection 对象已创建；NULL 输入按当前实现的保护分支处理。",
+    "INPUT": "输入为 static void on_close_cb(void* user, int fd) 的参数集合。",
+    "ACTION": "tcp_server 关闭客户端后调用，释放对应 SMTP session。",
+    "STATE_CHANGE": "可能更新 TCP 事件循环、SMTP session、输出队列或连接集合状态。",
+    "RESPONSE": "通过返回值、连接关闭、队列响应或回调副作用体现处理结果。",
+    "EVENT_TYPE": "RUNTIME_EVENT"
+  }
+}

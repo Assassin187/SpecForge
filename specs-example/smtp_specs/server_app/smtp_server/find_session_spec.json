@@ -1,0 +1,59 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "smtp/server_app/smtp_server/find_session",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "按 control_fd 在 server session 链表中查找 session",
+  "SIGNATURE": {
+    "RAW": "static smtp_session_t* find_session(smtp_server_t* server, int fd)",
+    "NAME": "find_session",
+    "RETURN": "smtp_session_t*",
+    "PARAMS": [
+      {
+        "TYPE": "smtp_server_t*",
+        "NAME": "server",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "int",
+        "NAME": "fd",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "smtp_server_t",
+        "ROLE": "该函数读取或维护的结构化状态"
+      },
+      {
+        "NAME": "smtp_session_node_t",
+        "ROLE": "该函数读取或维护的结构化状态"
+      },
+      {
+        "NAME": "smtp_session_t",
+        "ROLE": "该函数读取或维护的结构化状态"
+      }
+    ],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入为 static smtp_session_t* find_session(smtp_server_t* server, int fd) 的参数集合。",
+    "ACTION": "按 control_fd 在 server session 链表中查找 session",
+    "OUTPUT": "按签名返回成功/失败、对象指针、格式化长度或无返回值；失败路径遵循当前 C 实现。",
+    "INVARIANTS_USED": [
+      "不引入当前源码不存在的 SMTP 扩展或额外协议状态。",
+      "所有缓冲写入必须受目标容量约束保护。"
+    ]
+  },
+  "ACCESS_PATHS": [
+    {
+      "PATH": "server->sessions",
+      "TYPE": "smtp_session_node_t*",
+      "ROLE": "遍历入口"
+    }
+  ]
+}

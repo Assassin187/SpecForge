@@ -1,0 +1,394 @@
+{
+  "KIND": "PROTOCOL_MODULE_SPEC",
+  "PROTOCOL": {
+    "NAME": "SMTP",
+    "SPEC_VERSION": "RFC5321-style example subset",
+    "DEFAULT_PORT": 2525,
+    "ROLES": [
+      "SERVER"
+    ],
+    "SCOPE": "Local-receive SMTP server subset implemented by protocol-example/smtp: HELO/EHLO, AUTH LOGIN/PLAIN, MAIL FROM, RCPT TO, DATA, RSET, NOOP, VRFY, QUIT, local .eml storage only."
+  },
+  "MODULES": [
+    {
+      "NAME": "network",
+      "ROLE": "TCP/epoll 网络层：管理监听 socket、客户端 fd、可读/可写事件和连接输入/输出缓冲；不解析 SMTP 命令语义。",
+      "DEPENDENCIES": [],
+      "ARTIFACTS": [
+        {
+          "NAME": "smtp_connection_t",
+          "KIND": "TYPE",
+          "ROLE": "非阻塞连接对象，封装输入行缓冲和输出队列"
+        },
+        {
+          "NAME": "smtp_tcp_server_t",
+          "KIND": "TYPE",
+          "ROLE": "epoll TCP server 运行时对象"
+        },
+        {
+          "NAME": "smtp_tcp_callbacks_t",
+          "KIND": "TYPE",
+          "ROLE": "accept/event/close 回调集合"
+        },
+        {
+          "NAME": "smtp_connection_pop_line",
+          "KIND": "FUNC",
+          "ROLE": "从输入缓冲弹出 CRLF/LF 终止的单行文本"
+        },
+        {
+          "NAME": "smtp_tcp_server_run",
+          "KIND": "FUNC",
+          "ROLE": "运行 epoll 事件循环并回调上层"
+        }
+      ],
+      "FILES": [
+        "../network/connection.h",
+        "../network/connection.c",
+        "../network/tcp_server.h",
+        "../network/tcp_server.c"
+      ],
+      "DOC_REF": []
+    },
+    {
+      "NAME": "protocol_text",
+      "ROLE": "SMTP 文本协议层：解析命令行到 smtp_command_t，并格式化响应行/EHLO capabilities；不持有连接或 session 状态。",
+      "DEPENDENCIES": [],
+      "ARTIFACTS": [
+        {
+          "NAME": "smtp_command_kind_t",
+          "KIND": "TYPE",
+          "ROLE": "SMTP 示例支持的命令枚举"
+        },
+        {
+          "NAME": "smtp_command_t",
+          "KIND": "TYPE",
+          "ROLE": "命令解析输出对象"
+        },
+        {
+          "NAME": "smtp_command_parse",
+          "KIND": "FUNC",
+          "ROLE": "解析单行 SMTP command"
+        },
+        {
+          "NAME": "smtp_response_format",
+          "KIND": "FUNC",
+          "ROLE": "格式化单行 SMTP response"
+        },
+        {
+          "NAME": "smtp_response_format_ehlo_caps",
+          "KIND": "FUNC",
+          "ROLE": "格式化 EHLO capability 多行 response"
+        }
+      ],
+      "FILES": [
+        "../protocol/smtp_command.h",
+        "../protocol/smtp_command.c",
+        "../protocol/smtp_response.h",
+        "../protocol/smtp_response.c"
+      ],
+      "DOC_REF": []
+    },
+    {
+      "NAME": "auth",
+      "ROLE": "SMTP AUTH helper：固定测试凭据、base64 解码、AUTH PLAIN blob 解析。只支持 LOGIN/PLAIN 所需能力。",
+      "DEPENDENCIES": [],
+      "ARTIFACTS": [
+        {
+          "NAME": "smtp_auth_validate",
+          "KIND": "FUNC",
+          "ROLE": "验证 smtpuser/smtppass"
+        },
+        {
+          "NAME": "smtp_auth_decode_base64",
+          "KIND": "FUNC",
+          "ROLE": "解码 AUTH base64 payload"
+        },
+        {
+          "NAME": "smtp_auth_parse_plain_blob",
+          "KIND": "FUNC",
+          "ROLE": "解析 AUTH PLAIN blob"
+        }
+      ],
+      "FILES": [
+        "../auth/smtp_auth.h",
+        "../auth/smtp_auth.c"
+      ],
+      "DOC_REF": []
+    },
+    {
+      "NAME": "storage",
+      "ROLE": "本地投递存储层：创建 mail_root，把 envelope metadata 与 DATA 内容写入唯一 .eml 文件。",
+      "DEPENDENCIES": [],
+      "ARTIFACTS": [
+        {
+          "NAME": "smtp_mail_t",
+          "KIND": "TYPE",
+          "ROLE": "待落盘邮件 envelope/data 视图"
+        },
+        {
+          "NAME": "smtp_mail_store_init",
+          "KIND": "FUNC",
+          "ROLE": "确保 mail_root 目录存在"
+        },
+        {
+          "NAME": "smtp_mail_store_write",
+          "KIND": "FUNC",
+          "ROLE": "写入 .eml 文件"
+        }
+      ],
+      "FILES": [
+        "../storage/mail_store.h",
+        "../storage/mail_store.c"
+      ],
+      "DOC_REF": []
+    },
+    {
+      "NAME": "session",
+      "ROLE": "SMTP session 状态层：按连接维护 greeting、authentication、MAIL/RCPT transaction 和 DATA 收集状态。",
+      "DEPENDENCIES": [
+        "network"
+      ],
+      "ARTIFACTS": [
+        {
+          "NAME": "smtp_session_t",
+          "KIND": "TYPE",
+          "ROLE": "per-connection SMTP session 状态结构"
+        },
+        {
+          "NAME": "smtp_auth_state_t",
+          "KIND": "TYPE",
+          "ROLE": "AUTH continuation 状态枚举"
+        },
+        {
+          "NAME": "smtp_session_create",
+          "KIND": "FUNC",
+          "ROLE": "创建 session 与连接对象"
+        },
+        {
+          "NAME": "smtp_session_reset_transaction",
+          "KIND": "FUNC",
+          "ROLE": "清空 MAIL/RCPT/DATA 状态"
+        },
+        {
+          "NAME": "smtp_session_reset_auth_exchange",
+          "KIND": "FUNC",
+          "ROLE": "清空 AUTH continuation 状态"
+        }
+      ],
+      "FILES": [
+        "../server/smtp_session.h",
+        "../server/smtp_session.c"
+      ],
+      "DOC_REF": []
+    },
+    {
+      "NAME": "server_app",
+      "ROLE": "SMTP server 应用层：创建 TCP server，维护 session 链表，处理 HELO/EHLO/AUTH/MAIL/RCPT/DATA/RSET/NOOP/VRFY/QUIT，并调用 storage 落盘。",
+      "DEPENDENCIES": [
+        "network",
+        "protocol_text",
+        "auth",
+        "storage",
+        "session"
+      ],
+      "ARTIFACTS": [
+        {
+          "NAME": "smtp_server_t",
+          "KIND": "TYPE",
+          "ROLE": "SMTP server 进程级对象"
+        },
+        {
+          "NAME": "smtp_server_create",
+          "KIND": "FUNC",
+          "ROLE": "初始化 mail_root、TCP server 与 callbacks"
+        },
+        {
+          "NAME": "handle_command",
+          "KIND": "FUNC",
+          "ROLE": "核心 SMTP command dispatcher"
+        },
+        {
+          "NAME": "handle_auth",
+          "KIND": "FUNC",
+          "ROLE": "AUTH LOGIN/PLAIN 命令处理"
+        },
+        {
+          "NAME": "handle_data_line",
+          "KIND": "FUNC",
+          "ROLE": "DATA 内容行处理与落盘"
+        },
+        {
+          "NAME": "main",
+          "KIND": "FUNC",
+          "ROLE": "进程入口"
+        }
+      ],
+      "FILES": [
+        "../server/smtp_server.h",
+        "../server/smtp_server.c",
+        "../main.c"
+      ],
+      "DOC_REF": []
+    }
+  ],
+  "GENERATION_ORDER": [
+    "network",
+    "protocol_text",
+    "auth",
+    "storage",
+    "session",
+    "server_app"
+  ],
+  "CONSISTENCY_RULES": [
+    {
+      "ID": "C1",
+      "RULE": "network 层不得解析 SMTP 命令、AUTH payload 或 DATA 内容；它只提供字节读取、行弹出、输出队列和 epoll 事件。",
+      "DOC_REF": []
+    },
+    {
+      "ID": "C2",
+      "RULE": "SMTP command 解析必须经过 smtp_command_parse；响应行必须通过 smtp_response_format 或 smtp_response_format_ehlo_caps 生成。",
+      "DOC_REF": []
+    },
+    {
+      "ID": "C3",
+      "RULE": "MAIL/RCPT/DATA 必须满足 greeted=true 且 authenticated=true；否则分别返回当前实现中的 503 或 530。",
+      "DOC_REF": []
+    },
+    {
+      "ID": "C4",
+      "RULE": "AUTH 只支持 LOGIN 和 PLAIN；其他机制返回 504，不得生成 STARTTLS、SASL 其他机制或外部用户数据库。",
+      "DOC_REF": []
+    },
+    {
+      "ID": "C5",
+      "RULE": "DATA mode 中单独一行 '.' 终止消息；以 '..' 开头的数据行必须去掉一个前导 dot；超过 SMTP_MAX_MESSAGE_SIZE 返回 552 并 reset transaction。",
+      "DOC_REF": []
+    },
+    {
+      "ID": "C6",
+      "RULE": "本示例只做本地 .eml 落盘，不做 SMTP relay、DNS/MX lookup、队列重试或远端投递。",
+      "DOC_REF": []
+    }
+  ],
+  "PUBLIC_SYMBOLS": [
+    {
+      "NAME": "smtp_connection_t",
+      "KIND": "TYPE",
+      "ROLE": "连接句柄"
+    },
+    {
+      "NAME": "smtp_tcp_server_t",
+      "KIND": "TYPE",
+      "ROLE": "TCP server 句柄"
+    },
+    {
+      "NAME": "smtp_tcp_callbacks_t",
+      "KIND": "TYPE",
+      "ROLE": "TCP callbacks"
+    },
+    {
+      "NAME": "smtp_command_t",
+      "KIND": "TYPE",
+      "ROLE": "命令解析对象"
+    },
+    {
+      "NAME": "smtp_mail_t",
+      "KIND": "TYPE",
+      "ROLE": "邮件落盘视图"
+    },
+    {
+      "NAME": "smtp_session_t",
+      "KIND": "TYPE",
+      "ROLE": "session 状态"
+    },
+    {
+      "NAME": "smtp_server_t",
+      "KIND": "TYPE",
+      "ROLE": "server 句柄"
+    }
+  ],
+  "FORBIDDEN_SYMBOLS": [
+    {
+      "NAME": "smtp_packet_t",
+      "KIND": "TYPE",
+      "REASON": "SMTP 示例实现是文本行协议，没有二进制 packet 抽象"
+    },
+    {
+      "NAME": "smtp_decoder_feed",
+      "KIND": "FUNC",
+      "REASON": "SMTP 输入通过 smtp_connection_pop_line 和 smtp_command_parse 处理，不存在增量二进制 decoder"
+    },
+    {
+      "NAME": "smtp_encoder",
+      "KIND": "TYPE",
+      "REASON": "SMTP 响应由 smtp_response_format 文本格式化，不存在独立 encoder 对象"
+    },
+    {
+      "NAME": "STARTTLS",
+      "KIND": "FEATURE",
+      "REASON": "当前示例未实现 TLS/STARTTLS"
+    },
+    {
+      "NAME": "smtp_relay",
+      "KIND": "FEATURE",
+      "REASON": "当前示例只本地落盘接收邮件，不实现 relay/outbound delivery"
+    },
+    {
+      "NAME": "DNS_MX_LOOKUP",
+      "KIND": "FEATURE",
+      "REASON": "当前示例不做 DNS/MX 查询"
+    },
+    {
+      "NAME": "external_user_database",
+      "KIND": "FEATURE",
+      "REASON": "当前认证只使用 hard-coded smtpuser/smtppass"
+    },
+    {
+      "NAME": "AUTH_CRAM_MD5",
+      "KIND": "FEATURE",
+      "REASON": "当前 AUTH 只支持 LOGIN 和 PLAIN"
+    }
+  ],
+  "TEST_VECTORS": [
+    {
+      "NAME": "auth_plain_happy_path",
+      "LEVEL": "RUNTIME",
+      "INPUT": {
+        "commands": [
+          "EHLO localhost",
+          "AUTH PLAIN AHNtdHB1c2VyAHNtdHBwYXNz"
+        ]
+      },
+      "EXPECT": {
+        "response_code": 235
+      }
+    },
+    {
+      "NAME": "mail_requires_auth",
+      "LEVEL": "RUNTIME",
+      "INPUT": {
+        "commands": [
+          "EHLO localhost",
+          "MAIL FROM:<alice@example.com>"
+        ]
+      },
+      "EXPECT": {
+        "response_code": 530
+      }
+    },
+    {
+      "NAME": "quit_closes",
+      "LEVEL": "RUNTIME",
+      "INPUT": {
+        "commands": [
+          "QUIT"
+        ]
+      },
+      "EXPECT": {
+        "response_code": 221,
+        "connection_closed": true
+      }
+    }
+  ]
+}

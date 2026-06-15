@@ -1,0 +1,44 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "smtp/server_app/smtp_server/smtp_server_run",
+  "FUNCTION_TYPE": "EVENT",
+  "ROLE": "进入底层 TCP server 事件循环",
+  "SIGNATURE": {
+    "RAW": "int smtp_server_run(smtp_server_t* server)",
+    "NAME": "smtp_server_run",
+    "RETURN": "int",
+    "PARAMS": [
+      {
+        "TYPE": "smtp_server_t*",
+        "NAME": "server",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "smtp_server_t",
+        "ROLE": "该函数读取或维护的结构化状态"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "smtp_tcp_server_run",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      }
+    ],
+    "VAR": []
+  },
+  "EVENT": {
+    "TRIGGER": "应用启动后调用；委托 smtp_tcp_server_run，后续 accept/event/close 由注册回调驱动。",
+    "PRECONDITION": "相关 server/session/connection 对象已创建；NULL 输入按当前实现的保护分支处理。",
+    "INPUT": "输入为 int smtp_server_run(smtp_server_t* server) 的参数集合。",
+    "ACTION": "应用启动后调用；委托 smtp_tcp_server_run，后续 accept/event/close 由注册回调驱动。",
+    "STATE_CHANGE": "可能更新 TCP 事件循环、SMTP session、输出队列或连接集合状态。",
+    "RESPONSE": "通过返回值、连接关闭、队列响应或回调副作用体现处理结果。",
+    "EVENT_TYPE": "RUNTIME_EVENT"
+  }
+}

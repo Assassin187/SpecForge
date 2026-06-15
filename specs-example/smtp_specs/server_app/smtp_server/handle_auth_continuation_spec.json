@@ -1,0 +1,107 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "smtp/server_app/smtp_server/handle_auth_continuation",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "处理 AUTH LOGIN/PLAIN 的后续 base64 行",
+  "SIGNATURE": {
+    "RAW": "static void handle_auth_continuation(smtp_server_t* server, smtp_session_t* session, const char* line)",
+    "NAME": "handle_auth_continuation",
+    "RETURN": "void",
+    "PARAMS": [
+      {
+        "TYPE": "smtp_server_t*",
+        "NAME": "server",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "smtp_session_t*",
+        "NAME": "session",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "const char*",
+        "NAME": "line",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "smtp_session_t",
+        "ROLE": "该函数读取或维护的结构化状态"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "decode_b64_to_text",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      },
+      {
+        "NAME": "smtp_auth_decode_base64",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      },
+      {
+        "NAME": "smtp_auth_parse_plain_blob",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      },
+      {
+        "NAME": "finish_auth_if_valid",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      },
+      {
+        "NAME": "queue_code",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      },
+      {
+        "NAME": "smtp_session_reset_auth_exchange",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入为 static void handle_auth_continuation(smtp_server_t* server, smtp_session_t* session, const char* line) 的参数集合。",
+    "ACTION": "处理 AUTH LOGIN/PLAIN 的后续 base64 行",
+    "OUTPUT": "按签名返回成功/失败、对象指针、格式化长度或无返回值；失败路径遵循当前 C 实现。",
+    "INVARIANTS_USED": [
+      "不引入当前源码不存在的 SMTP 扩展或额外协议状态。",
+      "所有缓冲写入必须受目标容量约束保护。"
+    ]
+  },
+  "ACCESS_PATHS": [
+    {
+      "PATH": "session->auth_state",
+      "TYPE": "smtp_auth_state_t",
+      "ROLE": "决定 continuation 分支"
+    },
+    {
+      "PATH": "session->auth_login_user",
+      "TYPE": "char[256]",
+      "ROLE": "LOGIN username 暂存"
+    }
+  ],
+  "WIRE_MAPPING": [
+    {
+      "PACKET": "AUTH_LOGIN",
+      "WIRE_FIELD": "username_or_password_line",
+      "STRATEGY": "parse_and_skip",
+      "RULE": "根据 auth_state 把 base64 行解释为 username 或 password"
+    },
+    {
+      "PACKET": "AUTH_PLAIN",
+      "WIRE_FIELD": "plain_blob_line",
+      "STRATEGY": "parse_and_skip",
+      "RULE": "根据 auth_state 把 base64 行解释为 PLAIN blob"
+    }
+  ]
+}

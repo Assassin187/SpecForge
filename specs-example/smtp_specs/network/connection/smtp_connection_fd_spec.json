@@ -1,0 +1,45 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "smtp/network/connection/smtp_connection_fd",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "读取连接 fd；conn 为 NULL 时返回 -1",
+  "SIGNATURE": {
+    "RAW": "int smtp_connection_fd(const smtp_connection_t* conn)",
+    "NAME": "smtp_connection_fd",
+    "RETURN": "int",
+    "PARAMS": [
+      {
+        "TYPE": "const smtp_connection_t*",
+        "NAME": "conn",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "smtp_connection_t",
+        "ROLE": "该函数读取或维护的结构化状态"
+      }
+    ],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入为 int smtp_connection_fd(const smtp_connection_t* conn) 的参数集合。",
+    "ACTION": "读取连接 fd；conn 为 NULL 时返回 -1",
+    "OUTPUT": "按签名返回成功/失败、对象指针、格式化长度或无返回值；失败路径遵循当前 C 实现。",
+    "INVARIANTS_USED": [
+      "不引入当前源码不存在的 SMTP 扩展或额外协议状态。",
+      "所有缓冲写入必须受目标容量约束保护。"
+    ]
+  },
+  "ACCESS_PATHS": [
+    {
+      "PATH": "conn->fd",
+      "TYPE": "int",
+      "ROLE": "读取 fd"
+    }
+  ]
+}

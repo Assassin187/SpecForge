@@ -1,0 +1,65 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "smtp/main/main",
+  "FUNCTION_TYPE": "ENTRYPOINT",
+  "ROLE": "SMTP server 可执行程序入口，负责默认配置、参数解析与 server 生命周期编排",
+  "SIGNATURE": {
+    "RAW": "int main(int argc, char** argv)",
+    "NAME": "main",
+    "RETURN": "int",
+    "PARAMS": [
+      {
+        "TYPE": "int",
+        "NAME": "argc",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "char**",
+        "NAME": "argv",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "smtp_server_t",
+        "ROLE": "该函数读取或维护的结构化状态"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "smtp_server_create",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      },
+      {
+        "NAME": "smtp_server_start",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      },
+      {
+        "NAME": "smtp_server_run",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      },
+      {
+        "NAME": "smtp_server_destroy",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入为 int main(int argc, char** argv) 的参数集合。",
+    "ACTION": "默认端口 2525、默认 mail_root 为 /mail-test；可用 argv[1]/argv[2] 覆盖；创建 server，启动监听，运行事件循环，退出后销毁。",
+    "OUTPUT": "按签名返回成功/失败、对象指针、格式化长度或无返回值；失败路径遵循当前 C 实现。",
+    "INVARIANTS_USED": [
+      "不引入当前源码不存在的 SMTP 扩展或额外协议状态。",
+      "所有缓冲写入必须受目标容量约束保护。"
+    ]
+  }
+}

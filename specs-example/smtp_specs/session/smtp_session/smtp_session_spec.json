@@ -1,0 +1,424 @@
+{
+  "KIND": "FILE_SPEC",
+  "FILE": {
+    "TRACE_ID": "smtp/session/smtp_session",
+    "LANG": "C",
+    "ROLE": "SMTP per-connection session 状态模块：维护 greeting、AUTH、transaction 和 DATA 收集状态",
+    "DOC_REF": []
+  },
+  "SOURCE": {
+    "PATH": "../server/smtp_session.c",
+    "DEPENDENCY": [
+      "../server/smtp_session.h"
+    ],
+    "DATA": [],
+    "INTERFACE": [
+      {
+        "TRACE_ID": "smtp/session/smtp_session/smtp_session_create",
+        "SIGNATURE": "smtp_session_t* smtp_session_create(int control_fd)",
+        "NAME": "smtp_session_create",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "创建 session 并为 control_fd 创建 smtp_connection_t",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "smtp/session/smtp_session/smtp_session_reset_transaction",
+        "SIGNATURE": "void smtp_session_reset_transaction(smtp_session_t* session)",
+        "NAME": "smtp_session_reset_transaction",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "清空 MAIL/RCPT/DATA transaction 状态，不影响 greeting/authenticated",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "smtp/session/smtp_session/smtp_session_reset_auth_exchange",
+        "SIGNATURE": "void smtp_session_reset_auth_exchange(smtp_session_t* session)",
+        "NAME": "smtp_session_reset_auth_exchange",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "清空 AUTH continuation 状态和 LOGIN 暂存用户名",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "smtp/session/smtp_session/smtp_session_destroy",
+        "SIGNATURE": "void smtp_session_destroy(smtp_session_t* session)",
+        "NAME": "smtp_session_destroy",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "销毁 session 及其 smtp_connection_t",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "public"
+      }
+    ]
+  },
+  "HEADER": {
+    "PATH": "../server/smtp_session.h",
+    "DEPENDENCY": [
+      "../network/connection.h"
+    ],
+    "SYSTEM_DEPENDENCY": [],
+    "DATA": [
+      {
+        "NAME": "SMTP_MAX_RECIPIENTS",
+        "KIND": "MACRO",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "单封邮件最大收件人数",
+        "VALUE": 32
+      },
+      {
+        "NAME": "SMTP_MAX_MESSAGE_SIZE",
+        "KIND": "MACRO",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "单封邮件最大 DATA 字节数",
+        "VALUE": "(1024u * 1024u)"
+      },
+      {
+        "NAME": "smtp_auth_state_t",
+        "KIND": "TYPE",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "AUTH LOGIN/PLAIN continuation 状态机",
+        "TYPE_SPEC": {
+          "TYPE_KIND": "ENUM",
+          "ENUM_VALUES": [
+            {
+              "NAME": "SMTP_AUTH_STATE_NONE",
+              "ROLE": "无认证 continuation",
+              "VALUE": 0
+            },
+            {
+              "NAME": "SMTP_AUTH_STATE_LOGIN_WAIT_USER",
+              "ROLE": "等待 AUTH LOGIN username"
+            },
+            {
+              "NAME": "SMTP_AUTH_STATE_LOGIN_WAIT_PASS",
+              "ROLE": "等待 AUTH LOGIN password"
+            },
+            {
+              "NAME": "SMTP_AUTH_STATE_PLAIN_WAIT_BLOB",
+              "ROLE": "等待 AUTH PLAIN blob"
+            }
+          ]
+        }
+      },
+      {
+        "NAME": "smtp_session_t",
+        "KIND": "TYPE",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "公开 session 结构体，server handler 直接读写其状态字段",
+        "TYPE_SPEC": {
+          "TYPE_KIND": "STRUCT",
+          "FIELDS": [
+            {
+              "NAME": "control_fd",
+              "TYPE": "int",
+              "ROLE": "控制连接 fd"
+            },
+            {
+              "NAME": "conn",
+              "TYPE": "smtp_connection_t*",
+              "ROLE": "连接对象"
+            },
+            {
+              "NAME": "greeted",
+              "TYPE": "bool",
+              "ROLE": "是否已收到 HELO/EHLO"
+            },
+            {
+              "NAME": "authenticated",
+              "TYPE": "bool",
+              "ROLE": "是否认证成功"
+            },
+            {
+              "NAME": "helo_name",
+              "TYPE": "char",
+              "ROLE": "HELO/EHLO 参数",
+              "ARRAY_LEN": "256"
+            },
+            {
+              "NAME": "auth_user",
+              "TYPE": "char",
+              "ROLE": "认证用户名",
+              "ARRAY_LEN": "256"
+            },
+            {
+              "NAME": "auth_state",
+              "TYPE": "smtp_auth_state_t",
+              "ROLE": "AUTH continuation 状态"
+            },
+            {
+              "NAME": "auth_login_user",
+              "TYPE": "char",
+              "ROLE": "AUTH LOGIN 暂存用户名",
+              "ARRAY_LEN": "256"
+            },
+            {
+              "NAME": "mail_from",
+              "TYPE": "char",
+              "ROLE": "MAIL FROM 地址",
+              "ARRAY_LEN": "512"
+            },
+            {
+              "NAME": "has_mail_from",
+              "TYPE": "bool",
+              "ROLE": "是否已有 MAIL FROM"
+            },
+            {
+              "NAME": "rcpt_to",
+              "TYPE": "char",
+              "ROLE": "RCPT TO 地址二维数组",
+              "ARRAY_LEN": "SMTP_MAX_RECIPIENTS][512"
+            },
+            {
+              "NAME": "rcpt_count",
+              "TYPE": "size_t",
+              "ROLE": "当前收件人数"
+            },
+            {
+              "NAME": "in_data_mode",
+              "TYPE": "bool",
+              "ROLE": "是否处于 DATA mode"
+            },
+            {
+              "NAME": "message_buf",
+              "TYPE": "char",
+              "ROLE": "DATA 内容缓冲",
+              "ARRAY_LEN": "SMTP_MAX_MESSAGE_SIZE + 1"
+            },
+            {
+              "NAME": "message_len",
+              "TYPE": "size_t",
+              "ROLE": "DATA 当前长度"
+            },
+            {
+              "NAME": "message_too_large",
+              "TYPE": "bool",
+              "ROLE": "DATA 是否超限"
+            }
+          ]
+        }
+      }
+    ],
+    "INTERFACE": [
+      {
+        "SIGNATURE": "smtp_session_t* smtp_session_create(int control_fd)",
+        "NAME": "smtp_session_create",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "创建 session 并为 control_fd 创建 smtp_connection_t",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "void smtp_session_reset_transaction(smtp_session_t* session)",
+        "NAME": "smtp_session_reset_transaction",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "清空 MAIL/RCPT/DATA transaction 状态，不影响 greeting/authenticated",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "void smtp_session_reset_auth_exchange(smtp_session_t* session)",
+        "NAME": "smtp_session_reset_auth_exchange",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "清空 AUTH continuation 状态和 LOGIN 暂存用户名",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "void smtp_session_destroy(smtp_session_t* session)",
+        "NAME": "smtp_session_destroy",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "销毁 session 及其 smtp_connection_t",
+        "VISIBILITY": "public"
+      }
+    ]
+  },
+  "ACCESS_PATHS": [
+    {
+      "PATH": "smtp_session_t.control_fd",
+      "TYPE": "int",
+      "ROLE": "控制连接 fd"
+    },
+    {
+      "PATH": "smtp_session_t.conn",
+      "TYPE": "smtp_connection_t*",
+      "ROLE": "连接对象"
+    },
+    {
+      "PATH": "smtp_session_t.greeted",
+      "TYPE": "bool",
+      "ROLE": "是否已 HELO/EHLO"
+    },
+    {
+      "PATH": "smtp_session_t.authenticated",
+      "TYPE": "bool",
+      "ROLE": "是否已 AUTH 成功"
+    },
+    {
+      "PATH": "smtp_session_t.helo_name",
+      "TYPE": "char[256]",
+      "ROLE": "HELO/EHLO 参数"
+    },
+    {
+      "PATH": "smtp_session_t.auth_user",
+      "TYPE": "char[256]",
+      "ROLE": "认证用户名"
+    },
+    {
+      "PATH": "smtp_session_t.auth_state",
+      "TYPE": "smtp_auth_state_t",
+      "ROLE": "AUTH continuation 状态"
+    },
+    {
+      "PATH": "smtp_session_t.auth_login_user",
+      "TYPE": "char[256]",
+      "ROLE": "AUTH LOGIN 暂存用户名"
+    },
+    {
+      "PATH": "smtp_session_t.mail_from",
+      "TYPE": "char[512]",
+      "ROLE": "当前 transaction sender"
+    },
+    {
+      "PATH": "smtp_session_t.has_mail_from",
+      "TYPE": "bool",
+      "ROLE": "是否收到 MAIL FROM"
+    },
+    {
+      "PATH": "smtp_session_t.rcpt_to",
+      "TYPE": "char[SMTP_MAX_RECIPIENTS][512]",
+      "ROLE": "当前 transaction recipients"
+    },
+    {
+      "PATH": "smtp_session_t.rcpt_count",
+      "TYPE": "size_t",
+      "ROLE": "recipient 数量"
+    },
+    {
+      "PATH": "smtp_session_t.in_data_mode",
+      "TYPE": "bool",
+      "ROLE": "是否正在收 DATA 内容"
+    },
+    {
+      "PATH": "smtp_session_t.message_buf",
+      "TYPE": "char[SMTP_MAX_MESSAGE_SIZE + 1]",
+      "ROLE": "DATA 内容缓冲"
+    },
+    {
+      "PATH": "smtp_session_t.message_len",
+      "TYPE": "size_t",
+      "ROLE": "DATA 当前长度"
+    },
+    {
+      "PATH": "smtp_session_t.message_too_large",
+      "TYPE": "bool",
+      "ROLE": "DATA 是否超过上限"
+    },
+    {
+      "PATH": "session->greeted",
+      "TYPE": "bool",
+      "ROLE": "server handler 使用的 greeting 状态"
+    },
+    {
+      "PATH": "session->authenticated",
+      "TYPE": "bool",
+      "ROLE": "server handler 使用的 auth 状态"
+    },
+    {
+      "PATH": "session->auth_state",
+      "TYPE": "smtp_auth_state_t",
+      "ROLE": "AUTH continuation 状态"
+    },
+    {
+      "PATH": "session->mail_from",
+      "TYPE": "char[512]",
+      "ROLE": "MAIL FROM 地址"
+    },
+    {
+      "PATH": "session->rcpt_to[i]",
+      "TYPE": "char[512]",
+      "ROLE": "第 i 个 RCPT TO 地址"
+    },
+    {
+      "PATH": "session->rcpt_count",
+      "TYPE": "size_t",
+      "ROLE": "收件人数量"
+    },
+    {
+      "PATH": "session->in_data_mode",
+      "TYPE": "bool",
+      "ROLE": "DATA mode 标志"
+    },
+    {
+      "PATH": "session->message_buf",
+      "TYPE": "char*",
+      "ROLE": "DATA 内容缓冲"
+    },
+    {
+      "PATH": "session->message_len",
+      "TYPE": "size_t",
+      "ROLE": "DATA 长度"
+    },
+    {
+      "PATH": "session->message_too_large",
+      "TYPE": "bool",
+      "ROLE": "DATA 超限标志"
+    }
+  ]
+}

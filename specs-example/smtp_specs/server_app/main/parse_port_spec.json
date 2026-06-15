@@ -1,0 +1,33 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "smtp/main/parse_port",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "解析命令行端口字符串，接受 1..65535，非法返回 0",
+  "SIGNATURE": {
+    "RAW": "static uint16_t parse_port(const char* s)",
+    "NAME": "parse_port",
+    "RETURN": "uint16_t",
+    "PARAMS": [
+      {
+        "TYPE": "const char*",
+        "NAME": "s",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入为 static uint16_t parse_port(const char* s) 的参数集合。",
+    "ACTION": "使用 strtol 完整解析十进制端口；拒绝空输入、非数字尾部、0 和超过 65535 的值。",
+    "OUTPUT": "按签名返回成功/失败、对象指针、格式化长度或无返回值；失败路径遵循当前 C 实现。",
+    "INVARIANTS_USED": [
+      "不引入当前源码不存在的 SMTP 扩展或额外协议状态。",
+      "所有缓冲写入必须受目标容量约束保护。"
+    ]
+  }
+}

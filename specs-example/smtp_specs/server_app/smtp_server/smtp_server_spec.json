@@ -1,0 +1,858 @@
+{
+  "KIND": "FILE_SPEC",
+  "FILE": {
+    "TRACE_ID": "smtp/server_app/smtp_server",
+    "LANG": "C",
+    "ROLE": "SMTP server 应用层协调模块：管理 session 链表、命令分发、AUTH、DATA 收集、落盘和 TCP callbacks",
+    "DOC_REF": []
+  },
+  "SOURCE": {
+    "PATH": "../server/smtp_server.c",
+    "DEPENDENCY": [
+      "../server/smtp_server.h",
+      "../auth/smtp_auth.h",
+      "../network/tcp_server.h",
+      "../protocol/smtp_command.h",
+      "../protocol/smtp_response.h",
+      "../storage/mail_store.h",
+      "../server/smtp_session.h"
+    ],
+    "DATA": [
+      {
+        "NAME": "struct smtp_session_node",
+        "KIND": "TYPE",
+        "VISIBILITY": "PRIVATE",
+        "ROLE": "server 内部 session 链表节点"
+      },
+      {
+        "NAME": "smtp_session_node_t",
+        "KIND": "TYPE",
+        "VISIBILITY": "PRIVATE",
+        "ROLE": "struct smtp_session_node typedef 别名"
+      },
+      {
+        "NAME": "struct smtp_server",
+        "KIND": "TYPE",
+        "VISIBILITY": "PRIVATE",
+        "ROLE": "SMTP server 内部运行时状态"
+      }
+    ],
+    "INTERFACE": [
+      {
+        "TRACE_ID": "smtp/server_app/smtp_server/find_session",
+        "SIGNATURE": "static smtp_session_t* find_session(smtp_server_t* server, int fd)",
+        "NAME": "find_session",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "按 control_fd 在 server session 链表中查找 session",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": true,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "smtp/server_app/smtp_server/add_session",
+        "SIGNATURE": "static int add_session(smtp_server_t* server, smtp_session_t* session)",
+        "NAME": "add_session",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "把新 session 头插到 server session 链表",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "smtp/server_app/smtp_server/remove_session",
+        "SIGNATURE": "static void remove_session(smtp_server_t* server, int fd)",
+        "NAME": "remove_session",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "按 fd 移除并销毁 session 链表节点",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "smtp/server_app/smtp_server/close_control",
+        "SIGNATURE": "static void close_control(smtp_server_t* server, smtp_session_t* session)",
+        "NAME": "close_control",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "委托 TCP server 关闭 session 控制连接",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "smtp/server_app/smtp_server/queue_raw",
+        "SIGNATURE": "static int queue_raw(smtp_server_t* server, smtp_session_t* session, const char* text)",
+        "NAME": "queue_raw",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "把原始响应文本排入连接输出队列并订阅写事件",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "smtp/server_app/smtp_server/queue_code",
+        "SIGNATURE": "static int queue_code(smtp_server_t* server, smtp_session_t* session, int code, const char* text)",
+        "NAME": "queue_code",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "格式化 SMTP 响应码行并排队发送",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "smtp/server_app/smtp_server/flush_control_now",
+        "SIGNATURE": "static int flush_control_now(smtp_server_t* server, smtp_session_t* session)",
+        "NAME": "flush_control_now",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "立即 flush session 输出队列并根据 pending 状态更新写兴趣",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "smtp/server_app/smtp_server/append_message_line",
+        "SIGNATURE": "static int append_message_line(smtp_session_t* session, const char* raw_line)",
+        "NAME": "append_message_line",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "向 DATA 缓冲追加一行，处理 dot-stuffing 并追加 CRLF",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "smtp/server_app/smtp_server/handle_data_line",
+        "SIGNATURE": "static void handle_data_line(smtp_server_t* server, smtp_session_t* session, const char* line)",
+        "NAME": "handle_data_line",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "处理 DATA mode 中的行：非终止行追加，'.' 终止并尝试落盘",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "smtp/server_app/smtp_server/parse_mailbox_arg",
+        "SIGNATURE": "static int parse_mailbox_arg(const char* arg, const char* key, char* out, size_t out_len)",
+        "NAME": "parse_mailbox_arg",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "解析 MAIL FROM:/RCPT TO: 参数，支持尖括号地址和非空白地址",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": true,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "smtp/server_app/smtp_server/begin_login_auth",
+        "SIGNATURE": "static void begin_login_auth(smtp_server_t* server, smtp_session_t* session)",
+        "NAME": "begin_login_auth",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "进入 AUTH LOGIN username continuation 并发送 username challenge",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "smtp/server_app/smtp_server/decode_b64_to_text",
+        "SIGNATURE": "static int decode_b64_to_text(const char* b64, char* out, size_t out_len)",
+        "NAME": "decode_b64_to_text",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "把 base64 文本解码为 NUL 结尾字符串，拒绝空结果或溢出",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": true,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "smtp/server_app/smtp_server/finish_auth_if_valid",
+        "SIGNATURE": "static void finish_auth_if_valid(smtp_server_t* server, smtp_session_t* session, const char* user, const char* pass)",
+        "NAME": "finish_auth_if_valid",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "验证凭据并设置 authenticated/auth_user，发送 235 或 535，最后清理 AUTH continuation",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "smtp/server_app/smtp_server/handle_auth_continuation",
+        "SIGNATURE": "static void handle_auth_continuation(smtp_server_t* server, smtp_session_t* session, const char* line)",
+        "NAME": "handle_auth_continuation",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "处理 AUTH LOGIN/PLAIN 的后续 base64 行",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "smtp/server_app/smtp_server/ensure_ready_for_mail",
+        "SIGNATURE": "static int ensure_ready_for_mail(smtp_server_t* server, smtp_session_t* session)",
+        "NAME": "ensure_ready_for_mail",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "检查 MAIL/RCPT/DATA 前置条件：必须已 greeting 且已认证",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "smtp/server_app/smtp_server/handle_auth",
+        "SIGNATURE": "static void handle_auth(smtp_server_t* server, smtp_session_t* session, const smtp_command_t* cmd)",
+        "NAME": "handle_auth",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "处理 AUTH 命令，支持 LOGIN 和 PLAIN，可带 initial response 或进入 continuation",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "smtp/server_app/smtp_server/handle_command",
+        "SIGNATURE": "static void handle_command(smtp_server_t* server, smtp_session_t* session, const smtp_command_t* cmd)",
+        "NAME": "handle_command",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "按 smtp_command_t.kind 分发 SMTP 命令并维护 greeting/auth/transaction/DATA 状态",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "smtp/server_app/smtp_server/on_accept_cb",
+        "SIGNATURE": "static void on_accept_cb(void* user, int fd, const struct sockaddr_storage* peer, socklen_t peer_len)",
+        "NAME": "on_accept_cb",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "EVENT",
+        "ROLE": "TCP accept 回调：创建 session、加入链表并发送 220 greeting",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": true,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "smtp/server_app/smtp_server/on_event_cb",
+        "SIGNATURE": "static void on_event_cb(void* user, int fd, uint32_t events)",
+        "NAME": "on_event_cb",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "EVENT",
+        "ROLE": "TCP event 回调：处理可写 flush、可读 read/pop_line，并分派 DATA/AUTH/command",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": true,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "smtp/server_app/smtp_server/on_close_cb",
+        "SIGNATURE": "static void on_close_cb(void* user, int fd)",
+        "NAME": "on_close_cb",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "EVENT",
+        "ROLE": "TCP close 回调：从 server session 链表移除 fd 对应 session",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "smtp/server_app/smtp_server/smtp_server_create",
+        "SIGNATURE": "smtp_server_t* smtp_server_create(uint16_t port, const char* mail_root)",
+        "NAME": "smtp_server_create",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "创建 SMTP server，初始化 mail_root、TCP callbacks 和底层 TCP server",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "smtp/server_app/smtp_server/smtp_server_start",
+        "SIGNATURE": "int smtp_server_start(smtp_server_t* server)",
+        "NAME": "smtp_server_start",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "启动底层 TCP server 监听",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "smtp/server_app/smtp_server/smtp_server_run",
+        "SIGNATURE": "int smtp_server_run(smtp_server_t* server)",
+        "NAME": "smtp_server_run",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "EVENT",
+        "ROLE": "进入底层 TCP server 事件循环",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "smtp/server_app/smtp_server/smtp_server_stop",
+        "SIGNATURE": "void smtp_server_stop(smtp_server_t* server)",
+        "NAME": "smtp_server_stop",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "请求底层 TCP server 停止事件循环",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "smtp/server_app/smtp_server/smtp_server_destroy",
+        "SIGNATURE": "void smtp_server_destroy(smtp_server_t* server)",
+        "NAME": "smtp_server_destroy",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "销毁所有 session、底层 TCP server 和 server 对象",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "public"
+      }
+    ]
+  },
+  "HEADER": {
+    "PATH": "../server/smtp_server.h",
+    "DEPENDENCY": [],
+    "SYSTEM_DEPENDENCY": [],
+    "DATA": [
+      {
+        "NAME": "smtp_server_t",
+        "KIND": "TYPE",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "不透明 SMTP server 句柄，隐藏端口、hostname、mail_root、tcp 和 session 链表",
+        "TYPE_SPEC": {
+          "TYPE_KIND": "OPAQUE"
+        }
+      }
+    ],
+    "INTERFACE": [
+      {
+        "SIGNATURE": "smtp_server_t* smtp_server_create(uint16_t port, const char* mail_root)",
+        "NAME": "smtp_server_create",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "创建 SMTP server，初始化 mail_root、TCP callbacks 和底层 TCP server",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "int smtp_server_start(smtp_server_t* server)",
+        "NAME": "smtp_server_start",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "启动底层 TCP server 监听",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "int smtp_server_run(smtp_server_t* server)",
+        "NAME": "smtp_server_run",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "EVENT",
+        "ROLE": "进入底层 TCP server 事件循环",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "void smtp_server_stop(smtp_server_t* server)",
+        "NAME": "smtp_server_stop",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "请求底层 TCP server 停止事件循环",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "void smtp_server_destroy(smtp_server_t* server)",
+        "NAME": "smtp_server_destroy",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "销毁所有 session、底层 TCP server 和 server 对象",
+        "VISIBILITY": "public"
+      }
+    ]
+  },
+  "ACCESS_PATHS": [
+    {
+      "PATH": "server->port",
+      "TYPE": "uint16_t",
+      "ROLE": "监听端口"
+    },
+    {
+      "PATH": "server->hostname",
+      "TYPE": "char[128]",
+      "ROLE": "EHLO/HELO 响应 hostname"
+    },
+    {
+      "PATH": "server->mail_root",
+      "TYPE": "char[PATH_MAX]",
+      "ROLE": "邮件落盘根目录"
+    },
+    {
+      "PATH": "server->tcp",
+      "TYPE": "smtp_tcp_server_t*",
+      "ROLE": "底层 TCP server"
+    },
+    {
+      "PATH": "server->sessions",
+      "TYPE": "smtp_session_node_t*",
+      "ROLE": "session 链表"
+    },
+    {
+      "PATH": "session->greeted",
+      "TYPE": "bool",
+      "ROLE": "HELO/EHLO 后置 true"
+    },
+    {
+      "PATH": "session->authenticated",
+      "TYPE": "bool",
+      "ROLE": "AUTH 成功后置 true"
+    },
+    {
+      "PATH": "session->auth_user",
+      "TYPE": "char[256]",
+      "ROLE": "AUTH 成功用户"
+    },
+    {
+      "PATH": "session->auth_state",
+      "TYPE": "smtp_auth_state_t",
+      "ROLE": "AUTH continuation 状态"
+    },
+    {
+      "PATH": "session->auth_login_user",
+      "TYPE": "char[256]",
+      "ROLE": "AUTH LOGIN username 暂存"
+    },
+    {
+      "PATH": "session->mail_from",
+      "TYPE": "char[512]",
+      "ROLE": "MAIL FROM 地址"
+    },
+    {
+      "PATH": "session->has_mail_from",
+      "TYPE": "bool",
+      "ROLE": "MAIL FROM 是否有效"
+    },
+    {
+      "PATH": "session->rcpt_to[i]",
+      "TYPE": "char[512]",
+      "ROLE": "RCPT TO 地址槽"
+    },
+    {
+      "PATH": "session->rcpt_count",
+      "TYPE": "size_t",
+      "ROLE": "当前收件人数"
+    },
+    {
+      "PATH": "session->in_data_mode",
+      "TYPE": "bool",
+      "ROLE": "DATA mode 标志"
+    },
+    {
+      "PATH": "session->message_buf",
+      "TYPE": "char*",
+      "ROLE": "DATA 内容缓冲"
+    },
+    {
+      "PATH": "session->message_len",
+      "TYPE": "size_t",
+      "ROLE": "DATA 内容长度"
+    },
+    {
+      "PATH": "session->message_too_large",
+      "TYPE": "bool",
+      "ROLE": "DATA 超限标志"
+    }
+  ],
+  "TEST_VECTORS": [
+    {
+      "NAME": "mail_requires_greeting",
+      "LEVEL": "RUNTIME",
+      "INPUT": {
+        "commands": [
+          "MAIL FROM:<alice@example.com>"
+        ]
+      },
+      "EXPECT": {
+        "response_code": 503
+      }
+    },
+    {
+      "NAME": "mail_requires_auth",
+      "LEVEL": "RUNTIME",
+      "INPUT": {
+        "commands": [
+          "EHLO localhost",
+          "MAIL FROM:<alice@example.com>"
+        ]
+      },
+      "EXPECT": {
+        "response_code": 530
+      }
+    },
+    {
+      "NAME": "happy_path_delivery",
+      "LEVEL": "RUNTIME",
+      "INPUT": {
+        "commands": [
+          "EHLO localhost",
+          "AUTH PLAIN AHNtdHB1c2VyAHNtdHBwYXNz",
+          "MAIL FROM:<alice@example.com>",
+          "RCPT TO:<bob@example.com>",
+          "DATA",
+          "Subject: test",
+          "",
+          "hello",
+          "."
+        ]
+      },
+      "EXPECT": {
+        "response_code": 250,
+        "mail_file": ".eml"
+      }
+    }
+  ],
+  "FORBIDDEN_SYMBOLS": [
+    {
+      "NAME": "smtp_packet_t",
+      "KIND": "TYPE",
+      "REASON": "SMTP 示例实现是文本行协议，没有二进制 packet 抽象"
+    },
+    {
+      "NAME": "smtp_decoder_feed",
+      "KIND": "FUNC",
+      "REASON": "SMTP 输入通过 smtp_connection_pop_line 和 smtp_command_parse 处理，不存在增量二进制 decoder"
+    },
+    {
+      "NAME": "smtp_encoder",
+      "KIND": "TYPE",
+      "REASON": "SMTP 响应由 smtp_response_format 文本格式化，不存在独立 encoder 对象"
+    },
+    {
+      "NAME": "STARTTLS",
+      "KIND": "FEATURE",
+      "REASON": "当前示例未实现 TLS/STARTTLS"
+    },
+    {
+      "NAME": "smtp_relay",
+      "KIND": "FEATURE",
+      "REASON": "当前示例只本地落盘接收邮件，不实现 relay/outbound delivery"
+    },
+    {
+      "NAME": "DNS_MX_LOOKUP",
+      "KIND": "FEATURE",
+      "REASON": "当前示例不做 DNS/MX 查询"
+    },
+    {
+      "NAME": "external_user_database",
+      "KIND": "FEATURE",
+      "REASON": "当前认证只使用 hard-coded smtpuser/smtppass"
+    },
+    {
+      "NAME": "AUTH_CRAM_MD5",
+      "KIND": "FEATURE",
+      "REASON": "当前 AUTH 只支持 LOGIN 和 PLAIN"
+    }
+  ]
+}

@@ -1,0 +1,66 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "smtp/network/tcp_server/add_client",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "把 client fd 注册到 epoll 并插入 clients 链表",
+  "SIGNATURE": {
+    "RAW": "static int add_client(smtp_tcp_server_t* server, int fd)",
+    "NAME": "add_client",
+    "RETURN": "int",
+    "PARAMS": [
+      {
+        "TYPE": "smtp_tcp_server_t*",
+        "NAME": "server",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "int",
+        "NAME": "fd",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "smtp_tcp_server_t",
+        "ROLE": "该函数读取或维护的结构化状态"
+      },
+      {
+        "NAME": "smtp_client_node_t",
+        "ROLE": "该函数读取或维护的结构化状态"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "epoll_ctl",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入为 static int add_client(smtp_tcp_server_t* server, int fd) 的参数集合。",
+    "ACTION": "把 client fd 注册到 epoll 并插入 clients 链表",
+    "OUTPUT": "按签名返回成功/失败、对象指针、格式化长度或无返回值；失败路径遵循当前 C 实现。",
+    "INVARIANTS_USED": [
+      "不引入当前源码不存在的 SMTP 扩展或额外协议状态。",
+      "所有缓冲写入必须受目标容量约束保护。"
+    ]
+  },
+  "ACCESS_PATHS": [
+    {
+      "PATH": "server->clients",
+      "TYPE": "smtp_client_node_t*",
+      "ROLE": "头插新节点"
+    },
+    {
+      "PATH": "node->want_write",
+      "TYPE": "bool",
+      "ROLE": "初始化为 false"
+    }
+  ]
+}

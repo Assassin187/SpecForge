@@ -1,0 +1,66 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "smtp/network/tcp_server/smtp_tcp_server_run",
+  "FUNCTION_TYPE": "EVENT",
+  "ROLE": "进入 epoll_wait 主事件循环并把内核事件转换为 SMTP_IO_* 回调",
+  "SIGNATURE": {
+    "RAW": "int smtp_tcp_server_run(smtp_tcp_server_t* server)",
+    "NAME": "smtp_tcp_server_run",
+    "RETURN": "int",
+    "PARAMS": [
+      {
+        "TYPE": "smtp_tcp_server_t*",
+        "NAME": "server",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "smtp_tcp_server_t",
+        "ROLE": "该函数读取或维护的结构化状态"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "epoll_wait",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      },
+      {
+        "NAME": "accept_loop",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      },
+      {
+        "NAME": "find_client",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      },
+      {
+        "NAME": "smtp_tcp_server_close_client",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      }
+    ],
+    "VAR": []
+  },
+  "EVENT": {
+    "TRIGGER": "检查 listen_fd/epoll_fd 有效后设置 running=true；循环 epoll_wait；listen_fd 事件调用 accept_loop，客户端错误/挂断关闭连接，可读/可写事件映射为 SMTP_IO_READABLE/SMTP_IO_WRITABLE 后调用 on_event。",
+    "PRECONDITION": "相关 server/session/connection 对象已创建；NULL 输入按当前实现的保护分支处理。",
+    "INPUT": "输入为 int smtp_tcp_server_run(smtp_tcp_server_t* server) 的参数集合。",
+    "ACTION": "检查 listen_fd/epoll_fd 有效后设置 running=true；循环 epoll_wait；listen_fd 事件调用 accept_loop，客户端错误/挂断关闭连接，可读/可写事件映射为 SMTP_IO_READABLE/SMTP_IO_WRITABLE 后调用 on_event。",
+    "STATE_CHANGE": "可能更新 TCP 事件循环、SMTP session、输出队列或连接集合状态。",
+    "RESPONSE": "通过返回值、连接关闭、队列响应或回调副作用体现处理结果。",
+    "EVENT_TYPE": "RUNTIME_EVENT"
+  },
+  "ACCESS_PATHS": [
+    {
+      "PATH": "server->running",
+      "TYPE": "bool",
+      "ROLE": "进入循环时置 true"
+    }
+  ]
+}

@@ -1,0 +1,139 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "smtp/storage/mail_store/smtp_mail_store_write",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "生成唯一 .eml 文件并写入 envelope headers、空行和 DATA 内容",
+  "SIGNATURE": {
+    "RAW": "int smtp_mail_store_write(const char* root_dir, const smtp_mail_t* mail, char* out_path, size_t out_path_len)",
+    "NAME": "smtp_mail_store_write",
+    "RETURN": "int",
+    "PARAMS": [
+      {
+        "TYPE": "const char*",
+        "NAME": "root_dir",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "const smtp_mail_t*",
+        "NAME": "mail",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "char*",
+        "NAME": "out_path",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "size_t",
+        "NAME": "out_path_len",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "smtp_mail_t",
+        "ROLE": "该函数读取或维护的结构化状态"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "ensure_dir_recursive",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      },
+      {
+        "NAME": "open",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      },
+      {
+        "NAME": "write_all",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      },
+      {
+        "NAME": "close",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      },
+      {
+        "NAME": "unlink",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入为 int smtp_mail_store_write(const char* root_dir, const smtp_mail_t* mail, char* out_path, size_t out_path_len) 的参数集合。",
+    "ACTION": "生成唯一 .eml 文件并写入 envelope headers、空行和 DATA 内容",
+    "OUTPUT": "按签名返回成功/失败、对象指针、格式化长度或无返回值；失败路径遵循当前 C 实现。",
+    "INVARIANTS_USED": [
+      "不引入当前源码不存在的 SMTP 扩展或额外协议状态。",
+      "所有缓冲写入必须受目标容量约束保护。"
+    ]
+  },
+  "ACCESS_PATHS": [
+    {
+      "PATH": "smtp_mail_t.helo_name",
+      "TYPE": "const char*",
+      "ROLE": "HELO/EHLO 名称"
+    },
+    {
+      "PATH": "smtp_mail_t.auth_user",
+      "TYPE": "const char*",
+      "ROLE": "认证用户"
+    },
+    {
+      "PATH": "smtp_mail_t.mail_from",
+      "TYPE": "const char*",
+      "ROLE": "envelope sender"
+    },
+    {
+      "PATH": "smtp_mail_t.rcpt_to",
+      "TYPE": "const char* const*",
+      "ROLE": "recipient 指针数组"
+    },
+    {
+      "PATH": "smtp_mail_t.rcpt_count",
+      "TYPE": "size_t",
+      "ROLE": "recipient 数量"
+    },
+    {
+      "PATH": "smtp_mail_t.data",
+      "TYPE": "const char*",
+      "ROLE": "DATA 内容"
+    },
+    {
+      "PATH": "smtp_mail_t.data_len",
+      "TYPE": "size_t",
+      "ROLE": "DATA 长度"
+    },
+    {
+      "PATH": "mail->rcpt_to[i]",
+      "TYPE": "const char*",
+      "ROLE": "写入每个 X-SMTP-Envelope-To header"
+    }
+  ],
+  "WIRE_MAPPING": [
+    {
+      "PACKET": "SMTP_MAIL_FILE",
+      "WIRE_FIELD": "envelope_headers",
+      "STRATEGY": "parse_and_skip",
+      "RULE": "写入 X-SMTP-HELO/X-SMTP-Auth-User/X-SMTP-Envelope-From 和每个 X-SMTP-Envelope-To"
+    },
+    {
+      "PACKET": "SMTP_MAIL_FILE",
+      "WIRE_FIELD": "message_data",
+      "STRATEGY": "store_in_field",
+      "RULE": "空行后写入 mail->data 长度为 mail->data_len 的原始 DATA",
+      "TARGET": "smtp_mail_t.data"
+    }
+  ]
+}

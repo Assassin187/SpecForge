@@ -1,0 +1,55 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "smtp/network/tcp_server/remove_client_node",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "从 clients 链表移除 fd 节点并释放节点内存",
+  "SIGNATURE": {
+    "RAW": "static void remove_client_node(smtp_tcp_server_t* server, int fd)",
+    "NAME": "remove_client_node",
+    "RETURN": "void",
+    "PARAMS": [
+      {
+        "TYPE": "smtp_tcp_server_t*",
+        "NAME": "server",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "int",
+        "NAME": "fd",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "smtp_tcp_server_t",
+        "ROLE": "该函数读取或维护的结构化状态"
+      },
+      {
+        "NAME": "smtp_client_node_t",
+        "ROLE": "该函数读取或维护的结构化状态"
+      }
+    ],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入为 static void remove_client_node(smtp_tcp_server_t* server, int fd) 的参数集合。",
+    "ACTION": "从 clients 链表移除 fd 节点并释放节点内存",
+    "OUTPUT": "按签名返回成功/失败、对象指针、格式化长度或无返回值；失败路径遵循当前 C 实现。",
+    "INVARIANTS_USED": [
+      "不引入当前源码不存在的 SMTP 扩展或额外协议状态。",
+      "所有缓冲写入必须受目标容量约束保护。"
+    ]
+  },
+  "ACCESS_PATHS": [
+    {
+      "PATH": "server->clients",
+      "TYPE": "smtp_client_node_t*",
+      "ROLE": "删除匹配节点"
+    }
+  ]
+}

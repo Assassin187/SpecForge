@@ -1,0 +1,45 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "smtp/network/connection/ensure_cap",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "确保动态字节缓冲容量至少达到 needed，按 4096 起步倍增",
+  "SIGNATURE": {
+    "RAW": "static int ensure_cap(uint8_t** buf, size_t* cap, size_t needed)",
+    "NAME": "ensure_cap",
+    "RETURN": "int",
+    "PARAMS": [
+      {
+        "TYPE": "uint8_t**",
+        "NAME": "buf",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "size_t*",
+        "NAME": "cap",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "size_t",
+        "NAME": "needed",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入为 static int ensure_cap(uint8_t** buf, size_t* cap, size_t needed) 的参数集合。",
+    "ACTION": "确保动态字节缓冲容量至少达到 needed，按 4096 起步倍增",
+    "OUTPUT": "按签名返回成功/失败、对象指针、格式化长度或无返回值；失败路径遵循当前 C 实现。",
+    "INVARIANTS_USED": [
+      "不引入当前源码不存在的 SMTP 扩展或额外协议状态。",
+      "所有缓冲写入必须受目标容量约束保护。"
+    ]
+  }
+}

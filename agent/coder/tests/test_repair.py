@@ -84,6 +84,47 @@ def _bundle(spec_root: Path) -> SpecBundle:
     )
 
 
+def _main_bundle(spec_root: Path) -> SpecBundle:
+    file_spec = FileSpec(
+        trace_id="smtp/main",
+        role="source-only entrypoint",
+        lang="C",
+        header_path="",
+        source_path="main.c",
+        header_dependencies=[],
+        header_system_dependencies=[],
+        source_dependencies=["server/smtp_server.h"],
+        header_data=[],
+        source_data=[],
+        header_interfaces=[],
+        source_interfaces=[],
+        spec_path=spec_root / "main_spec.json",
+        raw={},
+    )
+    module = ModuleEntry(
+        name="server_app",
+        role="runtime app",
+        dependencies=[],
+        files=["main.c"],
+        artifacts=[],
+        doc_ref=[],
+        raw={},
+    )
+    return SpecBundle(
+        protocol=ProtocolMeta("smtp", "1", ["server"], 2525),
+        module_spec_path=spec_root / "smtp_module_spec.json",
+        spec_root=spec_root,
+        generation_order=["server_app"],
+        modules_in_order=[module],
+        file_specs_by_trace={file_spec.trace_id: file_spec},
+        file_specs_by_header_path={},
+        file_specs_by_source_path={file_spec.source_path: file_spec},
+        function_specs_by_trace={},
+        consistency_rules=[],
+        diagnostics=[],
+    )
+
+
 class CoderRepairTests(unittest.TestCase):
     def _generator(self, tmp: Path, llm: FakeLLM) -> ProjectGenerator:
         generator = ProjectGenerator(_bundle(tmp), llm, tmp / "out", max_repair_rounds=3)
@@ -260,6 +301,45 @@ class CoderRepairTests(unittest.TestCase):
         self.assertFalse(manifest["verification_run"])
         self.assertIsNone(manifest["verification_success"])
         verify_behavior.assert_not_called()
+
+    def test_source_only_main_uses_llm_generation(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            tmp = Path(raw_tmp)
+            main_source = '#include "server/smtp_server.h"\nint main(void) { return 0; }\n'
+            llm = FakeLLM(main_source)
+            generator = ProjectGenerator(_main_bundle(tmp), llm, tmp / "out")
+
+            with patch("agent.coder.generation._compile_project", return_value=_completed(0)):
+                with patch("agent.coder.verifier.ProjectVerifier.verify_behavior", return_value=VerificationResult(True, [])):
+                    result = generator.generate()
+
+            generated = generator.project_dir / "main.c"
+            generated_content = generated.read_text(encoding="utf-8")
+            prompt = llm.requests[0].messages[1]["content"]
+
+        self.assertTrue(result.success)
+        self.assertEqual(generated_content, main_source)
+        self.assertIn("Generate the full C source file `main.c`", prompt)
+        self.assertIn("This is a source-only file", prompt)
+        self.assertIn("server/smtp_server.h", prompt)
+
+    def test_source_only_main_compile_error_is_repairable(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            tmp = Path(raw_tmp)
+            llm = FakeLLM("int main(void) { return 0; }\n")
+            generator = ProjectGenerator(_main_bundle(tmp), llm, tmp / "out")
+            generator.project_dir.mkdir(parents=True)
+            (generator.project_dir / "main.c").write_text("int main(void) { return missing; }\n", encoding="utf-8")
+            fail = _completed(1, stderr="main.c:1:25: error: undeclared identifier 'missing'\n")
+            success = _completed(0)
+
+            with patch("agent.coder.generation._compile_project", side_effect=[fail, success]):
+                outcome = generator._repair_until_compiles([], "smtp_server")
+
+            prompt = llm.requests[0].messages[1]["content"]
+
+        self.assertEqual(outcome.stop_reason, "compile_succeeded")
+        self.assertIn("Repair the source file `main.c`", prompt)
 
     def test_openai_error_retry_classification(self) -> None:
         class StatusError(OpenAIError):

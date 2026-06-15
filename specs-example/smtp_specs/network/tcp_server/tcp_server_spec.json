@@ -1,0 +1,480 @@
+{
+  "KIND": "FILE_SPEC",
+  "FILE": {
+    "TRACE_ID": "smtp/network/tcp_server",
+    "LANG": "C",
+    "ROLE": "基于 epoll 的 TCP server：监听、accept、事件转换、连接关闭和写兴趣更新",
+    "DOC_REF": []
+  },
+  "SOURCE": {
+    "PATH": "../network/tcp_server.c",
+    "DEPENDENCY": [
+      "../network/tcp_server.h"
+    ],
+    "DATA": [
+      {
+        "NAME": "struct smtp_client_node",
+        "KIND": "TYPE",
+        "VISIBILITY": "PRIVATE",
+        "ROLE": "TCP server 内部客户端链表节点"
+      },
+      {
+        "NAME": "smtp_client_node_t",
+        "KIND": "TYPE",
+        "VISIBILITY": "PRIVATE",
+        "ROLE": "struct smtp_client_node typedef 别名"
+      },
+      {
+        "NAME": "struct smtp_tcp_server",
+        "KIND": "TYPE",
+        "VISIBILITY": "PRIVATE",
+        "ROLE": "TCP server 内部运行时状态"
+      }
+    ],
+    "INTERFACE": [
+      {
+        "TRACE_ID": "smtp/network/tcp_server/set_nonblocking",
+        "SIGNATURE": "static int set_nonblocking(int fd)",
+        "NAME": "set_nonblocking",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "给 fd 增加 O_NONBLOCK 标志",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": true,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "smtp/network/tcp_server/find_client",
+        "SIGNATURE": "static smtp_client_node_t* find_client(smtp_tcp_server_t* server, int fd)",
+        "NAME": "find_client",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "按 fd 在线性 client 链表中查找节点",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": true,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "smtp/network/tcp_server/add_client",
+        "SIGNATURE": "static int add_client(smtp_tcp_server_t* server, int fd)",
+        "NAME": "add_client",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "把 client fd 注册到 epoll 并插入 clients 链表",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "smtp/network/tcp_server/remove_client_node",
+        "SIGNATURE": "static void remove_client_node(smtp_tcp_server_t* server, int fd)",
+        "NAME": "remove_client_node",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "从 clients 链表移除 fd 节点并释放节点内存",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "smtp/network/tcp_server/smtp_tcp_server_close_client",
+        "SIGNATURE": "int smtp_tcp_server_close_client(smtp_tcp_server_t* server, int fd)",
+        "NAME": "smtp_tcp_server_close_client",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "关闭客户端 fd、从 epoll/client 链表删除，并触发 on_close",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "smtp/network/tcp_server/smtp_tcp_server_create",
+        "SIGNATURE": "smtp_tcp_server_t* smtp_tcp_server_create(uint16_t port, smtp_tcp_callbacks_t callbacks, void* user)",
+        "NAME": "smtp_tcp_server_create",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "创建 TCP server 运行时对象并记录端口、回调和 user 指针",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "smtp/network/tcp_server/smtp_tcp_server_update_interest",
+        "SIGNATURE": "int smtp_tcp_server_update_interest(smtp_tcp_server_t* server, int fd, bool want_write)",
+        "NAME": "smtp_tcp_server_update_interest",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "按 want_write 修改客户端 epoll interest 中的 EPOLLOUT",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": true,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "smtp/network/tcp_server/setup_listener",
+        "SIGNATURE": "static int setup_listener(smtp_tcp_server_t* server)",
+        "NAME": "setup_listener",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "创建、设置非阻塞、bind 并 listen TCP socket",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": true,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "smtp/network/tcp_server/smtp_tcp_server_start",
+        "SIGNATURE": "int smtp_tcp_server_start(smtp_tcp_server_t* server)",
+        "NAME": "smtp_tcp_server_start",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "初始化监听 socket 和 epoll，并把 listen_fd 注册为 EPOLLIN",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "smtp/network/tcp_server/accept_loop",
+        "SIGNATURE": "static void accept_loop(smtp_tcp_server_t* server)",
+        "NAME": "accept_loop",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "循环 accept 所有待处理连接，设置非阻塞、加入 epoll 并触发 on_accept",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": true,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "smtp/network/tcp_server/smtp_tcp_server_run",
+        "SIGNATURE": "int smtp_tcp_server_run(smtp_tcp_server_t* server)",
+        "NAME": "smtp_tcp_server_run",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "EVENT",
+        "ROLE": "进入 epoll_wait 主事件循环并把内核事件转换为 SMTP_IO_* 回调",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "smtp/network/tcp_server/smtp_tcp_server_stop",
+        "SIGNATURE": "void smtp_tcp_server_stop(smtp_tcp_server_t* server)",
+        "NAME": "smtp_tcp_server_stop",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "请求停止事件循环",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "smtp/network/tcp_server/smtp_tcp_server_destroy",
+        "SIGNATURE": "void smtp_tcp_server_destroy(smtp_tcp_server_t* server)",
+        "NAME": "smtp_tcp_server_destroy",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "关闭所有客户端、监听 fd、epoll fd 并释放 server",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "public"
+      }
+    ]
+  },
+  "HEADER": {
+    "PATH": "../network/tcp_server.h",
+    "DEPENDENCY": [],
+    "SYSTEM_DEPENDENCY": [
+      "netinet/in.h",
+      "sys/socket.h"
+    ],
+    "DATA": [
+      {
+        "NAME": "smtp_tcp_server_t",
+        "KIND": "TYPE",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "不透明 TCP server 句柄，隐藏 listen/epoll/client 链表",
+        "TYPE_SPEC": {
+          "TYPE_KIND": "OPAQUE"
+        }
+      },
+      {
+        "NAME": "SMTP_IO_READABLE",
+        "KIND": "MACRO",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "上层 on_event 可读事件标志",
+        "VALUE": "1u << 0"
+      },
+      {
+        "NAME": "SMTP_IO_WRITABLE",
+        "KIND": "MACRO",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "上层 on_event 可写事件标志",
+        "VALUE": "1u << 1"
+      },
+      {
+        "NAME": "smtp_tcp_callbacks_t",
+        "KIND": "TYPE",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "TCP server 回调集合：accept/event/close 三类事件",
+        "TYPE_SPEC": {
+          "TYPE_KIND": "STRUCT",
+          "FIELDS": [
+            {
+              "NAME": "on_accept)(void* user, int fd, const struct sockaddr_storage* peer, socklen_t peer_len)",
+              "TYPE": "void (*",
+              "ROLE": "新连接建立回调函数指针"
+            },
+            {
+              "NAME": "on_event)(void* user, int fd, uint32_t events)",
+              "TYPE": "void (*",
+              "ROLE": "连接可读/可写事件回调函数指针"
+            },
+            {
+              "NAME": "on_close)(void* user, int fd)",
+              "TYPE": "void (*",
+              "ROLE": "连接关闭回调函数指针"
+            }
+          ]
+        }
+      }
+    ],
+    "INTERFACE": [
+      {
+        "SIGNATURE": "int smtp_tcp_server_close_client(smtp_tcp_server_t* server, int fd)",
+        "NAME": "smtp_tcp_server_close_client",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "关闭客户端 fd、从 epoll/client 链表删除，并触发 on_close",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "smtp_tcp_server_t* smtp_tcp_server_create(uint16_t port, smtp_tcp_callbacks_t callbacks, void* user)",
+        "NAME": "smtp_tcp_server_create",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "创建 TCP server 运行时对象并记录端口、回调和 user 指针",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "int smtp_tcp_server_update_interest(smtp_tcp_server_t* server, int fd, bool want_write)",
+        "NAME": "smtp_tcp_server_update_interest",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "按 want_write 修改客户端 epoll interest 中的 EPOLLOUT",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "int smtp_tcp_server_start(smtp_tcp_server_t* server)",
+        "NAME": "smtp_tcp_server_start",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "初始化监听 socket 和 epoll，并把 listen_fd 注册为 EPOLLIN",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "int smtp_tcp_server_run(smtp_tcp_server_t* server)",
+        "NAME": "smtp_tcp_server_run",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "EVENT",
+        "ROLE": "进入 epoll_wait 主事件循环并把内核事件转换为 SMTP_IO_* 回调",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "void smtp_tcp_server_stop(smtp_tcp_server_t* server)",
+        "NAME": "smtp_tcp_server_stop",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "请求停止事件循环",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "void smtp_tcp_server_destroy(smtp_tcp_server_t* server)",
+        "NAME": "smtp_tcp_server_destroy",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "关闭所有客户端、监听 fd、epoll fd 并释放 server",
+        "VISIBILITY": "public"
+      }
+    ]
+  },
+  "ACCESS_PATHS": [
+    {
+      "PATH": "server->listen_fd",
+      "TYPE": "int",
+      "ROLE": "监听 socket fd"
+    },
+    {
+      "PATH": "server->epoll_fd",
+      "TYPE": "int",
+      "ROLE": "epoll 实例 fd"
+    },
+    {
+      "PATH": "server->running",
+      "TYPE": "bool",
+      "ROLE": "事件循环运行标志"
+    },
+    {
+      "PATH": "server->clients",
+      "TYPE": "smtp_client_node_t*",
+      "ROLE": "已接入客户端链表"
+    },
+    {
+      "PATH": "node->want_write",
+      "TYPE": "bool",
+      "ROLE": "单连接是否订阅 EPOLLOUT"
+    }
+  ]
+}

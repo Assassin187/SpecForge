@@ -1,0 +1,65 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "smtp/session/smtp_session/smtp_session_reset_transaction",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "清空 MAIL/RCPT/DATA transaction 状态，不影响 greeting/authenticated",
+  "SIGNATURE": {
+    "RAW": "void smtp_session_reset_transaction(smtp_session_t* session)",
+    "NAME": "smtp_session_reset_transaction",
+    "RETURN": "void",
+    "PARAMS": [
+      {
+        "TYPE": "smtp_session_t*",
+        "NAME": "session",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "smtp_session_t",
+        "ROLE": "该函数读取或维护的结构化状态"
+      }
+    ],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入为 void smtp_session_reset_transaction(smtp_session_t* session) 的参数集合。",
+    "ACTION": "清空 MAIL/RCPT/DATA transaction 状态，不影响 greeting/authenticated",
+    "OUTPUT": "按签名返回成功/失败、对象指针、格式化长度或无返回值；失败路径遵循当前 C 实现。",
+    "INVARIANTS_USED": [
+      "不引入当前源码不存在的 SMTP 扩展或额外协议状态。",
+      "所有缓冲写入必须受目标容量约束保护。"
+    ]
+  },
+  "ACCESS_PATHS": [
+    {
+      "PATH": "session->mail_from",
+      "TYPE": "char[512]",
+      "ROLE": "清空 sender"
+    },
+    {
+      "PATH": "session->rcpt_count",
+      "TYPE": "size_t",
+      "ROLE": "置 0"
+    },
+    {
+      "PATH": "session->in_data_mode",
+      "TYPE": "bool",
+      "ROLE": "置 false"
+    },
+    {
+      "PATH": "session->message_len",
+      "TYPE": "size_t",
+      "ROLE": "置 0"
+    },
+    {
+      "PATH": "session->message_too_large",
+      "TYPE": "bool",
+      "ROLE": "置 false"
+    }
+  ]
+}

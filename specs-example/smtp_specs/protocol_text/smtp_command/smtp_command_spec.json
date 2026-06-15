@@ -1,0 +1,235 @@
+{
+  "KIND": "FILE_SPEC",
+  "FILE": {
+    "TRACE_ID": "smtp/protocol_text/smtp_command",
+    "LANG": "C",
+    "ROLE": "SMTP 文本命令解析模块：把单行命令拆分为 verb/kind/arg",
+    "DOC_REF": []
+  },
+  "SOURCE": {
+    "PATH": "../protocol/smtp_command.c",
+    "DEPENDENCY": [
+      "../protocol/smtp_command.h"
+    ],
+    "DATA": [],
+    "INTERFACE": [
+      {
+        "TRACE_ID": "smtp/protocol_text/smtp_command/parse_kind",
+        "SIGNATURE": "static smtp_command_kind_t parse_kind(const char* cmd)",
+        "NAME": "parse_kind",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "将大写命令 verb 映射为 smtp_command_kind_t，未命中返回 SMTP_CMD_UNKNOWN",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": true,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "smtp/protocol_text/smtp_command/smtp_command_parse",
+        "SIGNATURE": "int smtp_command_parse(const char* line, smtp_command_t* out)",
+        "NAME": "smtp_command_parse",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "解析单行 SMTP 命令，跳过前导空白、verb 大写化、复制并右裁剪参数",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": true,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "smtp/protocol_text/smtp_command/smtp_command_name",
+        "SIGNATURE": "const char* smtp_command_name(smtp_command_kind_t kind)",
+        "NAME": "smtp_command_name",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "把命令枚举转换为固定命令名字符串，未知值返回 UNKNOWN",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": true,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "public"
+      }
+    ]
+  },
+  "HEADER": {
+    "PATH": "../protocol/smtp_command.h",
+    "DEPENDENCY": [],
+    "SYSTEM_DEPENDENCY": [],
+    "DATA": [
+      {
+        "NAME": "smtp_command_kind_t",
+        "KIND": "TYPE",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "SMTP 示例支持的命令枚举，UNKNOWN 表示未识别命令",
+        "TYPE_SPEC": {
+          "TYPE_KIND": "ENUM",
+          "ENUM_VALUES": [
+            {
+              "NAME": "SMTP_CMD_HELO",
+              "ROLE": "HELO greeting"
+            },
+            {
+              "NAME": "SMTP_CMD_EHLO",
+              "ROLE": "EHLO greeting with capabilities"
+            },
+            {
+              "NAME": "SMTP_CMD_MAIL",
+              "ROLE": "MAIL FROM transaction command"
+            },
+            {
+              "NAME": "SMTP_CMD_RCPT",
+              "ROLE": "RCPT TO transaction command"
+            },
+            {
+              "NAME": "SMTP_CMD_DATA",
+              "ROLE": "DATA command"
+            },
+            {
+              "NAME": "SMTP_CMD_RSET",
+              "ROLE": "RSET command"
+            },
+            {
+              "NAME": "SMTP_CMD_NOOP",
+              "ROLE": "NOOP command"
+            },
+            {
+              "NAME": "SMTP_CMD_QUIT",
+              "ROLE": "QUIT command"
+            },
+            {
+              "NAME": "SMTP_CMD_AUTH",
+              "ROLE": "AUTH command"
+            },
+            {
+              "NAME": "SMTP_CMD_VRFY",
+              "ROLE": "VRFY command"
+            },
+            {
+              "NAME": "SMTP_CMD_UNKNOWN",
+              "ROLE": "unknown command"
+            }
+          ]
+        }
+      },
+      {
+        "NAME": "smtp_command_t",
+        "KIND": "TYPE",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "解析后的 SMTP 命令对象",
+        "TYPE_SPEC": {
+          "TYPE_KIND": "STRUCT",
+          "FIELDS": [
+            {
+              "NAME": "kind",
+              "TYPE": "smtp_command_kind_t",
+              "ROLE": "解析出的命令类型"
+            },
+            {
+              "NAME": "arg",
+              "TYPE": "char",
+              "ROLE": "去除首尾空白后的命令参数",
+              "ARRAY_LEN": "1024"
+            },
+            {
+              "NAME": "has_arg",
+              "TYPE": "bool",
+              "ROLE": "是否存在非空参数"
+            }
+          ]
+        }
+      }
+    ],
+    "INTERFACE": [
+      {
+        "SIGNATURE": "int smtp_command_parse(const char* line, smtp_command_t* out)",
+        "NAME": "smtp_command_parse",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "解析单行 SMTP 命令，跳过前导空白、verb 大写化、复制并右裁剪参数",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "const char* smtp_command_name(smtp_command_kind_t kind)",
+        "NAME": "smtp_command_name",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "把命令枚举转换为固定命令名字符串，未知值返回 UNKNOWN",
+        "VISIBILITY": "public"
+      }
+    ]
+  },
+  "ACCESS_PATHS": [
+    {
+      "PATH": "smtp_command_t.kind",
+      "TYPE": "smtp_command_kind_t",
+      "ROLE": "命令类型"
+    },
+    {
+      "PATH": "smtp_command_t.arg",
+      "TYPE": "char[1024]",
+      "ROLE": "命令参数"
+    },
+    {
+      "PATH": "smtp_command_t.has_arg",
+      "TYPE": "bool",
+      "ROLE": "参数存在标志"
+    }
+  ],
+  "TEST_VECTORS": [
+    {
+      "NAME": "parse_mail_from",
+      "LEVEL": "FUNCTION",
+      "INPUT": {
+        "line": "MAIL FROM:<alice@example.com>"
+      },
+      "EXPECT": {
+        "kind": "SMTP_CMD_MAIL",
+        "arg": "FROM:<alice@example.com>",
+        "has_arg": true
+      }
+    },
+    {
+      "NAME": "parse_blank_rejected",
+      "LEVEL": "FUNCTION",
+      "INPUT": {
+        "line": "   "
+      },
+      "EXPECT": {
+        "return": -1
+      }
+    }
+  ]
+}

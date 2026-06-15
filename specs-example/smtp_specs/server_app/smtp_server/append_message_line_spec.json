@@ -1,0 +1,76 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "smtp/server_app/smtp_server/append_message_line",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "向 DATA 缓冲追加一行，处理 dot-stuffing 并追加 CRLF",
+  "SIGNATURE": {
+    "RAW": "static int append_message_line(smtp_session_t* session, const char* raw_line)",
+    "NAME": "append_message_line",
+    "RETURN": "int",
+    "PARAMS": [
+      {
+        "TYPE": "smtp_session_t*",
+        "NAME": "session",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "const char*",
+        "NAME": "raw_line",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "smtp_session_t",
+        "ROLE": "该函数读取或维护的结构化状态"
+      }
+    ],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入为 static int append_message_line(smtp_session_t* session, const char* raw_line) 的参数集合。",
+    "ACTION": "向 DATA 缓冲追加一行，处理 dot-stuffing 并追加 CRLF",
+    "OUTPUT": "按签名返回成功/失败、对象指针、格式化长度或无返回值；失败路径遵循当前 C 实现。",
+    "INVARIANTS_USED": [
+      "不引入当前源码不存在的 SMTP 扩展或额外协议状态。",
+      "所有缓冲写入必须受目标容量约束保护。"
+    ]
+  },
+  "ACCESS_PATHS": [
+    {
+      "PATH": "session->message_buf",
+      "TYPE": "char*",
+      "ROLE": "追加行内容与 CRLF"
+    },
+    {
+      "PATH": "session->message_len",
+      "TYPE": "size_t",
+      "ROLE": "增加写入长度"
+    },
+    {
+      "PATH": "session->message_too_large",
+      "TYPE": "bool",
+      "ROLE": "超出 SMTP_MAX_MESSAGE_SIZE 时置 true"
+    }
+  ],
+  "WIRE_MAPPING": [
+    {
+      "PACKET": "SMTP_DATA",
+      "WIRE_FIELD": "dot_stuffed_line",
+      "STRATEGY": "store_in_field",
+      "RULE": "行首为两个字符以上且首字符为 '.' 时去掉一个前导 dot",
+      "TARGET": "session->message_buf"
+    },
+    {
+      "PACKET": "SMTP_DATA",
+      "WIRE_FIELD": "line_ending",
+      "STRATEGY": "parse_and_skip",
+      "RULE": "每个 DATA 行以 CRLF 形式存入 message_buf"
+    }
+  ]
+}

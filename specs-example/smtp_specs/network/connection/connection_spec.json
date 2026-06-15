@@ -1,0 +1,377 @@
+{
+  "KIND": "FILE_SPEC",
+  "FILE": {
+    "TRACE_ID": "smtp/network/connection",
+    "LANG": "C",
+    "ROLE": "SMTP TCP 连接抽象：维护非阻塞 socket 的输入行缓冲与输出队列",
+    "DOC_REF": []
+  },
+  "SOURCE": {
+    "PATH": "../network/connection.c",
+    "DEPENDENCY": [
+      "../network/connection.h"
+    ],
+    "DATA": [
+      {
+        "NAME": "struct smtp_connection",
+        "KIND": "TYPE",
+        "VISIBILITY": "PRIVATE",
+        "ROLE": "连接对象内部状态：fd、输入缓冲、输出缓冲和发送偏移"
+      }
+    ],
+    "INTERFACE": [
+      {
+        "TRACE_ID": "smtp/network/connection/ensure_cap",
+        "SIGNATURE": "static int ensure_cap(uint8_t** buf, size_t* cap, size_t needed)",
+        "NAME": "ensure_cap",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "确保动态字节缓冲容量至少达到 needed，按 4096 起步倍增",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": true,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "smtp/network/connection/smtp_connection_create",
+        "SIGNATURE": "smtp_connection_t* smtp_connection_create(int fd)",
+        "NAME": "smtp_connection_create",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "为已建立 fd 创建 smtp_connection_t 并初始化缓冲状态",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "smtp/network/connection/smtp_connection_destroy",
+        "SIGNATURE": "void smtp_connection_destroy(smtp_connection_t* conn)",
+        "NAME": "smtp_connection_destroy",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "释放连接对象及输入/输出缓冲，但不主动 close fd",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "smtp/network/connection/smtp_connection_fd",
+        "SIGNATURE": "int smtp_connection_fd(const smtp_connection_t* conn)",
+        "NAME": "smtp_connection_fd",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "读取连接 fd；conn 为 NULL 时返回 -1",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": true,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "smtp/network/connection/smtp_connection_read",
+        "SIGNATURE": "int smtp_connection_read(smtp_connection_t* conn)",
+        "NAME": "smtp_connection_read",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "从非阻塞 socket 尽可能读取字节追加到输入缓冲",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "smtp/network/connection/smtp_connection_pop_line",
+        "SIGNATURE": "char* smtp_connection_pop_line(smtp_connection_t* conn)",
+        "NAME": "smtp_connection_pop_line",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "从输入缓冲弹出一行，去除结尾 LF 和可选 CR，返回调用方拥有的新字符串",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": true,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "smtp/network/connection/smtp_connection_queue",
+        "SIGNATURE": "int smtp_connection_queue(smtp_connection_t* conn, const void* data, size_t len)",
+        "NAME": "smtp_connection_queue",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "把待发送字节复制到输出缓冲队尾",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "smtp/network/connection/smtp_connection_queue_str",
+        "SIGNATURE": "int smtp_connection_queue_str(smtp_connection_t* conn, const char* text)",
+        "NAME": "smtp_connection_queue_str",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "将 NUL 结尾文本排入输出队列",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "smtp/network/connection/smtp_connection_has_pending",
+        "SIGNATURE": "bool smtp_connection_has_pending(const smtp_connection_t* conn)",
+        "NAME": "smtp_connection_has_pending",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "判断输出队列是否仍有未发送字节",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": true,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "smtp/network/connection/smtp_connection_flush",
+        "SIGNATURE": "int smtp_connection_flush(smtp_connection_t* conn)",
+        "NAME": "smtp_connection_flush",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "尝试把输出缓冲剩余字节发送到 socket",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "public"
+      }
+    ]
+  },
+  "HEADER": {
+    "PATH": "../network/connection.h",
+    "DEPENDENCY": [],
+    "SYSTEM_DEPENDENCY": [],
+    "DATA": [
+      {
+        "NAME": "smtp_connection_t",
+        "KIND": "TYPE",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "不透明连接句柄，隐藏 socket fd 与读写缓冲实现",
+        "TYPE_SPEC": {
+          "TYPE_KIND": "OPAQUE"
+        }
+      }
+    ],
+    "INTERFACE": [
+      {
+        "SIGNATURE": "smtp_connection_t* smtp_connection_create(int fd)",
+        "NAME": "smtp_connection_create",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "为已建立 fd 创建 smtp_connection_t 并初始化缓冲状态",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "void smtp_connection_destroy(smtp_connection_t* conn)",
+        "NAME": "smtp_connection_destroy",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "释放连接对象及输入/输出缓冲，但不主动 close fd",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "int smtp_connection_fd(const smtp_connection_t* conn)",
+        "NAME": "smtp_connection_fd",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "读取连接 fd；conn 为 NULL 时返回 -1",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "int smtp_connection_read(smtp_connection_t* conn)",
+        "NAME": "smtp_connection_read",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "从非阻塞 socket 尽可能读取字节追加到输入缓冲",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "char* smtp_connection_pop_line(smtp_connection_t* conn)",
+        "NAME": "smtp_connection_pop_line",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "从输入缓冲弹出一行，去除结尾 LF 和可选 CR，返回调用方拥有的新字符串",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "int smtp_connection_queue(smtp_connection_t* conn, const void* data, size_t len)",
+        "NAME": "smtp_connection_queue",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "把待发送字节复制到输出缓冲队尾",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "int smtp_connection_queue_str(smtp_connection_t* conn, const char* text)",
+        "NAME": "smtp_connection_queue_str",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "将 NUL 结尾文本排入输出队列",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "bool smtp_connection_has_pending(const smtp_connection_t* conn)",
+        "NAME": "smtp_connection_has_pending",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "判断输出队列是否仍有未发送字节",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "int smtp_connection_flush(smtp_connection_t* conn)",
+        "NAME": "smtp_connection_flush",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "尝试把输出缓冲剩余字节发送到 socket",
+        "VISIBILITY": "public"
+      }
+    ]
+  },
+  "ACCESS_PATHS": [
+    {
+      "PATH": "conn->fd",
+      "TYPE": "int",
+      "ROLE": "连接持有的 socket fd"
+    },
+    {
+      "PATH": "conn->in_buf",
+      "TYPE": "uint8_t*",
+      "ROLE": "输入缓冲区"
+    },
+    {
+      "PATH": "conn->in_len",
+      "TYPE": "size_t",
+      "ROLE": "输入缓冲当前长度"
+    },
+    {
+      "PATH": "conn->out_buf",
+      "TYPE": "uint8_t*",
+      "ROLE": "输出缓冲区"
+    },
+    {
+      "PATH": "conn->out_len",
+      "TYPE": "size_t",
+      "ROLE": "输出缓冲总长度"
+    },
+    {
+      "PATH": "conn->out_off",
+      "TYPE": "size_t",
+      "ROLE": "输出缓冲已发送偏移"
+    }
+  ]
+}

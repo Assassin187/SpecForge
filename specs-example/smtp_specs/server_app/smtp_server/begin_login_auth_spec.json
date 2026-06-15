@@ -1,0 +1,65 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "smtp/server_app/smtp_server/begin_login_auth",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "进入 AUTH LOGIN username continuation 并发送 username challenge",
+  "SIGNATURE": {
+    "RAW": "static void begin_login_auth(smtp_server_t* server, smtp_session_t* session)",
+    "NAME": "begin_login_auth",
+    "RETURN": "void",
+    "PARAMS": [
+      {
+        "TYPE": "smtp_server_t*",
+        "NAME": "server",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "smtp_session_t*",
+        "NAME": "session",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "smtp_session_t",
+        "ROLE": "该函数读取或维护的结构化状态"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "queue_code",
+        "KIND": "CALL",
+        "ROLE": "被该函数调用以完成子步骤"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入为 static void begin_login_auth(smtp_server_t* server, smtp_session_t* session) 的参数集合。",
+    "ACTION": "进入 AUTH LOGIN username continuation 并发送 username challenge",
+    "OUTPUT": "按签名返回成功/失败、对象指针、格式化长度或无返回值；失败路径遵循当前 C 实现。",
+    "INVARIANTS_USED": [
+      "不引入当前源码不存在的 SMTP 扩展或额外协议状态。",
+      "所有缓冲写入必须受目标容量约束保护。"
+    ]
+  },
+  "ACCESS_PATHS": [
+    {
+      "PATH": "session->auth_state",
+      "TYPE": "smtp_auth_state_t",
+      "ROLE": "置 SMTP_AUTH_STATE_LOGIN_WAIT_USER"
+    }
+  ],
+  "WIRE_MAPPING": [
+    {
+      "PACKET": "AUTH_LOGIN",
+      "WIRE_FIELD": "username_challenge",
+      "STRATEGY": "parse_and_skip",
+      "RULE": "响应 334 VXNlcm5hbWU6"
+    }
+  ]
+}
