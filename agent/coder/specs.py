@@ -305,6 +305,7 @@ def _validate_module_file_coverage(bundle: SpecBundle) -> None:
 
 
 def _validate_file_specs(bundle: SpecBundle) -> None:
+    known_headers = set(bundle.file_specs_by_header_path)
     all_source_by_name = {
         interface.name: interface
         for file_spec in bundle.file_specs_by_trace.values()
@@ -318,6 +319,12 @@ def _validate_file_specs(bundle: SpecBundle) -> None:
         is_main_source = file_spec.source_path.endswith("/main.c") or file_spec.source_path == "main.c"
         if file_spec.source_path and not file_spec.header_path and not is_main_source:
             bundle.diagnostics.append(Diagnostic("error", "missing_header_path", f"Non-main file spec '{trace_id}' is missing HEADER.PATH", str(file_spec.spec_path)))
+        for dependency in file_spec.header_dependencies:
+            if dependency not in known_headers:
+                bundle.diagnostics.append(Diagnostic("error", "unknown_header_dependency", f"HEADER.DEPENDENCY references unknown header '{dependency}'", str(file_spec.spec_path)))
+        for dependency in file_spec.source_dependencies:
+            if dependency not in known_headers:
+                bundle.diagnostics.append(Diagnostic("error", "unknown_source_dependency", f"SOURCE.DEPENDENCY references unknown header '{dependency}'", str(file_spec.spec_path)))
         for data_item in file_spec.header_data:
             type_spec = data_item.get("TYPE_SPEC")
             if isinstance(type_spec, dict):

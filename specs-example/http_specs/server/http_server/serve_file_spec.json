@@ -100,5 +100,12 @@
     "INVARIANTS_USED": [
       "函数执行保持本模块内部状态一致性。"
     ]
-  }
+  },
+  "CALL_CONTRACTS": [
+    {
+      "NAME": "http_stat_path",
+      "SIGNATURE": "int http_stat_path(const char* abs_path)",
+      "RETURN_CONTRACT": "returns 0=regular file, 1=directory, -1=error; these are abstract type codes, NOT mode_t bitmasks — compare with ==0, ==1, ==-1; do NOT apply S_ISREG/S_ISDIR macros"
+    }
+  ]
 }

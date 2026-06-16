@@ -39,7 +39,7 @@ flowchart TD
     N -->|成功| V[执行协议行为检查<br/>逐项记录 pass/fail]
     V --> O[写 run_manifest.json<br/>行为结果不改变生成成功状态]
     N -->|失败| P[抽取项目内 gcc error 文件]
-    P -->|header 错误| X2[停止 repair<br/>记录 blocking header]
+    P -->|header 错误| X2[停止 repair<br/>记录 blocking header] 
     P -->|source 错误| Q[LLM repair 普通 .c]
     Q --> N
     O --> R[输出工程 + _agent_logs]

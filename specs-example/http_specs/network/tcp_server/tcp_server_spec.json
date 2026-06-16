@@ -9,17 +9,24 @@
   "HEADER": {
     "PATH": "../network/tcp_server.h",
     "DEPENDENCY": [],
+    "SYSTEM_DEPENDENCY": [
+      "<stdbool.h>",
+      "<stdint.h>",
+      "<sys/socket.h>"
+    ],
     "DATA": [
       {
         "NAME": "HTTP_IO_READABLE",
-        "KIND": "CONST",
+        "KIND": "MACRO",
         "VISIBILITY": "PUBLIC",
+        "VALUE": "1u << 0",
         "ROLE": "epoll 可读事件标志位（值为 1）"
       },
       {
         "NAME": "HTTP_IO_WRITABLE",
-        "KIND": "CONST",
+        "KIND": "MACRO",
         "VISIBILITY": "PUBLIC",
+        "VALUE": "1u << 1",
         "ROLE": "epoll 可写事件标志位（值为 2）"
       },
       {
@@ -32,6 +39,36 @@
         }
       },
       {
+        "NAME": "http_tcp_on_accept_fn",
+        "KIND": "TYPE",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "新连接建立回调类型，通知上层创建会话与注册状态",
+        "TYPE_SPEC": {
+          "TYPE_KIND": "CALLBACK",
+          "CALLBACK_SIGNATURE": "void (*http_tcp_on_accept_fn)(void* user, int fd, const struct sockaddr_storage* peer, socklen_t peer_len)"
+        }
+      },
+      {
+        "NAME": "http_tcp_on_event_fn",
+        "KIND": "TYPE",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "连接事件回调类型，通知上层 fd 的 EPOLLIN/EPOLLOUT 事件",
+        "TYPE_SPEC": {
+          "TYPE_KIND": "CALLBACK",
+          "CALLBACK_SIGNATURE": "void (*http_tcp_on_event_fn)(void* user, int fd, uint32_t events)"
+        }
+      },
+      {
+        "NAME": "http_tcp_on_close_fn",
+        "KIND": "TYPE",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "连接关闭回调类型，通知上层回收会话与路由关系",
+        "TYPE_SPEC": {
+          "TYPE_KIND": "CALLBACK",
+          "CALLBACK_SIGNATURE": "void (*http_tcp_on_close_fn)(void* user, int fd)"
+        }
+      },
+      {
         "NAME": "http_tcp_callbacks_t",
         "KIND": "TYPE",
         "VISIBILITY": "PUBLIC",
@@ -41,17 +78,17 @@
           "FIELDS": [
             {
               "NAME": "on_accept",
-              "TYPE": "void(*)(void*,int,const struct sockaddr_storage*,socklen_t)",
+              "TYPE": "http_tcp_on_accept_fn",
               "ROLE": "新连接建立回调"
             },
             {
               "NAME": "on_event",
-              "TYPE": "void(*)(void*,int,uint32_t)",
+              "TYPE": "http_tcp_on_event_fn",
               "ROLE": "连接事件回调（EPOLLIN/EPOLLOUT）"
             },
             {
               "NAME": "on_close",
-              "TYPE": "void(*)(void*,int)",
+              "TYPE": "http_tcp_on_close_fn",
               "ROLE": "连接关闭回调"
             }
           ]

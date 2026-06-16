@@ -100,6 +100,87 @@ def _function_summary(file_spec: FileSpec, function_specs: list[FunctionSpec], b
     return "\n".join(lines)
 
 
+def _callee_return_info(bundle: SpecBundle, file_spec: FileSpec, function_specs: list[FunctionSpec]) -> str:
+    """Extract return-value semantics for every function in RELY.FUNC across all
+    function_specs.  This gives the LLM the information it needs to write correct
+    caller-side return-value checks (e.g. ``ret < 0`` vs ``ret != 0``).
+    """
+    # Collect all callee names referenced by any function_spec
+    callee_names: set[str] = set()
+    for spec in function_specs:
+        for func in spec.rely.get("FUNC", []):
+            name = func.get("NAME", "")
+            if name:
+                callee_names.add(name)
+
+    if not callee_names:
+        return "- (none)"
+
+    # Build name -> FunctionSpec lookup
+    callee_specs_by_name: dict[str, FunctionSpec] = {}
+    for spec in bundle.function_specs_by_trace.values():
+        name = spec.signature.name
+        if name:
+            callee_specs_by_name[name] = spec
+
+    lines: list[str] = []
+    for callee_name in sorted(callee_names):
+        callee_spec = callee_specs_by_name.get(callee_name)
+        if callee_spec is None:
+            continue
+
+        parts: list[str] = [f"- {callee_spec.signature.raw}"]
+
+        # Return type
+        return_type = callee_spec.signature.return_type
+        if return_type and return_type != "void":
+            parts.append(f"  return type: {return_type}")
+
+        # ROLE always provides useful context about the callee's behavior.
+        role = callee_spec.role
+        if role:
+            parts.append(f"  role: {role}")
+
+        # ACTION describes the callee's behavior, often including return-value
+        # encodings (e.g. "EAGAIN returns -2, peer closed returns 0")
+        action = callee_spec.body.get("ACTION", "")
+        if action:
+            parts.append(f"  behavior: {action}")
+
+        # If the callee returns -2 for EAGAIN, data was buffered — caller
+        # MUST still process the buffer after a -2 return.
+        if action and "-2" in action and "EAGAIN" in action:
+            parts.append("  IMPORTANT: -2 means data was read into the buffer but no more is available; "
+                         "caller MUST proceed to pop lines from the buffer after a -2 return")
+
+        # TEST_VECTORS: return_positive / return hints
+        for tv in callee_spec.raw.get("TEST_VECTORS", []):
+            if not isinstance(tv, dict):
+                continue
+            expect = tv.get("EXPECT", {})
+            if not isinstance(expect, dict):
+                continue
+            if expect.get("return_positive") is True:
+                parts.append("  on success: returns a positive value (>0) — caller MUST check ret < 0 for errors")
+            if expect.get("return_negative") is True:
+                parts.append("  on error: returns a negative value (<0)")
+            if "return" in expect:
+                tv_name = tv.get("NAME", "")
+                tv_context = f" (test: {tv_name})" if tv_name else ""
+                parts.append(f"  test vector{tv_context}: expects return={expect['return']}")
+
+        # LOGIC.OUTPUT may describe contract
+        output_desc = callee_spec.body.get("OUTPUT", "")
+        if output_desc:
+            parts.append(f"  output: {output_desc}")
+
+        # If we have more than just the signature line, keep it
+        if len(parts) > 1:
+            lines.extend(parts)
+
+    return "\n".join(lines) if lines else "- (no return-value contracts available for callees)"
+
+
 def _private_interface_summary(file_spec: FileSpec, function_specs: list[FunctionSpec]) -> str:
     covered = {spec.trace_id for spec in function_specs}
     lines = []
@@ -141,6 +222,9 @@ Canonical header content:
 
 Functions to implement:
 {_function_summary(file_spec, function_specs, bundle)}
+
+Callee return-value contracts (how to interpret return values of functions you call):
+{_callee_return_info(bundle, file_spec, function_specs)}
 
 Private helpers/interfaces listed in the file spec without dedicated function specs:
 {_private_interface_summary(file_spec, function_specs)}
@@ -207,6 +291,9 @@ Consistency rules:
 
 Machine-readable constraints:
 {_machine_constraints(bundle, file_spec, repair_function_specs)}
+
+Callee return-value contracts:
+{_callee_return_info(bundle, file_spec, repair_function_specs)}
 
 Dependency headers:
 {_json({key: value for key, value in dependency_headers.items() if key != file_spec.header_path})}

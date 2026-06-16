@@ -8,7 +8,9 @@
   },
   "HEADER": {
     "PATH": "../protocol/http_response.h",
-    "DEPENDENCY": [],
+    "DEPENDENCY": [
+      "../network/connection.h"
+    ],
     "SYSTEM_DEPENDENCY": [
       "<stddef.h>",
       "<stdint.h>"

@@ -16,6 +16,7 @@ from agent.planning.stages.coder_spec_lowering import (
     normalize_data_visibility_for_coder,
     normalize_param_ownership_for_coder,
 )
+from agent.planning.stages.dependencies import attach_coder_dependency_sources
 from agent.planning.stages.protocol_profile import build_protocol_profile
 from agent.planning.stages.implementation_plan_merger import _protocol_metadata, normalize_file_layout_candidate
 from agent.planning.stages.specs_compiler import compile_spec_bundle
@@ -518,6 +519,28 @@ class CoderSchemaLoweringTests(unittest.TestCase):
             diagnostics = validate_coder_compatibility(manifest["spec_root"])
             self.assertTrue(any(diag.code == "coder_rendered_header_compile_error" for diag in diagnostics), [diag.__dict__ for diag in diagnostics])
 
+    def test_coder_compatibility_rejects_unknown_header_dependency(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(_zap_plan(), Path(raw_tmp))
+            spec_path = next(path for path in Path(manifest["spec_root"]).rglob("framing_spec.json"))
+            raw = json.loads(spec_path.read_text(encoding="utf-8"))
+            raw["HEADER"]["DEPENDENCY"].append("zapline/missing/missing.h")
+            spec_path.write_text(json.dumps(raw), encoding="utf-8")
+
+            diagnostics = validate_coder_compatibility(manifest["spec_root"])
+            self.assertTrue(any(diag.code == "coder_unknown_header_dependency" for diag in diagnostics), [diag.__dict__ for diag in diagnostics])
+
+    def test_coder_compatibility_rejects_unknown_source_dependency(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(_zap_plan(), Path(raw_tmp))
+            spec_path = next(path for path in Path(manifest["spec_root"]).rglob("framing_spec.json"))
+            raw = json.loads(spec_path.read_text(encoding="utf-8"))
+            raw["SOURCE"]["DEPENDENCY"].append("zapline/missing/missing.h")
+            spec_path.write_text(json.dumps(raw), encoding="utf-8")
+
+            diagnostics = validate_coder_compatibility(manifest["spec_root"])
+            self.assertTrue(any(diag.code == "coder_unknown_source_dependency" for diag in diagnostics), [diag.__dict__ for diag in diagnostics])
+
     def test_public_data_external_type_refs_lower_to_header_dependency(self) -> None:
         plan = copy.deepcopy(_zap_plan())
         _add_payload_module(plan, with_type=True)
@@ -564,6 +587,12 @@ class CoderSchemaLoweringTests(unittest.TestCase):
 
             self.assertEqual(framing_spec["HEADER"]["DEPENDENCY"], ["zapline/payload/payload.h"])
             self.assertFalse([diag.__dict__ for diag in bundle.diagnostics if diag.level == "error"])
+
+            report = attach_coder_dependency_sources({"schema_version": "dependency_validation_report/v1"}, manifest["spec_root"])
+            header_source = next(item for item in report["header_dep_sources"] if item["dependency_header"] == "zapline/payload/payload.h")
+            self.assertTrue(header_source["file_trace_id"].startswith("zapline/framing/"))
+            self.assertEqual(header_source["header_path"], "zapline/framing/framing.h")
+            self.assertIn("HEADER.DEPENDENCY", header_source["source_fields"][0])
 
     def test_invalid_planning_symbols_lower_to_canonical_c_specs(self) -> None:
         plan = copy.deepcopy(_zap_plan())

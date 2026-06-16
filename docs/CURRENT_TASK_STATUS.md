@@ -12,7 +12,7 @@
 当前执行状态：
 
 ```text
-Step 1 partially completed：dependency fallback fail-closed 与 cross-layer dependency diagnostics 已完成
+Step 2 completed：cross-layer dependency validator 已接入 readiness，dependency report 已补齐 machine-readable provenance arrays，coder-facing HEADER/SOURCE dependency path validation 已接入。
 ```
 
 说明：
@@ -47,15 +47,15 @@ Step 1 partially completed：dependency fallback fail-closed 与 cross-layer dep
 5. function-level `WIRE_MAPPING` 可作为后续 optional/sidecar 候选，但不能删除整体 wire/access 语义。
 6. 当前主要瓶颈不是 specs 过细，而是 lowering、closure、validator/readiness 缺口。
 
-### 2.2 当前已知 planning blocker
+### 2.2 历史 Step 1 planning blocker
 
 状态：
 
 ```text
-已分析
+已由 Step 1 deterministic validation / lowering / readiness gate 覆盖。
 ```
 
-主要 blocker：
+历史主要 blocker：
 
 ```text
 1. dependency fallback 可能清空 calls_allowed/imports_allowed 后 false pass。
@@ -83,58 +83,63 @@ Step 1 partially completed：dependency fallback fail-closed 与 cross-layer dep
 当前步骤：
 
 ```text
-Step 1：修复 P0 deterministic closure 与 readiness gate
+Step 2：修复 cross-layer dependency consistency validator（已完成）
 ```
 
 目标：
 
 ```text
-让 planning final success 不再绕过 deterministic coder compatibility failure。
+让 dependency/call/header/source/module dependency 表达不会互相漂移，并让 validation report 能解释每条 dependency/call edge 来源。
+下一步进入 coder generate/compile/smoke，并准备 MQTT、CoAP、SMTP minimum 多协议复现。
 ```
 
 涉及模块候选：
 
 ```text
 agent/planning/stages/dependencies.py
-agent/planning/stages/implementation_plan_merger.py
-agent/planning/stages/specs_compiler.py
-agent/planning/stages/coder_spec_lowering.py
+agent/planning/orchestrator.py
 agent/planning/validators/coder_compat.py
-agent/planning/validators/coder_semantics.py
 agent/coder/specs.py
-agent/coder/generation.py
-agent/coder/header_recipes.py
 相关 tests / fixtures
 ```
 
 本步骤任务清单：
 
 ```text
-[x] dependency fallback fail closed
-[x] cross-layer dependency consistency diagnostics
-[ ] 分离 header_public_deps 与 source_call_deps
-[ ] public type dependency lowering
-[ ] system type registry
-[ ] final rendered header validation strict gate
-[ ] dummy header translation unit compile
-[x] Step 1 dependency fixture tests
-[ ] MQTT sample validation rerun
+[x] cross-layer dependency consistency validator 接入 5.7 / final validation
+[x] dependency_validation_report 新增 errors / warnings / dependency_sources / call_edge_sources
+[x] specs_compile 后回填 header_dep_sources / source_dep_sources
+[x] coder loader 显式校验 HEADER.DEPENDENCY / SOURCE.DEPENDENCY header path 存在性
+[x] Step 2 report fixture tests
+[x] MQTT specs_compile resume 验证新 report provenance arrays
 [x] 当前状态文件更新
 ```
 
-## 4. Step 1 完成指标
+## 4. Step 1 / Step 2 完成指标
 
 只有同时满足以下条件，才能标记 Step 1 完成：
 
 ```text
 [x] 新增 fail-closed dependency tests 通过。
-[ ] system type fixture 通过 rendered header validation。
-[ ] external public type fixture 通过 rendered header validation。
-[ ] final planning readiness 启用 strict rendered header gate。
-[ ] dummy header translation unit compile 已接入或可由 readiness 调用。
-[ ] 旧 MQTT planning sample 的 header closure failure 不再被 final success 漏掉。
-[ ] 若 fresh MQTT planning 失败，失败原因是 blocking diagnostic，而非 silent false success。
+[x] system type fixture 通过 rendered header validation。
+[x] external public type fixture 通过 rendered header validation。
+[x] final planning readiness 启用 strict rendered header gate。
+[x] dummy header translation unit compile 已接入并由 strict rendered header validation 调用。
+[x] MQTT fresh planning sample 进入 specs_compile 并产出 coder_manifest.json + spec_bundle/。
+[x] 若 fresh MQTT planning 失败，失败原因是 blocking diagnostic，而非 silent false success。
 [x] 本文件已更新，记录命令、结果、剩余 blocker。
+```
+
+只有同时满足以下条件，才能标记 Step 2 完成：
+
+```text
+[x] cross-layer consistency validator 已接入 5.7_spec_readiness 或 final validation。
+[x] call_contracts/calls_allowed/signature_dependencies/imports_allowed/dependency_graph fixture tests 通过。
+[x] MQTT planning 输出不再出现 call_contracts 非空但 function_edges=0 且 passed。
+[x] validation report 可以解释 dependency/call edge 来源。
+[x] specs_compile 后 validation report 可以解释 HEADER.DEPENDENCY / SOURCE.DEPENDENCY 来源。
+[x] coder compatibility 显式 blocking unknown HEADER/SOURCE dependency header path。
+[x] 当前状态文件已更新。
 ```
 
 ## 5. 建议下一轮 Codex 会话入口
@@ -143,181 +148,146 @@ agent/coder/header_recipes.py
 
 ```text
 请阅读 AGENT.md、PLANNING_STABILIZATION_TASKS.md 和 CURRENT_TASK_STATUS.md。
-当前应执行 Step 1：修复 P0 deterministic closure 与 readiness gate。
-先审计 dependencies.py、implementation_plan_merger.py、specs_compiler.py、coder_compat.py、coder/specs.py 中与 dependency fallback、HEADER/SOURCE dependency lowering、rendered header validation 相关的代码。
-不要重写全流程，不要压缩 strict schema，不要关闭 validator。
-完成后添加最小 fixture tests，并更新 CURRENT_TASK_STATUS.md。
+Step 2 已完成。下一轮从 MQTT coder generate/compile/smoke 开始，建议优先使用 agent/planning/out/mqtt_step2_dependency_report_rerun/spec_bundle 作为输入基线；也可回退使用 agent/planning/out/mqtt_step1_main_rerun_20260616_1600/spec_bundle。
+不要回退 Step 1 strict validators，不要压缩 strict schema，不要关闭 rendered header validation。
+若 MQTT coder compile/smoke 通过，再进入 CoAP/SMTP minimum fresh planning 复现。
 ```
 
-## 6. 会话记录模板
+## 6. 会话记录摘要
 
-每次 Codex 会话结束时，在本节追加一条记录。
+本节只保留后续执行需要的 Step 1 压缩历史。早期 Session 000-009 的逐轮修复细节已合并，避免干扰后续 coder compile/smoke 与多协议复现。
 
-### Session 000
+### Step 1 压缩记录
 
-日期：
+时间范围：
 
 ```text
-未开始
+2026-06-15 至 2026-06-16
 ```
 
-本轮目标：
+目标：
 
 ```text
-初始化三份任务文件，尚未执行代码修改。
+修复 P0 deterministic closure 与 readiness gate，使 planning final success 不再绕过 deterministic coder compatibility failure。
 ```
 
-已修改文件：
+核心完成项：
 
 ```text
-AGENT.md
-PLANNING_STABILIZATION_TASKS.md
-CURRENT_TASK_STATUS.md
+1. dependency fallback fail-closed：不再通过清空 calls_allowed/imports_allowed 制造 empty graph success。
+2. cross-layer dependency diagnostics：call_contracts、calls_allowed、signature_dependencies、imports_allowed、dependency graph 不一致会 blocking。
+3. HEADER.DEPENDENCY / SOURCE.DEPENDENCY lowering 分离：public ABI/type closure 驱动 header deps，implementation calls/source include needs 驱动 source deps。
+4. public type dependency lowering：public signatures、struct fields、typedef/alias、callback signatures、function pointer params 的 external type refs 会映射到 provider header。
+5. system type registry：size_t、ssize_t、uint*_t、bool、sockaddr_in、time_t 等 public system type 会 lower 到 HEADER.SYSTEM_DEPENDENCY。
+6. final coder compatibility strict gate：planning readiness 调用 load_spec_bundle_from_root(..., validate_rendered_headers=True)。
+7. rendered header dummy translation unit compile：rendered header 编译失败会成为 blocking diagnostic。
+8. call_contracts.param_bindings.value_ref 支持保守 C literal/cast literal，非法 literal 仍 blocking。
+9. type/signature/provider closure 修复后，MQTT fresh planning 已进入 specs_compile 并产出 coder_manifest.json + spec_bundle/。
 ```
 
-已运行命令：
+关键验证命令：
 
 ```text
-无
+python3 -m agent planning plan --facts agent/facts/gold_facts/mqtt_min/protocol_facts.json --target-profile agent/planning/planning_target_profile_mqtt.json --output-dir agent/planning/out/mqtt_step1_main_rerun_20260616_1600
+python3 -m agent planning verify --output-dir agent/planning/out/mqtt_step1_main_rerun_20260616_1600
+python3 -m agent coder --spec-root agent/planning/out/mqtt_step1_main_rerun_20260616_1600/spec_bundle validate
+python3 -m unittest agent.planning.tests.test_implementation_plan_stage_candidates agent.planning.tests.test_coder_schema_lowering
 ```
 
-检查结果：
+最终检查结果：
 
 ```text
-无
+planning finalize stage=specs_compile status=success。
+000_planning_run_manifest.json status=success，diagnostics=[]。
+014_planning_validation_report.json status=success。
+facts_compatibility_status=passed。
+coder_compatibility_status=passed。
+coder_schema_status=passed。
+coder_loader_status=passed。
+008_dependency_validation_report.json status=passed，diagnostics=[]。
+生成 coder_manifest.json 与 spec_bundle/。
+planning verify：No diagnostics。
+coder validate：No diagnostics。
+unittest fallback：153 tests passed。
+pytest 当前环境不可用：No module named pytest。
 ```
 
-未完成项：
+可复用输出基线：
 
 ```text
-Step 1 尚未开始。
+agent/planning/out/mqtt_step1_main_rerun_20260616_1600/spec_bundle
 ```
 
-下一轮入口：
+Step 1 结论：
 
 ```text
-从 Step 1 的 dependency fallback fail closed 与 rendered header validation 审计开始。
+Step 1 completed。
+当前不应继续在 Step 1 修复历史里消耗上下文。下一步应使用上述 spec_bundle 进入 MQTT coder generate/compile/smoke。
 ```
 
-### Session 001
-
-日期：
+后续记录规则：
 
 ```text
-2026-06-15
+后续会话只追加与当前阶段直接相关的简短记录：目标、修改文件、命令、结果、下一步。不要恢复逐轮 Step 1 细节。
 ```
 
-本轮目标：
+### Step 2 压缩记录
+
+时间：
 
 ```text
-只执行 Step 1 的 dependency fallback fail-closed 与 cross-layer dependency consistency diagnostics。
+2026-06-16
 ```
 
-已修改文件：
+目标：
 
 ```text
-agent/planning/stages/dependencies.py
-agent/planning/stages/implementation_plan_merger.py
-agent/planning/validators/dependencies.py
-agent/planning/tests/test_implementation_plan_stage_candidates.py
-docs/CURRENT_TASK_STATUS.md
+补齐 cross-layer dependency report/provenance，使 008_dependency_validation_report.json 可以解释 dependency/call/header/source edge 来源。
 ```
 
-已完成内容：
+核心完成项：
 
 ```text
-1. apply_deterministic_dependency_fallback 不再清空 calls_allowed/imports_allowed。
-2. dependency repair mark_unresolved 与 deterministic fallback 产生 blocking unresolved dependency diagnostic。
-3. validate_dependency_graph 增加 call_contracts/calls_allowed/function_edges 一致性检查。
-4. validate_dependency_graph 增加 signature_dependencies/imports_allowed/provider file 一致性检查。
-5. validate_dependency_graph 增加 module_artifacts[].dependencies unknown module 检查。
-6. dependency_validation_report summary 增加 calls_allowed、call_contracts、signature_dependencies、imports_allowed 计数。
+1. dependency_validation_report/v1 向后兼容新增 errors、warnings、dependency_sources、call_edge_sources、header_dep_sources、source_dep_sources。
+2. errors/warnings 增加 stage、entity_kind、entity_id、source_fields、suggested_repair，不修改 PlanningDiagnostic dataclass。
+3. call_edge_sources 解释 calls_allowed、call_contracts 与 dependency_graph.function_edges 的一致性，status 为 explained/missing_graph_edge/unexplained_graph_edge。
+4. dependency_sources 覆盖 dependency_graph module/file/function edges，并追溯 imports_allowed、signature_dependencies、calls_allowed、call_contracts。
+5. specs_compile 后从生成的 FILE_SPEC 读取 HEADER.DEPENDENCY / SOURCE.DEPENDENCY，回填 header_dep_sources / source_dep_sources。
+6. coder loader 显式校验 HEADER.DEPENDENCY / SOURCE.DEPENDENCY 引用的 header path 必须存在，planning compatibility code 分别为 coder_unknown_header_dependency / coder_unknown_source_dependency。
 ```
 
-已运行命令：
+关键验证命令：
 
 ```text
-python -m unittest agent.planning.tests.test_implementation_plan_stage_candidates.ImplementationPlanStageCandidateTests.test_dependency_validation_rejects_call_contracts_without_calls_allowed agent.planning.tests.test_implementation_plan_stage_candidates.ImplementationPlanStageCandidateTests.test_dependency_validation_rejects_signature_dependencies_without_imports agent.planning.tests.test_implementation_plan_stage_candidates.ImplementationPlanStageCandidateTests.test_dependency_validation_accepts_consistent_call_and_signature_graph agent.planning.tests.test_implementation_plan_stage_candidates.ImplementationPlanStageCandidateTests.test_dependency_fallback_preserves_inputs_and_marks_blocking
-python -m unittest agent.planning.tests.test_implementation_plan_stage_candidates
-python -m unittest agent.planning.tests.test_coder_schema_lowering
+python3 -m unittest agent.planning.tests.test_implementation_plan_stage_candidates agent.planning.tests.test_coder_schema_lowering
+python3 -m compileall agent/planning/stages/dependencies.py agent/planning/orchestrator.py agent/coder/specs.py
+python3 -m agent planning verify --output-dir agent/planning/out/mqtt_step2_dependency_report_rerun
+python3 -m agent coder --spec-root agent/planning/out/mqtt_step2_dependency_report_rerun/spec_bundle validate
+python3 -m agent planning plan --facts agent/facts/gold_facts/mqtt_min/protocol_facts.json --target-profile agent/planning/planning_target_profile_mqtt.json --resume-source-dir agent/planning/out/mqtt_step1_main_rerun_20260616_1600 --resume-from-stage specs_compile --output-dir agent/planning/out/mqtt_step2_dependency_report_rerun
+python3 -m agent planning plan --facts agent/facts/gold_facts/mqtt_min/protocol_facts.json --target-profile agent/planning/planning_target_profile_mqtt.json --output-dir agent/planning/out/mqtt_step2_dependency_report_fresh
 ```
 
-检查结果：
+最终检查结果：
 
 ```text
-新增 4 个 dependency regression tests 通过。
-agent.planning.tests.test_implementation_plan_stage_candidates：115 tests passed。
-agent.planning.tests.test_coder_schema_lowering：23 tests passed。
+unittest：156 tests passed。
+compileall passed。
+specs_compile resume 输出：agent/planning/out/mqtt_step2_dependency_report_rerun。
+resume planning finalize stage=specs_compile status=success。
+resume planning verify：No diagnostics。
+resume coder validate：No diagnostics。
+resume dependency report keys 包含 errors、warnings、dependency_sources、call_edge_sources、header_dep_sources、source_dep_sources。
+resume dependency_sources=179，call_edge_sources=143，source_dep_sources=15，header_dep_sources=0（该 MQTT bundle 当前无 HEADER.DEPENDENCY）。
+fresh planning 输出：agent/planning/out/mqtt_step2_dependency_report_fresh。
+fresh planning 未进入 specs_compile，因 unrelated readiness_missing_runtime_error_test blocking failed。
+fresh dependency report 已包含 plan-level provenance arrays：dependency_sources=343，call_edge_sources=242。
 ```
 
-未完成项：
+Step 2 结论：
 
 ```text
-1. HEADER.DEPENDENCY 与 SOURCE.DEPENDENCY 来源仍待分离。
-2. public type dependency lowering 仍待补齐。
-3. system type registry 与 HEADER.SYSTEM_DEPENDENCY lowering 仍待补齐。
-4. final rendered header validation strict gate 仍待接入。
-5. dummy header translation unit compile 仍待接入。
-6. MQTT fresh/sample planning validation rerun 尚未执行。
-```
-
-下一轮入口：
-
-```text
-继续 Step 1 的 header_public_deps/source_call_deps 分离、public/system type closure、rendered header strict validation。
-```
-
-### Session 002
-
-日期：
-
-```text
-2026-06-15
-```
-
-本轮目标：
-
-```text
-修复 review 发现的 signature dependency provider file 误推断问题。
-```
-
-已修改文件：
-
-```text
-agent/planning/validators/dependencies.py
-agent/planning/tests/test_implementation_plan_stage_candidates.py
-docs/CURRENT_TASK_STATUS.md
-```
-
-已完成内容：
-
-```text
-1. 不再用 module 的 first file 猜测 signature dependency provider file。
-2. 只有 exports_type_ids 能明确定位 provider file 时才检查跨文件 imports_allowed。
-3. 跨模块但无法定位 provider file 仍产生 blocking diagnostic。
-4. 同模块未导出的 source-local signature dependency 不再被误判为缺 import。
-```
-
-已运行命令：
-
-```text
-python -m unittest agent.planning.tests.test_implementation_plan_stage_candidates.ImplementationPlanStageCandidateTests.test_dependency_validation_rejects_signature_dependencies_without_imports agent.planning.tests.test_implementation_plan_stage_candidates.ImplementationPlanStageCandidateTests.test_dependency_validation_accepts_consistent_call_and_signature_graph agent.planning.tests.test_implementation_plan_stage_candidates.ImplementationPlanStageCandidateTests.test_dependency_validation_allows_same_module_unexported_signature_dependency
-python -m unittest agent.planning.tests.test_implementation_plan_stage_candidates agent.planning.tests.test_coder_schema_lowering
-git diff --check
-```
-
-检查结果：
-
-```text
-定向 3 个 dependency tests passed。
-agent.planning.tests.test_implementation_plan_stage_candidates + test_coder_schema_lowering：139 tests passed。
-git diff --check clean。
-```
-
-未完成项：
-
-```text
-同 Session 001：header/source dependency lowering、public/system type closure、rendered header strict validation、dummy header TU compile、MQTT fresh/sample validation rerun 仍待后续处理。
+Step 2 completed。
+report/provenance 与 coder-facing dependency path validation 已完成。fresh run 的 failure 是 runtime error test readiness 缺口，不是 Step 2 dependency report 缺口。
 ```
 
 ## 7. 风险与注意事项
@@ -351,13 +321,14 @@ dependency_graph.function_edges=[]
 
 ### 7.4 不要过早进入多协议扩展
 
-在 MQTT 的 deterministic closure/readiness 未修复前，不建议直接扩展 CoAP/SMTP。否则新协议会产生更多噪声，难以区分协议差异和 planning bug。
+在 MQTT 的 coder compile/smoke 未验证前，不建议直接扩展 CoAP/SMTP。否则新协议会产生更多噪声，难以区分协议差异、coder compile 问题和 planning bug。
 
 ## 8. 当前状态摘要
 
 ```text
-当前完成度：Step 1 partially completed，dependency fallback/cross-layer dependency diagnostics 已完成。
-当前主线：Step 1 P0 deterministic closure / readiness gate。
-当前最重要 blocker：header/source dependency lowering、public/system type closure、rendered header strict validation 尚未闭合。
-下一步：修复 HEADER.DEPENDENCY 与 SOURCE.DEPENDENCY 来源混用、system type registry、rendered header strict validation。
+当前完成度：Step 2 completed。
+当前主线：用 Step 2 successful specs_compile 输出驱动 coder generate/compile/smoke，并准备 MQTT、CoAP、SMTP minimum 复现。
+当前最新验证：agent/planning/out/mqtt_step2_dependency_report_rerun 已进入 specs_compile，生成 coder_manifest.json + spec_bundle/，planning verify 与 coder validate 均无 diagnostics，008_dependency_validation_report.json 已包含 provenance arrays。
+当前最重要 blocker：尚未执行 coder generate/compile/smoke，未知该 spec_bundle 是否能驱动最终协议实现编译和 smoke 通过。
+下一步：使用 agent/planning/out/mqtt_step2_dependency_report_rerun/spec_bundle 运行 MQTT coder generate/compile/smoke。
 ```

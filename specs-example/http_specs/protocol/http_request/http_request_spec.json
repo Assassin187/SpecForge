@@ -8,7 +8,9 @@
   },
   "HEADER": {
     "PATH": "../protocol/http_request.h",
-    "DEPENDENCY": [],
+    "DEPENDENCY": [
+      "../network/connection.h"
+    ],
     "SYSTEM_DEPENDENCY": [
       "<stdbool.h>",
       "<stddef.h>",
@@ -48,32 +50,37 @@
       },
       {
         "NAME": "HTTP_MAX_HEADERS",
-        "KIND": "CONST",
+        "KIND": "MACRO",
         "VISIBILITY": "PUBLIC",
+        "VALUE": "64",
         "ROLE": "请求最大头部数量，值为 64"
       },
       {
         "NAME": "HTTP_MAX_URI",
-        "KIND": "CONST",
+        "KIND": "MACRO",
         "VISIBILITY": "PUBLIC",
+        "VALUE": "2048",
         "ROLE": "请求 URI 最大长度（字节），值为 2048"
       },
       {
         "NAME": "HTTP_MAX_HEADER_NAME",
-        "KIND": "CONST",
+        "KIND": "MACRO",
         "VISIBILITY": "PUBLIC",
+        "VALUE": "256",
         "ROLE": "请求头部名称最大长度（字节），值为 256"
       },
       {
         "NAME": "HTTP_MAX_HEADER_VALUE",
-        "KIND": "CONST",
+        "KIND": "MACRO",
         "VISIBILITY": "PUBLIC",
+        "VALUE": "4096",
         "ROLE": "请求头部值最大长度（字节），值为 4096"
       },
       {
         "NAME": "HTTP_MAX_BODY",
-        "KIND": "CONST",
+        "KIND": "MACRO",
         "VISIBILITY": "PUBLIC",
+        "VALUE": "16777216",
         "ROLE": "请求正文最大长度 16 MiB（16777216 字节）"
       },
       {
@@ -86,12 +93,14 @@
           "FIELDS": [
             {
               "NAME": "name",
-              "TYPE": "char[HTTP_MAX_HEADER_NAME]",
+              "TYPE": "char",
+              "ARRAY_LEN": "HTTP_MAX_HEADER_NAME",
               "ROLE": "头部名称，最多 256 字节"
             },
             {
               "NAME": "value",
-              "TYPE": "char[HTTP_MAX_HEADER_VALUE]",
+              "TYPE": "char",
+              "ARRAY_LEN": "HTTP_MAX_HEADER_VALUE",
               "ROLE": "头部值，最多 4096 字节"
             }
           ]
@@ -112,12 +121,14 @@
             },
             {
               "NAME": "uri",
-              "TYPE": "char[HTTP_MAX_URI]",
+              "TYPE": "char",
+              "ARRAY_LEN": "HTTP_MAX_URI",
               "ROLE": "请求 URI，最多 2048 字节"
             },
             {
               "NAME": "headers",
-              "TYPE": "http_header_t[HTTP_MAX_HEADERS]",
+              "TYPE": "http_header_t",
+              "ARRAY_LEN": "HTTP_MAX_HEADERS",
               "ROLE": "请求头部数组，最多 64 个键值对"
             },
             {

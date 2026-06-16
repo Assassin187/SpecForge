@@ -32,7 +32,7 @@ from .prompts.templates import (
 )
 from .stages.architecture import build_architecture_context, deterministic_architecture_ranking, select_architecture
 from .stages.constraints import activate_constraints
-from .stages.dependencies import build_dependency_validation_report
+from .stages.dependencies import attach_coder_dependency_sources, build_dependency_validation_report
 from .stages.implementation_plan_context import (
     build_calls_allowed_context,
     build_core_design_context,
@@ -2668,6 +2668,12 @@ class PlanningAgent:
             artifact_paths["coder_manifest"] = coder_manifest_path
             spec_root = Path(coder_manifest["spec_root"])
             artifact_paths["spec_bundle"] = spec_root
+            if "dependency_validation_report" in artifact_paths:
+                dependency_report = read_json(artifact_paths["dependency_validation_report"])
+                if not all(key in dependency_report for key in ("dependency_sources", "call_edge_sources", "errors", "warnings")):
+                    dependency_report = build_dependency_validation_report(implementation_plan, validate_dependency_graph(implementation_plan))
+                dependency_report = attach_coder_dependency_sources(dependency_report, spec_root)
+                artifact_paths["dependency_validation_report"] = store.write_step_json(STEP_FILENAMES["dependency_validation_report"], dependency_report)
             coder_diags = validate_coder_compatibility(spec_root)
             diagnostics.extend(coder_diags)
             coder_status = "failed" if has_errors(coder_diags) else "passed"

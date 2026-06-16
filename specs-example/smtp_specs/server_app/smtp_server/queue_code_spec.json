@@ -75,5 +75,12 @@
       "STRATEGY": "parse_and_skip",
       "RULE": "使用 smtp_response_format 生成 '<code> <text>\\r\\n'"
     }
+  ],
+  "CALL_CONTRACTS": [
+    {
+      "NAME": "smtp_response_format",
+      "SIGNATURE": "int smtp_response_format(char* out, size_t out_len, int code, const char* text)",
+      "RETURN_CONTRACT": "returns positive byte count on success (>= 0), -1 on error; positive values are NOT error codes — caller MUST check ret < 0 for errors"
+    }
   ]
 }

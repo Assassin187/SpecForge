@@ -130,6 +130,16 @@ def run(project_dir: Path, binary_name: str, scenarios: list[dict[str, str]]) ->
         # the server, and it continues to serve valid requests afterwards.
         sock.sendto(b"\xff\xfe\xfd\xfc\xfb\xfa", ("127.0.0.1", port))
         time.sleep(0.05)
+        # Drain stale RST datagram the server correctly sends per RFC 7252.
+        # Without draining, recvfrom() in _coap_exchange() reads the stale RST
+        # instead of the response to the subsequent valid GET /hello.
+        try:
+            while True:
+                sock.settimeout(0.01)
+                sock.recvfrom(2048)
+        except socket.timeout:
+            pass
+        sock.settimeout(2)
         survivor = _coap_exchange(sock, port, _coap_request("/hello", 0x1236))
         if survivor["code"] != 69:
             raise RuntimeError(

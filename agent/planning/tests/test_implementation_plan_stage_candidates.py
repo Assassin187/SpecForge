@@ -50,7 +50,7 @@ from agent.planning.stages.implementation_plan_context import (
 from agent.planning.stages.inventory_planning_space import build_function_planning_space, build_type_planning_space
 from agent.planning.stages.inventory_reconciliation import reconcile_function_annotation_candidate, reconcile_type_filling_candidate
 from agent.planning.stages.function_inventory_decomposition import DECOMPOSITION_RULES, select_top_decomposition_hints
-from agent.planning.stages.dependencies import derive_dependency_graph
+from agent.planning.stages.dependencies import build_dependency_validation_report, derive_dependency_graph
 from agent.planning.stages.implementation_plan_merger import (
     apply_deterministic_dependency_fallback,
     build_plan_skeleton,
@@ -3811,6 +3811,13 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
         self.assertTrue(_has(diagnostics, "dependency_call_contracts_without_calls_allowed"))
         self.assertTrue(_has(diagnostics, "dependency_call_contract_not_allowed"))
         self.assertTrue(_has(diagnostics, "dependency_graph_missing_function_edges"))
+        report = build_dependency_validation_report(plan, diagnostics)
+        error = next(item for item in report["errors"] if item["code"] == "dependency_call_contracts_without_calls_allowed")
+        self.assertEqual(error["stage"], "5.7_spec_readiness/dependency_validation")
+        self.assertEqual(error["entity_kind"], "function")
+        self.assertEqual(error["entity_id"], "fn:codec:parse")
+        self.assertIn("function_contracts[function_id=fn:codec:parse].call_contracts", error["source_fields"])
+        self.assertTrue(error["suggested_repair"])
 
     def test_dependency_validation_rejects_signature_dependencies_without_imports(self) -> None:
         function = _inventory_function("encode", "codec", function_id="fn:codec:encode", kind="serializer")
@@ -3841,6 +3848,12 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
 
         diagnostics = validate_dependency_graph(plan)
         self.assertTrue(_has(diagnostics, "dependency_signature_missing_import"))
+        report = build_dependency_validation_report(plan, diagnostics)
+        error = next(item for item in report["errors"] if item["code"] == "dependency_signature_missing_import")
+        self.assertEqual(error["entity_kind"], "function")
+        self.assertEqual(error["entity_id"], "fn:codec:encode")
+        self.assertIn("function_contracts[function_id=fn:codec:encode].signature_dependencies", error["source_fields"])
+        self.assertIn("file_layout.files[file_id=file:codec/encoder].imports_allowed", error["source_fields"])
 
     def test_dependency_validation_accepts_consistent_call_and_signature_graph(self) -> None:
         caller = _inventory_function("encode", "codec", function_id="fn:codec:encode", kind="serializer")
@@ -3876,6 +3889,40 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
 
         diagnostics = validate_dependency_graph(plan)
         self.assertFalse(_has_error(diagnostics), [diag.__dict__ for diag in diagnostics])
+        report = build_dependency_validation_report(plan, diagnostics)
+        call_edge = next(item for item in report["call_edge_sources"] if item["caller_function_id"] == "fn:codec:encode" and item["callee_function_id"] == "fn:shared:validate")
+        self.assertEqual(call_edge["status"], "explained")
+        self.assertIn("dependency_graph.function_edges", call_edge["source_fields"])
+        self.assertTrue(any(item["edge_scope"] == "function_edges" and item["from"] == "fn:codec:encode" and item["to"] == "fn:shared:validate" for item in report["dependency_sources"]))
+
+    def test_dependency_validation_report_marks_unknown_graph_and_module_edges(self) -> None:
+        function = _inventory_function("parse", "codec", function_id="fn:codec:parse", kind="parser")
+        function["file_id"] = "file:codec/parser"
+        plan = {
+            "module_artifacts": [{"module_id": "codec", "dependencies": ["missing"]}],
+            "file_layout": {
+                "files": [
+                    {"file_id": "file:codec/parser", "module_id": "codec", "imports_allowed": [], "header_path": "codec/parser.h"},
+                ]
+            },
+            "function_contracts": [function],
+            "dependency_graph": {
+                "schema_version": "dependency_graph/v1",
+                "module_edges": [],
+                "file_edges": [],
+                "function_edges": [{"from": "fn:missing", "to": "fn:codec:parse", "kind": "calls_allowed"}],
+            },
+        }
+
+        diagnostics = validate_dependency_graph(plan)
+        self.assertTrue(_has(diagnostics, "unknown_dependency_source"))
+        self.assertTrue(_has(diagnostics, "dependency_unknown_module_dependency"))
+        report = build_dependency_validation_report(plan, diagnostics)
+        self.assertTrue(any(item["edge_scope"] == "function_edges" and item["from"] == "fn:missing" for item in report["dependency_sources"]))
+        module_error = next(item for item in report["errors"] if item["code"] == "dependency_unknown_module_dependency")
+        self.assertEqual(module_error["entity_kind"], "module")
+        self.assertEqual(module_error["entity_id"], "codec")
+        self.assertIn("module_artifacts[module_id=codec].dependencies", module_error["source_fields"])
 
     def test_dependency_validation_allows_same_module_unexported_signature_dependency(self) -> None:
         function = _inventory_function("parse", "codec", function_id="fn:codec:parse", kind="parser")
