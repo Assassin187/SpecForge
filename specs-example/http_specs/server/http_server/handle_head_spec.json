@@ -1,0 +1,50 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "http/server/http_server/handle_head",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "HEAD 请求处理器：委托 serve_file(head_only=true)，仅发送头部不含正文",
+  "SIGNATURE": {
+    "RAW": "static int handle_head(http_server_t* server, http_session_t* session, const http_request_t* req)",
+    "NAME": "handle_head",
+    "RETURN": "int",
+    "PARAMS": [
+      {
+        "TYPE": "http_server_t*",
+        "NAME": "server",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "http_session_t*",
+        "NAME": "session",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "const http_request_t*",
+        "NAME": "req",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [],
+    "FUNC": [
+      {
+        "NAME": "serve_file",
+        "KIND": "CALL",
+        "ROLE": ""
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入 server、session、已解析的 req。",
+    "ACTION": "委托 serve_file(server, session, req, true)。",
+    "OUTPUT": "透传 serve_file 返回值。",
+    "INVARIANTS_USED": [
+      "函数执行保持本模块内部状态一致性。"
+    ]
+  }
+}

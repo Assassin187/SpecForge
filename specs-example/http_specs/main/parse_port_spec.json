@@ -1,0 +1,33 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "http/main/parse_port",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "strtol 解析端口字符串为 uint16_t；无效输入返回 0",
+  "SIGNATURE": {
+    "RAW": "static uint16_t parse_port(const char* s)",
+    "NAME": "parse_port",
+    "RETURN": "uint16_t",
+    "PARAMS": [
+      {
+        "TYPE": "const char*",
+        "NAME": "s",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入端口字符串。",
+    "ACTION": "strtol(s, NULL, 10) 解析；无效或超出范围返回 0。",
+    "OUTPUT": "返回解析后的端口号；无效输入返回 0。",
+    "INVARIANTS_USED": [
+      "合法端口范围为 1..65535",
+      "无效输入统一返回 0 表示使用默认端口"
+    ]
+  }
+}

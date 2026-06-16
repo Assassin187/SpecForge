@@ -20,4 +20,27 @@ env/
 # Output
 **/out/
 
+# Local compile outputs
+*.o
+*.obj
+*.a
+*.so
+*.so.*
+*.dylib
+*.dll
+*.exe
+*.out
+*.bin
+*.elf
+*.d
+build/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+compile_commands.json
+protocol-example/**/*_server
+protocol-example/**/*_broker
+protocol-example/**/*_client
+protocol-example/**/*_app
+
 experiments/specs_optimization/

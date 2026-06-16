@@ -1,0 +1,53 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "http/server/http_server/close_client",
+  "FUNCTION_TYPE": "EVENT",
+  "ROLE": "关闭客户端连接：委托 http_tcp_server_close_client 关闭 fd 并清理",
+  "SIGNATURE": {
+    "RAW": "static void close_client(http_server_t* server, int fd)",
+    "NAME": "close_client",
+    "RETURN": "void",
+    "PARAMS": [
+      {
+        "TYPE": "http_server_t*",
+        "NAME": "server",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "int",
+        "NAME": "fd",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [],
+    "FUNC": [
+      {
+        "NAME": "http_tcp_server_close_client",
+        "KIND": "CALL",
+        "ROLE": ""
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入 server 和待关闭的 fd。",
+    "ACTION": "委托 http_tcp_server_close_client 执行 epoll 删除+socket close+节点移除+on_close 回调。",
+    "OUTPUT": "通过返回值或副作用反映处理结果。",
+    "INVARIANTS_USED": [
+      "函数执行保持本模块内部状态一致性。"
+    ]
+  },
+  "EVENT": {
+    "TRIGGER": "当连接需要关闭时（读错误/对端关闭/响应完成）调用。",
+    "PRECONDITION": "fd 为有效客户端 socket。",
+    "INPUT": "server 和待关闭的 fd。",
+    "ACTION": "委托 http_tcp_server_close_client 执行 epoll 删除+socket close+节点移除+on_close 回调。",
+    "STATE_CHANGE": "fd 从 epoll 和客户端链表移除。",
+    "RESPONSE": "",
+    "EVENT_TYPE": ""
+  }
+}

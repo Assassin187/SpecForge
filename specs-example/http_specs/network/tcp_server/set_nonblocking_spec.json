@@ -1,0 +1,34 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "http/network/tcp_server/set_nonblocking",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "THREAD_SAFETY": "SINGLE_THREAD_ONLY",
+  "IDEMPOTENT": false,
+  "ROLE": "通过 fcntl F_GETFL/F_SETFL 为 fd 设置 O_NONBLOCK 标志",
+  "SIGNATURE": {
+    "RAW": "static bool set_nonblocking(int fd)",
+    "NAME": "set_nonblocking",
+    "RETURN": "bool",
+    "PARAMS": [
+      {
+        "TYPE": "int",
+        "NAME": "fd",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入 fd 参数。",
+    "ACTION": "fcntl(fd, F_GETFL) 获取当前标志，若成功则追加 O_NONBLOCK 并通过 fcntl(fd, F_SETFL) 写回。",
+    "OUTPUT": "成功返回 true，失败返回 false。",
+    "INVARIANTS_USED": [
+      "函数执行保持本模块内部状态一致性。"
+    ]
+  }
+}

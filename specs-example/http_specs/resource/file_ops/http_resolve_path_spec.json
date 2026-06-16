@@ -1,0 +1,43 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "http/resource/file_ops/http_resolve_path",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "拼接 root_dir+uri_path，规范化 .. 与 . 段，realpath 后验证在 root 前缀内；检测目录遍历返回 -1+EACCES",
+  "SIGNATURE": {
+    "RAW": "int http_resolve_path(const char* root_dir, const char* uri_path, char* out_abs, size_t out_len)",
+    "NAME": "http_resolve_path",
+    "RETURN": "int",
+    "PARAMS": [
+      {
+        "TYPE": "const char*",
+        "NAME": "root_dir"
+      },
+      {
+        "TYPE": "const char*",
+        "NAME": "uri_path"
+      },
+      {
+        "TYPE": "char*",
+        "NAME": "out_abs"
+      },
+      {
+        "TYPE": "size_t",
+        "NAME": "out_len"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入 root_dir、uri_path、输出缓冲区。",
+    "ACTION": "strncpy root→追加 '/'→strtok_r 逐段处理 uri_path：跳过 '' 和 '.'、'..' 回退一层；snprintf 构造完整路径→realpath 规范化→strncmp 验证规范路径以 root 开头。不匹配设 errno=EACCES 返回 -1。",
+    "OUTPUT": "成功返回 0 并通过 out_abs 输出绝对路径；路径遍历返回 -1。",
+    "INVARIANTS_USED": [
+      "out_abs 输出路径必须位于 root_dir 前缀内",
+      "目录遍历攻击必须被拒绝并设置 errno=EACCES"
+    ]
+  }
+}

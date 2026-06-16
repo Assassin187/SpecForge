@@ -1,0 +1,60 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "http/server/http_server/send_error",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "发送 HTML 错误响应并注册写监听",
+  "SIGNATURE": {
+    "RAW": "static int send_error(http_server_t* server, http_session_t* session, int code)",
+    "NAME": "send_error",
+    "RETURN": "int",
+    "PARAMS": [
+      {
+        "TYPE": "http_server_t*",
+        "NAME": "server",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "http_session_t*",
+        "NAME": "session",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "int",
+        "NAME": "code",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [],
+    "FUNC": [
+      {
+        "NAME": "http_status_text",
+        "KIND": "CALL",
+        "ROLE": ""
+      },
+      {
+        "NAME": "http_response_send",
+        "KIND": "CALL",
+        "ROLE": ""
+      },
+      {
+        "NAME": "http_tcp_server_update_interest",
+        "KIND": "CALL",
+        "ROLE": ""
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入 server、session、HTTP 状态码。",
+    "ACTION": "snprintf 生成 HTML 错误页面→http_response_send 发送→http_tcp_server_update_interest 注册写事件。",
+    "OUTPUT": "通过返回值或副作用反映处理结果。",
+    "INVARIANTS_USED": [
+      "函数执行保持本模块内部状态一致性。"
+    ]
+  }
+}

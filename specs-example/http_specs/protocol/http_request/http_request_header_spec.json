@@ -1,0 +1,49 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "http/protocol/http_request/http_request_header",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "按名称（大小写不敏感）在已解析头部中查找值；未找到返回 NULL",
+  "SIGNATURE": {
+    "RAW": "const char* http_request_header(const http_request_t* req, const char* name)",
+    "NAME": "http_request_header",
+    "RETURN": "const char*",
+    "PARAMS": [
+      {
+        "TYPE": "const http_request_t*",
+        "NAME": "req",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "const char*",
+        "NAME": "name",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "http_request_t",
+        "ROLE": "HTTP 请求结构体"
+      },
+      {
+        "NAME": "http_header_t",
+        "ROLE": "HTTP 头部键值对结构体"
+      }
+    ],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入 req 和头部名称。",
+    "ACTION": "空安全检查→遍历 0..header_count-1，strcasecmp 比较 headers[i].name==name→匹配返回 headers[i].value。",
+    "OUTPUT": "找到返回值字符串指针，未找到返回 NULL。",
+    "INVARIANTS_USED": [
+      "查找为大小写不敏感匹配",
+      "空指针输入安全返回 NULL",
+      "返回指针指向 req 内部内存，生命周期与 req 相同"
+    ]
+  }
+}

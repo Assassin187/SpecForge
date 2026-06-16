@@ -1,0 +1,64 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "http/network/connection/http_connection_flush",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "非阻塞 send 刷写输出缓冲；全部发送返回 0，部分发送返回 1 通知上层注册 EPOLLOUT",
+  "SIGNATURE": {
+    "RAW": "int http_connection_flush(http_connection_t* conn)",
+    "NAME": "http_connection_flush",
+    "RETURN": "int",
+    "PARAMS": [
+      {
+        "TYPE": "http_connection_t*",
+        "NAME": "conn",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct http_connection",
+        "ROLE": "连接私有状态结构体"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "send",
+        "KIND": "CALL",
+        "ROLE": "向 socket 发送原始字节"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入来自函数参数。",
+    "ACTION": "循环 send(conn->fd, out_buf+out_off, out_len-out_off, 0)；EINTR 重试；EAGAIN/EWOULDBLOCK 返回 1（部分发送，需注册 EPOLLOUT）；错误返回 -1；全部发送后 out_len=out_off=0 返回 0。",
+    "OUTPUT": "0=全部发送完成，1=部分发送需重试，-1=错误。"
+  },
+  "THREAD_SAFETY": "SINGLE_THREAD_ONLY",
+  "IDEMPOTENT": false,
+  "ACCESS_PATHS": [
+    {
+      "PATH": "conn->fd",
+      "TYPE": "int",
+      "ROLE": "作为 send 的 socket 参数来源"
+    },
+    {
+      "PATH": "conn->out_buf",
+      "TYPE": "uint8_t*",
+      "ROLE": "从 out_off 偏移开始发送"
+    },
+    {
+      "PATH": "conn->out_off",
+      "TYPE": "size_t",
+      "ROLE": "随 send 成功推进；全部发送后归零"
+    },
+    {
+      "PATH": "conn->out_len",
+      "TYPE": "size_t",
+      "ROLE": "全部发送后归零"
+    }
+  ]
+}

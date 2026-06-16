@@ -1,0 +1,58 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "http/server/http_server/on_close_cb",
+  "FUNCTION_TYPE": "EVENT",
+  "ROLE": "TCP server 连接关闭回调：从 server 链表移除会话",
+  "SIGNATURE": {
+    "RAW": "static void on_close_cb(void* user, int fd)",
+    "NAME": "on_close_cb",
+    "RETURN": "void",
+    "PARAMS": [
+      {
+        "TYPE": "void*",
+        "NAME": "user",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "int",
+        "NAME": "fd",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct http_server",
+        "ROLE": ""
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "remove_session",
+        "KIND": "CALL",
+        "ROLE": ""
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入 user、fd。",
+    "ACTION": "remove_session 从链表删除并销毁会话。",
+    "OUTPUT": "通过返回值或副作用反映处理结果。",
+    "INVARIANTS_USED": [
+      "函数执行保持本模块内部状态一致性。"
+    ]
+  },
+  "EVENT": {
+    "TRIGGER": "连接关闭时被 http_tcp_server_close_client 回调。",
+    "PRECONDITION": "user 指向有效的 http_server_t。",
+    "INPUT": "user、fd。",
+    "ACTION": "remove_session 从链表删除并销毁会话。",
+    "STATE_CHANGE": "server->sessions 链表减少一个节点。",
+    "RESPONSE": "",
+    "EVENT_TYPE": ""
+  }
+}

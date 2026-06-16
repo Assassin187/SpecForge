@@ -1,0 +1,43 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "http/network/connection/http_connection_queue_str",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "将 C 字符串通过 strlen 计算长度后委托 http_connection_queue 追加到输出缓冲",
+  "SIGNATURE": {
+    "RAW": "int http_connection_queue_str(http_connection_t* conn, const char* text)",
+    "NAME": "http_connection_queue_str",
+    "RETURN": "int",
+    "PARAMS": [
+      {
+        "TYPE": "http_connection_t*",
+        "NAME": "conn",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "const char*",
+        "NAME": "text",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [],
+    "FUNC": [
+      {
+        "NAME": "http_connection_queue",
+        "KIND": "CALL",
+        "ROLE": "委托排队原始字节"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入来自函数参数。",
+    "ACTION": "text==NULL 返回 -1；否则 strlen(text) 后调用 http_connection_queue(conn, text, len)。",
+    "OUTPUT": "委托 http_connection_queue 的返回值。"
+  },
+  "THREAD_SAFETY": "SINGLE_THREAD_ONLY",
+  "IDEMPOTENT": false
+}

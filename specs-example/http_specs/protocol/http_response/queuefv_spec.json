@@ -1,0 +1,45 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "http/protocol/http_response/queuefv",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "静态辅助：vsnprintf 格式化到栈缓冲后委托 http_connection_queue_str",
+  "SIGNATURE": {
+    "RAW": "static int queuefv(http_connection_t* conn, const char* fmt, ...)",
+    "NAME": "queuefv",
+    "RETURN": "int",
+    "PARAMS": [
+      {
+        "TYPE": "http_connection_t*",
+        "NAME": "conn",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "const char*",
+        "NAME": "fmt",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [],
+    "FUNC": [
+      {
+        "NAME": "http_connection_queue_str",
+        "KIND": "CALL",
+        "ROLE": "排队字符串到连接输出缓冲"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入 conn、格式字符串及可变参数。",
+    "ACTION": "vsnprintf 格式化到 4096 字节栈缓冲→http_connection_queue_str 排队结果。溢出返回 -1。",
+    "OUTPUT": "成功返回 http_connection_queue_str 结果，溢出返回 -1。",
+    "INVARIANTS_USED": [
+      "栈缓冲上限 4096 字节",
+      "仅作为 http_response_send 的内部辅助函数使用"
+    ]
+  }
+}

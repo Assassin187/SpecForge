@@ -1,0 +1,49 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "http/network/tcp_server/find_client",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "THREAD_SAFETY": "SINGLE_THREAD_ONLY",
+  "IDEMPOTENT": false,
+  "ROLE": "在 TCP server 的客户端单向链表中按 fd 查找节点",
+  "SIGNATURE": {
+    "RAW": "static http_client_node_t* find_client(http_tcp_server_t* server, int fd)",
+    "NAME": "find_client",
+    "RETURN": "http_client_node_t*",
+    "PARAMS": [
+      {
+        "TYPE": "http_tcp_server_t*",
+        "NAME": "server",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "int",
+        "NAME": "fd",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct http_tcp_server",
+        "ROLE": "TCP server 私有状态"
+      },
+      {
+        "NAME": "http_client_node_t",
+        "ROLE": "客户端链表节点"
+      }
+    ],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入 server 和 fd。",
+    "ACTION": "遍历 server->clients 链表，比较每个节点的 fd 字段，匹配则返回节点指针。",
+    "OUTPUT": "找到返回节点指针，未找到返回 NULL。",
+    "INVARIANTS_USED": [
+      "函数执行保持本模块内部状态一致性。"
+    ]
+  }
+}

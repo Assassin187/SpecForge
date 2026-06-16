@@ -1,0 +1,53 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "http/server/http_server/remove_session",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "从 server 会话链表中按 fd 删除并销毁会话",
+  "SIGNATURE": {
+    "RAW": "static void remove_session(http_server_t* server, int fd)",
+    "NAME": "remove_session",
+    "RETURN": "void",
+    "PARAMS": [
+      {
+        "TYPE": "http_server_t*",
+        "NAME": "server",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "int",
+        "NAME": "fd",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct http_server",
+        "ROLE": ""
+      },
+      {
+        "NAME": "http_session_node_t",
+        "ROLE": ""
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "http_session_destroy",
+        "KIND": "CALL",
+        "ROLE": ""
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入 server 和 fd。",
+    "ACTION": "指针的指针遍历链表→匹配后解除链接→http_session_destroy 销毁会话→free 节点。",
+    "OUTPUT": "通过返回值或副作用反映处理结果。",
+    "INVARIANTS_USED": [
+      "函数执行保持本模块内部状态一致性。"
+    ]
+  }
+}

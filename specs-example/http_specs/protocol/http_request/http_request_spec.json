@@ -1,0 +1,504 @@
+{
+  "KIND": "FILE_SPEC",
+  "FILE": {
+    "TRACE_ID": "http/protocol/http_request",
+    "LANG": "C",
+    "ROLE": "HTTP/1.1 请求解析模块：从连接输入缓冲解析请求行（方法/URI）、头部键值对与正文，提供初始化/释放/头部查询接口",
+    "DOC_REF": []
+  },
+  "HEADER": {
+    "PATH": "../protocol/http_request.h",
+    "DEPENDENCY": [],
+    "SYSTEM_DEPENDENCY": [
+      "<stdbool.h>",
+      "<stddef.h>",
+      "<stdint.h>"
+    ],
+    "DATA": [
+      {
+        "NAME": "http_method_t",
+        "KIND": "TYPE",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "HTTP 请求方法枚举，标识 GET/HEAD/POST/UNKNOWN 四种方法类型",
+        "TYPE_SPEC": {
+          "TYPE_KIND": "ENUM",
+          "ENUM_VALUES": [
+            {
+              "NAME": "HTTP_GET",
+              "VALUE": 0,
+              "ROLE": "GET 请求方法"
+            },
+            {
+              "NAME": "HTTP_HEAD",
+              "VALUE": 1,
+              "ROLE": "HEAD 请求方法"
+            },
+            {
+              "NAME": "HTTP_POST",
+              "VALUE": 2,
+              "ROLE": "POST 请求方法"
+            },
+            {
+              "NAME": "HTTP_UNKNOWN",
+              "VALUE": 3,
+              "ROLE": "未知/不支持的方法"
+            }
+          ]
+        }
+      },
+      {
+        "NAME": "HTTP_MAX_HEADERS",
+        "KIND": "CONST",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "请求最大头部数量，值为 64"
+      },
+      {
+        "NAME": "HTTP_MAX_URI",
+        "KIND": "CONST",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "请求 URI 最大长度（字节），值为 2048"
+      },
+      {
+        "NAME": "HTTP_MAX_HEADER_NAME",
+        "KIND": "CONST",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "请求头部名称最大长度（字节），值为 256"
+      },
+      {
+        "NAME": "HTTP_MAX_HEADER_VALUE",
+        "KIND": "CONST",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "请求头部值最大长度（字节），值为 4096"
+      },
+      {
+        "NAME": "HTTP_MAX_BODY",
+        "KIND": "CONST",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "请求正文最大长度 16 MiB（16777216 字节）"
+      },
+      {
+        "NAME": "http_header_t",
+        "KIND": "TYPE",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "HTTP 头部键值对结构，包含 name[HTTP_MAX_HEADER_NAME] 与 value[HTTP_MAX_HEADER_VALUE]",
+        "TYPE_SPEC": {
+          "TYPE_KIND": "STRUCT",
+          "FIELDS": [
+            {
+              "NAME": "name",
+              "TYPE": "char[HTTP_MAX_HEADER_NAME]",
+              "ROLE": "头部名称，最多 256 字节"
+            },
+            {
+              "NAME": "value",
+              "TYPE": "char[HTTP_MAX_HEADER_VALUE]",
+              "ROLE": "头部值，最多 4096 字节"
+            }
+          ]
+        }
+      },
+      {
+        "NAME": "http_request_t",
+        "KIND": "TYPE",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "HTTP 请求结构体，包含方法、URI、头部数组、动态 body 指针与长度信息",
+        "TYPE_SPEC": {
+          "TYPE_KIND": "STRUCT",
+          "FIELDS": [
+            {
+              "NAME": "method",
+              "TYPE": "http_method_t",
+              "ROLE": "HTTP 请求方法（GET/HEAD/POST/UNKNOWN）"
+            },
+            {
+              "NAME": "uri",
+              "TYPE": "char[HTTP_MAX_URI]",
+              "ROLE": "请求 URI，最多 2048 字节"
+            },
+            {
+              "NAME": "headers",
+              "TYPE": "http_header_t[HTTP_MAX_HEADERS]",
+              "ROLE": "请求头部数组，最多 64 个键值对"
+            },
+            {
+              "NAME": "header_count",
+              "TYPE": "size_t",
+              "ROLE": "实际解析到的头部数量"
+            },
+            {
+              "NAME": "body",
+              "TYPE": "char*",
+              "ROLE": "请求正文，堆分配可空指针；由 http_request_parse 分配，http_request_free 释放"
+            },
+            {
+              "NAME": "body_len",
+              "TYPE": "size_t",
+              "ROLE": "请求正文字节长度；body 为 NULL 时为 0"
+            }
+          ]
+        }
+      }
+    ],
+    "INTERFACE": [
+      {
+        "SIGNATURE": "void http_request_init(http_request_t* req)",
+        "NAME": "http_request_init",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "memset 清零整个请求结构体；空指针安全返回",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "void http_request_free(http_request_t* req)",
+        "NAME": "http_request_free",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "释放请求 body 动态内存并复位 body=NULL/body_len=0；空指针安全返回",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "int http_request_parse(http_request_t* req, http_connection_t* conn)",
+        "NAME": "http_request_parse",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "从连接输入缓冲解析 HTTP/1.1 请求行、头部与正文；返回 0=完成, 1=需要更多数据, -1=解析错误",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "const char* http_request_header(const http_request_t* req, const char* name)",
+        "NAME": "http_request_header",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "按名称索引请求头部值，大小写不敏感匹配（strcasecmp）；未找到返回 NULL",
+        "VISIBILITY": "public"
+      }
+    ]
+  },
+  "SOURCE": {
+    "PATH": "../protocol/http_request.c",
+    "DEPENDENCY": [
+      "../protocol/http_request.h",
+      "../network/connection.h"
+    ],
+    "SYSTEM_DEPENDENCY": [
+      "<ctype.h>",
+      "<stdio.h>",
+      "<stdlib.h>",
+      "<string.h>",
+      "<strings.h>"
+    ],
+    "DATA": [],
+    "INTERFACE": [
+      {
+        "TRACE_ID": "http/protocol/http_request/http_request_init",
+        "SIGNATURE": "void http_request_init(http_request_t* req)",
+        "NAME": "http_request_init",
+        "KIND": "FUNC",
+        "ROLE": "空安全检查后调用 memset 将整个 http_request_t 结构体清零，包括 method/uri/headers/header_count/body/body_len",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用前对象指针应有效；并发访问需由上层同步控制"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数执行后维持模块内部状态一致性，并向调用方返回结果/副作用"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "http/protocol/http_request/http_request_free",
+        "SIGNATURE": "void http_request_free(http_request_t* req)",
+        "NAME": "http_request_free",
+        "KIND": "FUNC",
+        "ROLE": "空安全检查后释放 body 堆内存并置 body=NULL/body_len=0；不释放结构体自身",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用前对象指针应有效；并发访问需由上层同步控制"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数执行后维持模块内部状态一致性，并向调用方返回结果/副作用"
+            }
+          ],
+          "IDEMPOTENT": true,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "http/protocol/http_request/http_request_parse",
+        "SIGNATURE": "int http_request_parse(http_request_t* req, http_connection_t* conn)",
+        "NAME": "http_request_parse",
+        "KIND": "FUNC",
+        "ROLE": "先调用 http_request_init 清零，然后从连接缓冲逐行 pop 解析请求行（方法/URI/版本）、头部键值对，再根据 Content-Length 提取正文；返回 0=解析完成, 1=数据不足, -1=格式错误",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用前对象指针应有效；并发访问需由上层同步控制"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数执行后维持模块内部状态一致性，并向调用方返回结果/副作用"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY",
+          "CALL_CONTRACTS": [
+            {
+              "TEXT": "返回 0 时 req 已完整填充，调用方处理完毕后应调用 http_request_free 释放 body"
+            }
+          ]
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "http/protocol/http_request/http_request_header",
+        "SIGNATURE": "const char* http_request_header(const http_request_t* req, const char* name)",
+        "NAME": "http_request_header",
+        "KIND": "FUNC",
+        "ROLE": "遍历 headers 数组，通过 strcasecmp 大小写不敏感匹配头部名称；找到则返回 value 指针，未找到或参数 NULL 返回 NULL",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用前对象指针应有效；并发访问需由上层同步控制"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数执行后维持模块内部状态一致性，并向调用方返回结果/副作用"
+            }
+          ],
+          "IDEMPOTENT": true,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "http/protocol/http_request/parse_method",
+        "SIGNATURE": "static http_method_t parse_method(const char* method_str)",
+        "NAME": "parse_method",
+        "KIND": "FUNC",
+        "ROLE": "将方法字符串映射为 http_method_t 枚举；匹配 \"GET\"→HTTP_GET, \"HEAD\"→HTTP_HEAD, \"POST\"→HTTP_POST, 其他→HTTP_UNKNOWN",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用前对象指针应有效；并发访问需由上层同步控制"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数执行后维持模块内部状态一致性，并向调用方返回结果/副作用"
+            }
+          ],
+          "IDEMPOTENT": true,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "private"
+      }
+    ]
+  },
+  "PUBLIC_SYMBOLS": [
+    {
+      "NAME": "http_method_t",
+      "KIND": "TYPE",
+      "ROLE": "HTTP 请求方法枚举类型"
+    },
+    {
+      "NAME": "HTTP_GET",
+      "KIND": "ENUM",
+      "ROLE": "GET 方法枚举值；不得使用 HTTP_METHOD_GET 等别名"
+    },
+    {
+      "NAME": "HTTP_HEAD",
+      "KIND": "ENUM",
+      "ROLE": "HEAD 方法枚举值；不得使用 HTTP_METHOD_HEAD 等别名"
+    },
+    {
+      "NAME": "HTTP_POST",
+      "KIND": "ENUM",
+      "ROLE": "POST 方法枚举值；不得使用 HTTP_METHOD_POST 等别名"
+    },
+    {
+      "NAME": "HTTP_UNKNOWN",
+      "KIND": "ENUM",
+      "ROLE": "未知方法枚举值"
+    },
+    {
+      "NAME": "HTTP_MAX_HEADERS",
+      "KIND": "CONST",
+      "ROLE": "请求最大头部数量常量"
+    },
+    {
+      "NAME": "HTTP_MAX_URI",
+      "KIND": "CONST",
+      "ROLE": "请求 URI 最大长度常量"
+    },
+    {
+      "NAME": "HTTP_MAX_HEADER_NAME",
+      "KIND": "CONST",
+      "ROLE": "请求头部名称最大长度常量"
+    },
+    {
+      "NAME": "HTTP_MAX_HEADER_VALUE",
+      "KIND": "CONST",
+      "ROLE": "请求头部值最大长度常量"
+    },
+    {
+      "NAME": "HTTP_MAX_BODY",
+      "KIND": "CONST",
+      "ROLE": "请求正文最大长度常量"
+    },
+    {
+      "NAME": "http_header_t",
+      "KIND": "TYPE",
+      "ROLE": "HTTP 头部键值对结构类型"
+    },
+    {
+      "NAME": "http_request_t",
+      "KIND": "TYPE",
+      "ROLE": "HTTP 请求结构类型"
+    },
+    {
+      "NAME": "http_request_init",
+      "KIND": "FUNC",
+      "SIGNATURE": "void http_request_init(http_request_t* req)",
+      "ROLE": "请求结构体初始化函数"
+    },
+    {
+      "NAME": "http_request_free",
+      "KIND": "FUNC",
+      "SIGNATURE": "void http_request_free(http_request_t* req)",
+      "ROLE": "请求 body 释放函数"
+    },
+    {
+      "NAME": "http_request_parse",
+      "KIND": "FUNC",
+      "SIGNATURE": "int http_request_parse(http_request_t* req, http_connection_t* conn)",
+      "ROLE": "HTTP/1.1 请求解析入口函数"
+    },
+    {
+      "NAME": "http_request_header",
+      "KIND": "FUNC",
+      "SIGNATURE": "const char* http_request_header(const http_request_t* req, const char* name)",
+      "ROLE": "请求头部值查找函数"
+    }
+  ],
+  "ACCESS_PATHS": [
+    {
+      "PATH": "HTTP_GET",
+      "TYPE": "int",
+      "ROLE": "GET 方法枚举常量，值为 0"
+    },
+    {
+      "PATH": "HTTP_HEAD",
+      "TYPE": "int",
+      "ROLE": "HEAD 方法枚举常量，值为 1"
+    },
+    {
+      "PATH": "HTTP_POST",
+      "TYPE": "int",
+      "ROLE": "POST 方法枚举常量，值为 2"
+    },
+    {
+      "PATH": "HTTP_UNKNOWN",
+      "TYPE": "int",
+      "ROLE": "未知方法枚举常量，值为 3"
+    },
+    {
+      "PATH": "http_header_t.name",
+      "TYPE": "char[HTTP_MAX_HEADER_NAME]",
+      "ROLE": "头部名称字段，最多 256 字节"
+    },
+    {
+      "PATH": "http_header_t.value",
+      "TYPE": "char[HTTP_MAX_HEADER_VALUE]",
+      "ROLE": "头部值字段，最多 4096 字节"
+    },
+    {
+      "PATH": "http_request_t.method",
+      "TYPE": "http_method_t",
+      "ROLE": "请求方法字段"
+    },
+    {
+      "PATH": "http_request_t.uri",
+      "TYPE": "char[HTTP_MAX_URI]",
+      "ROLE": "请求 URI 字段，最多 2048 字节"
+    },
+    {
+      "PATH": "http_request_t.headers",
+      "TYPE": "http_header_t[HTTP_MAX_HEADERS]",
+      "ROLE": "请求头部数组，最多 64 个元素"
+    },
+    {
+      "PATH": "http_request_t.header_count",
+      "TYPE": "size_t",
+      "ROLE": "实际解析到的头部数量"
+    },
+    {
+      "PATH": "http_request_t.body",
+      "TYPE": "char*",
+      "ROLE": "请求正文字段，堆分配可空指针"
+    },
+    {
+      "PATH": "http_request_t.body_len",
+      "TYPE": "size_t",
+      "ROLE": "请求正文字节长度"
+    },
+    {
+      "PATH": "http_request_t.headers[i].name",
+      "TYPE": "char[HTTP_MAX_HEADER_NAME]",
+      "ROLE": "数组中第 i 个头部名称"
+    },
+    {
+      "PATH": "http_request_t.headers[i].value",
+      "TYPE": "char[HTTP_MAX_HEADER_VALUE]",
+      "ROLE": "数组中第 i 个头部值"
+    }
+  ],
+  "FORBIDDEN_SYMBOLS": [
+    {
+      "NAME": "HTTP_METHOD_GET",
+      "KIND": "ENUM",
+      "REASON": "HTTP method enum 唯一公开命名是 HTTP_GET"
+    },
+    {
+      "NAME": "HTTP_METHOD_HEAD",
+      "KIND": "ENUM",
+      "REASON": "HTTP method enum 唯一公开命名是 HTTP_HEAD"
+    },
+    {
+      "NAME": "HTTP_METHOD_POST",
+      "KIND": "ENUM",
+      "REASON": "HTTP method enum 唯一公开命名是 HTTP_POST"
+    },
+    {
+      "NAME": "HTTP_METHOD_UNKNOWN",
+      "KIND": "ENUM",
+      "REASON": "HTTP method enum 唯一公开命名是 HTTP_UNKNOWN"
+    },
+    {
+      "NAME": "http_request_set_method",
+      "KIND": "FUNC",
+      "REASON": "不存在 setter；method 由 http_request_parse 内部通过 parse_method 设置"
+    },
+    {
+      "NAME": "http_request_t.data",
+      "KIND": "FIELD",
+      "REASON": "http_request_t 的 body 字段名为 body，不是 data"
+    },
+    {
+      "NAME": "http_request_t.body_size",
+      "KIND": "FIELD",
+      "REASON": "http_request_t 的 body 长度字段名为 body_len，不是 body_size"
+    }
+  ]
+}

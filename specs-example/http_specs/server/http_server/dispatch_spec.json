@@ -1,0 +1,70 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "http/server/http_server/dispatch",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "按请求方法分发到对应处理器：GET→handle_get, HEAD→handle_head, POST→handle_post, UNKNOWN→501",
+  "SIGNATURE": {
+    "RAW": "static int dispatch(http_server_t* server, http_session_t* session, const http_request_t* req)",
+    "NAME": "dispatch",
+    "RETURN": "int",
+    "PARAMS": [
+      {
+        "TYPE": "http_server_t*",
+        "NAME": "server",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "http_session_t*",
+        "NAME": "session",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "const http_request_t*",
+        "NAME": "req",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "http_request_t",
+        "ROLE": ""
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "handle_get",
+        "KIND": "CALL",
+        "ROLE": ""
+      },
+      {
+        "NAME": "handle_head",
+        "KIND": "CALL",
+        "ROLE": ""
+      },
+      {
+        "NAME": "handle_post",
+        "KIND": "CALL",
+        "ROLE": ""
+      },
+      {
+        "NAME": "send_error",
+        "KIND": "CALL",
+        "ROLE": ""
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入 server、session、已解析的 req。",
+    "ACTION": "switch(req->method)：HTTP_GET→handle_get; HTTP_HEAD→handle_head; HTTP_POST→handle_post; HTTP_UNKNOWN→send_error 501。",
+    "OUTPUT": "成功返回 0，失败返回 -1。",
+    "INVARIANTS_USED": [
+      "函数执行保持本模块内部状态一致性。"
+    ]
+  }
+}

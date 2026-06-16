@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import base64
 import os
 import shutil
 import socket
 import tempfile
+import time
 from pathlib import Path
 
 from .common import free_port, start_server, stop_process, wait_for_tcp
@@ -69,6 +71,21 @@ def _build_email_body(sender: str, recipient: str, subject: str, body_text: str)
     )
 
 
+def _smtp_auth_login(sock: socket.socket, user: str = "smtpuser", password: str = "smtppass") -> None:
+    """Perform AUTH LOGIN on *sock*.  Raises RuntimeError on unexpected codes."""
+    code, _ = _smtp_exchange(sock, "AUTH LOGIN")
+    if code != 334:
+        raise RuntimeError(f"AUTH LOGIN: expected 334, got {code}")
+
+    code, _ = _smtp_exchange(sock, base64.b64encode(user.encode()).decode())
+    if code != 334:
+        raise RuntimeError(f"AUTH LOGIN user: expected 334, got {code}")
+
+    code, _ = _smtp_exchange(sock, base64.b64encode(password.encode()).decode())
+    if code != 235:
+        raise RuntimeError(f"AUTH LOGIN password: expected 235, got {code}")
+
+
 # ---------------------------------------------------------------------------
 # run entry-point – compatible with verify_protocol_behavior()
 # ---------------------------------------------------------------------------
@@ -82,6 +99,10 @@ def run(project_dir: Path, binary_name: str, scenarios: list[dict[str, str]]) ->
         process = start_server(project_dir, binary_name, port, extra_args=[tmpdir])
         try:
             wait_for_tcp(port)
+            # SMTP is single-threaded — give the server a moment to detect that
+            # wait_for_tcp's probe connection was closed, so it can accept the
+            # test connections below.
+            time.sleep(0.3)
 
             # ------------------------------------------------- 1. transport
             # Verify TCP socket bind / listen / accept works: the client can
@@ -130,6 +151,7 @@ def run(project_dir: Path, binary_name: str, scenarios: list[dict[str, str]]) ->
             try:
                 _read_smtp_response(sock)  # consume 220
                 _smtp_exchange(sock, "HELO test.local")  # consume 250
+                _smtp_auth_login(sock)  # AUTH LOGIN required before mail
                 code, response = _smtp_exchange(
                     sock, "MAIL FROM:<sender@test.local>"
                 )
@@ -153,6 +175,7 @@ def run(project_dir: Path, binary_name: str, scenarios: list[dict[str, str]]) ->
             try:
                 _read_smtp_response(sock)  # consume 220
                 _smtp_exchange(sock, "HELO test.local")
+                _smtp_auth_login(sock)  # AUTH LOGIN required before mail
                 _smtp_exchange(sock, "MAIL FROM:<sender@test.local>")
                 code, response = _smtp_exchange(
                     sock, "RCPT TO:<rcpt@test.local>"
@@ -178,6 +201,7 @@ def run(project_dir: Path, binary_name: str, scenarios: list[dict[str, str]]) ->
             try:
                 _read_smtp_response(sock)  # consume 220
                 _smtp_exchange(sock, "HELO test.local")
+                _smtp_auth_login(sock)  # AUTH LOGIN required before mail
                 _smtp_exchange(sock, "MAIL FROM:<sender@test.local>")
                 _smtp_exchange(sock, "RCPT TO:<rcpt@test.local>")
 
@@ -233,12 +257,13 @@ def run(project_dir: Path, binary_name: str, scenarios: list[dict[str, str]]) ->
             finally:
                 sock.close()
 
-            # 6b. DATA before MAIL FROM / RCPT TO (after HELO only).
+            # 6b. DATA before MAIL FROM / RCPT TO (after HELO + AUTH).
             sock = socket.create_connection(("127.0.0.1", port), timeout=3)
             sock.settimeout(3)
             try:
                 _read_smtp_response(sock)  # consume 220
                 _smtp_exchange(sock, "HELO test.local")
+                _smtp_auth_login(sock)
                 code, _ = _smtp_exchange(sock, "DATA")
                 if code not in (503, 500):
                     raise RuntimeError(
@@ -247,12 +272,13 @@ def run(project_dir: Path, binary_name: str, scenarios: list[dict[str, str]]) ->
             finally:
                 sock.close()
 
-            # 6c. DATA before RCPT TO (after HELO + MAIL FROM).
+            # 6c. DATA before RCPT TO (after HELO + AUTH + MAIL FROM).
             sock = socket.create_connection(("127.0.0.1", port), timeout=3)
             sock.settimeout(3)
             try:
                 _read_smtp_response(sock)  # consume 220
                 _smtp_exchange(sock, "HELO test.local")
+                _smtp_auth_login(sock)
                 _smtp_exchange(sock, "MAIL FROM:<s@t.local>")
                 code, _ = _smtp_exchange(sock, "DATA")
                 if code not in (503, 500):
@@ -315,6 +341,8 @@ def run(project_dir: Path, binary_name: str, scenarios: list[dict[str, str]]) ->
                     raise RuntimeError(
                         f"Smoke test HELO: expected 250, got {code}"
                     )
+
+                _smtp_auth_login(sock)  # AUTH LOGIN required before mail
 
                 code, _ = _smtp_exchange(
                     sock, "MAIL FROM:<smoke-sender@test.local>"

@@ -1,0 +1,575 @@
+{
+  "KIND": "PROTOCOL_MODULE_SPEC",
+  "PROTOCOL": {
+    "NAME": "HTTP",
+    "SPEC_VERSION": "1.1",
+    "ROLES": [
+      "SERVER"
+    ],
+    "DEFAULT_PORT": 8080,
+    "SCOPE": "HTTP/1.1 server subset (GET/HEAD/POST); external HTTP clients are used for validation."
+  },
+  "MODULES": [
+    {
+      "NAME": "network",
+      "ROLE": "TCP/epoll 网络层：accept + 事件循环；连接对象的读缓冲（支持按行/按字节提取）、写缓冲与关闭；通过回调把连接与数据事件上交给上层。不得解析 HTTP 语义。",
+      "DEPENDENCIES": [],
+      "ARTIFACTS": [
+        {
+          "NAME": "HTTP_IO_READABLE",
+          "KIND": "CONST",
+          "ROLE": "epoll 可读事件标志位（值为 1）"
+        },
+        {
+          "NAME": "HTTP_IO_WRITABLE",
+          "KIND": "CONST",
+          "ROLE": "epoll 可写事件标志位（值为 2）"
+        },
+        {
+          "NAME": "http_connection_t",
+          "KIND": "TYPE",
+          "ROLE": "连接对象不透明句柄，封装 fd、输入缓冲（支持行/字节提取）、输出缓冲与 flush 状态"
+        },
+        {
+          "NAME": "http_tcp_server_t",
+          "KIND": "TYPE",
+          "ROLE": "TCP server 不透明句柄，封装监听端口、epoll 句柄、运行标志与客户端连接链表"
+        },
+        {
+          "NAME": "http_tcp_callbacks_t",
+          "KIND": "TYPE",
+          "ROLE": "TCP server 回调集合结构，包含 on_accept、on_event、on_close 三个事件回调"
+        },
+        {
+          "NAME": "http_connection_create",
+          "KIND": "FUNC",
+          "ROLE": "为已建立的 socket fd 创建连接对象并初始化缓冲区状态"
+        },
+        {
+          "NAME": "http_connection_destroy",
+          "KIND": "FUNC",
+          "ROLE": "销毁连接对象并释放输入/输出缓冲区"
+        },
+        {
+          "NAME": "http_connection_fd",
+          "KIND": "FUNC",
+          "ROLE": "读取连接当前 fd；连接无效时返回 -1"
+        },
+        {
+          "NAME": "http_connection_read",
+          "KIND": "FUNC",
+          "ROLE": "非阻塞读取 socket 数据追加到输入缓冲，返回读取字节数或错误码"
+        },
+        {
+          "NAME": "http_connection_pop_line",
+          "KIND": "FUNC",
+          "ROLE": "从输入缓冲提取一行（以 \\n 分隔，去除 \\r），调用方负责 free；行不完整时返回 NULL"
+        },
+        {
+          "NAME": "http_connection_pop_bytes",
+          "KIND": "FUNC",
+          "ROLE": "从输入缓冲提取指定长度字节，调用方负责 free；数据不足时返回 NULL"
+        },
+        {
+          "NAME": "http_connection_buffered",
+          "KIND": "FUNC",
+          "ROLE": "返回输入缓冲中当前可读字节数"
+        },
+        {
+          "NAME": "http_connection_queue",
+          "KIND": "FUNC",
+          "ROLE": "将原始字节追加到输出缓冲队列"
+        },
+        {
+          "NAME": "http_connection_queue_str",
+          "KIND": "FUNC",
+          "ROLE": "将 C 字符串追加到输出缓冲队列（委托 http_connection_queue）"
+        },
+        {
+          "NAME": "http_connection_flush",
+          "KIND": "FUNC",
+          "ROLE": "非阻塞地将输出缓冲刷写到 socket；返回 0=全部发送, 1=部分发送需重试, -1=错误"
+        },
+        {
+          "NAME": "http_connection_has_pending",
+          "KIND": "FUNC",
+          "ROLE": "判断连接是否存在待发送数据"
+        },
+        {
+          "NAME": "http_tcp_server_create",
+          "KIND": "FUNC",
+          "ROLE": "分配 TCP server 对象，保存端口、回调与 user 指针，初始化 fd 为 -1"
+        },
+        {
+          "NAME": "http_tcp_server_destroy",
+          "KIND": "FUNC",
+          "ROLE": "关闭所有客户端连接、监听 fd 与 epoll fd，释放 server；空指针安全返回"
+        },
+        {
+          "NAME": "http_tcp_server_start",
+          "KIND": "FUNC",
+          "ROLE": "创建非阻塞监听 socket、bind 端口、创建 epoll 实例并注册监听 fd"
+        },
+        {
+          "NAME": "http_tcp_server_stop",
+          "KIND": "FUNC",
+          "ROLE": "置 running=false，通知事件循环退出"
+        },
+        {
+          "NAME": "http_tcp_server_run",
+          "KIND": "FUNC",
+          "ROLE": "运行 epoll 事件循环：分派 accept/read/write/close 事件并回调上层"
+        },
+        {
+          "NAME": "http_tcp_server_update_interest",
+          "KIND": "FUNC",
+          "ROLE": "更新 fd 的 epoll 监听事件（EPOLLIN ± EPOLLOUT），用于按需注册/取消写监听"
+        },
+        {
+          "NAME": "http_tcp_server_close_client",
+          "KIND": "FUNC",
+          "ROLE": "从 epoll 移除 fd、关闭 socket、从客户端链表删除节点并触发 on_close 回调"
+        }
+      ],
+      "FILES": [
+        "../network/connection.h",
+        "../network/connection.c",
+        "../network/tcp_server.h",
+        "../network/tcp_server.c"
+      ],
+      "DOC_REF": []
+    },
+    {
+      "NAME": "protocol",
+      "ROLE": "HTTP/1.1 请求解析与响应编码：将字节流解析为结构化请求（方法/URI/头部/正文），将响应状态/头部/正文编码为字节序列。不得依赖 socket/epoll 或文件系统。",
+      "DEPENDENCIES": [],
+      "ARTIFACTS": [
+        {
+          "NAME": "http_method_t",
+          "KIND": "TYPE",
+          "ROLE": "HTTP 请求方法枚举：GET/HEAD/POST/UNKNOWN"
+        },
+        {
+          "NAME": "HTTP_MAX_HEADERS",
+          "KIND": "CONST",
+          "ROLE": "请求最大头部数量 64"
+        },
+        {
+          "NAME": "HTTP_MAX_URI",
+          "KIND": "CONST",
+          "ROLE": "请求 URI 最大长度 2048 字节"
+        },
+        {
+          "NAME": "HTTP_MAX_HEADER_NAME",
+          "KIND": "CONST",
+          "ROLE": "请求头部名称最大长度 256 字节"
+        },
+        {
+          "NAME": "HTTP_MAX_HEADER_VALUE",
+          "KIND": "CONST",
+          "ROLE": "请求头部值最大长度 4096 字节"
+        },
+        {
+          "NAME": "HTTP_MAX_BODY",
+          "KIND": "CONST",
+          "ROLE": "请求正文最大长度 16 MiB"
+        },
+        {
+          "NAME": "http_header_t",
+          "KIND": "TYPE",
+          "ROLE": "HTTP 头部键值对结构，包含 name[256] 和 value[4096]"
+        },
+        {
+          "NAME": "http_request_t",
+          "KIND": "TYPE",
+          "ROLE": "HTTP 请求结构：method、uri[2048]、headers[64]、header_count、动态 body 指针与 body_len"
+        },
+        {
+          "NAME": "http_request_init",
+          "KIND": "FUNC",
+          "ROLE": "将 request 结构体 memset 清零；空指针安全返回"
+        },
+        {
+          "NAME": "http_request_free",
+          "KIND": "FUNC",
+          "ROLE": "释放 request 的 body 动态内存并复位 body/body_len"
+        },
+        {
+          "NAME": "http_request_parse",
+          "KIND": "FUNC",
+          "ROLE": "从连接输入缓冲解析 HTTP/1.1 请求行、头部与正文；返回 0=完成, 1=需要更多数据, -1=解析错误"
+        },
+        {
+          "NAME": "http_request_header",
+          "KIND": "FUNC",
+          "ROLE": "按名称（大小写不敏感）查找请求头部值；未找到返回 NULL"
+        },
+        {
+          "NAME": "http_status_text",
+          "KIND": "FUNC",
+          "ROLE": "将 HTTP 状态码映射为 RFC 标准状态文本；未知码返回 \"Unknown\""
+        },
+        {
+          "NAME": "http_response_send",
+          "KIND": "FUNC",
+          "ROLE": "构建完整 HTTP/1.1 响应：状态行、Date、Server、Content-Length、Connection: close、可选额外头部与正文"
+        },
+        {
+          "NAME": "http_response_send_html",
+          "KIND": "FUNC",
+          "ROLE": "便捷函数：将 printf 风格格式化字符串包装为 text/html 响应并发送"
+        }
+      ],
+      "FILES": [
+        "../protocol/http_request.h",
+        "../protocol/http_request.c",
+        "../protocol/http_response.h",
+        "../protocol/http_response.c"
+      ],
+      "DOC_REF": []
+    },
+    {
+      "NAME": "resource",
+      "ROLE": "文件系统抽象层：路径安全解析与沙箱（防目录遍历）、MIME 类型映射、文件读取、目录 HTML 列表生成。不得依赖 socket/epoll 或 HTTP 协议解析。",
+      "DEPENDENCIES": [],
+      "ARTIFACTS": [
+        {
+          "NAME": "http_mime_by_ext",
+          "KIND": "FUNC",
+          "ROLE": "根据文件路径扩展名返回 MIME 类型字符串；未匹配时返回 application/octet-stream"
+        },
+        {
+          "NAME": "http_resolve_path",
+          "KIND": "FUNC",
+          "ROLE": "将 root_dir + uri_path 规范化为绝对路径，检测并拒绝目录遍历攻击（返回 -1 + errno=EACCES）"
+        },
+        {
+          "NAME": "http_stat_path",
+          "KIND": "FUNC",
+          "ROLE": "对路径执行 stat，返回 0=普通文件, 1=目录, -1=不存在/无权限"
+        },
+        {
+          "NAME": "http_read_file",
+          "KIND": "FUNC",
+          "ROLE": "以二进制方式读取整个文件到动态分配的缓冲区；调用方通过 out_data/out_len 获取结果并负责 free(*out_data)"
+        },
+        {
+          "NAME": "http_dir_listing_html",
+          "KIND": "FUNC",
+          "ROLE": "生成目录的 HTML 列表页面（包含文件名、大小、目录标记）；调用方负责 free 返回值"
+        }
+      ],
+      "FILES": [
+        "../resource/file_ops.h",
+        "../resource/file_ops.c"
+      ],
+      "DOC_REF": []
+    },
+    {
+      "NAME": "server_app",
+      "ROLE": "HTTP server 入口与请求处理协调：管理会话生命周期、将解析后的请求按方法分派到 GET/HEAD/POST 处理器、协调文件服务与错误响应。",
+      "DEPENDENCIES": [
+        "network",
+        "protocol",
+        "resource"
+      ],
+      "ARTIFACTS": [
+        {
+          "NAME": "http_session_t",
+          "KIND": "TYPE",
+          "ROLE": "会话结构，关联 fd 与 http_connection_t 连接对象"
+        },
+        {
+          "NAME": "http_server_t",
+          "KIND": "TYPE",
+          "ROLE": "HTTP server 进程级对象的不透明句柄，持有端口、root 路径、TCP server 与会话链表"
+        },
+        {
+          "NAME": "http_session_create",
+          "KIND": "FUNC",
+          "ROLE": "为已 accept 的 fd 创建会话对象与底层连接对象"
+        },
+        {
+          "NAME": "http_session_destroy",
+          "KIND": "FUNC",
+          "ROLE": "销毁底层连接对象并释放会话；空指针安全返回"
+        },
+        {
+          "NAME": "http_server_create",
+          "KIND": "FUNC",
+          "ROLE": "创建 HTTP server：解析 root 目录规范路径、验证目录存在、创建 TCP server 并绑定回调"
+        },
+        {
+          "NAME": "http_server_destroy",
+          "KIND": "FUNC",
+          "ROLE": "销毁所有活跃会话、停止并销毁 TCP server、释放 server"
+        },
+        {
+          "NAME": "http_server_start",
+          "KIND": "FUNC",
+          "ROLE": "启动底层 TCP server（监听 + epoll 就绪）"
+        },
+        {
+          "NAME": "http_server_run",
+          "KIND": "FUNC",
+          "ROLE": "进入 TCP server 事件循环"
+        },
+        {
+          "NAME": "http_server_stop",
+          "KIND": "FUNC",
+          "ROLE": "停止底层 TCP server 事件循环"
+        }
+      ],
+      "FILES": [
+        "../main.c",
+        "../server/http_server.h",
+        "../server/http_server.c",
+        "../server/http_session.h",
+        "../server/http_session.c"
+      ],
+      "DOC_REF": []
+    }
+  ],
+  "GENERATION_ORDER": [
+    "network",
+    "protocol",
+    "resource",
+    "server_app"
+  ],
+  "CONSISTENCY_RULES": [
+    {
+      "ID": "C1",
+      "RULE": "network 层不得解析 HTTP 语义（方法、头部、状态码）；它只负责字节缓冲与 socket 事件分发。",
+      "DOC_REF": []
+    },
+    {
+      "ID": "C2",
+      "RULE": "HTTP 请求解析与响应编码仅允许位于 protocol 模块；network/resource/server_app 必须通过 http_request_parse/http_response_send 使用协议能力。",
+      "DOC_REF": []
+    },
+    {
+      "ID": "C3",
+      "RULE": "路径安全沙箱由 resource 模块的 http_resolve_path 统一执行；server_app 在服务文件前必须调用 http_resolve_path，不得自行拼接或规范化路径。",
+      "DOC_REF": []
+    },
+    {
+      "ID": "C4",
+      "RULE": "每个请求-响应周期结束后必须关闭 TCP 连接（Connection: close）；不实现 keep-alive、pipelining 或持久连接复用。",
+      "DOC_REF": []
+    },
+    {
+      "ID": "C5",
+      "RULE": "仅支持 GET、HEAD、POST 三种方法；任何其他方法（包括 PUT、DELETE、PATCH、OPTIONS 等）必须返回 501 Not Implemented。",
+      "DOC_REF": []
+    },
+    {
+      "ID": "C6",
+      "RULE": "目录请求优先服务 index.html；仅当 index.html 不存在时才生成 HTML 目录列表。",
+      "DOC_REF": []
+    },
+    {
+      "ID": "C7",
+      "RULE": "POST 仅允许创建新文件；POST 到已存在的目录路径返回 405 Method Not Allowed；POST 正文超过 HTTP_MAX_BODY (16 MiB) 返回 413 Payload Too Large。",
+      "DOC_REF": []
+    },
+    {
+      "ID": "C8",
+      "RULE": "只能使用 canonical header 中声明的 public types、fields、enum values 与 functions；不得臆造额外 HTTP surface。",
+      "DOC_REF": []
+    }
+  ],
+  "TEST_VECTORS": [
+    {
+      "NAME": "runtime_get_root_index",
+      "LEVEL": "RUNTIME",
+      "INPUT": {
+        "method": "GET",
+        "path": "/"
+      },
+      "EXPECT": {
+        "response_code": 200,
+        "content_type": "text/html"
+      },
+      "TRACE_REFS": [
+        "http/server/http_server/handle_get",
+        "http/server/http_server/serve_file",
+        "http/resource/file_ops/http_resolve_path"
+      ]
+    },
+    {
+      "NAME": "runtime_get_text_file",
+      "LEVEL": "RUNTIME",
+      "INPUT": {
+        "method": "GET",
+        "path": "/hello.txt"
+      },
+      "EXPECT": {
+        "response_code": 200,
+        "content_type": "text/plain"
+      },
+      "TRACE_REFS": [
+        "http/server/http_server/handle_get",
+        "http/resource/file_ops/http_read_file",
+        "http/resource/file_ops/http_mime_by_ext"
+      ]
+    },
+    {
+      "NAME": "runtime_head_no_body",
+      "LEVEL": "RUNTIME",
+      "INPUT": {
+        "method": "HEAD",
+        "path": "/hello.txt"
+      },
+      "EXPECT": {
+        "response_code": 200,
+        "has_content_length": true,
+        "has_body": false
+      },
+      "TRACE_REFS": [
+        "http/server/http_server/handle_head",
+        "http/server/http_server/serve_file"
+      ]
+    },
+    {
+      "NAME": "runtime_404_not_found",
+      "LEVEL": "RUNTIME",
+      "INPUT": {
+        "method": "GET",
+        "path": "/nonexistent.html"
+      },
+      "EXPECT": {
+        "response_code": 404
+      },
+      "TRACE_REFS": [
+        "http/server/http_server/serve_file",
+        "http/resource/file_ops/http_stat_path"
+      ]
+    },
+    {
+      "NAME": "runtime_post_create_file",
+      "LEVEL": "RUNTIME",
+      "INPUT": {
+        "method": "POST",
+        "path": "/newfile.txt",
+        "body": "created content"
+      },
+      "EXPECT": {
+        "response_code": 201
+      },
+      "TRACE_REFS": [
+        "http/server/http_server/handle_post",
+        "http/resource/file_ops/http_resolve_path"
+      ]
+    },
+    {
+      "NAME": "runtime_post_verify_content",
+      "LEVEL": "RUNTIME",
+      "INPUT": {
+        "method": "GET",
+        "path": "/newfile.txt"
+      },
+      "EXPECT": {
+        "response_code": 200,
+        "body": "created content"
+      },
+      "TRACE_REFS": [
+        "http/server/http_server/handle_get",
+        "http/resource/file_ops/http_read_file"
+      ]
+    },
+    {
+      "NAME": "runtime_directory_listing",
+      "LEVEL": "RUNTIME",
+      "INPUT": {
+        "method": "GET",
+        "path": "/subdir/"
+      },
+      "EXPECT": {
+        "response_code": 200,
+        "content_type": "text/html",
+        "has_directory_listing": true
+      },
+      "TRACE_REFS": [
+        "http/server/http_server/serve_file",
+        "http/resource/file_ops/http_dir_listing_html"
+      ]
+    },
+    {
+      "NAME": "runtime_path_traversal_403",
+      "LEVEL": "RUNTIME",
+      "INPUT": {
+        "method": "GET",
+        "path": "/../etc/passwd"
+      },
+      "EXPECT": {
+        "response_code": 403
+      },
+      "TRACE_REFS": [
+        "http/resource/file_ops/http_resolve_path",
+        "http/server/http_server/serve_file"
+      ]
+    },
+    {
+      "NAME": "runtime_post_to_directory_405",
+      "LEVEL": "RUNTIME",
+      "INPUT": {
+        "method": "POST",
+        "path": "/subdir/"
+      },
+      "EXPECT": {
+        "response_code": 405
+      },
+      "TRACE_REFS": [
+        "http/server/http_server/handle_post",
+        "http/resource/file_ops/http_resolve_path"
+      ]
+    },
+    {
+      "NAME": "runtime_unknown_method_501",
+      "LEVEL": "RUNTIME",
+      "INPUT": {
+        "method": "DELETE",
+        "path": "/hello.txt"
+      },
+      "EXPECT": {
+        "response_code": 501
+      },
+      "TRACE_REFS": [
+        "http/server/http_server/dispatch",
+        "http/protocol/http_request/parse_method"
+      ]
+    }
+  ],
+  "FORBIDDEN_SYMBOLS": [
+    {
+      "NAME": "HTTP_METHOD_GET",
+      "KIND": "ENUM",
+      "REASON": "HTTP method enum 唯一公开命名是 HTTP_GET"
+    },
+    {
+      "NAME": "HTTP_METHOD_POST",
+      "KIND": "ENUM",
+      "REASON": "HTTP method enum 唯一公开命名是 HTTP_POST"
+    },
+    {
+      "NAME": "http_request_set_method",
+      "KIND": "FUNC",
+      "REASON": "不存在 setter；method 由 http_request_parse 内部设置"
+    },
+    {
+      "NAME": "http_send_response",
+      "KIND": "FUNC",
+      "REASON": "响应发送函数命名是 http_response_send"
+    },
+    {
+      "NAME": "http_get_mime",
+      "KIND": "FUNC",
+      "REASON": "MIME 查询函数命名是 http_mime_by_ext"
+    },
+    {
+      "NAME": "http_connection_pop",
+      "KIND": "FUNC",
+      "REASON": "不存在通用 pop；必须使用 http_connection_pop_line 或 http_connection_pop_bytes"
+    }
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "http/network/connection/http_connection_pop_line",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "从输入缓冲提取以 \\n 分隔的一行，去除尾部 \\r，动态分配返回；行不完整返回 NULL",
+  "SIGNATURE": {
+    "RAW": "char* http_connection_pop_line(http_connection_t* conn)",
+    "NAME": "http_connection_pop_line",
+    "RETURN": "char*",
+    "PARAMS": [
+      {
+        "TYPE": "http_connection_t*",
+        "NAME": "conn",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct http_connection",
+        "ROLE": "连接私有状态结构体"
+      }
+    ],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入来自函数参数。",
+    "ACTION": "扫描 in_buf 查找 \\n；未找到返回 NULL；找到后去除尾部 \\r；malloc 分配 line_len+1 字节并 memcpy；memmove 消费缓冲中已提取数据（包括 \\n）。",
+    "OUTPUT": "成功返回动态分配的行字符串（调用方负责 free）；行不完整返回 NULL。",
+    "INVARIANTS_USED": [
+      "函数执行保持本模块内部状态一致性。"
+    ]
+  },
+  "THREAD_SAFETY": "SINGLE_THREAD_ONLY",
+  "IDEMPOTENT": false,
+  "CALL_CONTRACTS": [
+    {
+      "TEXT": "返回动态分配的字符串，调用方负责 free"
+    }
+  ],
+  "ACCESS_PATHS": [
+    {
+      "PATH": "conn->in_buf",
+      "TYPE": "uint8_t*",
+      "ROLE": "扫描 \\n 并从中提取行数据"
+    },
+    {
+      "PATH": "conn->in_len",
+      "TYPE": "size_t",
+      "ROLE": "提取成功后通过 memmove 缩减"
+    }
+  ]
+}

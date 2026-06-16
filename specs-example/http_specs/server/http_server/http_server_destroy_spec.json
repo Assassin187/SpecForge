@@ -1,0 +1,52 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "http/server/http_server/http_server_destroy",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "遍历销毁所有活跃会话→停止并销毁 TCP server→释放 server；空指针安全",
+  "SIGNATURE": {
+    "RAW": "void http_server_destroy(http_server_t* server)",
+    "NAME": "http_server_destroy",
+    "RETURN": "void",
+    "PARAMS": [
+      {
+        "TYPE": "http_server_t*",
+        "NAME": "server",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct http_server",
+        "ROLE": ""
+      },
+      {
+        "NAME": "http_session_node_t",
+        "ROLE": ""
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "http_session_destroy",
+        "KIND": "CALL",
+        "ROLE": ""
+      },
+      {
+        "NAME": "http_tcp_server_destroy",
+        "KIND": "CALL",
+        "ROLE": ""
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入来自函数参数。",
+    "ACTION": "空安全检查→遍历 sessions 链表逐一 http_session_destroy+free 节点→http_tcp_server_destroy→free(server)。",
+    "OUTPUT": "通过返回值或副作用反映处理结果。",
+    "INVARIANTS_USED": [
+      "函数执行保持本模块内部状态一致性。"
+    ]
+  }
+}

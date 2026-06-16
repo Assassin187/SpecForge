@@ -1,0 +1,46 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "http/network/tcp_server/http_tcp_server_start",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "THREAD_SAFETY": "SINGLE_THREAD_ONLY",
+  "IDEMPOTENT": false,
+  "ROLE": "创建监听 socket→epoll_create1→注册 listen_fd 的 EPOLLIN",
+  "SIGNATURE": {
+    "RAW": "int http_tcp_server_start(http_tcp_server_t* server)",
+    "NAME": "http_tcp_server_start",
+    "RETURN": "int",
+    "PARAMS": [
+      {
+        "TYPE": "http_tcp_server_t*",
+        "NAME": "server",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct http_tcp_server",
+        "ROLE": "TCP server 私有状态"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "setup_listener",
+        "KIND": "CALL",
+        "ROLE": "创建监听 socket"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入 server 指针。",
+    "ACTION": "调用 setup_listener 创建监听 socket→epoll_create1(0)→epoll_ctl EPOLL_CTL_ADD 注册 listen_fd EPOLLIN。任一步失败清理并返回 -1。",
+    "OUTPUT": "成功返回 0，失败返回 -1。",
+    "INVARIANTS_USED": [
+      "仅在监听 socket 与 epoll 都就绪后进入可运行状态",
+      "失败时不进入事件循环"
+    ]
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "http/network/connection/ensure_cap",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "缓冲扩容函数：从 4096 起倍增直到满足 needed 字节需求",
+  "SIGNATURE": {
+    "RAW": "static int ensure_cap(uint8_t** buf, size_t* cap, size_t needed)",
+    "NAME": "ensure_cap",
+    "RETURN": "int",
+    "PARAMS": [
+      {
+        "TYPE": "uint8_t**",
+        "NAME": "buf",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "size_t*",
+        "NAME": "cap",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "size_t",
+        "NAME": "needed",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入来自函数参数。",
+    "ACTION": "若 needed <= *cap 直接返回 0；初始容量从 4096 开始，倍增直到 >= needed；realloc 分配新缓冲，更新 *buf 和 *cap。",
+    "OUTPUT": "成功返回 0，realloc 失败返回 -1。",
+    "INVARIANTS_USED": [
+      "函数执行保持本模块内部状态一致性。"
+    ]
+  },
+  "THREAD_SAFETY": "SINGLE_THREAD_ONLY",
+  "IDEMPOTENT": false,
+  "ACCESS_PATHS": [
+    {
+      "PATH": "*buf",
+      "TYPE": "uint8_t*",
+      "ROLE": "通过 realloc 更新为扩容后的缓冲指针"
+    },
+    {
+      "PATH": "*cap",
+      "TYPE": "size_t",
+      "ROLE": "更新为扩容后的新容量"
+    }
+  ]
+}

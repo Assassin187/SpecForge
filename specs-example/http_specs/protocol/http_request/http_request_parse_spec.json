@@ -1,0 +1,76 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "http/protocol/http_request/http_request_parse",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "从连接输入缓冲解析完整 HTTP/1.1 请求：请求行→头部→正文；返回 0/1/-1",
+  "SIGNATURE": {
+    "RAW": "int http_request_parse(http_request_t* req, http_connection_t* conn)",
+    "NAME": "http_request_parse",
+    "RETURN": "int",
+    "PARAMS": [
+      {
+        "TYPE": "http_request_t*",
+        "NAME": "req",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "http_connection_t*",
+        "NAME": "conn",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "http_request_t",
+        "ROLE": "HTTP 请求结构体"
+      },
+      {
+        "NAME": "http_header_t",
+        "ROLE": "HTTP 头部键值对结构体"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "http_connection_pop_line",
+        "KIND": "CALL",
+        "ROLE": "从连接缓冲读取一行"
+      },
+      {
+        "NAME": "http_connection_buffered",
+        "KIND": "CALL",
+        "ROLE": "检查连接缓冲可用字节数"
+      },
+      {
+        "NAME": "http_connection_pop_bytes",
+        "KIND": "CALL",
+        "ROLE": "从连接缓冲读取指定长度字节"
+      },
+      {
+        "NAME": "parse_method",
+        "KIND": "CALL",
+        "ROLE": "将方法字符串映射为枚举值"
+      },
+      {
+        "NAME": "http_request_header",
+        "KIND": "CALL",
+        "ROLE": "按名称查找已解析头部值"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入 req 和 conn。",
+    "ACTION": "第一阶段：pop_line 获取请求行，sscanf 解析 method/uri/version，parse_method 映射方法枚举。第二阶段：循环 pop_line 解析头部直到空行，strchr 查找冒号分隔符，strncpy 保存 name/value。第三阶段：http_request_header 查找 Content-Length，strtoul 转换数值，校验不超过 HTTP_MAX_BODY，pop_bytes 读取正文。",
+    "OUTPUT": "成功返回 0；数据不完整返回 1；解析/协议错误返回 -1。",
+    "INVARIANTS_USED": [
+      "请求行必须包含 method URI version 三部分",
+      "头部数量不超过 HTTP_MAX_HEADERS",
+      "正文长度不超过 HTTP_MAX_BODY",
+      "解析失败时结构体处于未定义状态，调用方应先调用 http_request_free"
+    ]
+  }
+}

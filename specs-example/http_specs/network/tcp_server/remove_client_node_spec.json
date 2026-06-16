@@ -1,0 +1,49 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "http/network/tcp_server/remove_client_node",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "THREAD_SAFETY": "SINGLE_THREAD_ONLY",
+  "IDEMPOTENT": false,
+  "ROLE": "从 TCP server 客户端链表中按 fd 删除并释放节点",
+  "SIGNATURE": {
+    "RAW": "static void remove_client_node(http_tcp_server_t* server, int fd)",
+    "NAME": "remove_client_node",
+    "RETURN": "void",
+    "PARAMS": [
+      {
+        "TYPE": "http_tcp_server_t*",
+        "NAME": "server",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "int",
+        "NAME": "fd",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct http_tcp_server",
+        "ROLE": "TCP server 私有状态"
+      },
+      {
+        "NAME": "http_client_node_t",
+        "ROLE": "客户端链表节点"
+      }
+    ],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入 server 和 fd。",
+    "ACTION": "通过指针的指针遍历链表，匹配 fd 后解除链接并 free 节点。",
+    "OUTPUT": "无返回值；通过副作用清理节点。",
+    "INVARIANTS_USED": [
+      "函数执行保持本模块内部状态一致性。"
+    ]
+  }
+}

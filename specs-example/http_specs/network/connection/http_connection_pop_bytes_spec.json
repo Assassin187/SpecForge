@@ -1,0 +1,59 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "http/network/connection/http_connection_pop_bytes",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "从输入缓冲提取指定长度的字节，动态分配返回；数据不足返回 NULL",
+  "SIGNATURE": {
+    "RAW": "char* http_connection_pop_bytes(http_connection_t* conn, size_t len)",
+    "NAME": "http_connection_pop_bytes",
+    "RETURN": "char*",
+    "PARAMS": [
+      {
+        "TYPE": "http_connection_t*",
+        "NAME": "conn",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "size_t",
+        "NAME": "len",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct http_connection",
+        "ROLE": "连接私有状态结构体"
+      }
+    ],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入来自函数参数。",
+    "ACTION": "校验 in_len >= len 且 len > 0；malloc 分配 len+1 字节并 memcpy；memmove 消费缓冲中 len 字节。",
+    "OUTPUT": "成功返回动态分配的字节缓冲区（调用方负责 free）；数据不足返回 NULL。"
+  },
+  "THREAD_SAFETY": "SINGLE_THREAD_ONLY",
+  "IDEMPOTENT": false,
+  "CALL_CONTRACTS": [
+    {
+      "TEXT": "返回动态分配的缓冲区，调用方负责 free"
+    }
+  ],
+  "ACCESS_PATHS": [
+    {
+      "PATH": "conn->in_buf",
+      "TYPE": "uint8_t*",
+      "ROLE": "从中复制 len 字节"
+    },
+    {
+      "PATH": "conn->in_len",
+      "TYPE": "size_t",
+      "ROLE": "校验是否 >= len，提取后缩减 len"
+    }
+  ]
+}

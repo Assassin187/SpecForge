@@ -1,0 +1,104 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "http/server/http_server/serve_file",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "核心文件服务函数：resolve_path→stat→文件则读取并发送→目录则优先 index.html 否则列表→不存在则 404",
+  "SIGNATURE": {
+    "RAW": "static int serve_file(http_server_t* server, http_session_t* session, const http_request_t* req, bool head_only)",
+    "NAME": "serve_file",
+    "RETURN": "int",
+    "PARAMS": [
+      {
+        "TYPE": "http_server_t*",
+        "NAME": "server",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "http_session_t*",
+        "NAME": "session",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "const http_request_t*",
+        "NAME": "req",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "bool",
+        "NAME": "head_only",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct http_server",
+        "ROLE": ""
+      },
+      {
+        "NAME": "http_session_t",
+        "ROLE": ""
+      },
+      {
+        "NAME": "http_request_t",
+        "ROLE": ""
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "http_resolve_path",
+        "KIND": "CALL",
+        "ROLE": ""
+      },
+      {
+        "NAME": "send_error",
+        "KIND": "CALL",
+        "ROLE": ""
+      },
+      {
+        "NAME": "http_stat_path",
+        "KIND": "CALL",
+        "ROLE": ""
+      },
+      {
+        "NAME": "http_read_file",
+        "KIND": "CALL",
+        "ROLE": ""
+      },
+      {
+        "NAME": "http_mime_by_ext",
+        "KIND": "CALL",
+        "ROLE": ""
+      },
+      {
+        "NAME": "http_dir_listing_html",
+        "KIND": "CALL",
+        "ROLE": ""
+      },
+      {
+        "NAME": "http_response_send",
+        "KIND": "CALL",
+        "ROLE": ""
+      },
+      {
+        "NAME": "http_tcp_server_update_interest",
+        "KIND": "CALL",
+        "ROLE": ""
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入 server、session、req 和 head_only 标志。",
+    "ACTION": "http_resolve_path 安全解析路径→失败返回 403→http_stat_path 检查类型→普通文件：http_read_file 读取→http_mime_by_ext 获取 Content-Type→http_response_send（head_only 时 body=NULL）→目录：拼接 index.html 并 stat→存在则读取服务→不存在则 http_dir_listing_html 生成列表→发送。",
+    "OUTPUT": "成功返回 0，失败返回 -1。",
+    "INVARIANTS_USED": [
+      "函数执行保持本模块内部状态一致性。"
+    ]
+  }
+}

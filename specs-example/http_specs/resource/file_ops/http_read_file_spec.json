@@ -1,0 +1,39 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "http/resource/file_ops/http_read_file",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "以二进制方式读取整个文件到动态分配缓冲；调用方负责 free(*out_data)",
+  "SIGNATURE": {
+    "RAW": "int http_read_file(const char* abs_path, char** out_data, size_t* out_len)",
+    "NAME": "http_read_file",
+    "RETURN": "int",
+    "PARAMS": [
+      {
+        "TYPE": "const char*",
+        "NAME": "abs_path"
+      },
+      {
+        "TYPE": "char**",
+        "NAME": "out_data"
+      },
+      {
+        "TYPE": "size_t*",
+        "NAME": "out_len"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入文件路径和输出指针。",
+    "ACTION": "fopen rb→fseek SEEK_END→ftell 获取大小→rewind→malloc→fread 全部→fclose→通过 out_data/out_len 输出。",
+    "OUTPUT": "成功返回 0 并设置 *out_data/*out_len；失败返回 -1，不转移所有权。",
+    "INVARIANTS_USED": [
+      "成功时 *out_data 指向堆分配缓冲区，调用方必须 free",
+      "失败时 *out_data 为 NULL，*out_len 为 0，调用方无需 free"
+    ]
+  }
+}

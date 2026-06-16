@@ -1,0 +1,65 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "http/main/main",
+  "FUNCTION_TYPE": "ENTRYPOINT",
+  "ROLE": "HTTP server 进程入口：解析参数→创建→启动→运行→销毁",
+  "SIGNATURE": {
+    "RAW": "int main(int argc, char** argv)",
+    "NAME": "main",
+    "RETURN": "int",
+    "PARAMS": [
+      {
+        "TYPE": "int",
+        "NAME": "argc",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "char**",
+        "NAME": "argv",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [],
+    "FUNC": [
+      {
+        "NAME": "parse_port",
+        "KIND": "CALL",
+        "ROLE": "解析端口字符串"
+      },
+      {
+        "NAME": "http_server_create",
+        "KIND": "CALL",
+        "ROLE": "创建 HTTP server 对象"
+      },
+      {
+        "NAME": "http_server_start",
+        "KIND": "CALL",
+        "ROLE": "启动 HTTP server 监听"
+      },
+      {
+        "NAME": "http_server_run",
+        "KIND": "CALL",
+        "ROLE": "进入 server 事件循环"
+      },
+      {
+        "NAME": "http_server_destroy",
+        "KIND": "CALL",
+        "ROLE": "释放 server 资源"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "命令行参数。",
+    "ACTION": "parse_port 解析 argv[1]（默认 8080），argv[2] 作为 root 目录（默认 '.'）→http_server_create→http_server_start→printf 监听信息→http_server_run→http_server_destroy。",
+    "OUTPUT": "成功返回 0。",
+    "INVARIANTS_USED": [
+      "创建或启动失败必须返回非零退出码",
+      "server 创建成功后任何后续失败路径都必须销毁 server"
+    ]
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "http/server/http_server/http_server_create",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "创建 HTTP server：realpath 解析 root→stat 验证目录→保存 root→创建 TCP server 并绑定回调",
+  "SIGNATURE": {
+    "RAW": "http_server_t* http_server_create(uint16_t port, const char* root_dir)",
+    "NAME": "http_server_create",
+    "RETURN": "http_server_t*",
+    "PARAMS": [
+      {
+        "TYPE": "uint16_t",
+        "NAME": "port",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "const char*",
+        "NAME": "root_dir",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct http_server",
+        "ROLE": ""
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "http_tcp_server_create",
+        "KIND": "CALL",
+        "ROLE": ""
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入端口和 root 目录路径。",
+    "ACTION": "calloc 分配 server→realpath 规范化 root→stat 验证为目录→strncpy 保存 root→http_tcp_server_create 创建 TCP server 并绑定 on_accept/on_event/on_close 回调。任一失败清理返回 NULL。",
+    "OUTPUT": "通过返回值或副作用反映处理结果。",
+    "INVARIANTS_USED": [
+      "函数执行保持本模块内部状态一致性。"
+    ]
+  }
+}

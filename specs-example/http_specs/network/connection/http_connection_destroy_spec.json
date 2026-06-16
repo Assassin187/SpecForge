@@ -1,0 +1,46 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "http/network/connection/http_connection_destroy",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "释放连接对象的输入/输出缓冲区并释放连接对象自身；空指针安全返回",
+  "SIGNATURE": {
+    "RAW": "void http_connection_destroy(http_connection_t* conn)",
+    "NAME": "http_connection_destroy",
+    "RETURN": "void",
+    "PARAMS": [
+      {
+        "TYPE": "http_connection_t*",
+        "NAME": "conn",
+        "NULLABLE": true,
+        "OWNERSHIP": "OWNED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入来自函数参数。",
+    "ACTION": "检查 conn 非空后依次 free(in_buf)、free(out_buf)、free(conn)。",
+    "OUTPUT": "通过副作用释放内存。",
+    "INVARIANTS_USED": [
+      "函数执行保持本模块内部状态一致性。"
+    ]
+  },
+  "THREAD_SAFETY": "SINGLE_THREAD_ONLY",
+  "IDEMPOTENT": false,
+  "ACCESS_PATHS": [
+    {
+      "PATH": "conn->in_buf",
+      "TYPE": "uint8_t*",
+      "ROLE": "通过 free 释放输入缓冲"
+    },
+    {
+      "PATH": "conn->out_buf",
+      "TYPE": "uint8_t*",
+      "ROLE": "通过 free 释放输出缓冲"
+    }
+  ]
+}

@@ -1,0 +1,79 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "http/protocol/http_response/http_response_send",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "构建完整 HTTP/1.1 响应并排队到连接输出缓冲：状态行→Date→Server→Content-Length→Connection:close→可选 extra_headers→空白行→可选正文",
+  "SIGNATURE": {
+    "RAW": "int http_response_send(http_connection_t* conn, int status, const char** extra_headers, const void* body, size_t body_len)",
+    "NAME": "http_response_send",
+    "RETURN": "int",
+    "PARAMS": [
+      {
+        "TYPE": "http_connection_t*",
+        "NAME": "conn",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "int",
+        "NAME": "status",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "const char**",
+        "NAME": "extra_headers",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "const void*",
+        "NAME": "body",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "size_t",
+        "NAME": "body_len",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [],
+    "FUNC": [
+      {
+        "NAME": "queuefv",
+        "KIND": "CALL",
+        "ROLE": "格式化并排队字符串到连接输出缓冲"
+      },
+      {
+        "NAME": "http_status_text",
+        "KIND": "CALL",
+        "ROLE": "将状态码映射为状态文本"
+      },
+      {
+        "NAME": "http_connection_queue_str",
+        "KIND": "CALL",
+        "ROLE": "排队字符串字面量到连接输出缓冲"
+      },
+      {
+        "NAME": "http_connection_queue",
+        "KIND": "CALL",
+        "ROLE": "排队字节数据到连接输出缓冲"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入 conn、状态码、额外头部数组、正文字节和长度。",
+    "ACTION": "依次排队：queuefv 生成状态行→time/gmtime_r/strftime 生成 Date 头部→Server: httpd/1.0→queuefv Content-Length→Connection: close→遍历 extra_headers 数组→空白行 \\r\\n→body（若非空）。任一步失败返回 -1。",
+    "OUTPUT": "成功返回 0，失败返回 -1。",
+    "INVARIANTS_USED": [
+      "extra_headers 为 NULL 终止的字符串数组，每项为 name: value 格式",
+      "body 为 NULL 且 body_len 为 0 时跳过正文发送",
+      "Date 头部使用 GMT 时间格式"
+    ]
+  }
+}

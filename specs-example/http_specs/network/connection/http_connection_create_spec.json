@@ -1,0 +1,81 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "http/network/connection/http_connection_create",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "为已建立的 socket fd 分配并初始化连接对象，设置 fd、清零缓冲字段",
+  "SIGNATURE": {
+    "RAW": "http_connection_t* http_connection_create(int fd)",
+    "NAME": "http_connection_create",
+    "RETURN": "http_connection_t*",
+    "PARAMS": [
+      {
+        "TYPE": "int",
+        "NAME": "fd",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入来自函数参数。",
+    "ACTION": "calloc 分配 http_connection 结构体，设置 fd 字段，初始化 in_buf/out_buf 等缓冲字段为 NULL/0。",
+    "OUTPUT": "成功返回连接对象指针，失败返回 NULL。",
+    "INVARIANTS_USED": [
+      "函数执行保持本模块内部状态一致性。"
+    ]
+  },
+  "THREAD_SAFETY": "SINGLE_THREAD_ONLY",
+  "IDEMPOTENT": false,
+  "CALL_CONTRACTS": [
+    {
+      "TEXT": "返回动态分配的对象，调用方必须通过 http_connection_destroy 释放"
+    }
+  ],
+  "ACCESS_PATHS": [
+    {
+      "PATH": "conn->fd",
+      "TYPE": "int",
+      "ROLE": "写入 socket 文件描述符"
+    },
+    {
+      "PATH": "conn->in_buf",
+      "TYPE": "uint8_t*",
+      "ROLE": "初始化为 NULL"
+    },
+    {
+      "PATH": "conn->in_len",
+      "TYPE": "size_t",
+      "ROLE": "初始化为 0"
+    },
+    {
+      "PATH": "conn->in_cap",
+      "TYPE": "size_t",
+      "ROLE": "初始化为 0"
+    },
+    {
+      "PATH": "conn->out_buf",
+      "TYPE": "uint8_t*",
+      "ROLE": "初始化为 NULL"
+    },
+    {
+      "PATH": "conn->out_len",
+      "TYPE": "size_t",
+      "ROLE": "初始化为 0"
+    },
+    {
+      "PATH": "conn->out_off",
+      "TYPE": "size_t",
+      "ROLE": "初始化为 0"
+    },
+    {
+      "PATH": "conn->out_cap",
+      "TYPE": "size_t",
+      "ROLE": "初始化为 0"
+    }
+  ]
+}

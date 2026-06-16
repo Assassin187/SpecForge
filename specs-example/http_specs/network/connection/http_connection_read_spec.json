@@ -1,0 +1,69 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "http/network/connection/http_connection_read",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "非阻塞循环 recv 读取 socket 数据并追加到输入缓冲；正确处理 EAGAIN/EINTR/对端关闭",
+  "SIGNATURE": {
+    "RAW": "int http_connection_read(http_connection_t* conn)",
+    "NAME": "http_connection_read",
+    "RETURN": "int",
+    "PARAMS": [
+      {
+        "TYPE": "http_connection_t*",
+        "NAME": "conn",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct http_connection",
+        "ROLE": "连接私有状态结构体"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "ensure_cap",
+        "KIND": "CALL",
+        "ROLE": "确保输入缓冲容量充足"
+      },
+      {
+        "NAME": "recv",
+        "KIND": "CALL",
+        "ROLE": "从 socket 读取原始字节"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入来自函数参数。",
+    "ACTION": "使用 4096 字节栈缓冲区循环 recv；EINTR 时重试；EAGAIN/EWOULDBLOCK 时若无已读数据返回 -2；对端关闭返回已读字节数；错误返回 -1。每次成功读取后调用 ensure_cap 扩容并 memcpy 追加到输入缓冲。",
+    "OUTPUT": "返回总读取字节数；无新数据且 EAGAIN 返回 -2；错误返回 -1。"
+  },
+  "THREAD_SAFETY": "SINGLE_THREAD_ONLY",
+  "IDEMPOTENT": false,
+  "ACCESS_PATHS": [
+    {
+      "PATH": "conn->fd",
+      "TYPE": "int",
+      "ROLE": "作为 recv 的 socket 参数来源"
+    },
+    {
+      "PATH": "conn->in_buf",
+      "TYPE": "uint8_t*",
+      "ROLE": "写入接收数据的目标缓冲"
+    },
+    {
+      "PATH": "conn->in_len",
+      "TYPE": "size_t",
+      "ROLE": "随每次成功 recv 递增"
+    },
+    {
+      "PATH": "conn->in_cap",
+      "TYPE": "size_t",
+      "ROLE": "容量不足时由 ensure_cap 更新"
+    }
+  ]
+}

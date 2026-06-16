@@ -1,0 +1,428 @@
+{
+  "KIND": "FILE_SPEC",
+  "FILE": {
+    "TRACE_ID": "http/network/tcp_server",
+    "LANG": "C",
+    "ROLE": "TCP 服务器事件循环模块：基于 epoll 管理监听 socket 与客户端连接集合，驱动 accept/event/close 并回调上层 HTTP 逻辑",
+    "DOC_REF": []
+  },
+  "HEADER": {
+    "PATH": "../network/tcp_server.h",
+    "DEPENDENCY": [],
+    "DATA": [
+      {
+        "NAME": "HTTP_IO_READABLE",
+        "KIND": "CONST",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "epoll 可读事件标志位（值为 1）"
+      },
+      {
+        "NAME": "HTTP_IO_WRITABLE",
+        "KIND": "CONST",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "epoll 可写事件标志位（值为 2）"
+      },
+      {
+        "NAME": "http_tcp_server_t",
+        "KIND": "TYPE",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "TCP server 不透明句柄，封装监听端口、epoll 句柄、运行标志与客户端连接链表",
+        "TYPE_SPEC": {
+          "TYPE_KIND": "OPAQUE"
+        }
+      },
+      {
+        "NAME": "http_tcp_callbacks_t",
+        "KIND": "TYPE",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "TCP server 回调集合结构，包含 on_accept、on_event、on_close 三个事件回调",
+        "TYPE_SPEC": {
+          "TYPE_KIND": "STRUCT",
+          "FIELDS": [
+            {
+              "NAME": "on_accept",
+              "TYPE": "void(*)(void*,int,const struct sockaddr_storage*,socklen_t)",
+              "ROLE": "新连接建立回调"
+            },
+            {
+              "NAME": "on_event",
+              "TYPE": "void(*)(void*,int,uint32_t)",
+              "ROLE": "连接事件回调（EPOLLIN/EPOLLOUT）"
+            },
+            {
+              "NAME": "on_close",
+              "TYPE": "void(*)(void*,int)",
+              "ROLE": "连接关闭回调"
+            }
+          ]
+        }
+      }
+    ],
+    "INTERFACE": [
+      {
+        "SIGNATURE": "http_tcp_server_t* http_tcp_server_create(uint16_t port, http_tcp_callbacks_t callbacks, void* user)",
+        "NAME": "http_tcp_server_create",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "EVENT_HANDLER",
+        "ROLE": "分配 TCP server 对象，保存端口、回调与 user 指针，初始化 listen_fd/epoll_fd 为 -1",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "int http_tcp_server_start(http_tcp_server_t* server)",
+        "NAME": "http_tcp_server_start",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "EVENT_HANDLER",
+        "ROLE": "创建非阻塞监听 socket、bind 端口、SO_REUSEADDR、创建 epoll 实例并注册监听 fd 的 EPOLLIN",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "int http_tcp_server_run(http_tcp_server_t* server)",
+        "NAME": "http_tcp_server_run",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "EVENT_HANDLER",
+        "ROLE": "运行 epoll 事件循环：epoll_wait 1s 超时，分派 listen_fd→accept_loop、client EPOLLIN/EPOLLOUT→on_event、EPOLLERR/HUP/RDHUP→close_client",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "void http_tcp_server_stop(http_tcp_server_t* server)",
+        "NAME": "http_tcp_server_stop",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "EVENT_HANDLER",
+        "ROLE": "置 running=false 通知事件循环退出；空指针安全",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "void http_tcp_server_destroy(http_tcp_server_t* server)",
+        "NAME": "http_tcp_server_destroy",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "EVENT_HANDLER",
+        "ROLE": "遍历关闭所有客户端连接、关闭 listen_fd 与 epoll_fd、释放 server；空指针安全",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "int http_tcp_server_update_interest(http_tcp_server_t* server, int fd, bool want_write)",
+        "NAME": "http_tcp_server_update_interest",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "EVENT_HANDLER",
+        "ROLE": "更新 fd 的 epoll 监听事件：基础 EPOLLIN|EPOLLRDHUP，want_write 时追加 EPOLLOUT",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "int http_tcp_server_close_client(http_tcp_server_t* server, int fd)",
+        "NAME": "http_tcp_server_close_client",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "EVENT_HANDLER",
+        "ROLE": "从 epoll 删除 fd、close socket、从客户端链表删除节点并触发 on_close 回调",
+        "VISIBILITY": "public"
+      }
+    ]
+  },
+  "SOURCE": {
+    "PATH": "../network/tcp_server.c",
+    "DEPENDENCY": [
+      "../network/tcp_server.h"
+    ],
+    "DATA": [
+      {
+        "NAME": "http_client_node_t",
+        "KIND": "TYPE",
+        "VISIBILITY": "PRIVATE",
+        "ROLE": "客户端连接链表节点，维护 fd、want_write 标志与下一节点指针"
+      },
+      {
+        "NAME": "struct http_tcp_server",
+        "KIND": "TYPE",
+        "VISIBILITY": "PRIVATE",
+        "ROLE": "TCP server 私有状态结构，保存端口、回调、fd 资源、运行状态、user 指针和客户端连接链表"
+      }
+    ],
+    "INTERFACE": [
+      {
+        "TRACE_ID": "http/network/tcp_server/http_tcp_server_create",
+        "SIGNATURE": "http_tcp_server_t* http_tcp_server_create(uint16_t port, http_tcp_callbacks_t callbacks, void* user)",
+        "NAME": "http_tcp_server_create",
+        "KIND": "FUNC",
+        "ROLE": "分配 TCP server 对象，保存端口、回调与 user 指针，初始化 listen_fd/epoll_fd 为 -1，clients 为空链表",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用前对象指针应有效；并发访问需由上层同步控制"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数执行后维持模块内部状态一致性，并向调用方返回结果/副作用"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "http/network/tcp_server/http_tcp_server_start",
+        "SIGNATURE": "int http_tcp_server_start(http_tcp_server_t* server)",
+        "NAME": "http_tcp_server_start",
+        "KIND": "FUNC",
+        "ROLE": "创建非阻塞监听 socket、bind 端口、SO_REUSEADDR、创建 epoll 实例并注册监听 fd 的 EPOLLIN",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用前对象指针应有效；并发访问需由上层同步控制"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数执行后维持模块内部状态一致性，并向调用方返回结果/副作用"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "http/network/tcp_server/http_tcp_server_run",
+        "SIGNATURE": "int http_tcp_server_run(http_tcp_server_t* server)",
+        "NAME": "http_tcp_server_run",
+        "KIND": "FUNC",
+        "ROLE": "运行 epoll 事件循环：epoll_wait 1s 超时，分派 listen_fd→accept_loop、client EPOLLIN/EPOLLOUT→on_event、EPOLLERR/HUP/RDHUP→close_client",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用前对象指针应有效；并发访问需由上层同步控制"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数执行后维持模块内部状态一致性，并向调用方返回结果/副作用"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "http/network/tcp_server/http_tcp_server_stop",
+        "SIGNATURE": "void http_tcp_server_stop(http_tcp_server_t* server)",
+        "NAME": "http_tcp_server_stop",
+        "KIND": "FUNC",
+        "ROLE": "置 running=false 通知事件循环退出，支持重复调用；空指针安全",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用前对象指针应有效；并发访问需由上层同步控制"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数执行后维持模块内部状态一致性，并向调用方返回结果/副作用"
+            }
+          ],
+          "IDEMPOTENT": true,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "http/network/tcp_server/http_tcp_server_destroy",
+        "SIGNATURE": "void http_tcp_server_destroy(http_tcp_server_t* server)",
+        "NAME": "http_tcp_server_destroy",
+        "KIND": "FUNC",
+        "ROLE": "遍历关闭所有客户端连接、关闭 listen_fd 与 epoll_fd、释放 server；空指针安全",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用前对象指针应有效；并发访问需由上层同步控制"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数执行后维持模块内部状态一致性，并向调用方返回结果/副作用"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "http/network/tcp_server/http_tcp_server_update_interest",
+        "SIGNATURE": "int http_tcp_server_update_interest(http_tcp_server_t* server, int fd, bool want_write)",
+        "NAME": "http_tcp_server_update_interest",
+        "KIND": "FUNC",
+        "ROLE": "更新 fd 的 epoll 监听事件：基础 EPOLLIN|EPOLLRDHUP，want_write 时追加 EPOLLOUT",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用前对象指针应有效；并发访问需由上层同步控制"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数执行后维持模块内部状态一致性，并向调用方返回结果/副作用"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "http/network/tcp_server/http_tcp_server_close_client",
+        "SIGNATURE": "int http_tcp_server_close_client(http_tcp_server_t* server, int fd)",
+        "NAME": "http_tcp_server_close_client",
+        "KIND": "FUNC",
+        "ROLE": "从 epoll 删除 fd、close socket、从客户端链表删除节点并触发 on_close 回调",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用前对象指针应有效；并发访问需由上层同步控制"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数执行后维持模块内部状态一致性，并向调用方返回结果/副作用"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "http/network/tcp_server/set_nonblocking",
+        "SIGNATURE": "static int set_nonblocking(int fd)",
+        "NAME": "set_nonblocking",
+        "KIND": "FUNC",
+        "ROLE": "设置 fd 为非阻塞模式的通用辅助函数",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用前对象指针应有效；并发访问需由上层同步控制"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数执行后维持模块内部状态一致性，并向调用方返回结果/副作用"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "http/network/tcp_server/find_client",
+        "SIGNATURE": "static http_client_node_t* find_client(http_tcp_server_t* server, int fd)",
+        "NAME": "find_client",
+        "KIND": "FUNC",
+        "ROLE": "按 fd 在客户端连接链表中查找对应节点",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用前对象指针应有效；并发访问需由上层同步控制"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数执行后维持模块内部状态一致性，并向调用方返回结果/副作用"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "http/network/tcp_server/add_client",
+        "SIGNATURE": "static http_client_node_t* add_client(http_tcp_server_t* server, int fd)",
+        "NAME": "add_client",
+        "KIND": "FUNC",
+        "ROLE": "创建客户端节点并插入连接链表头部",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用前对象指针应有效；并发访问需由上层同步控制"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数执行后维持模块内部状态一致性，并向调用方返回结果/副作用"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "http/network/tcp_server/remove_client_node",
+        "SIGNATURE": "static void remove_client_node(http_tcp_server_t* server, int fd)",
+        "NAME": "remove_client_node",
+        "KIND": "FUNC",
+        "ROLE": "按 fd 从链表中摘除并释放客户端节点",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用前对象指针应有效；并发访问需由上层同步控制"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数执行后维持模块内部状态一致性，并向调用方返回结果/副作用"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "http/network/tcp_server/setup_listener",
+        "SIGNATURE": "static int setup_listener(http_tcp_server_t* server)",
+        "NAME": "setup_listener",
+        "KIND": "FUNC",
+        "ROLE": "创建并配置监听 socket（SO_REUSEADDR、非阻塞、bind、listen）",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用前对象指针应有效；并发访问需由上层同步控制"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数执行后维持模块内部状态一致性，并向调用方返回结果/副作用"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "http/network/tcp_server/accept_loop",
+        "SIGNATURE": "static void accept_loop(http_tcp_server_t* server)",
+        "NAME": "accept_loop",
+        "KIND": "FUNC",
+        "ROLE": "批量 accept 新连接并完成非阻塞设置、客户端节点创建、epoll 注册与 on_accept 回调",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用前对象指针应有效；并发访问需由上层同步控制"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数执行后维持模块内部状态一致性，并向调用方返回结果/副作用"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "private"
+      }
+    ]
+  }
+}

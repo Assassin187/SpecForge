@@ -1,0 +1,34 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "http/protocol/http_request/parse_method",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "将方法字符串映射为 http_method_t 枚举：GET→HTTP_GET, HEAD→HTTP_HEAD, POST→HTTP_POST，其他→HTTP_UNKNOWN",
+  "SIGNATURE": {
+    "RAW": "static http_method_t parse_method(const char* s)",
+    "NAME": "parse_method",
+    "RETURN": "http_method_t",
+    "PARAMS": [
+      {
+        "TYPE": "const char*",
+        "NAME": "s",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入方法字符串 s。",
+    "ACTION": "strcmp 依次比较 GET/HEAD/POST 返回对应枚举值；均不匹配返回 HTTP_UNKNOWN。",
+    "OUTPUT": "返回对应的 http_method_t 枚举值。",
+    "INVARIANTS_USED": [
+      "仅支持 GET/HEAD/POST 三种方法",
+      "比较为大小写敏感精确匹配",
+      "未知方法统一返回 HTTP_UNKNOWN"
+    ]
+  }
+}

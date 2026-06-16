@@ -1,0 +1,38 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "http/protocol/http_request/http_request_free",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "释放 body 动态内存并复位 body=NULL/body_len=0；空指针安全",
+  "SIGNATURE": {
+    "RAW": "void http_request_free(http_request_t* req)",
+    "NAME": "http_request_free",
+    "RETURN": "void",
+    "PARAMS": [
+      {
+        "TYPE": "http_request_t*",
+        "NAME": "req",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "http_request_t",
+        "ROLE": "HTTP 请求结构体"
+      }
+    ],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入 req。",
+    "ACTION": "空安全检查→free(req->body)→req->body=NULL, req->body_len=0。",
+    "OUTPUT": "通过副作用释放 body 内存并复位。",
+    "INVARIANTS_USED": [
+      "空指针输入时无副作用直接返回",
+      "释放后 body 字段置为 NULL 防止悬垂指针"
+    ]
+  }
+}

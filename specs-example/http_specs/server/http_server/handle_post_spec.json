@@ -1,0 +1,78 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "http/server/http_server/handle_post",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "POST 请求处理器：resolve_path 确定目标→目录返回 405→fopen wb 写入 body→201 Created 响应",
+  "SIGNATURE": {
+    "RAW": "static int handle_post(http_server_t* server, http_session_t* session, const http_request_t* req)",
+    "NAME": "handle_post",
+    "RETURN": "int",
+    "PARAMS": [
+      {
+        "TYPE": "http_server_t*",
+        "NAME": "server",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "http_session_t*",
+        "NAME": "session",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "const http_request_t*",
+        "NAME": "req",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct http_server",
+        "ROLE": ""
+      },
+      {
+        "NAME": "http_session_t",
+        "ROLE": ""
+      },
+      {
+        "NAME": "http_request_t",
+        "ROLE": ""
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "send_error",
+        "KIND": "CALL",
+        "ROLE": ""
+      },
+      {
+        "NAME": "http_resolve_path",
+        "KIND": "CALL",
+        "ROLE": ""
+      },
+      {
+        "NAME": "http_response_send",
+        "KIND": "CALL",
+        "ROLE": ""
+      },
+      {
+        "NAME": "http_tcp_server_update_interest",
+        "KIND": "CALL",
+        "ROLE": ""
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入 server、session、req（含 POST body）。",
+    "ACTION": "http_resolve_path 解析目标路径→stat 检查→若为目录返回 405→fopen wb 创建文件→fwrite body→fclose→失败则 unlink 并返回 500→snprintf 生成确认 HTML→http_response_send 201→update_interest。",
+    "OUTPUT": "成功返回 0，失败返回 -1。",
+    "INVARIANTS_USED": [
+      "函数执行保持本模块内部状态一致性。"
+    ]
+  }
+}

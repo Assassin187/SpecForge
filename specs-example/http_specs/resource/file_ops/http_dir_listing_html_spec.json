@@ -1,0 +1,36 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "http/resource/file_ops/http_dir_listing_html",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "生成目录 HTML 列表页面：opendir→readdir→stat→格式化文件名/大小/目录标记；调用方负责 free",
+  "SIGNATURE": {
+    "RAW": "char* http_dir_listing_html(const char* abs_dir, const char* uri_prefix)",
+    "NAME": "http_dir_listing_html",
+    "RETURN": "char*",
+    "PARAMS": [
+      {
+        "TYPE": "const char*",
+        "NAME": "abs_dir"
+      },
+      {
+        "TYPE": "const char*",
+        "NAME": "uri_prefix"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入目录绝对路径和 URI 前缀。",
+    "ACTION": "opendir→循环 readdir→跳过 . 和 ..→stat 获取大小和类型→realloc 扩展 HTML 缓冲→snprintf 追加行（文件名、大小 B/KB/MB、[DIR] 标记）→closedir。",
+    "OUTPUT": "成功返回动态分配的 HTML 字符串；失败返回 NULL。",
+    "INVARIANTS_USED": [
+      "成功时返回堆分配字符串，调用方必须 free",
+      "失败时返回 NULL，调用方无需 free",
+      ". 和 .. 必须从列表中排除"
+    ]
+  }
+}

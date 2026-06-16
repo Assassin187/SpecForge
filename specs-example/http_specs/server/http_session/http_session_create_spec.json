@@ -1,0 +1,45 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "http/server/http_session/http_session_create",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "为已 accept 的 fd 分配会话对象并创建底层连接对象；任一失败清理并返回 NULL",
+  "SIGNATURE": {
+    "RAW": "http_session_t* http_session_create(int fd)",
+    "NAME": "http_session_create",
+    "RETURN": "http_session_t*",
+    "PARAMS": [
+      {
+        "TYPE": "int",
+        "NAME": "fd",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "http_session_t",
+        "ROLE": "会话私有实现结构"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "http_connection_create",
+        "KIND": "CALL",
+        "ROLE": "创建底层连接对象"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入已 accept 的 fd。",
+    "ACTION": "calloc 分配 session→http_connection_create 创建连接对象→设置 session->fd 和 session->conn。任一失败则 free(session) 返回 NULL。",
+    "OUTPUT": "成功返回 session 指针；失败返回 NULL。",
+    "INVARIANTS_USED": [
+      "session->fd 必须设置为入参 fd",
+      "session->conn 必须指向新创建的连接对象",
+      "任一分配失败时必须清理已分配资源"
+    ]
+  }
+}

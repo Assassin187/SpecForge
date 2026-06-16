@@ -1,0 +1,33 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "http/protocol/http_response/http_status_text",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "将 HTTP 状态码映射为 RFC 标准状态文本；未知码返回 Unknown",
+  "SIGNATURE": {
+    "RAW": "const char* http_status_text(int code)",
+    "NAME": "http_status_text",
+    "RETURN": "const char*",
+    "PARAMS": [
+      {
+        "TYPE": "int",
+        "NAME": "code",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入状态码。",
+    "ACTION": "switch 映射：200→OK, 201→Created, 400→Bad Request, 403→Forbidden, 404→Not Found, 405→Method Not Allowed, 413→Payload Too Large, 500→Internal Server Error, 501→Not Implemented, default→Unknown。",
+    "OUTPUT": "返回静态字符串字面量。",
+    "INVARIANTS_USED": [
+      "返回字符串为静态字面量，不可被调用方释放",
+      "未知状态码统一返回 Unknown"
+    ]
+  }
+}

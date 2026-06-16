@@ -1,0 +1,59 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "http/server/http_server/flush_and_update",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "刷写连接输出缓冲并根据剩余数据更新 epoll 写监听",
+  "SIGNATURE": {
+    "RAW": "static int flush_and_update(http_server_t* server, http_session_t* session)",
+    "NAME": "flush_and_update",
+    "RETURN": "int",
+    "PARAMS": [
+      {
+        "TYPE": "http_server_t*",
+        "NAME": "server",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "http_session_t*",
+        "NAME": "session",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "http_session_t",
+        "ROLE": ""
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "http_connection_flush",
+        "KIND": "CALL",
+        "ROLE": ""
+      },
+      {
+        "NAME": "http_connection_has_pending",
+        "KIND": "CALL",
+        "ROLE": ""
+      },
+      {
+        "NAME": "http_tcp_server_update_interest",
+        "KIND": "CALL",
+        "ROLE": ""
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入 server 和 session。",
+    "ACTION": "http_connection_flush 刷写→http_connection_has_pending 检查剩余→http_tcp_server_update_interest 按需更新。",
+    "OUTPUT": "通过返回值或副作用反映处理结果。",
+    "INVARIANTS_USED": [
+      "函数执行保持本模块内部状态一致性。"
+    ]
+  }
+}

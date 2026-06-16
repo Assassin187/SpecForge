@@ -1,0 +1,50 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "http/network/tcp_server/accept_loop",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "THREAD_SAFETY": "SINGLE_THREAD_ONLY",
+  "IDEMPOTENT": false,
+  "ROLE": "批量 accept 新连接并完成非阻塞设置、epoll 注册与 on_accept 回调",
+  "SIGNATURE": {
+    "RAW": "static void accept_loop(http_tcp_server_t* server)",
+    "NAME": "accept_loop",
+    "RETURN": "void",
+    "PARAMS": [
+      {
+        "TYPE": "http_tcp_server_t*",
+        "NAME": "server",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct http_tcp_server",
+        "ROLE": "TCP server 私有状态"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "set_nonblocking",
+        "KIND": "CALL",
+        "ROLE": "设置客户端 socket 为非阻塞"
+      },
+      {
+        "NAME": "add_client",
+        "KIND": "CALL",
+        "ROLE": "注册客户端到 epoll 与链表"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入 server。",
+    "ACTION": "循环 accept 直到 EAGAIN/EWOULDBLOCK；每个新连接调用 set_nonblocking→add_client→on_accept 回调。任一失败则 close(fd)。",
+    "OUTPUT": "无返回值；通过副作用修改连接链表。",
+    "INVARIANTS_USED": [
+      "函数执行保持本模块内部状态一致性。"
+    ]
+  }
+}

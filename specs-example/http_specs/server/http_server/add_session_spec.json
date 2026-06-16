@@ -1,0 +1,47 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "http/server/http_server/add_session",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "将新会话节点头插法加入 server 会话链表",
+  "SIGNATURE": {
+    "RAW": "static int add_session(http_server_t* server, http_session_t* session)",
+    "NAME": "add_session",
+    "RETURN": "int",
+    "PARAMS": [
+      {
+        "TYPE": "http_server_t*",
+        "NAME": "server",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "http_session_t*",
+        "NAME": "session",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct http_server",
+        "ROLE": ""
+      },
+      {
+        "NAME": "http_session_node_t",
+        "ROLE": ""
+      }
+    ],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入 server 和 session。",
+    "ACTION": "calloc 分配节点→设置 session→头插法加入 server->sessions 链表→失败返回 -1。",
+    "OUTPUT": "通过返回值或副作用反映处理结果。",
+    "INVARIANTS_USED": [
+      "函数执行保持本模块内部状态一致性。"
+    ]
+  }
+}

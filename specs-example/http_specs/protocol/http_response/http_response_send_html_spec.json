@@ -1,0 +1,58 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "http/protocol/http_response/http_response_send_html",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "将 printf 风格格式化字符串包装为 text/html 响应并发送",
+  "SIGNATURE": {
+    "RAW": "int http_response_send_html(http_connection_t* conn, int status, const char* title, const char* fmt, ...)",
+    "NAME": "http_response_send_html",
+    "RETURN": "int",
+    "PARAMS": [
+      {
+        "TYPE": "http_connection_t*",
+        "NAME": "conn",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "int",
+        "NAME": "status",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "const char*",
+        "NAME": "title",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "const char*",
+        "NAME": "fmt",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [],
+    "FUNC": [
+      {
+        "NAME": "http_response_send",
+        "KIND": "CALL",
+        "ROLE": "发送完整 HTTP 响应"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入 conn、状态码、标题、printf 格式字符串及可变参数。",
+    "ACTION": "vsnprintf 格式化内容到 8192 字节栈缓冲→snprintf 包装为完整 HTML→设置 Content-Type: text/html 作为 extra_headers→委托 http_response_send。",
+    "OUTPUT": "成功返回 0，格式化溢出或发送失败返回 -1。",
+    "INVARIANTS_USED": [
+      "HTML 内容缓冲上限 8192 字节",
+      "extra_headers 仅包含 Content-Type: text/html",
+      "title 用于 HTML <title> 元素"
+    ]
+  }
+}

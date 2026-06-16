@@ -1,0 +1,48 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "http/network/connection/http_connection_has_pending",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "判断连接是否存在待发送数据（out_off < out_len）",
+  "SIGNATURE": {
+    "RAW": "bool http_connection_has_pending(const http_connection_t* conn)",
+    "NAME": "http_connection_has_pending",
+    "RETURN": "bool",
+    "PARAMS": [
+      {
+        "TYPE": "const http_connection_t*",
+        "NAME": "conn",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct http_connection",
+        "ROLE": "连接私有状态结构体"
+      }
+    ],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入来自函数参数。",
+    "ACTION": "空指针返回 false；否则返回 conn->out_off < conn->out_len。",
+    "OUTPUT": "通过返回值反映是否存在待发送数据。"
+  },
+  "THREAD_SAFETY": "SINGLE_THREAD_ONLY",
+  "IDEMPOTENT": false,
+  "ACCESS_PATHS": [
+    {
+      "PATH": "conn->out_off",
+      "TYPE": "size_t",
+      "ROLE": "只读比较当前发送偏移"
+    },
+    {
+      "PATH": "conn->out_len",
+      "TYPE": "size_t",
+      "ROLE": "只读比较当前缓冲长度"
+    }
+  ]
+}

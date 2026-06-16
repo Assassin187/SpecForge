@@ -1,0 +1,39 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "http/server/http_session/http_session_destroy",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "销毁底层连接对象并释放会话；空指针安全",
+  "SIGNATURE": {
+    "RAW": "void http_session_destroy(http_session_t* session)",
+    "NAME": "http_session_destroy",
+    "RETURN": "void",
+    "PARAMS": [
+      {
+        "TYPE": "http_session_t*",
+        "NAME": "session",
+        "NULLABLE": true,
+        "OWNERSHIP": "OWNED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [],
+    "FUNC": [
+      {
+        "NAME": "http_connection_destroy",
+        "KIND": "CALL",
+        "ROLE": "销毁底层连接对象"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入 session。",
+    "ACTION": "空安全检查→http_connection_destroy(session->conn)→free(session)。",
+    "OUTPUT": "无返回值；session 为 NULL 时无操作。",
+    "INVARIANTS_USED": [
+      "session 为 NULL 时安全返回，不执行任何操作",
+      "必须先销毁 conn 再释放 session 自身"
+    ]
+  }
+}

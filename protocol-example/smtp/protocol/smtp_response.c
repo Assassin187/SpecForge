@@ -7,7 +7,7 @@ int smtp_response_format(char* out, size_t out_len, int code, const char* text) 
         return -1;
     }
 
-    const int n = snprintf(out, out_len, "%d %s\\r\\n", code, text);
+    const int n = snprintf(out, out_len, "%d %s\r\n", code, text);
     if (n < 0 || (size_t)n >= out_len) {
         return -1;
     }
@@ -22,10 +22,10 @@ int smtp_response_format_ehlo_caps(char* out, size_t out_len, const char* hostna
     const int n = snprintf(
         out,
         out_len,
-        "250-%s\\r\\n"
-        "250-AUTH LOGIN PLAIN\\r\\n"
-        "250-SIZE %zu\\r\\n"
-        "250 8BITMIME\\r\\n",
+        "250-%s\r\n"
+        "250-AUTH LOGIN PLAIN\r\n"
+        "250-SIZE %zu\r\n"
+        "250 8BITMIME\r\n",
         hostname,
         max_size);
     if (n < 0 || (size_t)n >= out_len) {

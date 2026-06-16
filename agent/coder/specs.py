@@ -431,9 +431,8 @@ def _validate_rendered_headers_compile(bundle: SpecBundle) -> None:
             if not file_spec.header_path:
                 continue
             check_path = tmp / f"check_{file_spec.header_path.replace('/', '_')}.c"
-            check_path.write_text(f'#include "{file_spec.header_path}"\nint main(void) {{ return 0; }}\n', encoding="utf-8")
-            result = subprocess.run(
-                [
+            check_path.write_text(f'#include "{file_spec.header_path}"\n', encoding="utf-8")
+            command = [
                     "cc",
                     "-std=c11",
                     "-Wall",
@@ -445,7 +444,9 @@ def _validate_rendered_headers_compile(bundle: SpecBundle) -> None:
                     str(check_path.relative_to(tmp)),
                     "-o",
                     "/dev/null",
-                ],
+                ]
+            result = subprocess.run(
+                command,
                 cwd=tmp,
                 text=True,
                 capture_output=True,
@@ -454,7 +455,14 @@ def _validate_rendered_headers_compile(bundle: SpecBundle) -> None:
             if result.returncode != 0:
                 detail = (result.stderr or result.stdout).strip().splitlines()
                 message = detail[0] if detail else "rendered header did not compile"
-                bundle.diagnostics.append(Diagnostic("error", "rendered_header_compile_error", message, file_spec.header_path))
+                bundle.diagnostics.append(
+                    Diagnostic(
+                        "error",
+                        "rendered_header_compile_error",
+                        f"{message}; command={' '.join(command)}; include_path={tmp}",
+                        file_spec.header_path,
+                    )
+                )
 
 
 def _validate_uniqueness(bundle: SpecBundle) -> None:

@@ -1,0 +1,38 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "http/resource/file_ops/http_mime_by_ext",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "根据文件路径扩展名在 24 条目 MIME 表中匹配；未匹配返回 application/octet-stream",
+  "SIGNATURE": {
+    "RAW": "const char* http_mime_by_ext(const char* path)",
+    "NAME": "http_mime_by_ext",
+    "RETURN": "const char*",
+    "PARAMS": [
+      {
+        "TYPE": "const char*",
+        "NAME": "path",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [],
+    "FUNC": [],
+    "VAR": [
+      {
+        "NAME": "mime_table",
+        "ROLE": "静态 MIME 类型映射表"
+      }
+    ]
+  },
+  "LOGIC": {
+    "INPUT": "输入文件路径。",
+    "ACTION": "strrchr 查找最后一个 '.'；遍历 mime_table 用 strcasecmp 匹配扩展名；匹配则返回对应 MIME 字符串。",
+    "OUTPUT": "返回静态 MIME 字符串字面量。",
+    "INVARIANTS_USED": [
+      "返回字符串为静态字面量，调用方不得释放",
+      "未匹配时统一返回 application/octet-stream"
+    ]
+  }
+}

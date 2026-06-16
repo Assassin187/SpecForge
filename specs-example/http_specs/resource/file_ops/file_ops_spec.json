@@ -1,0 +1,330 @@
+{
+  "KIND": "FILE_SPEC",
+  "FILE": {
+    "TRACE_ID": "http/resource/file_ops",
+    "LANG": "C",
+    "ROLE": "文件系统抽象模块：路径安全解析与沙箱（防目录遍历）、MIME 类型映射、文件读取、目录 HTML 列表生成。不得依赖 socket/epoll 或 HTTP 协议解析",
+    "DOC_REF": []
+  },
+  "HEADER": {
+    "PATH": "../resource/file_ops.h",
+    "DEPENDENCY": [],
+    "SYSTEM_DEPENDENCY": [
+      "<stdbool.h>",
+      "<stddef.h>",
+      "<stdint.h>"
+    ],
+    "DATA": [],
+    "INTERFACE": [
+      {
+        "SIGNATURE": "const char* http_mime_by_ext(const char* path)",
+        "NAME": "http_mime_by_ext",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "根据文件路径扩展名（strrchr 查找 '.'）在 24 条目 MIME 表中匹配，未匹配返回 application/octet-stream",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "int http_resolve_path(const char* root_dir, const char* uri_path, char* out_abs, size_t out_len)",
+        "NAME": "http_resolve_path",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "拼接 root_dir+uri_path，规范化 .. 与 . 段，realpath 后验证结果在 root 前缀内；目录遍历返回 -1+EACCES，成功返回 0",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "int http_stat_path(const char* abs_path)",
+        "NAME": "http_stat_path",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "对路径执行 stat；返回 0=普通文件(S_ISREG), 1=目录(S_ISDIR), -1=不存在/无权限",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "int http_read_file(const char* abs_path, char** out_data, size_t* out_len)",
+        "NAME": "http_read_file",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "fopen rb→fseek/ftell 获取大小→malloc→fread 读取→通过 out_data/out_len 输出；调用方负责 free(*out_data)，失败返回 -1",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "char* http_dir_listing_html(const char* abs_dir, const char* uri_prefix)",
+        "NAME": "http_dir_listing_html",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "opendir→readdir 遍历→为每个条目调用 stat 获取大小→生成 HTML <pre> 列表；调用方负责 free 返回值，失败返回 NULL",
+        "VISIBILITY": "public"
+      }
+    ]
+  },
+  "SOURCE": {
+    "PATH": "../resource/file_ops.c",
+    "DEPENDENCY": [
+      "../resource/file_ops.h"
+    ],
+    "SYSTEM_DEPENDENCY": [
+      "<dirent.h>",
+      "<errno.h>",
+      "<limits.h>",
+      "<stdio.h>",
+      "<stdlib.h>",
+      "<string.h>",
+      "<sys/stat.h>",
+      "<unistd.h>"
+    ],
+    "DATA": [
+      {
+        "NAME": "mime_entry_t",
+        "KIND": "TYPE",
+        "VISIBILITY": "PRIVATE",
+        "ROLE": "MIME 表条目：扩展名到 MIME 类型的映射",
+        "TYPE_SPEC": {
+          "TYPE_KIND": "STRUCT",
+          "FIELDS": [
+            {
+              "NAME": "ext",
+              "TYPE": "const char*",
+              "ROLE": "文件扩展名（不含前导点，如 \"html\"）"
+            },
+            {
+              "NAME": "mime",
+              "TYPE": "const char*",
+              "ROLE": "对应 MIME 类型字符串（如 \"text/html\"）"
+            }
+          ]
+        }
+      },
+      {
+        "NAME": "mime_table",
+        "KIND": "VAR",
+        "VISIBILITY": "PRIVATE",
+        "ROLE": "静态 MIME 映射表，末尾以 {NULL, application/octet-stream} 作为通配回退，共 24 条目",
+        "VAR_SPEC": {
+          "TYPE": "static const mime_entry_t[]",
+          "COUNT": 24,
+          "SENTINEL": "{NULL, \"application/octet-stream\"}"
+        }
+      }
+    ],
+    "INTERFACE": [
+      {
+        "TRACE_ID": "http/resource/file_ops/http_mime_by_ext",
+        "SIGNATURE": "const char* http_mime_by_ext(const char* path)",
+        "NAME": "http_mime_by_ext",
+        "KIND": "FUNC",
+        "ROLE": "通过 strrchr 提取路径扩展名，遍历 24 条 MIME 映射表进行匹配，未命中或 path 为 NULL 时返回 application/octet-stream",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用前对象指针应有效；并发访问需由上层同步控制"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数执行后维持模块内部状态一致性，并向调用方返回结果/副作用"
+            }
+          ],
+          "IDEMPOTENT": true,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "http/resource/file_ops/http_resolve_path",
+        "SIGNATURE": "int http_resolve_path(const char* root_dir, const char* uri_path, char* out_abs, size_t out_len)",
+        "NAME": "http_resolve_path",
+        "KIND": "FUNC",
+        "ROLE": "将 root_dir 与 uri_path 拼接为临时路径，通过 realpath 解析符号链接与 . / .. 规范化；检查结果路径以 root_dir 为前缀，目录遍历返回 -1 并设置 errno=EACCES",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用前对象指针应有效；并发访问需由上层同步控制"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数执行后维持模块内部状态一致性，并向调用方返回结果/副作用"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "http/resource/file_ops/http_stat_path",
+        "SIGNATURE": "int http_stat_path(const char* abs_path)",
+        "NAME": "http_stat_path",
+        "KIND": "FUNC",
+        "ROLE": "对 abs_path 调用 stat 系统调用；返回 0=S_ISREG 普通文件, 1=S_ISDIR 目录, -1=stat 失败（不存在/无权限）",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用前对象指针应有效；并发访问需由上层同步控制"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数执行后维持模块内部状态一致性，并向调用方返回结果/副作用"
+            }
+          ],
+          "IDEMPOTENT": true,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "http/resource/file_ops/http_read_file",
+        "SIGNATURE": "int http_read_file(const char* abs_path, char** out_data, size_t* out_len)",
+        "NAME": "http_read_file",
+        "KIND": "FUNC",
+        "ROLE": "以二进制读模式打开文件，通过 fseek/ftell 获取文件大小，malloc 分配缓冲区后 fread 全量读取；结果通过 out_data/out_len 输出，调用方必须 free(*out_data)",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用前对象指针应有效；并发访问需由上层同步控制"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数执行后维持模块内部状态一致性，并向调用方返回结果/副作用"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY",
+          "CALL_CONTRACTS": [
+            {
+              "TEXT": "成功返回 0 时 *out_data 指向堆分配的缓冲区，*out_len 为文件字节数；调用方在使用完毕后必须调用 free(*out_data) 释放"
+            },
+            {
+              "TEXT": "失败返回 -1 时 *out_data 为 NULL，*out_len 为 0；调用方无需 free"
+            }
+          ]
+        },
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "http/resource/file_ops/http_dir_listing_html",
+        "SIGNATURE": "char* http_dir_listing_html(const char* abs_dir, const char* uri_prefix)",
+        "NAME": "http_dir_listing_html",
+        "KIND": "FUNC",
+        "ROLE": "opendir 打开目录后 readdir 遍历每个条目，对每个条目调用 stat 获取文件大小并区分目录/文件类型，生成 HTML <pre> 格式的目录列表字符串；调用方必须 free 返回值",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用前对象指针应有效；并发访问需由上层同步控制"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数执行后维持模块内部状态一致性，并向调用方返回结果/副作用"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY",
+          "CALL_CONTRACTS": [
+            {
+              "TEXT": "成功时返回指向堆分配 HTML 字符串的指针；调用方在使用完毕后必须调用 free 释放该字符串"
+            },
+            {
+              "TEXT": "失败时返回 NULL（如目录无法打开）；调用方无需 free"
+            }
+          ]
+        },
+        "VISIBILITY": "public"
+      }
+    ]
+  },
+  "PUBLIC_SYMBOLS": [
+    {
+      "NAME": "http_mime_by_ext",
+      "KIND": "FUNC",
+      "SIGNATURE": "const char* http_mime_by_ext(const char* path)",
+      "ROLE": "根据文件路径扩展名返回 MIME 类型字符串"
+    },
+    {
+      "NAME": "http_resolve_path",
+      "KIND": "FUNC",
+      "SIGNATURE": "int http_resolve_path(const char* root_dir, const char* uri_path, char* out_abs, size_t out_len)",
+      "ROLE": "安全解析并规范化文件系统路径，防止目录遍历"
+    },
+    {
+      "NAME": "http_stat_path",
+      "KIND": "FUNC",
+      "SIGNATURE": "int http_stat_path(const char* abs_path)",
+      "ROLE": "对路径执行 stat 并返回文件类型判别"
+    },
+    {
+      "NAME": "http_read_file",
+      "KIND": "FUNC",
+      "SIGNATURE": "int http_read_file(const char* abs_path, char** out_data, size_t* out_len)",
+      "ROLE": "读取整个文件到动态分配缓冲区"
+    },
+    {
+      "NAME": "http_dir_listing_html",
+      "KIND": "FUNC",
+      "SIGNATURE": "char* http_dir_listing_html(const char* abs_dir, const char* uri_prefix)",
+      "ROLE": "生成目录 HTML 列表页面"
+    }
+  ],
+  "ACCESS_PATHS": [
+    {
+      "PATH": "http_mime_by_ext(3)",
+      "TYPE": "const char* (*)(const char*)",
+      "ROLE": "MIME 类型查询函数指针签名；参数为文件路径，返回静态 MIME 字符串"
+    },
+    {
+      "PATH": "http_resolve_path(4)",
+      "TYPE": "int (*)(const char*, const char*, char*, size_t)",
+      "ROLE": "路径解析函数指针签名；返回 0 成功, -1 失败且 errno=EACCES 表示目录遍历"
+    },
+    {
+      "PATH": "http_stat_path(1)",
+      "TYPE": "int (*)(const char*)",
+      "ROLE": "路径 stat 函数指针签名；返回 0=普通文件, 1=目录, -1=错误"
+    },
+    {
+      "PATH": "http_read_file(4)",
+      "TYPE": "int (*)(const char*, char**, size_t*)",
+      "ROLE": "文件读取函数指针签名；通过 out 参数返回动态内存，成功返回 0"
+    },
+    {
+      "PATH": "http_dir_listing_html(2)",
+      "TYPE": "char* (*)(const char*, const char*)",
+      "ROLE": "目录列表 HTML 生成函数指针签名；返回堆分配 HTML 字符串"
+    }
+  ],
+  "FORBIDDEN_SYMBOLS": [
+    {
+      "NAME": "http_get_mime",
+      "KIND": "FUNC",
+      "REASON": "MIME 查询函数公开命名为 http_mime_by_ext，不是 http_get_mime"
+    },
+    {
+      "NAME": "http_mime_type",
+      "KIND": "FUNC",
+      "REASON": "MIME 查询函数公开命名为 http_mime_by_ext"
+    },
+    {
+      "NAME": "http_file_read",
+      "KIND": "FUNC",
+      "REASON": "文件读取函数公开命名为 http_read_file"
+    },
+    {
+      "NAME": "http_read",
+      "KIND": "FUNC",
+      "REASON": "文件读取函数公开命名为 http_read_file"
+    },
+    {
+      "NAME": "http_dir_list",
+      "KIND": "FUNC",
+      "REASON": "目录列表函数公开命名为 http_dir_listing_html"
+    },
+    {
+      "NAME": "http_path_resolve",
+      "KIND": "FUNC",
+      "REASON": "路径解析函数公开命名为 http_resolve_path"
+    }
+  ]
+}

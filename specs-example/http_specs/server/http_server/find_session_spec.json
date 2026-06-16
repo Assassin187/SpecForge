@@ -1,0 +1,47 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "http/server/http_server/find_session",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "在 server 会话链表中按 fd 查找会话",
+  "SIGNATURE": {
+    "RAW": "static http_session_t* find_session(http_server_t* server, int fd)",
+    "NAME": "find_session",
+    "RETURN": "http_session_t*",
+    "PARAMS": [
+      {
+        "TYPE": "http_server_t*",
+        "NAME": "server",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "int",
+        "NAME": "fd",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct http_server",
+        "ROLE": "HTTP server 私有状态"
+      },
+      {
+        "NAME": "http_session_node_t",
+        "ROLE": "会话链表节点"
+      }
+    ],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入 server 和 fd。",
+    "ACTION": "遍历 server->sessions 链表，比较 session->fd 匹配则返回 session 指针。",
+    "OUTPUT": "通过返回值或副作用反映处理结果。",
+    "INVARIANTS_USED": [
+      "函数执行保持本模块内部状态一致性。"
+    ]
+  }
+}

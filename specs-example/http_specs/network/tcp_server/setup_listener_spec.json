@@ -1,0 +1,45 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "http/network/tcp_server/setup_listener",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "THREAD_SAFETY": "SINGLE_THREAD_ONLY",
+  "IDEMPOTENT": false,
+  "ROLE": "创建非阻塞 IPv4 TCP 监听 socket：socket→SO_REUSEADDR→set_nonblocking→bind→listen(128)",
+  "SIGNATURE": {
+    "RAW": "static int setup_listener(http_tcp_server_t* server)",
+    "NAME": "setup_listener",
+    "RETURN": "int",
+    "PARAMS": [
+      {
+        "TYPE": "http_tcp_server_t*",
+        "NAME": "server",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct http_tcp_server",
+        "ROLE": "TCP server 私有状态"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "set_nonblocking",
+        "KIND": "CALL",
+        "ROLE": "设置监听 socket 为非阻塞"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入 server 对象。",
+    "ACTION": "socket(AF_INET, SOCK_STREAM, 0) 创建→setsockopt SO_REUSEADDR→set_nonblocking→bind INADDR_ANY:port→listen(fd, 128)。任一步失败则 close 并返回 -1。",
+    "OUTPUT": "成功设置 server->listen_fd 并返回 0。",
+    "INVARIANTS_USED": [
+      "函数执行保持本模块内部状态一致性。"
+    ]
+  }
+}

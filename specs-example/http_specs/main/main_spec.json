@@ -1,0 +1,69 @@
+{
+  "KIND": "FILE_SPEC",
+  "FILE": {
+    "TRACE_ID": "http/main",
+    "LANG": "C",
+    "ROLE": "HTTP server 进程入口：解析端口参数、创建/启动/运行/销毁 server",
+    "DOC_REF": []
+  },
+  "SOURCE": {
+    "PATH": "../main.c",
+    "DEPENDENCY": [
+      "../server/http_server.h"
+    ],
+    "SYSTEM_DEPENDENCY": [
+      "<stdint.h>",
+      "<stdio.h>",
+      "<stdlib.h>"
+    ],
+    "DATA": [],
+    "INTERFACE": [
+      {
+        "TRACE_ID": "http/main/parse_port",
+        "SIGNATURE": "static uint16_t parse_port(const char* s)",
+        "NAME": "parse_port",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "strtol 解析端口字符串；无效时返回 0",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 HTTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "http/main/main",
+        "SIGNATURE": "int main(int argc, char** argv)",
+        "NAME": "main",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ENTRYPOINT",
+        "ROLE": "进程入口：parse_port 解析命令行参数→http_server_create→http_server_start→输出监听信息→http_server_run→http_server_destroy",
+        "CONTRACT": {
+          "PRECONDITION": [
+            {
+              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
+            }
+          ],
+          "POSTCONDITION": [
+            {
+              "TEXT": "函数按当前 HTTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
+            }
+          ],
+          "IDEMPOTENT": false,
+          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
+        },
+        "VISIBILITY": "public"
+      }
+    ]
+  }
+}

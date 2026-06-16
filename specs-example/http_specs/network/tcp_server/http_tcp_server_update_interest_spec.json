@@ -1,0 +1,61 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "http/network/tcp_server/http_tcp_server_update_interest",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "THREAD_SAFETY": "SINGLE_THREAD_ONLY",
+  "IDEMPOTENT": false,
+  "ROLE": "更新 fd 的 epoll 监听事件（基础 EPOLLIN|EPOLLRDHUP，按需追加 EPOLLOUT）",
+  "SIGNATURE": {
+    "RAW": "int http_tcp_server_update_interest(http_tcp_server_t* server, int fd, bool want_write)",
+    "NAME": "http_tcp_server_update_interest",
+    "RETURN": "int",
+    "PARAMS": [
+      {
+        "TYPE": "http_tcp_server_t*",
+        "NAME": "server",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "int",
+        "NAME": "fd",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "bool",
+        "NAME": "want_write",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct http_tcp_server",
+        "ROLE": "TCP server 私有状态"
+      },
+      {
+        "NAME": "http_client_node_t",
+        "ROLE": "客户端链表节点"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "find_client",
+        "KIND": "CALL",
+        "ROLE": "按 fd 定位客户端节点"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入 server、fd 和 want_write 标志。",
+    "ACTION": "find_client 查找节点→若 want_write 状态未变直接返回 0→epoll_ctl EPOLL_CTL_MOD 更新事件掩码→更新 node->want_write。",
+    "OUTPUT": "成功返回 0，失败返回 -1。",
+    "INVARIANTS_USED": [
+      "函数执行保持本模块内部状态一致性。"
+    ]
+  }
+}
