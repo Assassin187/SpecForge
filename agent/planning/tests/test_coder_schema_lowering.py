@@ -159,6 +159,64 @@ def _zap_plan() -> dict:
     }
 
 
+def _file_spec_json(manifest: dict, filename: str) -> dict:
+    path = next(path for path in Path(manifest["spec_root"]).rglob("*_spec.json") if path.name == filename)
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _add_payload_module(plan: dict, *, with_type: bool = True, with_function: bool = False) -> None:
+    artifacts = []
+    if with_type:
+        artifacts.append({"name": "zapline_payload_t", "kind": "TYPE", "role": "Public payload object."})
+        plan["canonical_types"].append(
+            {
+                "type_id": "type:zapline_payload",
+                "name": "zapline_payload_t",
+                "kind": "struct",
+                "owner_module_id": "payload",
+                "source_message_ids": [],
+                "source_field_ids": [],
+                "fields": [{"field_name": "length", "field_type": "size_t", "required": True, "source_field_id": "", "validation_notes": "Payload length."}],
+                "enum_values": [],
+                "trace_ref_keys": [],
+                "status": "supported",
+            }
+        )
+    if with_function:
+        artifacts.append({"name": "zapline_payload_open", "kind": "FUNC", "role": "Open payload provider."})
+        plan["function_contracts"].append(
+            {
+                "function_id": "func:payload:open",
+                "file_id": "file:zapline/payload/payload",
+                "module_id": "payload",
+                "name": "zapline_payload_open",
+                "function_kind": "public_api",
+                "visibility": "public",
+                "api_surface": "public",
+                "exported": True,
+                "export_reason": "Payload provider public API.",
+                "public_api_role": "payload_open",
+                "purpose": "Open payload provider.",
+                "signature": {"raw": "int zapline_payload_open(void)", "name": "zapline_payload_open", "return_type": "int", "params": []},
+                "behavior_contract": {"input": "none", "action": "open payload", "output": "status"},
+            }
+        )
+    plan["module_artifacts"].append({"module_id": "payload", "role": "Payload provider.", "dependencies": [], "artifacts": artifacts})
+    plan["file_layout"]["files"].append(
+        {
+            "file_id": "file:zapline/payload/payload",
+            "module_id": "payload",
+            "source_path": "zapline/payload/payload.c",
+            "header_path": "zapline/payload/payload.h",
+            "responsibility": "Payload provider unit.",
+            "exports": ["func:payload:open"] if with_function else [],
+            "exports_type_ids": ["type:zapline_payload"] if with_type else [],
+            "imports_allowed": [],
+        }
+    )
+    plan["module_generation_order"] = ["payload", *[item for item in plan["module_generation_order"] if item != "payload"]]
+
+
 class CoderSchemaLoweringTests(unittest.TestCase):
     def test_existing_example_specs_are_schema_valid(self) -> None:
         for protocol in ("mqtt", "coap"):
@@ -349,6 +407,164 @@ class CoderSchemaLoweringTests(unittest.TestCase):
             self.assertEqual(function_spec["CALL_CONTRACTS"][0]["NAME"], "zapline_crc_update")
             self.assertEqual(function_spec["RELY"]["FUNC"][0]["NAME"], "zapline_crc_update")
 
+    def test_public_signature_external_type_lowers_to_header_dependency(self) -> None:
+        plan = copy.deepcopy(_zap_plan())
+        _add_payload_module(plan, with_type=True)
+        public_function = plan["function_contracts"][0]
+        public_function["signature"]["raw"] = "int zapline_frame_encode(zapline_payload_t* payload, size_t len)"
+        public_function["signature"]["params"] = [
+            {"type": "zapline_payload_t*", "name": "payload", "nullable": False, "ownership": "borrowed"},
+            {"type": "size_t", "name": "len", "nullable": False, "ownership": "borrowed"},
+        ]
+
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(plan, Path(raw_tmp))
+            framing_spec = _file_spec_json(manifest, "framing_spec.json")
+            bundle = load_spec_bundle_from_root(manifest["spec_root"])
+
+            self.assertEqual(framing_spec["HEADER"]["DEPENDENCY"], ["zapline/payload/payload.h"])
+            self.assertFalse([diag.__dict__ for diag in bundle.diagnostics if diag.level == "error"])
+
+    def test_source_call_dependency_does_not_pollute_header_dependency(self) -> None:
+        plan = copy.deepcopy(_zap_plan())
+        _add_payload_module(plan, with_type=False, with_function=True)
+        public_function = plan["function_contracts"][0]
+        public_function["calls_allowed"] = ["func:payload:open"]
+        public_function["call_contracts"] = [
+            {
+                "callee_function_id": "func:payload:open",
+                "call_kind": "utility",
+                "required": True,
+                "service_requirement_ids": [],
+                "call_reason": "Use payload provider from implementation only.",
+                "param_bindings": [],
+                "return_binding": {"policy": "use_return_value", "target_ref": "status", "cleanup_function_id": ""},
+                "failure_behavior": "return_error",
+            }
+        ]
+
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(plan, Path(raw_tmp))
+            framing_spec = _file_spec_json(manifest, "framing_spec.json")
+
+            self.assertIn("zapline/payload/payload.h", framing_spec["SOURCE"]["DEPENDENCY"])
+            self.assertNotIn("zapline/payload/payload.h", framing_spec["HEADER"]["DEPENDENCY"])
+
+    def test_same_header_and_primitive_types_do_not_create_project_header_dependency(self) -> None:
+        plan = copy.deepcopy(_zap_plan())
+        plan["function_contracts"][0]["signature"]["raw"] = "bool zapline_frame_encode(zapline_frame_t* frame, const uint8_t* input, size_t len)"
+        plan["function_contracts"][0]["signature"]["return_type"] = "bool"
+        plan["function_contracts"][0]["signature"]["params"] = [
+            {"type": "zapline_frame_t*", "name": "frame", "nullable": False, "ownership": "borrowed"},
+            {"type": "const uint8_t*", "name": "input", "nullable": False, "ownership": "borrowed"},
+            {"type": "size_t", "name": "len", "nullable": False, "ownership": "borrowed"},
+        ]
+        plan["type_inventory"] = [
+            {
+                "type_id": "type:zapline_flags",
+                "name": "zapline_flags_t",
+                "module_id": "framing",
+                "kind": "struct",
+                "visibility": "public",
+                "defined_in": "public_header",
+                "purpose": "Public primitive/system field container.",
+                "fields": [
+                    {"field_name": "enabled", "field_type": "bool"},
+                    {"field_name": "length", "field_type": "size_t"},
+                    {"field_name": "opcode", "field_type": "uint8_t"},
+                ],
+            }
+        ]
+
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(plan, Path(raw_tmp))
+            framing_spec = _file_spec_json(manifest, "framing_spec.json")
+
+            self.assertEqual(framing_spec["HEADER"]["DEPENDENCY"], [])
+
+    def test_public_system_types_lower_to_header_system_dependency(self) -> None:
+        plan = copy.deepcopy(_zap_plan())
+        plan["function_contracts"][0]["signature"]["raw"] = "ssize_t zapline_frame_encode(struct sockaddr_in* peer, bool enabled, const uint8_t* input, size_t len)"
+        plan["function_contracts"][0]["signature"]["return_type"] = "ssize_t"
+        plan["function_contracts"][0]["signature"]["params"] = [
+            {"type": "struct sockaddr_in*", "name": "peer", "nullable": False, "ownership": "borrowed"},
+            {"type": "bool", "name": "enabled", "nullable": False, "ownership": "borrowed"},
+            {"type": "const uint8_t*", "name": "input", "nullable": False, "ownership": "borrowed"},
+            {"type": "size_t", "name": "len", "nullable": False, "ownership": "borrowed"},
+        ]
+
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(plan, Path(raw_tmp))
+            framing_spec = _file_spec_json(manifest, "framing_spec.json")
+            system_dependencies = set(framing_spec["HEADER"]["SYSTEM_DEPENDENCY"])
+
+            self.assertTrue({"sys/types.h", "sys/socket.h", "netinet/in.h", "stdbool.h", "stdint.h", "stddef.h"}.issubset(system_dependencies))
+            diagnostics = validate_coder_compatibility(manifest["spec_root"])
+            self.assertFalse([diag.__dict__ for diag in diagnostics if diag.level == "error"])
+
+    def test_strict_coder_compatibility_rejects_missing_rendered_header_system_dependency(self) -> None:
+        plan = copy.deepcopy(_zap_plan())
+        plan["function_contracts"][0]["signature"]["raw"] = "ssize_t zapline_frame_encode(zapline_framing_t* ctx)"
+        plan["function_contracts"][0]["signature"]["return_type"] = "ssize_t"
+        plan["function_contracts"][0]["signature"]["params"] = [{"type": "zapline_framing_t*", "name": "ctx", "nullable": False, "ownership": "borrowed"}]
+
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(plan, Path(raw_tmp))
+            spec_path = next(path for path in Path(manifest["spec_root"]).rglob("framing_spec.json"))
+            raw = json.loads(spec_path.read_text(encoding="utf-8"))
+            raw["HEADER"]["SYSTEM_DEPENDENCY"] = [item for item in raw["HEADER"].get("SYSTEM_DEPENDENCY", []) if item != "sys/types.h"]
+            spec_path.write_text(json.dumps(raw), encoding="utf-8")
+
+            diagnostics = validate_coder_compatibility(manifest["spec_root"])
+            self.assertTrue(any(diag.code == "coder_rendered_header_compile_error" for diag in diagnostics), [diag.__dict__ for diag in diagnostics])
+
+    def test_public_data_external_type_refs_lower_to_header_dependency(self) -> None:
+        plan = copy.deepcopy(_zap_plan())
+        _add_payload_module(plan, with_type=True)
+        plan["type_inventory"] = [
+            {
+                "type_id": "type:zapline_envelope",
+                "name": "zapline_envelope_t",
+                "module_id": "framing",
+                "kind": "struct",
+                "visibility": "public",
+                "defined_in": "public_header",
+                "purpose": "Public envelope with external payload.",
+                "fields": [{"field_name": "payload", "field_type": "zapline_payload_t*"}],
+            },
+            {
+                "type_id": "type:zapline_payload_alias",
+                "name": "zapline_payload_alias_t",
+                "module_id": "framing",
+                "kind": "alias",
+                "visibility": "public",
+                "defined_in": "public_header",
+                "purpose": "Alias to external payload pointer.",
+                "ownership_lifetime": "zapline_payload_t*",
+            },
+            {
+                "type_id": "type:zapline_payload_callback",
+                "name": "zapline_payload_callback_t",
+                "module_id": "framing",
+                "kind": "callback_type",
+                "visibility": "public",
+                "defined_in": "public_header",
+                "purpose": "Callback consuming external payload.",
+                "callback_signature": {
+                    "return_type": "void",
+                    "params": [{"name": "payload", "type": "zapline_payload_t*", "nullable": False, "ownership": "BORROWED"}],
+                },
+            },
+        ]
+
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(plan, Path(raw_tmp))
+            framing_spec = _file_spec_json(manifest, "framing_spec.json")
+            bundle = load_spec_bundle_from_root(manifest["spec_root"])
+
+            self.assertEqual(framing_spec["HEADER"]["DEPENDENCY"], ["zapline/payload/payload.h"])
+            self.assertFalse([diag.__dict__ for diag in bundle.diagnostics if diag.level == "error"])
+
     def test_invalid_planning_symbols_lower_to_canonical_c_specs(self) -> None:
         plan = copy.deepcopy(_zap_plan())
         public_function = plan["function_contracts"][0]
@@ -399,7 +615,7 @@ class CoderSchemaLoweringTests(unittest.TestCase):
             self.assertEqual(function_spec["CALL_CONTRACTS"][0]["SIGNATURE"], "static uint16_t zapline_crc_update(uint16_t crc, uint8_t byte)")
             self.assertEqual(function_spec["CALL_CONTRACTS"][0]["NAME"], function_spec["RELY"]["FUNC"][0]["NAME"])
 
-    def test_dependency_graph_lowers_to_module_dependencies_and_order(self) -> None:
+    def test_dependency_graph_lowers_compile_order_module_dependencies_only(self) -> None:
         plan = copy.deepcopy(_zap_plan())
         plan["module_artifacts"].append(
             {
@@ -448,10 +664,17 @@ class CoderSchemaLoweringTests(unittest.TestCase):
             manifest, _ = compile_spec_bundle(plan, Path(raw_tmp))
             module_spec = json.loads(Path(manifest["module_spec_path"]).read_text(encoding="utf-8"))
             modules = {item["NAME"]: item for item in module_spec["MODULES"]}
+            self.assertEqual(modules["relay"]["DEPENDENCIES"], [])
+
+        declared_dep_plan = copy.deepcopy(plan)
+        declared_dep_plan["dependency_graph"]["module_edges"] = [{"from": "relay", "to": "framing", "kind": "signature_dependency"}]
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(declared_dep_plan, Path(raw_tmp))
+            module_spec = json.loads(Path(manifest["module_spec_path"]).read_text(encoding="utf-8"))
+            modules = {item["NAME"]: item for item in module_spec["MODULES"]}
             self.assertEqual(modules["relay"]["DEPENDENCIES"], ["framing"])
             self.assertLess(module_spec["GENERATION_ORDER"].index("framing"), module_spec["GENERATION_ORDER"].index("relay"))
 
-        declared_dep_plan = copy.deepcopy(plan)
         declared_dep_plan["dependency_graph"]["module_edges"] = []
         next(item for item in declared_dep_plan["module_artifacts"] if item["module_id"] == "relay")["dependencies"] = ["framing"]
         with tempfile.TemporaryDirectory() as raw_tmp:
@@ -691,6 +914,8 @@ class CoderSchemaLoweringTests(unittest.TestCase):
         self.assertIn("const mqtt_topic_tree_t*", raw_refs)
         self.assertNotIn("void (*)(uint32_t", raw_refs)
         self.assertNotIn("void*)", raw_refs)
+        callback_refs = extract_c_signature_type_refs("void (*callback)(const mqtt_topic_tree_t* tree, uint32_t sid, void* user_data)")
+        self.assertEqual({str(ref["raw"]) for ref in callback_refs}, {"const mqtt_topic_tree_t*"})
 
     def test_specs_compiler_has_no_protocol_role_special_cases(self) -> None:
         texts = [

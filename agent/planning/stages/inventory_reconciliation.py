@@ -45,6 +45,9 @@ def _empty_type_lifecycle() -> dict[str, list[str]]:
 
 
 def _is_non_function_lifecycle_name(name: Any) -> bool:
+    text = str(name)
+    if any(char in text for char in "*?[]"):
+        return True
     key = _safe_id(str(name))
     return key in NON_FUNCTION_LIFECYCLE_NAMES or key.endswith("_caller") or key.endswith("_application")
 

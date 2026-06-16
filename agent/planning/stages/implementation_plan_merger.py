@@ -595,18 +595,36 @@ def _canonical_fields(fields: list[dict[str, Any]]) -> list[dict[str, Any]]:
     ]
 
 
+def _is_opaque_backing_pair(left: dict[str, Any], right: dict[str, Any]) -> bool:
+    kinds = {str(left.get("kind", "")), str(right.get("kind", ""))}
+    if "opaque_handle" not in kinds or not kinds & {"internal_state", "struct"}:
+        return False
+    backing = right if str(left.get("kind", "")) == "opaque_handle" else left
+    return str(backing.get("visibility", "")) in {"private", "module_internal"} and str(backing.get("defined_in", "")) != "public_header"
+
+
 def merge_type_inventory(draft: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any]:
     result = deepcopy(draft)
     candidate = normalize_type_inventory_candidate(candidate)
     existing_type_ids = {str(item.get("type_id", "")) for item in result.get("type_inventory", []) if isinstance(item, dict)}
+    existing_types_by_name_key: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for item in result.get("type_inventory", []):
+        if isinstance(item, dict) and normalize_type_key(item.get("name", "")):
+            existing_types_by_name_key.setdefault((str(item.get("module_id", "")), normalize_type_key(item.get("name", ""))), []).append(item)
     existing_canonical_ids = {str(item.get("type_id", "")) for item in result.get("canonical_types", []) if isinstance(item, dict)}
     for type_item in candidate.get("types", []):
         if not isinstance(type_item, dict):
             continue
         type_id = str(type_item.get("type_id", ""))
+        name_key = (str(type_item.get("module_id", "")), normalize_type_key(type_item.get("name", "")))
+        existing_same_name = existing_types_by_name_key.get(name_key, [])
+        if name_key[1] and existing_same_name and type_id not in existing_type_ids and not any(_is_opaque_backing_pair(type_item, existing) for existing in existing_same_name):
+            continue
         if type_id not in existing_type_ids:
             result.setdefault("type_inventory", []).append(deepcopy(type_item))
             existing_type_ids.add(type_id)
+            if name_key[1]:
+                existing_types_by_name_key.setdefault(name_key, []).append(type_item)
         if (
             type_id
             and type_id not in existing_canonical_ids
@@ -821,6 +839,45 @@ def _question_resolved_by_functions(question: dict[str, Any], type_item: dict[st
     return False
 
 
+def _response_packet_question_resolved(plan: dict[str, Any], question: dict[str, Any]) -> bool:
+    text = f"{question.get('question', '')} {question.get('unresolved_reason', '')} {' '.join(str(ref) for ref in question.get('trace_ref_keys', []))}".lower()
+    if "response" not in text or "packet" not in text:
+        return False
+    required = {"CONNACK", "SUBACK", "PINGRESP"}
+    enum_values = {
+        str(value.get("name", "")).strip().upper()
+        for type_item in [*plan.get("canonical_types", []), *plan.get("type_inventory", [])]
+        if isinstance(type_item, dict)
+        for value in type_item.get("enum_values", [])
+        if isinstance(value, dict)
+    }
+    if not required.issubset(enum_values):
+        return False
+    for function in plan.get("function_contracts", []):
+        if not isinstance(function, dict) or str(function.get("module_id", "")) != "codec":
+            continue
+        haystack = " ".join(
+            str(function.get(key, ""))
+            for key in ("function_id", "name", "function_kind", "api_surface", "grouping_hint")
+        ).lower()
+        if "encode" in haystack and any(word in haystack for word in ("message", "packet", "response")):
+            return True
+    return False
+
+
+def _type_visibility_question_resolved(types: list[dict[str, Any]], question: dict[str, Any]) -> bool:
+    text = f"{question.get('question', '')} {question.get('unresolved_reason', '')}".lower()
+    if not any(word in text for word in ("visibility", "public", "internal", "opaque")):
+        return False
+    for type_item in types:
+        if not _type_is_public(type_item):
+            continue
+        aliases = {alias.lower() for alias in _type_aliases(type_item)}
+        if any(alias and alias in text for alias in aliases):
+            return True
+    return False
+
+
 def cleanup_final_unresolved_questions(plan: dict[str, Any]) -> dict[str, Any]:
     result = deepcopy(plan)
     types = [item for item in result.get("type_inventory", []) if isinstance(item, dict)]
@@ -845,6 +902,10 @@ def cleanup_final_unresolved_questions(plan: dict[str, Any]) -> dict[str, Any]:
     for question in result.get("unresolved_questions", []):
         if not isinstance(question, dict):
             kept_questions.append(question)
+            continue
+        if _response_packet_question_resolved(result, question):
+            continue
+        if _type_visibility_question_resolved(types, question):
             continue
         target = str(question.get("target_id", "")).strip()
         type_item = type_by_target.get(target) or type_by_target.get(_safe_id(target.removeprefix("struct ").removesuffix("_t")))
@@ -941,7 +1002,23 @@ def _known_type_refs(draft: dict[str, Any]) -> set[str]:
     } | set(SYSTEM_TYPE_IDS)
 
 
-def _normalize_type_ref(value: Any, c_type: Any, known: set[str]) -> str:
+def _known_type_ref_aliases(draft: dict[str, Any]) -> dict[str, str]:
+    aliases: dict[str, str] = {}
+    for key in ("canonical_types", "type_inventory"):
+        for item in draft.get(key, []):
+            if not isinstance(item, dict):
+                continue
+            type_id = str(item.get("type_id", "")).strip()
+            if not type_id:
+                continue
+            for value in (type_id, item.get("name"), item.get("c_symbol"), item.get("c_type_name")):
+                alias = normalize_type_key(value)
+                if alias:
+                    aliases.setdefault(alias, type_id)
+    return aliases
+
+
+def _normalize_type_ref(value: Any, c_type: Any, known: set[str], aliases: dict[str, str] | None = None) -> str:
     ref = str(value or "").strip()
     spelling = str(c_type or "").strip().removeprefix("const ").rstrip("*").strip()
     if ref.startswith(("state:", "message:", "field:", "file:", "func:", "module:")):
@@ -950,6 +1027,11 @@ def _normalize_type_ref(value: Any, c_type: Any, known: set[str]) -> str:
         return ref
     if spelling in known:
         return spelling
+    alias_map = aliases or {}
+    for candidate in (ref, spelling):
+        mapped = alias_map.get(normalize_type_key(candidate))
+        if mapped:
+            return mapped
     return ""
 
 
@@ -1160,14 +1242,14 @@ def fallback_function_signatures(draft: dict[str, Any], module_id: str, function
     }
 
 
-def _valid_signature_param(param: dict[str, Any], known_type_refs: set[str]) -> dict[str, Any]:
+def _valid_signature_param(param: dict[str, Any], known_type_refs: set[str], known_type_aliases: dict[str, str]) -> dict[str, Any]:
     c_type = str(param.get("type", "")).strip()
     ownership = normalize_param_ownership_for_coder(param.get("ownership"))
     passing_mode = str(param.get("passing_mode", "")).strip() or ("by_pointer" if "*" in c_type else "by_value")
     return {
         "name": str(param.get("name", "")).strip(),
         "type": c_type,
-        "type_ref": _normalize_type_ref(param.get("type_ref", ""), c_type, known_type_refs),
+        "type_ref": _normalize_type_ref(param.get("type_ref", ""), c_type, known_type_refs, known_type_aliases),
         "direction": str(param.get("direction", "")).strip() or "in",
         "nullable": bool(param.get("nullable", False)),
         "ownership": ownership,
@@ -1194,7 +1276,7 @@ def _type_by_id(draft: dict[str, Any]) -> dict[str, dict[str, Any]]:
     }
 
 
-def _normalize_signature_dependencies(dependencies: Any, draft: dict[str, Any], module_id: str, is_public: bool, known_type_refs: set[str], stats: dict[str, int]) -> list[dict[str, Any]]:
+def _normalize_signature_dependencies(dependencies: Any, draft: dict[str, Any], module_id: str, is_public: bool, known_type_refs: set[str], known_type_aliases: dict[str, str], stats: dict[str, int]) -> list[dict[str, Any]]:
     if not isinstance(dependencies, list):
         return []
     module_ids = {str(item.get("module_id", "")) for item in draft.get("module_artifacts", []) if isinstance(item, dict)}
@@ -1204,7 +1286,7 @@ def _normalize_signature_dependencies(dependencies: Any, draft: dict[str, Any], 
         if not isinstance(raw_dep, dict):
             continue
         symbol_name = str(raw_dep.get("symbol_name", "")).strip()
-        type_ref = _normalize_type_ref(raw_dep.get("type_ref", ""), symbol_name, known_type_refs)
+        type_ref = _normalize_type_ref(raw_dep.get("type_ref", ""), symbol_name, known_type_refs, known_type_aliases)
         symbol_kind = str(raw_dep.get("symbol_kind", "")).strip()
         if symbol_kind not in {"type", "opaque_handle", "callback_type", "system_type"}:
             symbol_kind = "system_type" if type_ref in SYSTEM_TYPE_IDS or symbol_name in SYSTEM_TYPE_IDS else "type"
@@ -1234,6 +1316,19 @@ def _normalize_signature_dependencies(dependencies: Any, draft: dict[str, Any], 
                 "reason": str(raw_dep.get("reason", "")).strip(),
             }
         )
+    return result
+
+
+def _normalize_interface_type_declarations(declarations: Any) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    for declaration in declarations if isinstance(declarations, list) else []:
+        if not isinstance(declaration, dict):
+            continue
+        item = deepcopy(declaration)
+        name = str(item.get("name", "")).strip()
+        if name.startswith("struct "):
+            item["name"] = name.removeprefix("struct ").strip()
+        result.append(item)
     return result
 
 
@@ -1267,6 +1362,7 @@ def normalize_function_signature_patch(
     }
     stats["out_of_batch_signature_updates_dropped"] = max(0, len(candidate.get("function_signature_updates", []) if isinstance(candidate.get("function_signature_updates"), list) else []) - len(candidate_updates))
     known_type_refs = _known_type_refs(draft)
+    known_type_aliases = _known_type_ref_aliases(draft)
     updates = []
     for function_id in expected_ids:
         base = deepcopy(fallback_updates[function_id])
@@ -1295,7 +1391,7 @@ def normalize_function_signature_patch(
             if not isinstance(param, dict):
                 continue
             before = str(param.get("ownership", ""))
-            normalized = _valid_signature_param(param, known_type_refs)
+            normalized = _valid_signature_param(param, known_type_refs, known_type_aliases)
             if before and before != normalized["ownership"] and before not in {"BORROWED", "OWNED", "OWNED_BY_CALLER", "TRANSFER", "SHARED", "UNKNOWN"}:
                 stats["signature_param_ownership_normalized"] += 1
             params.append(normalized)
@@ -1303,8 +1399,8 @@ def normalize_function_signature_patch(
         update = {
             "function_id": function_id,
             "signature": merged_signature,
-            "signature_dependencies": _normalize_signature_dependencies(incoming.get("signature_dependencies", []), draft, module_id, is_public, known_type_refs, stats),
-            "interface_type_declarations": incoming.get("interface_type_declarations", []) if isinstance(incoming.get("interface_type_declarations"), list) else [],
+            "signature_dependencies": _normalize_signature_dependencies(incoming.get("signature_dependencies", []), draft, module_id, is_public, known_type_refs, known_type_aliases, stats),
+            "interface_type_declarations": _normalize_interface_type_declarations(incoming.get("interface_type_declarations", [])),
             "trace_ref_keys": incoming.get("trace_ref_keys", base.get("trace_ref_keys", [])) if isinstance(incoming.get("trace_ref_keys", []), list) else base.get("trace_ref_keys", []),
             "status": str(incoming.get("status", base.get("status", "inferred"))) or "inferred",
         }
@@ -1327,6 +1423,7 @@ def normalize_function_signature_patch(
 def merge_function_signatures(draft: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
     result = deepcopy(draft)
     known_type_refs = _known_type_refs(result)
+    known_type_aliases = _known_type_ref_aliases(result)
     updates = {str(item.get("function_id")): item for item in patch.get("function_signature_updates", []) if isinstance(item, dict)}
     for function in result.get("function_contracts", []):
         update = updates.get(str(function.get("function_id")))
@@ -1335,15 +1432,15 @@ def merge_function_signatures(draft: dict[str, Any], patch: dict[str, Any]) -> d
         signature = deepcopy(update["signature"])
         signature["return_type"] = signature.get("return_type", "int")
         for param in signature.get("params", []):
-            param["type_ref"] = _normalize_type_ref(param.get("type_ref", ""), param.get("type", ""), known_type_refs)
+            param["type_ref"] = _normalize_type_ref(param.get("type_ref", ""), param.get("type", ""), known_type_refs, known_type_aliases)
             param["ownership"] = normalize_param_ownership_for_coder(param.get("ownership"))
             param["passing_mode"] = param.get("passing_mode") or ("by_pointer" if "*" in str(param.get("type", "")) else "by_value")
         function["signature"] = signature
         dependencies = deepcopy(update.get("signature_dependencies", []))
         for dep in dependencies:
-            dep["type_ref"] = _normalize_type_ref(dep.get("type_ref", ""), dep.get("symbol_name", ""), known_type_refs)
+            dep["type_ref"] = _normalize_type_ref(dep.get("type_ref", ""), dep.get("symbol_name", ""), known_type_refs, known_type_aliases)
         function["signature_dependencies"] = dependencies
-        function["interface_type_declarations"] = update.get("interface_type_declarations", [])
+        function["interface_type_declarations"] = _normalize_interface_type_declarations(update.get("interface_type_declarations", []))
         params = [
             {
                 "type": param.get("type", ""),
@@ -2218,6 +2315,31 @@ def _exported_type_file_ids(files: list[dict[str, Any]]) -> dict[str, str]:
     return result
 
 
+def _preferred_type_export_file(type_id: str, type_item: dict[str, Any], module_files: list[dict[str, Any]]) -> dict[str, Any] | None:
+    if not module_files:
+        return None
+    module_id = str(type_item.get("owner_module_id") or type_item.get("module_id") or "").strip()
+    name = _safe_id(str(type_item.get("name") or type_id.rsplit(":", 1)[-1]).removeprefix("struct ").removesuffix("_t"))
+    tail = _safe_id(type_id.rsplit(":", 1)[-1])
+    kind = str(type_item.get("kind", "")).strip().lower()
+    module_key = _safe_id(module_id)
+
+    def score(indexed: tuple[int, dict[str, Any]]) -> tuple[int, int]:
+        index, file_item = indexed
+        source_path = str(file_item.get("source_path") or file_item.get("path") or file_item.get("file_id", ""))
+        unit = _safe_id(source_path.rsplit("/", 1)[-1].removesuffix(".c").removesuffix(".h"))
+        value = 0
+        if unit == module_key and (kind in {"opaque", "opaque_handle"} or name == module_key or name.endswith(f"_{module_key}")):
+            value += 50
+        if unit and (name == unit or name.endswith(f"_{unit}") or unit in tail):
+            value += 30
+        if unit in {"router", "dispatcher", "dispatch"} and name != unit and not name.endswith(f"_{unit}"):
+            value -= 10
+        return value, -index
+
+    return max(enumerate(module_files), key=score)[1]
+
+
 def fallback_file_layout(draft: dict[str, Any]) -> dict[str, Any]:
     functions = [item for item in draft.get("function_contracts", []) if isinstance(item, dict)]
     exportable_by_module: dict[str, list[str]] = {}
@@ -2322,8 +2444,11 @@ def fallback_file_layout(draft: dict[str, Any]) -> dict[str, Any]:
                 }
             )
         module_files = [item for item in files if item["module_id"] == module_id]
-        if module_files:
-            module_files[0]["exports_type_ids"] = sorted(set(exportable_by_module.get(module_id, [])))
+        type_index = _type_by_id(draft)
+        for type_id in sorted(set(exportable_by_module.get(module_id, []))):
+            target_file = _preferred_type_export_file(type_id, type_index.get(type_id, {}), module_files)
+            if target_file is not None and type_id not in target_file["exports_type_ids"]:
+                target_file["exports_type_ids"].append(type_id)
 
     file_by_id = {str(item.get("file_id", "")): item for item in files}
     function_file = {str(item.get("function_id", "")): str(item.get("implementation_file_id", "")) for item in assignments}
@@ -2425,6 +2550,24 @@ def normalize_file_layout_candidate(candidate: dict[str, Any], draft: dict[str, 
             else:
                 stats["layout_unknown_export_dropped"] += 1
         file_item["exports_type_ids"] = normalized
+    files = [item for item in result.get("files", []) if isinstance(item, dict)]
+    type_index = _type_by_id(draft)
+    for module_id in sorted({str(item.get("module_id", "")) for item in files if str(item.get("module_id", "")).strip()}):
+        module_files = [item for item in files if str(item.get("module_id", "")) == module_id]
+        exported = sorted({str(type_id) for item in module_files for type_id in item.get("exports_type_ids", []) if str(type_id).strip()})
+        for type_id in exported:
+            target_file = _preferred_type_export_file(type_id, type_index.get(type_id, {}), module_files)
+            if target_file is None:
+                continue
+            for file_item in module_files:
+                if file_item is target_file:
+                    continue
+                if type_id in file_item.get("exports_type_ids", []):
+                    file_item["exports_type_ids"] = [item for item in file_item.get("exports_type_ids", []) if item != type_id]
+                    stats["layout_export_type_normalized"] += 1
+            if type_id not in target_file.get("exports_type_ids", []):
+                target_file.setdefault("exports_type_ids", []).append(type_id)
+                stats["layout_export_type_normalized"] += 1
     return result, stats
 
 

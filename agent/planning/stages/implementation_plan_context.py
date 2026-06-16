@@ -38,12 +38,33 @@ SYSTEM_TYPE_IDS = [
     "int64_t",
     "socklen_t",
     "socket_t",
+    "time_t",
     "struct sockaddr",
     "struct sockaddr_in",
     "struct sockaddr_storage",
     "struct epoll_event",
     "void",
 ]
+
+SYSTEM_TYPE_HEADER_DEPENDENCIES = {
+    "bool": ["stdbool.h"],
+    "size_t": ["stddef.h"],
+    "ssize_t": ["sys/types.h"],
+    "uint8_t": ["stdint.h"],
+    "uint16_t": ["stdint.h"],
+    "uint32_t": ["stdint.h"],
+    "uint64_t": ["stdint.h"],
+    "int8_t": ["stdint.h"],
+    "int16_t": ["stdint.h"],
+    "int32_t": ["stdint.h"],
+    "int64_t": ["stdint.h"],
+    "time_t": ["time.h"],
+    "socklen_t": ["sys/socket.h"],
+    "struct sockaddr": ["sys/socket.h"],
+    "struct sockaddr_in": ["sys/socket.h", "netinet/in.h"],
+    "struct sockaddr_storage": ["sys/socket.h"],
+    "struct epoll_event": ["sys/epoll.h"],
+}
 
 MQTT_PACKET_TYPE_VALUES = {
     "RESERVED": "0",
@@ -64,6 +85,23 @@ def normalize_system_type_ref(value: Any) -> str:
         bare = text.split(":", 1)[1].strip()
         return bare if bare in SYSTEM_TYPE_IDS else text
     return text
+
+
+def system_headers_for_type_ref(value: Any) -> list[str]:
+    text = normalize_system_type_ref(value)
+    if not text:
+        return []
+    cleaned = re.sub(r"\[[^\]]*\]", "", text)
+    cleaned = cleaned.replace("*", " ").replace("&", " ")
+    cleaned = re.sub(r"\b(?:const|volatile|restrict|static|extern|signed|unsigned)\b", " ", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    headers: list[str] = []
+    for key, key_headers in SYSTEM_TYPE_HEADER_DEPENDENCIES.items():
+        if cleaned == key or re.search(rf"(?<![A-Za-z0-9_]){re.escape(key)}(?![A-Za-z0-9_])", cleaned):
+            for header in key_headers:
+                if header not in headers:
+                    headers.append(header)
+    return headers
 
 
 def _empty_callback_signature() -> dict[str, Any]:
@@ -667,26 +705,34 @@ def _has_owned_pointer_field(type_item: dict[str, Any]) -> bool:
 
 
 def _is_non_function_lifecycle_name(name: Any) -> bool:
+    text = str(name)
+    if any(char in text for char in "*?[]"):
+        return True
     key = _safe_id(str(name))
     return key in {"caller", "external", "application", "app", "user", "callee", "owner", "runtime", "system"} or key.endswith("_caller") or key.endswith("_application")
 
 
-def _obligation_names(type_item: dict[str, Any], action: str) -> list[str]:
+def _concrete_lifecycle_names(type_item: dict[str, Any], *keys: str, filter_broker_refs: bool = True) -> list[str]:
     lifecycle = type_item.get("lifecycle", {}) if isinstance(type_item.get("lifecycle"), dict) else {}
-    if action in {"create", "initialize"}:
-        explicit = lifecycle.get("created_by" if action == "create" else "initialized_by", [])
-    elif action in {"destroy", "free", "release_owned_data"}:
-        explicit = [*lifecycle.get("destroyed_by", []), *lifecycle.get("freed_by", [])]
-    else:
-        explicit = type_item.get("related_functions", [])
     module_id = str(type_item.get("module_id", ""))
-    names = [
+    return [
         str(name)
-        for name in explicit
+        for key in keys
+        for name in lifecycle.get(key, [])
         if str(name).strip()
         and not _is_non_function_lifecycle_name(name)
-        and not (module_id != "broker_app" and "_broker_" in str(name))
+        and not (filter_broker_refs and module_id != "broker_app" and "_broker_" in str(name))
     ]
+
+
+def _obligation_names(type_item: dict[str, Any], action: str) -> list[str]:
+    if action in {"create", "initialize"}:
+        explicit = _concrete_lifecycle_names(type_item, "created_by" if action == "create" else "initialized_by")
+    elif action in {"destroy", "free", "release_owned_data"}:
+        explicit = _concrete_lifecycle_names(type_item, "destroyed_by", "freed_by")
+    else:
+        explicit = type_item.get("related_functions", [])
+    names = [str(name) for name in explicit if str(name).strip()]
     if names:
         return sorted(set(names))
     base = _type_base_name(str(type_item.get("name", "")))
@@ -724,15 +770,14 @@ def derive_type_obligations(draft: dict[str, Any], module_artifact: dict[str, An
         if not isinstance(type_item, dict) or str(type_item.get("module_id", "")) != module_id:
             continue
         is_callback_type = type_item.get("kind") == "callback_type"
-        lifecycle = type_item.get("lifecycle", {}) if isinstance(type_item.get("lifecycle"), dict) else {}
         actions: list[tuple[str, str, str, str]] = []
-        if not is_callback_type and lifecycle.get("created_by"):
+        if not is_callback_type and _concrete_lifecycle_names(type_item, "created_by", filter_broker_refs=False):
             actions.append(("create", "Type lifecycle declares creator functions.", "resource_lifecycle", "public" if type_item.get("visibility") == "public" else "module_internal"))
-        if not is_callback_type and lifecycle.get("initialized_by"):
+        if not is_callback_type and _concrete_lifecycle_names(type_item, "initialized_by", filter_broker_refs=False):
             actions.append(("initialize", "Type lifecycle declares initializer functions.", "resource_lifecycle", "public" if type_item.get("visibility") == "public" else "module_internal"))
-        if not is_callback_type and lifecycle.get("destroyed_by"):
+        if not is_callback_type and _concrete_lifecycle_names(type_item, "destroyed_by", filter_broker_refs=False):
             actions.append(("destroy", "Type lifecycle declares destroy functions.", "resource_lifecycle", "public" if type_item.get("visibility") == "public" else "module_internal"))
-        if not is_callback_type and (lifecycle.get("freed_by") or type_item.get("kind") in {"owned_buffer", "result_struct"} or _has_owned_pointer_field(type_item)):
+        if not is_callback_type and (_concrete_lifecycle_names(type_item, "freed_by", "destroyed_by", filter_broker_refs=False) or type_item.get("kind") in {"owned_buffer", "result_struct"} or _has_owned_pointer_field(type_item)):
             actions.append(("release_owned_data", "Owned pointer/string/buffer fields require a cleanup/free path.", "resource_lifecycle", "public" if type_item.get("visibility") == "public" else "module_internal"))
         if is_callback_type:
             actions.append(("register_callback", "Callback boundary types require registration or adapter functions.", "public_api", "public" if type_item.get("visibility") == "public" else "module_internal"))

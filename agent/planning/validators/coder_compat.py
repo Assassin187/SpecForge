@@ -16,7 +16,7 @@ def validate_coder_compatibility(spec_root: str | Path, schema_root: str | Path 
     try:
         from agent.coder.specs import load_spec_bundle_from_root
 
-        bundle = load_spec_bundle_from_root(spec_root, validate_rendered_headers=False)
+        bundle = load_spec_bundle_from_root(spec_root, validate_rendered_headers=True)
     except Exception as exc:  # pragma: no cover - defensive integration boundary
         return [PlanningDiagnostic("error", "coder_loader_failed", f"Coder loader failed: {exc}", str(spec_root))]
     for item in bundle.diagnostics:
@@ -28,6 +28,5 @@ def validate_coder_compatibility(spec_root: str | Path, schema_root: str | Path 
                 item.path,
             )
         )
-    if not any(item.level == "error" for item in diagnostics):
-        diagnostics.extend(validate_coder_semantics(bundle))
+    diagnostics.extend(validate_coder_semantics(bundle))
     return diagnostics

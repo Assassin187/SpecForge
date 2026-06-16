@@ -23,7 +23,7 @@ from ..schemas.implementation_plan import (
     WIRE_ACCESS_BINDING_PATCH_SCHEMA_VERSION,
 )
 from ..schemas.implementation_plan_candidates import validate_shape
-from ..stages.coder_spec_lowering import is_anonymous_c_function_pointer_type, lower_canonical_type_to_header_data, normalize_type_key
+from ..stages.coder_spec_lowering import canonical_function_symbol, is_anonymous_c_function_pointer_type, lower_canonical_type_to_header_data, normalize_type_key
 from ..stages.function_inventory_decomposition import DECOMPOSITION_RULES, select_top_decomposition_hints
 from ..stages.implementation_plan import _handler_surfaces, _safe_id, _surface_units, _wire_fields
 from ..stages.implementation_plan_context import (
@@ -439,13 +439,30 @@ def _binding_param_names_match(bindings: Any, callee_params: list[dict[str, Any]
     return True
 
 
-def _allowed_call_value_ref(value_ref: str, caller_param_names: set[str], access_path_values: set[str], local_symbols: set[str]) -> bool:
+def _is_c_string_literal(value: str) -> bool:
+    return bool(re.fullmatch(r'"(?:[^"\\]|\\.)*"', value))
+
+
+def _is_c_char_literal(value: str) -> bool:
+    return bool(re.fullmatch(r"'(?:[^'\\]|\\.)'", value))
+
+
+def _is_casted_c_literal(value: str) -> bool:
+    literal = r'(?:"(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)\')'
+    cast_type = r"(?:const\s+)?(?:uint8_t|char|void)\s*\*"
+    return bool(re.fullmatch(rf"\(\s*{cast_type}\s*\)\s*{literal}", value))
+
+
+def _allowed_call_value_ref(value_ref: str, caller_param_names: set[str], access_path_values: set[str], local_symbols: set[str], function_symbols: set[str] | None = None) -> bool:
     if not value_ref:
         return True
-    if value_ref in caller_param_names or value_ref in access_path_values or value_ref in local_symbols:
+    known_function_symbols = function_symbols or set()
+    if value_ref in caller_param_names or value_ref in access_path_values or value_ref in local_symbols or value_ref in known_function_symbols:
         return True
     if value_ref.startswith(("&", "*")):
-        return _allowed_call_value_ref(value_ref[1:].strip(), caller_param_names, access_path_values, local_symbols)
+        return _allowed_call_value_ref(value_ref[1:].strip(), caller_param_names, access_path_values, local_symbols, known_function_symbols)
+    if _is_c_string_literal(value_ref) or _is_c_char_literal(value_ref) or _is_casted_c_literal(value_ref):
+        return True
     if value_ref.startswith(("sizeof", "NULL", "true", "false")) or re.fullmatch(r"-?\d+(?:u|U|l|L)*", value_ref):
         return True
     if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", value_ref):
@@ -1155,6 +1172,19 @@ def _add_type_reference(index_by_id: dict[str, dict[str, Any]], index_by_name: d
             index_by_name.setdefault(key, type_item)
 
 
+def _canonical_provider_public_type_ref(type_item: dict[str, Any]) -> dict[str, Any]:
+    result = dict(type_item)
+    owner = str(result.get("module_id") or result.get("owner_module_id") or "").strip()
+    if owner:
+        result["module_id"] = owner
+    if owner and "visibility" not in result and "defined_in" not in result:
+        result["visibility"] = "public"
+        result["defined_in"] = "public_header"
+    if not str(result.get("name", "")).strip():
+        result["name"] = str(result.get("c_symbol") or result.get("c_type_name") or result.get("type_id") or "").strip()
+    return result
+
+
 def _provider_public_type_reference_indexes(core_design: dict[str, Any], module_artifacts: list[dict[str, Any]], module_id: str, planning_ir: dict[str, Any] | None) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
     modules_by_id = _module_by_id(module_artifacts)
     module = modules_by_id.get(module_id, {})
@@ -1170,6 +1200,13 @@ def _provider_public_type_reference_indexes(core_design: dict[str, Any], module_
         for type_item in group.get("types", []):
             if isinstance(type_item, dict) and _is_public_type(type_item):
                 _add_type_reference(by_id, by_name, type_item)
+    for type_item in draft.get("canonical_types", []):
+        if not isinstance(type_item, dict):
+            continue
+        owner = str(type_item.get("module_id") or type_item.get("owner_module_id") or "").strip()
+        ref_item = _canonical_provider_public_type_ref(type_item)
+        if owner in provider_ids and _is_public_type(ref_item):
+            _add_type_reference(by_id, by_name, ref_item)
     return by_id, by_name
 
 
@@ -2333,6 +2370,13 @@ def validate_full_implementation_plan(plan: dict[str, Any], *, profile: dict[str
                 diagnostics.append(PlanningDiagnostic("error", "readiness_public_signature_opaque_by_value", f"public function '{function_id}' exposes opaque public type '{raw_param_type}' by value", path))
 
     for caller in functions:
+        function_symbols = set(functions_by_id)
+        for function in functions:
+            signature = function.get("signature", {}) if isinstance(function.get("signature"), dict) else {}
+            for value in (function.get("name"), signature.get("name"), canonical_function_symbol(function)):
+                text = str(value or "").strip()
+                if text:
+                    function_symbols.add(text)
         caller_id = str(caller.get("function_id", ""))
         caller_param_names = {
             str(param.get("name", ""))
@@ -2365,7 +2409,7 @@ def validate_full_implementation_plan(plan: dict[str, Any], *, profile: dict[str
                 if not isinstance(binding, dict):
                     continue
                 value_ref = str(binding.get("value_ref", "")).strip()
-                if not _allowed_call_value_ref(value_ref, caller_param_names, access_path_values, local_symbols):
+                if not _allowed_call_value_ref(value_ref, caller_param_names, access_path_values, local_symbols, function_symbols):
                     diagnostics.append(PlanningDiagnostic("error", "readiness_call_contract_unknown_param_binding", f"call contract '{caller_id}' -> '{callee_id}' binds unknown value_ref '{value_ref}'", path))
 
     wire_facing = [

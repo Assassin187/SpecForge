@@ -133,6 +133,8 @@ def is_builtin_or_system_c_type(value: Any) -> bool:
     cleaned = re.sub(r"\[[^\]]*\]", "", text).replace("*", " ").replace("&", " ")
     cleaned = re.sub(r"\b(?:const|volatile|restrict|static|extern)\b", " ", cleaned)
     cleaned = re.sub(r"\s+", " ", cleaned).strip().lower()
+    if cleaned in {"struct", "enum", "union"}:
+        return True
     if cleaned in _SYSTEM_TYPE_KEYS:
         return True
     if cleaned.startswith(("struct ", "enum ", "union ")):
@@ -160,6 +162,29 @@ def is_anonymous_c_function_pointer_type(value: Any) -> bool:
     return bool(re.search(r"\(\s*\*\s*\)\s*\(", str(value or "")))
 
 
+def _function_pointer_parts(value: str) -> tuple[str, str] | None:
+    match = re.match(r"^([^()]+?)\(\s*\*\s*(?:[A-Za-z_][A-Za-z0-9_]*)?\s*\)\s*\((.*)\)$", value.strip())
+    if not match:
+        return None
+    return match.group(1).strip(), match.group(2).strip()
+
+
+def _split_c_params(params: str) -> list[str]:
+    depth = 0
+    start = 0
+    parts: list[str] = []
+    for index, char in enumerate(params):
+        if char in "([{":
+            depth += 1
+        elif char in ")]}" and depth:
+            depth -= 1
+        elif char == "," and depth == 0:
+            parts.append(params[start:index].strip())
+            start = index + 1
+    parts.append(params[start:].strip())
+    return [part for part in parts if part and part != "void"]
+
+
 def _type_ref_record(raw_type: str) -> dict[str, Any] | None:
     raw = str(raw_type or "").strip()
     if not raw or raw == "void" or is_builtin_or_system_c_type(raw) or is_anonymous_c_function_pointer_type(raw):
@@ -180,7 +205,15 @@ def extract_c_signature_type_refs(signature_or_params: Any) -> list[dict[str, An
     seen: set[str] = set()
 
     def add(raw_type: Any) -> None:
-        record = _type_ref_record(str(raw_type or ""))
+        text = str(raw_type or "").strip()
+        function_pointer = _function_pointer_parts(text)
+        if function_pointer is not None:
+            return_type, params = function_pointer
+            add(return_type)
+            for param in _split_c_params(params):
+                add(_strip_param_name(param))
+            return
+        record = _type_ref_record(text)
         if record is None or record["key"] in seen:
             return
         seen.add(record["key"])
@@ -204,23 +237,14 @@ def extract_c_signature_type_refs(signature_or_params: Any) -> list[dict[str, An
     if "(" not in raw or ")" not in raw:
         add(raw)
         return refs
+    if _function_pointer_parts(raw) is not None:
+        add(raw)
+        return refs
     left, rest = raw.split("(", 1)
     params = rest.rsplit(")", 1)[0]
     return_type = re.sub(r"\s+[A-Za-z_][A-Za-z0-9_]*\s*$", "", left).strip()
     add(return_type)
-    depth = 0
-    start = 0
-    parts: list[str] = []
-    for index, char in enumerate(params):
-        if char in "([{":
-            depth += 1
-        elif char in ")]}" and depth:
-            depth -= 1
-        elif char == "," and depth == 0:
-            parts.append(params[start:index].strip())
-            start = index + 1
-    parts.append(params[start:].strip())
-    for param in [part for part in parts if part]:
+    for param in _split_c_params(params):
         add(_strip_param_name(param))
     return refs
 
@@ -583,10 +607,19 @@ def lower_call_contract_for_coder(edge: dict[str, Any], function_index: dict[str
     if not callee:
         return None
     signature = lower_signature_for_coder(callee)
+    params: list[dict[str, Any]] = []
+    for binding in edge.get("param_bindings", []) if isinstance(edge.get("param_bindings"), list) else []:
+        if not isinstance(binding, dict):
+            continue
+        lowered = dict(binding)
+        value_ref = str(lowered.get("value_ref", "")).strip()
+        if value_ref in function_index:
+            lowered["value_ref"] = canonical_function_symbol(function_index[value_ref])
+        params.append(lowered)
     return {
         "NAME": signature["NAME"],
         "SIGNATURE": signature["RAW"],
-        "PARAMS": edge.get("param_bindings", []) if isinstance(edge.get("param_bindings"), list) else [],
+        "PARAMS": params,
         "RETURN": str(signature.get("RETURN", "")),
         "FAILURE": str(edge.get("failure_behavior", "")),
     }

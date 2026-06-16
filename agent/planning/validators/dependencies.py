@@ -4,6 +4,7 @@ from typing import Any
 
 from ..diagnostics import PlanningDiagnostic
 from ..schemas.implementation_plan import DEPENDENCY_GRAPH_SCHEMA_VERSION
+from ..stages.coder_spec_lowering import normalize_type_key
 from ..stages.implementation_plan_context import SYSTEM_TYPE_IDS, normalize_system_type_ref
 
 
@@ -50,10 +51,25 @@ def validate_dependency_graph(plan: dict[str, Any], *, path: str | None = None) 
                 visibility = str(callee.get("visibility", "public")).lower()
                 if visibility in {"private", "static"} and module_by_function.get(source) != module_by_function.get(target):
                     diagnostics.append(PlanningDiagnostic("error", "private_dependency_edge", f"Function '{source}' may not depend on private/static function '{target}' across modules", path))
-    for key in ("module_edges", "file_edges", "function_edges"):
+    blocking_cycle_kinds = {"signature_dependency", "header_dependency", "public_header_dependency"}
+    for key in ("module_edges", "file_edges"):
         edges = graph.get(key, [])
-        if isinstance(edges, list) and _has_cycle([(str(edge.get("from", "")), str(edge.get("to", ""))) for edge in edges if isinstance(edge, dict)]):
-            diagnostics.append(PlanningDiagnostic("error", "dependency_cycle", f"{key} contains a cycle", path))
+        if not isinstance(edges, list):
+            continue
+        cycle_edges = [
+            edge
+            for edge in edges
+            if isinstance(edge, dict) and str(edge.get("kind", "")).strip() in blocking_cycle_kinds
+        ]
+        cycle = _cycle_path([(str(edge.get("from", "")), str(edge.get("to", ""))) for edge in cycle_edges])
+        if cycle:
+            kinds = sorted({str(edge.get("kind", "")).strip() for edge in cycle_edges if isinstance(edge, dict)})
+            diagnostics.append(PlanningDiagnostic("error", "dependency_cycle", f"{key} contains a compile-order cycle via {', '.join(kinds)}: {' -> '.join(cycle)}", path))
+    edges = graph.get("function_edges", [])
+    if isinstance(edges, list):
+        cycle = _cycle_path([(str(edge.get("from", "")), str(edge.get("to", ""))) for edge in edges if isinstance(edge, dict)])
+        if cycle:
+            diagnostics.append(PlanningDiagnostic("error", "dependency_cycle", f"function_edges contains a cycle: {' -> '.join(cycle)}", path))
     diagnostics.extend(
         _cross_layer_dependency_diagnostics(
             plan,
@@ -173,12 +189,27 @@ def _cross_layer_dependency_diagnostics(
                     )
                 )
 
+    type_by_id = {
+        str(item.get("type_id", "")): item
+        for key in ("canonical_types", "type_inventory")
+        for item in plan.get(key, [])
+        if isinstance(item, dict) and str(item.get("type_id", "")).strip()
+    }
     type_file_by_ref: dict[str, str] = {}
+    type_file_by_key: dict[str, str] = {}
     for file_id, file_item in file_by_id.items():
         for type_ref in file_item.get("exports_type_ids", []) if isinstance(file_item.get("exports_type_ids"), list) else []:
             ref = str(type_ref).strip()
             if ref:
                 type_file_by_ref.setdefault(ref, file_id)
+                key = normalize_type_key(ref)
+                if key:
+                    type_file_by_key.setdefault(key, file_id)
+                type_item = type_by_id.get(ref, {})
+                for value in (type_item.get("name"), type_item.get("c_symbol"), type_item.get("c_type_name")):
+                    alias = normalize_type_key(value)
+                    if alias:
+                        type_file_by_key.setdefault(alias, file_id)
     for function in function_by_id.values():
         caller = str(function.get("function_id", "")).strip()
         source_file = file_by_function.get(caller, "")
@@ -205,7 +236,7 @@ def _cross_layer_dependency_diagnostics(
                     )
                 )
                 continue
-            target_file = type_file_by_ref.get(type_ref, "")
+            target_file = type_file_by_ref.get(type_ref, "") or type_file_by_key.get(normalize_type_key(type_ref or dependency.get("symbol_name", "")), "")
             if not target_file:
                 if owner == str(source_item.get("module_id", "")).strip():
                     continue
@@ -239,24 +270,37 @@ def _is_system_signature_dependency(dependency: dict[str, Any]) -> bool:
 
 
 def _has_cycle(edges: list[tuple[str, str]]) -> bool:
+    return bool(_cycle_path(edges))
+
+
+def _cycle_path(edges: list[tuple[str, str]]) -> list[str]:
     graph: dict[str, list[str]] = {}
     for source, target in edges:
         if source and target:
             graph.setdefault(source, []).append(target)
     visiting: set[str] = set()
     visited: set[str] = set()
+    stack: list[str] = []
 
-    def visit(node: str) -> bool:
+    def visit(node: str) -> list[str]:
         if node in visiting:
-            return True
+            index = stack.index(node) if node in stack else 0
+            return [*stack[index:], node]
         if node in visited:
-            return False
+            return []
         visiting.add(node)
+        stack.append(node)
         for target in graph.get(node, []):
-            if visit(target):
-                return True
+            cycle = visit(target)
+            if cycle:
+                return cycle
+        stack.pop()
         visiting.remove(node)
         visited.add(node)
-        return False
+        return []
 
-    return any(visit(node) for node in graph)
+    for node in graph:
+        cycle = visit(node)
+        if cycle:
+            return cycle
+    return []

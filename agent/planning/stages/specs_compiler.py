@@ -32,6 +32,7 @@ from .coder_spec_lowering import (
     normalize_function_type_for_coder,
     sidecar_payload,
 )
+from .implementation_plan_context import system_headers_for_type_ref
 
 
 def _normalized_spec_stem(file_item: dict[str, Any]) -> Path:
@@ -159,15 +160,357 @@ def _module_dependencies_from_plan(implementation_plan: dict[str, Any], module_i
             continue
         deps.setdefault(module_id, set()).update(str(dep).strip() for dep in module.get("dependencies", []) if str(dep).strip() in known and str(dep).strip() != module_id)
     graph = implementation_plan.get("dependency_graph", {})
+    compile_order_edge_kinds = {"signature_dependency", "header_dependency", "public_header_dependency"}
     edges = graph.get("module_edges", []) if isinstance(graph, dict) else []
     for edge in edges if isinstance(edges, list) else []:
         if not isinstance(edge, dict):
+            continue
+        if str(edge.get("kind", "")).strip() not in compile_order_edge_kinds:
             continue
         source = str(edge.get("from", "")).strip()
         target = str(edge.get("to", "")).strip()
         if source in known and target in known and source != target:
             deps.setdefault(source, set()).add(target)
     return deps
+
+
+def _type_ref_keys(type_item: dict[str, Any]) -> set[str]:
+    keys: set[str] = set()
+    for value in (type_item.get("type_id"), type_item.get("name"), type_item.get("c_symbol"), type_item.get("c_type_name")):
+        key = normalize_type_key(value)
+        if key:
+            keys.add(key)
+        text = str(value or "").strip()
+        if text.startswith("type:") and ":" in text:
+            tail_key = normalize_type_key(text.rsplit(":", 1)[-1])
+            if tail_key:
+                keys.add(tail_key)
+    return keys
+
+
+def _all_type_index(canonical_types: list[dict[str, Any]], type_inventory: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    result: dict[str, dict[str, Any]] = {}
+    for type_item in [*canonical_types, *type_inventory]:
+        if not isinstance(type_item, dict):
+            continue
+        for key in _type_ref_keys(type_item):
+            result.setdefault(key, type_item)
+    return result
+
+
+def _register_provider(provider_by_type_key: dict[str, str | None], key: str, header_path: str) -> None:
+    if not key or not header_path:
+        return
+    existing = provider_by_type_key.get(key)
+    if existing is None and key in provider_by_type_key:
+        return
+    if existing and existing != header_path:
+        provider_by_type_key[key] = None
+        return
+    provider_by_type_key[key] = header_path
+
+
+def _header_provider_index(
+    files: list[dict[str, Any]],
+    canonical_types: list[dict[str, Any]],
+    type_inventory: list[dict[str, Any]],
+) -> dict[str, str | None]:
+    provider_by_type_key: dict[str, str | None] = {}
+    type_index = _all_type_index(canonical_types, type_inventory)
+    public_headers_by_module: dict[str, list[str]] = {}
+    for file_item in files:
+        module_id = str(file_item.get("module_id", "")).strip()
+        header_path = str(file_item.get("header_path", "")).strip()
+        if module_id and header_path and not _is_source_only_entrypoint(file_item):
+            public_headers_by_module.setdefault(module_id, []).append(header_path)
+        for type_ref in file_item.get("exports_type_ids", []) if isinstance(file_item.get("exports_type_ids"), list) else []:
+            key = normalize_type_key(type_ref)
+            if key:
+                _register_provider(provider_by_type_key, key, header_path)
+            type_item = type_index.get(key, {}) if key else {}
+            for alias in _type_ref_keys(type_item):
+                _register_provider(provider_by_type_key, alias, header_path)
+
+    for type_item in type_inventory:
+        if not isinstance(type_item, dict):
+            continue
+        if str(type_item.get("visibility", "")).strip().lower() != "public":
+            continue
+        if str(type_item.get("defined_in", "")).strip().lower() != "public_header":
+            continue
+        module_id = str(type_item.get("module_id") or type_item.get("owner_module_id") or "").strip()
+        module_headers = sorted(set(public_headers_by_module.get(module_id, [])))
+        if len(module_headers) != 1:
+            continue
+        for key in _type_ref_keys(type_item):
+            _register_provider(provider_by_type_key, key, module_headers[0])
+    return provider_by_type_key
+
+
+def _type_refs_from_type_spec(type_spec: dict[str, Any]) -> list[dict[str, Any]]:
+    refs: list[dict[str, Any]] = []
+    kind = str(type_spec.get("TYPE_KIND", "")).upper()
+    if kind in {"STRUCT", "UNION"}:
+        member_key = "FIELDS" if kind == "STRUCT" else "VARIANTS"
+        for member in type_spec.get(member_key, []) if isinstance(type_spec.get(member_key, []), list) else []:
+            if not isinstance(member, dict):
+                continue
+            refs.extend(extract_c_signature_type_refs(member.get("TYPE", "")))
+            nested = member.get("TYPE_SPEC")
+            if isinstance(nested, dict):
+                refs.extend(_type_refs_from_type_spec(nested))
+    elif kind == "ALIAS":
+        refs.extend(extract_c_signature_type_refs(type_spec.get("ALIAS_OF", "")))
+    elif kind == "CALLBACK":
+        refs.extend(extract_c_signature_type_refs(type_spec.get("CALLBACK_SIGNATURE", "")))
+    return refs
+
+
+def _type_refs_from_data(data_items: list[dict[str, Any]], *, public_only: bool) -> list[dict[str, Any]]:
+    refs: list[dict[str, Any]] = []
+    for item in data_items:
+        if not isinstance(item, dict):
+            continue
+        if public_only and str(item.get("VISIBILITY", "")).upper() != "PUBLIC":
+            continue
+        type_spec = item.get("TYPE_SPEC")
+        if isinstance(type_spec, dict):
+            refs.extend(_type_refs_from_type_spec(type_spec))
+    return refs
+
+
+def _system_headers_from_c_type(value: Any) -> list[str]:
+    text = str(value or "").strip()
+    if not text:
+        return []
+    headers = system_headers_for_type_ref(text)
+    function_pointer = text if "(*)" in text or "(*" in text else ""
+    if function_pointer and "(" in function_pointer and ")" in function_pointer:
+        for part in function_pointer.replace("(", " ").replace(")", " ").replace(",", " ").split():
+            for header in system_headers_for_type_ref(part):
+                if header not in headers:
+                    headers.append(header)
+    return headers
+
+
+def _system_headers_from_type_spec(type_spec: dict[str, Any]) -> list[str]:
+    headers: list[str] = []
+
+    def add(value: Any) -> None:
+        for header in _system_headers_from_c_type(value):
+            if header not in headers:
+                headers.append(header)
+
+    kind = str(type_spec.get("TYPE_KIND", "")).upper()
+    if kind in {"STRUCT", "UNION"}:
+        member_key = "FIELDS" if kind == "STRUCT" else "VARIANTS"
+        for member in type_spec.get(member_key, []) if isinstance(type_spec.get(member_key, []), list) else []:
+            if not isinstance(member, dict):
+                continue
+            add(member.get("TYPE", ""))
+            nested = member.get("TYPE_SPEC")
+            if isinstance(nested, dict):
+                for header in _system_headers_from_type_spec(nested):
+                    if header not in headers:
+                        headers.append(header)
+    elif kind == "ALIAS":
+        add(type_spec.get("ALIAS_OF", ""))
+    elif kind == "CALLBACK":
+        add(type_spec.get("CALLBACK_SIGNATURE", ""))
+    return headers
+
+
+def _public_header_system_dependencies(header_data: list[dict[str, Any]], header_interfaces: list[dict[str, Any]]) -> list[str]:
+    headers: list[str] = []
+
+    def add_all(values: list[str]) -> None:
+        for header in values:
+            if header not in headers:
+                headers.append(header)
+
+    for item in header_data:
+        if not isinstance(item, dict) or str(item.get("VISIBILITY", "")).upper() != "PUBLIC":
+            continue
+        type_spec = item.get("TYPE_SPEC")
+        if isinstance(type_spec, dict):
+            add_all(_system_headers_from_type_spec(type_spec))
+    for interface in header_interfaces:
+        if isinstance(interface, dict) and str(interface.get("VISIBILITY", "")).lower() == "public":
+            add_all(_system_headers_from_c_type(interface.get("SIGNATURE", "")))
+    return sorted(headers)
+
+
+def _declared_type_keys(data_items: list[dict[str, Any]]) -> set[str]:
+    return {
+        key
+        for item in data_items
+        if isinstance(item, dict) and str(item.get("KIND", "")).upper() == "TYPE"
+        for key in (normalize_type_key(item.get("NAME", "")),)
+        if key
+    }
+
+
+def _sort_header_data_by_local_type_dependencies(header_data: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    local_keys = {
+        normalize_type_key(item.get("NAME", "")): index
+        for index, item in enumerate(header_data)
+        if isinstance(item, dict) and str(item.get("KIND", "")).upper() == "TYPE" and normalize_type_key(item.get("NAME", ""))
+    }
+    dependencies: dict[int, set[int]] = {index: set() for index in range(len(header_data))}
+    for index, item in enumerate(header_data):
+        if not isinstance(item, dict):
+            continue
+        self_key = normalize_type_key(item.get("NAME", ""))
+        type_spec = item.get("TYPE_SPEC")
+        refs = _type_refs_from_type_spec(type_spec) if isinstance(type_spec, dict) else []
+        for ref in refs:
+            key = str(ref.get("key", "")).strip()
+            dep_index = local_keys.get(key)
+            if dep_index is not None and key != self_key and dep_index != index:
+                dependencies[index].add(dep_index)
+
+    ordered: list[int] = []
+    temporary: set[int] = set()
+    permanent: set[int] = set()
+
+    def visit(index: int) -> bool:
+        if index in permanent:
+            return True
+        if index in temporary:
+            return False
+        temporary.add(index)
+        for dependency in sorted(dependencies.get(index, set())):
+            if not visit(dependency):
+                return False
+        temporary.remove(index)
+        permanent.add(index)
+        ordered.append(index)
+        return True
+
+    for index in range(len(header_data)):
+        if not visit(index):
+            return header_data
+    return [header_data[index] for index in ordered]
+
+
+def _resolve_type_ref_headers(
+    refs: list[dict[str, Any]],
+    *,
+    provider_by_type_key: dict[str, str | None],
+    local_type_keys: set[str],
+    current_header: str,
+    unresolved: list[dict[str, Any]],
+    unresolved_kind: str,
+    module_id: str,
+    file_id: str,
+    reason: str,
+) -> set[str]:
+    headers: set[str] = set()
+    for ref in refs:
+        key = str(ref.get("key", "")).strip()
+        if not key or key in local_type_keys:
+            continue
+        provider = provider_by_type_key.get(key)
+        if provider:
+            if provider != current_header:
+                headers.add(provider)
+            continue
+        _add_unresolved(
+            unresolved,
+            kind=unresolved_kind,
+            module_id=module_id,
+            file_id=file_id,
+            type_name=str(ref.get("raw") or ref.get("name") or key),
+            reason=reason,
+        )
+    return headers
+
+
+def _public_header_dependency_headers(
+    file_item: dict[str, Any],
+    header_data: list[dict[str, Any]],
+    header_interfaces: list[dict[str, Any]],
+    provider_by_type_key: dict[str, str | None],
+    unresolved: list[dict[str, Any]],
+) -> list[str]:
+    refs: list[dict[str, Any]] = []
+    refs.extend(_type_refs_from_data(header_data, public_only=True))
+    for interface in header_interfaces:
+        if isinstance(interface, dict) and str(interface.get("VISIBILITY", "")).lower() == "public":
+            refs.extend(extract_c_signature_type_refs(interface.get("SIGNATURE", "")))
+    return sorted(
+        _resolve_type_ref_headers(
+            refs,
+            provider_by_type_key=provider_by_type_key,
+            local_type_keys=_declared_type_keys(header_data),
+            current_header=str(file_item.get("header_path", "")).strip(),
+            unresolved=unresolved,
+            unresolved_kind="public_header_dependency_provider",
+            module_id=str(file_item.get("module_id", "")),
+            file_id=str(file_item.get("file_id", "")),
+            reason="Public header references an external non-system type but no provider header could be resolved.",
+        )
+    )
+
+
+def _callee_function_ids(function: dict[str, Any]) -> set[str]:
+    ids = {str(item).strip() for item in function.get("calls_allowed", []) if str(item).strip()} if isinstance(function.get("calls_allowed", []), list) else set()
+    for edge in function.get("call_contracts", []) if isinstance(function.get("call_contracts"), list) else []:
+        if isinstance(edge, dict) and str(edge.get("callee_function_id", "")).strip():
+            ids.add(str(edge["callee_function_id"]).strip())
+    return ids
+
+
+def _source_dependency_headers(
+    file_item: dict[str, Any],
+    file_functions: list[dict[str, Any]],
+    source_data: list[dict[str, Any]],
+    source_interfaces: list[dict[str, Any]],
+    file_by_id: dict[str, dict[str, Any]],
+    function_index: dict[str, dict[str, Any]],
+    provider_by_type_key: dict[str, str | None],
+) -> list[str]:
+    deps: set[str] = set()
+    self_header = str(file_item.get("header_path", "")).strip()
+    if self_header:
+        deps.add(self_header)
+    for target_id in file_item.get("imports_allowed", []) if isinstance(file_item.get("imports_allowed", []), list) else []:
+        target = file_by_id.get(str(target_id))
+        header_path = str(target.get("header_path", "")).strip() if isinstance(target, dict) else ""
+        if header_path:
+            deps.add(header_path)
+    for function in file_functions:
+        for callee_id in _callee_function_ids(function):
+            callee = function_index.get(callee_id)
+            callee_file = file_by_id.get(str(callee.get("file_id", ""))) if isinstance(callee, dict) else None
+            header_path = str(callee_file.get("header_path", "")).strip() if isinstance(callee_file, dict) else ""
+            if header_path:
+                deps.add(header_path)
+        refs: list[dict[str, Any]] = []
+        signature = function.get("signature", {}) if isinstance(function.get("signature"), dict) else {}
+        refs.extend(extract_c_signature_type_refs(signature))
+        for dependency in function.get("signature_dependencies", []) if isinstance(function.get("signature_dependencies", []), list) else []:
+            if not isinstance(dependency, dict):
+                continue
+            refs.extend(extract_c_signature_type_refs(dependency.get("symbol_name") or dependency.get("type_ref") or ""))
+        for ref in refs:
+            key = str(ref.get("key", "")).strip()
+            provider = provider_by_type_key.get(key)
+            if provider:
+                deps.add(provider)
+    local_type_keys = _declared_type_keys(source_data)
+    for interface in source_interfaces:
+        if isinstance(interface, dict):
+            for ref in extract_c_signature_type_refs(interface.get("SIGNATURE", "")):
+                key = str(ref.get("key", "")).strip()
+                provider = provider_by_type_key.get(key)
+                if provider and key not in local_type_keys:
+                    deps.add(provider)
+    for ref in _type_refs_from_data(source_data, public_only=False):
+        provider = provider_by_type_key.get(str(ref.get("key", "")).strip())
+        if provider:
+            deps.add(provider)
+    return sorted(dep for dep in deps if dep)
 
 
 def _compiler_sidecar_source(
@@ -377,6 +720,7 @@ def _data_declarations(
     module_type_inventory: list[dict[str, Any]],
     *,
     unresolved: list[dict[str, Any]],
+    allow_unlisted_public_inventory: bool,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     handle_type = default_handle_type(protocol, module_id)
     header_data = [
@@ -400,12 +744,20 @@ def _data_declarations(
     seen_header_keys = {normalize_type_key(handle_type)}
     header_type_specs_by_key: dict[str, dict[str, Any]] = {normalize_type_key(handle_type): {"TYPE_KIND": "OPAQUE"}}
     seen_source = {f"struct {handle_type[:-2]}"}
+    exported_type_keys = {
+        normalize_type_key(value)
+        for value in file_item.get("exports_type_ids", [])
+        if normalize_type_key(value)
+    }
 
     def add_inventory_type(type_item: dict[str, Any]) -> None:
         name = str(type_item.get("name", "")).strip()
         if not name:
             return
         target_public = str(type_item.get("visibility", "")) == "public" and str(type_item.get("defined_in", "")) == "public_header"
+        type_keys = _type_ref_keys(type_item)
+        if target_public and not allow_unlisted_public_inventory and not (type_keys & exported_type_keys):
+            return
         target = header_data if target_public else source_data
         seen = seen_header if target_public else seen_source
         seen_keys = seen_header_keys if target_public else {normalize_type_key(item) for item in seen_source}
@@ -485,6 +837,9 @@ def _data_declarations(
         if role:
             module_item.setdefault("resolved_public_type_roles", {})[role] = str(declaration["NAME"])
 
+    def current_file_exports_type(type_item: dict[str, Any]) -> bool:
+        return allow_unlisted_public_inventory or bool(_type_ref_keys(type_item) & exported_type_keys)
+
     expected_roles = []
     expected_roles.extend(str(role) for role in file_item.get("exports_type_ids", []) if str(role).strip())
     for role in expected_roles:
@@ -547,7 +902,7 @@ def _data_declarations(
                     reason="Public function signature references a non-primitive type that is not declared in HEADER.DATA or canonical_types.",
                 )
                 continue
-            if str(type_item.get("owner_module_id", module_id)) == module_id:
+            if str(type_item.get("owner_module_id", module_id)) == module_id and current_file_exports_type(type_item):
                 ref_with_function = dict(ref)
                 ref_with_function["function_id"] = function.get("function_id", "")
                 add_public_type(type_item, ref=ref_with_function)
@@ -568,7 +923,7 @@ def _data_declarations(
                     "ROLE": str(item.get("role", "")) or "Internal type reference.",
                 }
             )
-    return header_data, source_data
+    return _sort_header_data_by_local_type_dependencies(header_data), source_data
 
 
 def compile_spec_bundle(implementation_plan: dict[str, Any], output_dir: str | Path) -> tuple[dict[str, Any], Path]:
@@ -589,6 +944,11 @@ def compile_spec_bundle(implementation_plan: dict[str, Any], output_dir: str | P
     canonical_type_index = _canonical_type_index(canonical_types)
     access_by_id = {str(item.get("access_path_id", "")): item for item in access_path_table if str(item.get("access_path_id", "")).strip()}
     access_by_field = {str(item.get("field_id", "")): item for item in access_path_table if str(item.get("field_id", "")).strip()}
+    provider_by_type_key = _header_provider_index(files, canonical_types, type_inventory)
+    module_header_counts: dict[str, int] = {}
+    for item in files:
+        if str(item.get("header_path", "")).strip() and not _is_source_only_entrypoint(item):
+            module_header_counts[str(item.get("module_id", ""))] = module_header_counts.get(str(item.get("module_id", "")), 0) + 1
     functions_by_file: dict[str, list[dict[str, Any]]] = {}
     for function in functions:
         functions_by_file.setdefault(str(function.get("file_id", "")), []).append(function)
@@ -609,11 +969,6 @@ def compile_spec_bundle(implementation_plan: dict[str, Any], output_dir: str | P
         module_item = module_by_id.get(module_id, {})
         implemented_ids = _implemented_ids(file_item)
         file_functions = [function for function in functions_by_file.get(file_id, []) if not implemented_ids or str(function.get("function_id", "")) in implemented_ids]
-        imported_headers = [
-            str(file_by_id[target].get("header_path", ""))
-            for target in file_item.get("imports_allowed", [])
-            if str(target) in file_by_id and str(file_by_id[target].get("header_path", "")).strip()
-        ]
         source_only = _is_source_only_entrypoint(file_item)
         if source_only:
             header_data, source_data = [], []
@@ -627,6 +982,7 @@ def compile_spec_bundle(implementation_plan: dict[str, Any], output_dir: str | P
                 canonical_type_index,
                 [item for item in type_inventory if str(item.get("module_id", "")) == module_id],
                 unresolved=unresolved_lowering,
+                allow_unlisted_public_inventory=module_header_counts.get(module_id, 0) <= 1,
             )
         source_interfaces: list[dict[str, Any]] = []
         header_interfaces: list[dict[str, Any]] = []
@@ -647,6 +1003,15 @@ def compile_spec_bundle(implementation_plan: dict[str, Any], output_dir: str | P
             fn_path = write_json(spec_dir / fn_filename, function_spec)
             function_spec_paths.append(str(fn_path))
 
+        source_dependencies = _source_dependency_headers(
+            file_item,
+            file_functions,
+            source_data,
+            source_interfaces,
+            file_by_id,
+            function_index,
+            provider_by_type_key,
+        )
         file_access_ids = {
             access_id
             for function in file_functions
@@ -663,19 +1028,23 @@ def compile_spec_bundle(implementation_plan: dict[str, Any], output_dir: str | P
             },
             "SOURCE": {
                 "PATH": str(file_item.get("source_path", "")),
-                "DEPENDENCY": [
-                    dep
-                    for dep in [str(file_item.get("header_path", "")), *sorted(set(imported_headers))]
-                    if dep
-                ],
+                "DEPENDENCY": source_dependencies,
                 "DATA": source_data,
                 "INTERFACE": source_interfaces,
             },
         }
         if not source_only:
+            header_dependencies = _public_header_dependency_headers(
+                file_item,
+                header_data,
+                header_interfaces,
+                provider_by_type_key,
+                unresolved_lowering,
+            )
             file_spec["HEADER"] = {
                 "PATH": str(file_item.get("header_path", "")),
-                "DEPENDENCY": sorted({header for header in imported_headers if header != file_item.get("header_path", "")}),
+                "DEPENDENCY": header_dependencies,
+                "SYSTEM_DEPENDENCY": _public_header_system_dependencies(header_data, header_interfaces),
                 "DATA": header_data,
                 "INTERFACE": header_interfaces,
             }
