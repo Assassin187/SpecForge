@@ -12,7 +12,7 @@
 当前执行状态：
 
 ```text
-Step 3 completed：planning architecture、file layout、runtime entrypoint、MODULES/FILES、HEADER/SOURCE dependency 已建立 fail-closed mapping/closure validation。
+Step 4 completed：type inventory、public type obligations、function signatures、callback/function pointer closure、coder header ABI closure 已建立 fail-closed validation。
 ```
 
 说明：
@@ -83,41 +83,46 @@ Step 3 completed：planning architecture、file layout、runtime entrypoint、MO
 当前步骤：
 
 ```text
-Step 3：File Layout 与 Runtime Mapping 闭合（已完成）
+Step 4：type inventory 与 function signature closure（已完成）
 ```
 
 目标：
 
 ```text
-让 planning architecture、file layout、runtime entrypoint 和 dependency closure 相互兼容。
-目标不是复制 gold/example layout，而是让当前 planning 自己生成的 target-profile-specific module/file/runtime structure 可解释、可编译、可被 coder 使用。
+在 dependency/header readiness 与 file layout 稳定基础上，修复 5.3_type_data 与 5.4b_function_signatures 的 public ABI 质量。
+public types、callbacks、manager/session/router/network types 与 function signatures 必须可闭合、可渲染、可调用。
 ```
 
 涉及模块候选：
 
 ```text
+agent/planning/stages/coder_spec_lowering.py
+agent/planning/stages/inventory_planning_space.py
+agent/planning/stages/inventory_reconciliation.py
 agent/planning/stages/implementation_plan_merger.py
-agent/planning/stages/layout_runtime_mapping.py
 agent/planning/orchestrator.py
+agent/planning/stages/specs_compiler.py
 agent/planning/validators/implementation_plan_stages.py
 agent/planning/validators/coder_semantics.py
 agent/coder/specs.py
-agent/coder/generation.py
+agent/coder/header_recipes.py
 相关 tests / fixtures
 ```
 
 本步骤任务清单：
 
 ```text
-[x] runtime stage 不再隐式创建 create/start/run/destroy lifecycle function
-[x] app/broker artifact seed 显式包含 *_start，并移除提前生成 main 的 seed
-[x] runtime entrypoint candidate/final readiness 校验 lifecycle function existence/public API/import closure
-[x] 新增 layout_runtime_mapping_report/v1 并写入 009_layout_runtime_mapping_report.json
-[x] layout/runtime mapping report 接入 5.7 readiness 与 specs_compile resume gate
-[x] coder loader blocking unknown MODULES[].FILES、unknown MODULES[].DEPENDENCIES、duplicate HEADER/SOURCE path
-[x] coder runtime main rendering 改为读取 generated main.c FILE_SPEC、SOURCE.DEPENDENCY 与 existing lifecycle signatures
-[x] Step 3 regression tests
-[x] MQTT validate + specs_compile resume 验证 layout/runtime/header/module closure
+[x] public type obligation report 生成并写入 5.3 sidecar。
+[x] 5.3 type inventory validator 覆盖 callback return/params、function pointer fields、alias、struct fields。
+[x] public ABI unknown/stale/private type refs fail-closed，不再 silent normalize 成 void*。
+[x] 5.4b function signature validator 检查 SIGNATURE.RAW / RETURN / PARAMS canonical 一致。
+[x] public signature non-system type refs 必须解析为 public/local/provider/system 类型。
+[x] final readiness 扫描 final plan 中 signature、access path、call contract、type fields/callbacks/aliases 的 stale/private refs。
+[x] coder spec loader 将 HEADER/SOURCE/FUNCTION_SPEC signature drift 升级为 blocking。
+[x] coder semantics 校验 provider header visibility、callback typedef、callback struct field、function pointer field closure。
+[x] function pointer struct field header rendering 可生成合法 C declaration。
+[x] Step 4 regression tests。
+[x] MQTT validate + deterministic MQTT spec bundle rendered header validation。
 [x] 当前状态文件更新
 ```
 
@@ -159,15 +164,26 @@ agent/coder/generation.py
 [x] docs/CURRENT_TASK_STATUS.md 已更新。
 ```
 
+只有同时满足以下条件，才能标记 Step 4 完成：
+
+```text
+[x] public type obligation report 生成。
+[x] signature type-ref closure validator 接入 5.4b 与 final readiness/coder compatibility。
+[x] callback closure tests 通过。
+[x] stale/private type ref tests 通过。
+[x] MQTT sample validation 通过；deterministic MQTT spec bundle rendered header / dummy TU validation 通过。
+[x] docs/CURRENT_TASK_STATUS.md 已更新。
+```
+
 ## 5. 建议下一轮 Codex 会话入口
 
 下一轮会话建议执行：
 
 ```text
 请阅读 AGENT.md、PLANNING_STABILIZATION_TASKS.md 和 CURRENT_TASK_STATUS.md。
-Step 3 已完成。下一轮固定进入 Step 4：type inventory 与 function signature closure。
-建议优先使用 agent/planning/out/mqtt_step3_layout_runtime_resume/spec_bundle 与 009_layout_runtime_mapping_report.json 作为输入基线。
-不要修改 Step 5 semantic actionability，也不要提前进入 Step 6 多协议复现。
+Step 4 已完成。下一轮固定进入 Step 5：semantic actionability。
+建议优先使用 agent/planning/out/mqtt_step4_type_signature_closure_deterministic/spec_bundle 与 Step 4 diagnostics/tests 作为输入基线。
+不要提前进入 Step 6 多协议复现。
 不要回退 Step 1/2/3 strict validators，不要压缩 strict schema，不要关闭 rendered header validation。
 ```
 
@@ -465,6 +481,169 @@ file layout、runtime entrypoint、module/file/header dependency 已形成可解
 下一轮入口：Step 4 type inventory 与 function signature closure。
 ```
 
+### Step 4 压缩记录
+
+时间：
+
+```text
+2026-06-17
+```
+
+目标：
+
+```text
+修复 5.3_type_data 与 5.4b_function_signatures 的 public ABI closure。
+required type categories 从 protocol role、target profile、minimum scope 与当前 architecture 派生，不复制 gold/example type names。
+public signature 必须可 lower 到 C header declaration；unknown/stale/private type refs 必须在 planning/readiness/coder compatibility 阶段被拦截。
+```
+
+修改文件：
+
+```text
+agent/planning/stages/coder_spec_lowering.py
+agent/planning/stages/inventory_planning_space.py
+agent/planning/stages/inventory_reconciliation.py
+agent/planning/stages/implementation_plan_merger.py
+agent/planning/orchestrator.py
+agent/planning/validators/implementation_plan_stages.py
+agent/planning/validators/coder_semantics.py
+agent/coder/specs.py
+agent/coder/header_recipes.py
+agent/planning/tests/test_implementation_plan_stage_candidates.py
+agent/planning/tests/test_coder_schema_lowering.py
+docs/CURRENT_TASK_STATUS.md
+```
+
+核心完成项：
+
+```text
+1. 新增 public_type_obligation_report/v1，并由 5.3 reconciliation 输出为 007_5_3_public_type_obligation_report*.json sidecar；strict coder spec 顶层未增加 planning-only 字段。
+2. public type obligations 覆盖 connection/session context、protocol message/packet、parser/decoder state、encoder buffer、router/topic/resource store、server/broker context、transport connection、callback table、timer/lifecycle handle、error/result type。
+3. type inventory closure 覆盖 struct fields、alias、callback return/params、function pointer fields；public ABI unknown/stale/private refs blocking。
+4. function signature closure 检查 SIGNATURE.RAW、SIGNATURE.RETURN、SIGNATURE.PARAMS canonical 一致。
+5. public signature non-system type refs 必须解析为 same-header/local public type、provider public type、合法 opaque backing pointer 或 system type。
+6. final readiness 扫描 final plan 中 signature、type refs、access path c_type、callback、alias、call contract signature drift。
+7. coder loader 将 HEADER.INTERFACE / SOURCE.INTERFACE / FUNCTION_SPEC signature mismatch 升级为 blocking，并新增 FUNCTION_SPEC raw/structured consistency check。
+8. coder semantics 按 HEADER.DEPENDENCY provider visibility 校验 public header ABI；callback typedef、callback struct field、function pointer field 全部参与 closure。
+9. header renderer 支持 struct field 中的 anonymous/named function pointer declaration。
+10. fallback function signatures 优先使用当前 module 已规划 public opaque_handle，避免 stale default handle type。
+```
+
+新增 diagnostics：
+
+```text
+public_type_obligation_uncovered（预留 report/readiness 分类）
+public_signature_unknown_type
+public_signature_private_type_leak
+public_signature_missing_header_dependency
+callback_type_unknown_ref
+callback_type_private_ref
+function_pointer_field_unknown_ref
+stale_type_ref
+cross_module_private_type_ref
+signature_raw_structured_mismatch
+header_source_function_signature_mismatch
+call_contract_signature_mismatch
+public_header_type_cycle
+coder_public_signature_missing_header_dependency
+coder_public_callback_unknown_type
+coder_public_function_pointer_unknown_type
+```
+
+新增/更新测试：
+
+```text
+1. public type obligation report category status coverage。
+2. public signature external type + provider header -> pass。
+3. public signature external type missing provider header -> blocking。
+4. public signature unknown type -> blocking。
+5. public signature private type leak -> blocking。
+6. callback typedef external connection/payload type -> provider dependency lower 成功，rendered header compile pass。
+7. callback typedef 参数 unknown type -> blocking。
+8. function pointer field 引用 external type -> HEADER.DEPENDENCY lower 成功，rendered header compile pass。
+9. function pointer field unknown type -> blocking。
+10. stale type_ref / public private callback param 不再 silent normalize。
+11. RAW signature 与 structured signature 不一致 -> blocking。
+12. HEADER.INTERFACE / SOURCE.INTERFACE / FUNCTION_SPEC signature mismatch -> blocking。
+13. CALL_CONTRACTS callee signature mismatch -> blocking。
+```
+
+实际运行命令：
+
+```text
+python3 -m compileall -q agent/planning agent/coder tools
+python3 -m unittest agent.planning.tests.test_implementation_plan_stage_candidates agent.planning.tests.test_coder_schema_lowering
+python3 -m unittest agent.planning.tests.test_implementation_plan_stage_candidates agent.planning.tests.test_coder_schema_lowering agent.planning.tests.test_validators
+python3 -m agent.planning validate --facts agent/facts/gold_facts/mqtt_min/protocol_facts.json --target-profile agent/planning/planning_target_profile_mqtt.json --output-dir agent/planning/out/mqtt_step4_type_signature_closure_validate
+python3 -m agent.planning plan --facts agent/facts/gold_facts/mqtt_min/protocol_facts.json --target-profile agent/planning/planning_target_profile_mqtt.json --output-dir agent/planning/out/mqtt_step4_type_signature_closure_fresh
+kill 2818449
+python3 - <<'PY'
+from pathlib import Path
+import shutil
+from agent.planning.adapters.facts_input import build_planning_ir
+from agent.planning.adapters.target_profile import load_target_profile
+from agent.planning.stages.protocol_profile import build_protocol_profile
+from agent.planning.stages.constraints import activate_constraints
+from agent.planning.stages.architecture import select_architecture
+from agent.planning.tests.current_flow_fixtures import current_architecture_candidates, current_implementation_plan
+from agent.planning.stages.specs_compiler import compile_spec_bundle
+from agent.planning.validators.coder_compat import validate_coder_compatibility
+from agent.coder.specs import load_spec_bundle_from_root
+facts = Path('agent/facts/gold_facts/mqtt_min/protocol_facts.json')
+target, _ = load_target_profile(Path('agent/planning/planning_target_profile_mqtt.json'))
+planning_ir, _ = build_planning_ir(facts, target)
+profile = build_protocol_profile(planning_ir)
+constraints = activate_constraints(profile)
+selected = select_architecture(current_architecture_candidates(planning_ir, profile, constraints), profile)
+plan = current_implementation_plan(planning_ir, profile, constraints, selected)
+out = Path('agent/planning/out/mqtt_step4_type_signature_closure_deterministic')
+if out.exists():
+    shutil.rmtree(out)
+manifest, _ = compile_spec_bundle(plan, out)
+diags = validate_coder_compatibility(manifest['spec_root'])
+bundle = load_spec_bundle_from_root(manifest['spec_root'], validate_rendered_headers=True)
+print(len([d for d in diags if d.level == 'error']))
+print(len([d for d in bundle.diagnostics if d.level == 'error']))
+PY
+```
+
+通过的检查：
+
+```text
+compileall passed。
+Step 4 targeted unittest：174 tests passed。
+planning/coder/validators unittest：187 tests passed。
+MQTT planning validate：No diagnostics。
+deterministic MQTT spec bundle：validate_coder_compatibility diagnostics=0 errors=0。
+deterministic MQTT rendered header dummy TU gate：loader_errors=0。
+输出 spec_root：agent/planning/out/mqtt_step4_type_signature_closure_deterministic/spec_bundle。
+```
+
+失败或未完成检查：
+
+```text
+fresh MQTT planning run：agent/planning/out/mqtt_step4_type_signature_closure_fresh。
+结果：人工终止，进程 exit code 143。原因是 architecture generation 并发 LLM future 长时间无新输出；中断前无 Step 4 diagnostics。
+补充验证：使用 deterministic MQTT current-flow plan 生成 spec_bundle，并完成 coder compatibility + rendered header dummy TU validation。
+```
+
+新增风险：
+
+```text
+1. public type obligation category requiredness 目前基于 role/profile/module capability text 与 planned type cues，后续 Step 5 可能需要把 semantic actionability 结果纳入 requiredness。
+2. 合法 forward declaration policy 只允许 public opaque backing pointer；by-value concrete type、struct layout、enum、alias 不走 forward declare 兜底。
+3. final readiness 只检查结构化 type refs / c_type / signatures / callback / alias / call contract signature，不解析任意 prose behavior 文本中的自然语言 type mentions。
+4. fresh LLM planning run 本轮未完成，需下一轮或 CI 在外部 LLM 稳定时重跑。
+```
+
+Step 4 结论：
+
+```text
+Step 4 completed。
+public type obligation report 已生成路径接入；signature/type-ref/callback/function-pointer/header ABI closure 已在 5.3、5.4b、5.7/coder compatibility 多层 fail-closed。
+下一轮入口：Step 5 semantic actionability。
+```
+
 ## 7. 风险与注意事项
 
 ### 7.1 更严格 validation 会暴露更多失败
@@ -494,16 +673,16 @@ dependency_graph.function_edges=[]
 
 如果无法闭合，应 blocking。
 
-### 7.4 不要过早进入 Step 5 / Step 6
+### 7.4 不要过早进入 Step 6
 
-Step 3 之后应先做 Step 4 type inventory 与 function signature closure。不要提前进入 Step 5 semantic actionability 或 Step 6 MQTT/CoAP/SMTP 多协议复现，否则会混入 type/signature closure 噪声。
+Step 4 之后应进入 Step 5 semantic actionability。不要提前进入 Step 6 MQTT/CoAP/SMTP 多协议复现，否则会混入 semantic actionability 噪声。
 
 ## 8. 当前状态摘要
 
 ```text
-当前完成度：Step 3 completed。
-当前主线：下一轮进入 Step 4 type inventory 与 function signature closure。
-当前最新验证：agent/planning/out/mqtt/broker__c__linux_epoll__minimum_v1/20260616_231307_313900 从 implementation_plan_5_2b 续跑后，Step 3 相关 file layout、runtime entrypoint、dependency、layout/runtime mapping reports 均通过；run 失败于 specs_compile 的 rendered header compile gate。
-当前最重要 blocker：Step 4 type inventory 与 function signature/header declaration closure 尚未闭合，最新失败集中在 protocol_codec public header circular include/type declaration order。
-下一步：从 Step 4 type inventory 与 function signature closure 开始，不提前进入 Step 5 semantic actionability 或 Step 6 多协议复现。
+当前完成度：Step 4 completed。
+当前主线：下一轮进入 Step 5 semantic actionability。
+当前最新验证：compileall passed；Step 4 targeted unittest 174 tests passed；planning/coder/validators unittest 187 tests passed；MQTT planning validate No diagnostics；deterministic MQTT spec bundle coder compatibility 与 rendered header dummy TU gate 均 0 errors。
+当前最重要 blocker：fresh MQTT LLM planning run 本轮因 architecture generation 并发 LLM future 长时间无输出而人工终止；需在外部 LLM 稳定时重跑 fresh plan。
+下一步：从 Step 5 semantic actionability 开始，不提前进入 Step 6 多协议复现。
 ```

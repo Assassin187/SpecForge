@@ -6,6 +6,7 @@ from typing import Any
 from .function_inventory_decomposition import DECOMPOSITION_RULES
 from .implementation_plan import _safe_id
 from .implementation_plan_context import SYSTEM_TYPE_IDS, normalize_system_type_ref
+from .inventory_planning_space import build_public_type_obligation_report
 
 
 TYPE_KIND_VALUES = {
@@ -370,17 +371,20 @@ def _sanitize_type_refs(type_item: dict[str, Any], allowed_refs: set[str], name_
     def normalize_surface_ref(ref: Any, c_type: Any, *, surface: str, owner_name: Any, fallback_to_void: bool) -> str:
         normalized = normalize(ref, c_type)
         if not normalized:
+            if is_public and str(ref or "").strip() and str(ref or "").strip().lower() not in {"void", "struct", "union", "enum"}:
+                diagnostics.append({"level": "error", "code": "stale_type_ref", "message": f"public {surface} ref '{ref}' in {owner_name} is not declared"})
+                return ""
             if fallback_to_void and _pointer_like(c_type):
                 diagnostics.append({"level": "warning", "code": "unknown_type_ref_normalized", "message": f"normalized unknown {surface} ref in {item.get('type_id')}"})
                 return "void"
             return ""
         target = local_meta.get(normalized)
         if is_public and target is not None and not _is_public_type_ref_meta(target):
-            diagnostics.append({"level": "warning", "code": "public_private_type_ref_normalized", "message": f"normalized private {surface} ref in {item.get('type_id')}"})
-            return "void" if fallback_to_void else ""
+            diagnostics.append({"level": "error", "code": "public_type_ref_private_leak", "message": f"public {surface} ref in {item.get('type_id')} points at a private/internal type"})
+            return normalized
         if target is None and normalized not in SYSTEM_TYPE_IDS and normalized.startswith("type:"):
-            diagnostics.append({"level": "warning", "code": "unknown_type_ref_normalized", "message": f"dropped unknown {surface} ref '{normalized}' in {owner_name}"})
-            return "void" if fallback_to_void and _pointer_like(c_type) else ""
+            diagnostics.append({"level": "error" if is_public else "warning", "code": "stale_type_ref", "message": f"{surface} ref '{normalized}' in {owner_name} is not declared"})
+            return normalized if is_public else ("void" if fallback_to_void and _pointer_like(c_type) else "")
         return normalized
 
     dependencies: list[str] = []
@@ -614,6 +618,7 @@ def reconcile_type_filling_candidate(space: dict[str, Any], filling_candidate: d
         },
         "diagnostics": diagnostics,
         "type_obligations": {"schema_version": "type_obligations/v1", "module_id": space.get("module_id", ""), "obligations": _lifecycle_obligations(types)},
+        "public_type_obligation_report": build_public_type_obligation_report(space, types),
     }
 
 

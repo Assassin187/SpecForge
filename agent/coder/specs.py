@@ -37,6 +37,78 @@ def normalize_signature(signature: str) -> str:
     return re.sub(r"\s+", " ", signature.strip())
 
 
+def _split_c_params(params: str) -> list[str]:
+    depth = 0
+    start = 0
+    parts: list[str] = []
+    for index, char in enumerate(params):
+        if char in "([{":
+            depth += 1
+        elif char in ")]}" and depth:
+            depth -= 1
+        elif char == "," and depth == 0:
+            parts.append(params[start:index].strip())
+            start = index + 1
+    parts.append(params[start:].strip())
+    return [part for part in parts if part and part != "void"]
+
+
+def _strip_param_name(param: str) -> str:
+    text = param.strip()
+    if not text or text == "void":
+        return ""
+    text = text.split("=", 1)[0].strip()
+    text = re.sub(r"\[[^\]]*\]\s*$", "", text).strip()
+    match = re.match(r"(.+?)\(\s*\*[A-Za-z_][A-Za-z0-9_]*\s*\)\s*\((.*)\)$", text)
+    if match:
+        return f"{match.group(1).strip()} (*)({match.group(2).strip()})"
+    match = re.match(r"(.+?)([*\s]+)([A-Za-z_][A-Za-z0-9_]*)$", text)
+    if match:
+        return (match.group(1) + match.group(2)).strip()
+    return text
+
+
+def _canonical_c_type_spelling(value: Any) -> str:
+    text = str(value or "").strip().rstrip(";")
+    text = re.sub(r"\b(?:static|extern)\b", " ", text)
+    text = re.sub(r"\s*\*\s*", "*", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _parse_c_function_signature(value: Any) -> dict[str, Any]:
+    raw = str(value or "").strip().rstrip(";")
+    match = re.match(r"^(?P<left>.+?[*\s])(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*\((?P<params>.*)\)$", raw)
+    if not match:
+        return {"name": "", "return_type": "", "params": []}
+    return {
+        "name": match.group("name"),
+        "return_type": _canonical_c_type_spelling(match.group("left")),
+        "params": [
+            {"type": _canonical_c_type_spelling(_strip_param_name(param))}
+            for param in _split_c_params(match.group("params"))
+        ],
+    }
+
+
+def _canonical_signature_key(value: Any) -> tuple[str, str, tuple[str, ...]] | None:
+    parsed = _parse_c_function_signature(value)
+    if not parsed.get("name"):
+        return None
+    return (
+        parsed["name"],
+        _canonical_c_type_spelling(parsed["return_type"]),
+        tuple(_canonical_c_type_spelling(param.get("type", "")) for param in parsed["params"] if isinstance(param, dict)),
+    )
+
+
+def _signatures_match(left: Any, right: Any) -> bool:
+    left_key = _canonical_signature_key(left)
+    right_key = _canonical_signature_key(right)
+    if left_key is not None and right_key is not None:
+        return left_key == right_key
+    return normalize_signature(str(left)) == normalize_signature(str(right))
+
+
 def read_json(path: Path) -> dict[str, Any]:
     with path.open("r", encoding="utf-8") as fh:
         return json.load(fh)
@@ -345,18 +417,41 @@ def _validate_file_specs(bundle: SpecBundle) -> None:
                 bundle.diagnostics.append(Diagnostic("warning", "missing_function_spec", f"Source interface '{interface.trace_id}' has no function spec", str(file_spec.spec_path)))
                 continue
             if linked.signature.name != interface.name:
-                bundle.diagnostics.append(Diagnostic("warning", "name_mismatch", f"Function spec '{linked.trace_id}' name '{linked.signature.name}' differs from source interface '{interface.name}'", str(linked.source_path)))
-            if normalize_signature(linked.signature.raw) != normalize_signature(interface.signature):
-                bundle.diagnostics.append(Diagnostic("warning", "signature_mismatch", f"Function spec '{linked.trace_id}' signature differs from file SOURCE interface", str(linked.source_path)))
+                bundle.diagnostics.append(Diagnostic("error", "header_source_function_signature_mismatch", f"Function spec '{linked.trace_id}' name '{linked.signature.name}' differs from source interface '{interface.name}'", str(linked.source_path)))
+            if not _signatures_match(linked.signature.raw, interface.signature):
+                bundle.diagnostics.append(Diagnostic("error", "header_source_function_signature_mismatch", f"Function spec '{linked.trace_id}' signature differs from file SOURCE interface", str(linked.source_path)))
         source_by_name = {item.name: item for item in file_spec.source_interfaces}
         for interface in file_spec.header_interfaces:
             source_interface = source_by_name.get(interface.name) or all_source_by_name.get(interface.name)
             if source_interface is None:
                 bundle.diagnostics.append(Diagnostic("warning", "header_without_source", f"Header interface '{interface.name}' has no matching source interface in '{trace_id}'", str(file_spec.spec_path)))
                 continue
+            if not _signatures_match(source_interface.signature, interface.signature):
+                bundle.diagnostics.append(Diagnostic("error", "header_source_function_signature_mismatch", f"Header interface '{interface.name}' differs from SOURCE interface signature", str(file_spec.spec_path)))
             linked = bundle.function_specs_by_trace.get(source_interface.trace_id)
-            if linked and normalize_signature(linked.signature.raw) != normalize_signature(interface.signature):
-                bundle.diagnostics.append(Diagnostic("warning", "header_signature_mismatch", f"Header interface '{interface.name}' differs from function spec signature", str(file_spec.spec_path)))
+            if linked and not _signatures_match(linked.signature.raw, interface.signature):
+                bundle.diagnostics.append(Diagnostic("error", "header_source_function_signature_mismatch", f"Header interface '{interface.name}' differs from function spec signature", str(file_spec.spec_path)))
+
+    graph = {
+        file_spec.header_path: [dependency for dependency in file_spec.header_dependencies if dependency in known_headers]
+        for file_spec in bundle.file_specs_by_trace.values()
+        if file_spec.header_path
+    }
+    reported_cycles: set[tuple[str, ...]] = set()
+
+    def visit(node: str, stack: list[str]) -> None:
+        if node in stack:
+            cycle = tuple(stack[stack.index(node) :] + [node])
+            canonical = tuple(sorted(cycle))
+            if canonical not in reported_cycles:
+                reported_cycles.add(canonical)
+                bundle.diagnostics.append(Diagnostic("error", "public_header_type_cycle", f"Public header dependency cycle: {' -> '.join(cycle)}", str(bundle.file_specs_by_header_path[node].spec_path)))
+            return
+        for dependency in graph.get(node, []):
+            visit(dependency, [*stack, node])
+
+    for header_path in graph:
+        visit(header_path, [])
 
 
 def _validate_function_specs(bundle: SpecBundle) -> None:
@@ -364,6 +459,18 @@ def _validate_function_specs(bundle: SpecBundle) -> None:
         parent = _trace_parent(trace_id)
         if parent not in bundle.file_specs_by_trace:
             bundle.diagnostics.append(Diagnostic("error", "orphan_function_spec", f"Function spec '{trace_id}' has no parent file spec '{parent}'", str(function_spec.source_path)))
+        parsed = _parse_c_function_signature(function_spec.signature.raw)
+        if function_spec.signature.raw and not parsed.get("name"):
+            bundle.diagnostics.append(Diagnostic("error", "signature_raw_structured_mismatch", f"Function spec '{trace_id}' SIGNATURE.RAW is not a parseable C declaration", str(function_spec.source_path)))
+            continue
+        raw_params = [_canonical_c_type_spelling(param.get("type", "")) for param in parsed.get("params", []) if isinstance(param, dict)]
+        structured_params = [_canonical_c_type_spelling(param.get("TYPE") or param.get("type", "")) for param in function_spec.signature.params if isinstance(param, dict)]
+        if (
+            parsed.get("name") != function_spec.signature.name
+            or _canonical_c_type_spelling(parsed.get("return_type", "")) != _canonical_c_type_spelling(function_spec.signature.return_type)
+            or raw_params != structured_params
+        ):
+            bundle.diagnostics.append(Diagnostic("error", "signature_raw_structured_mismatch", f"Function spec '{trace_id}' SIGNATURE.RAW, RETURN, and PARAMS are inconsistent", str(function_spec.source_path)))
 
 
 def _validate_machine_constraints(bundle: SpecBundle) -> None:
@@ -391,7 +498,7 @@ def _validate_machine_constraints(bundle: SpecBundle) -> None:
                 continue
             name = str(contract.get("NAME", "")).strip()
             signature = str(contract.get("SIGNATURE", "")).strip()
-            if name and signature and name in call_signatures and normalize_signature(signature) != call_signatures[name]:
+            if name and signature and name in call_signatures and not _signatures_match(signature, call_signatures[name]):
                 bundle.diagnostics.append(Diagnostic("error", "call_contract_signature_mismatch", f"CALL_CONTRACTS signature for '{name}' differs from canonical spec", str(file_spec.spec_path)))
 
     protocol_codec_with_vectors: set[str] = set()

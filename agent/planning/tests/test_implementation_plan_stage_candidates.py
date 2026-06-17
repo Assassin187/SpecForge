@@ -47,7 +47,7 @@ from agent.planning.stages.implementation_plan_context import (
     normalize_function_behavior_contract_patch,
     normalize_type_inventory_candidate,
 )
-from agent.planning.stages.inventory_planning_space import build_function_planning_space, build_type_planning_space
+from agent.planning.stages.inventory_planning_space import build_function_planning_space, build_public_type_obligation_report, build_type_planning_space
 from agent.planning.stages.inventory_reconciliation import reconcile_function_annotation_candidate, reconcile_type_filling_candidate
 from agent.planning.stages.function_inventory_decomposition import DECOMPOSITION_RULES, select_top_decomposition_hints
 from agent.planning.stages.dependencies import build_dependency_validation_report, derive_dependency_graph
@@ -529,6 +529,45 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
         self.assertEqual(update["signature_dependencies"][1]["owner_module_id"], "")
         self.assertGreater(stats["signature_param_ownership_normalized"], 0)
         self.assertFalse(validate_function_signature_patch(normalized, draft, {"fn:codec:mqtt_codec_helper"}))
+
+    def test_signature_validator_blocks_unknown_public_type_and_raw_drift(self) -> None:
+        function = _inventory_function("zap_public_send", "api", function_id="fn:api:zap_public_send", public=True)
+        draft = {
+            "protocol_name": "zap",
+            "module_artifacts": [{"module_id": "api"}],
+            "function_contracts": [copy.deepcopy(function)],
+            "canonical_types": [],
+            "type_inventory": [],
+        }
+        patch = {
+            "schema_version": "function_signature_patch/v1",
+            "patch_id": "patch:test",
+            "producer": {"stage": "test", "prompt_name": "function_signature_patch_prompt", "prompt_version": "test"},
+            "module_id": "api",
+            "batch": {"index": 0, "size": 1},
+            "function_signature_updates": [
+                {
+                    "function_id": "fn:api:zap_public_send",
+                    "signature": {
+                        "raw": "long zap_public_send(zap_missing_t* packet)",
+                        "name": "zap_public_send",
+                        "storage_class": "none",
+                        "return_type": "int",
+                        "params": [{"name": "packet", "type": "zap_missing_t*", "type_ref": "", "direction": "in", "nullable": False, "ownership": "BORROWED", "passing_mode": "by_pointer"}],
+                    },
+                    "signature_dependencies": [],
+                    "interface_type_declarations": [],
+                    "trace_ref_keys": [],
+                    "status": "inferred",
+                }
+            ],
+            "assumptions": [],
+            "unresolved_questions": [],
+        }
+        diagnostics = validate_function_signature_patch(patch, draft, {"fn:api:zap_public_send"})
+        codes = {diag.code for diag in diagnostics if diag.level == "error"}
+        self.assertIn("signature_raw_structured_mismatch", codes)
+        self.assertIn("public_signature_unknown_type", codes)
 
     def test_calls_normalizer_fills_batch_and_closes_service_requirements(self) -> None:
         caller = _inventory_function("mqtt_network_cleanup_session", "network", function_id="fn:network:mqtt_network_cleanup_session", public=False)
@@ -1352,6 +1391,94 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
         leaked["types"][0]["fields"][0].update({"field_type": "mqtt_router_private_t*", "type_ref": "type:router:mqtt_router_private_t"})
         self.assertTrue(_has(validate_type_inventory_candidate(normalize_type_inventory_candidate(leaked), [module], {"module_artifacts": [module]}), "public_type_field_uses_private_type"))
 
+    def test_public_type_obligation_report_covers_required_categories(self) -> None:
+        space = {
+            "module_id": "router",
+            "mandatory_type_slots": [],
+            "derived_type_slots": [{"name": "zap_router_store_t", "source_reason": "topic router resource store"}],
+            "recommended_type_slots": [],
+            "source_context": {
+                "target_role": "broker",
+                "module_ownership": {"owned_capabilities": ["topic_routing"], "state_owned": [], "dependencies": []},
+            },
+        }
+        report = build_public_type_obligation_report(
+            space,
+            [
+                {
+                    "type_id": "type:router:zap_router_store",
+                    "name": "zap_router_store_t",
+                    "module_id": "router",
+                    "kind": "struct",
+                    "visibility": "public",
+                    "defined_in": "public_header",
+                    "purpose": "topic router resource store",
+                    "trace_ref_keys": ["decision:test"],
+                }
+            ],
+        )
+        statuses = {item["category"]: item["status"] for item in report["obligations"]}
+        self.assertEqual(statuses["router/topic/resource store"], "covered")
+        self.assertIn(statuses["transport connection"], {"not_required", "unresolved_assumption", "covered"})
+        self.assertTrue(all(status in {"covered", "not_required", "unresolved_assumption"} for status in statuses.values()))
+
+    def test_type_inventory_validator_blocks_callback_and_function_pointer_type_refs(self) -> None:
+        module = {
+            "module_id": "events",
+            "name": "events",
+            "role": "event callback boundary",
+            "dependencies": [],
+            "artifacts": [{"name": "zap_events_t", "kind": "TYPE", "role": "Public events table"}],
+            "state_owned": [],
+            "owned_capabilities": [],
+            "files": [],
+            "doc_ref": [],
+        }
+        candidate = {
+            "schema_version": "type_inventory_candidate/v1",
+            "candidate_id": "candidate:events:type_inventory",
+            "producer": {"stage": "5.3_type_data", "prompt_name": "type_filling_candidate_prompt", "prompt_version": "test"},
+            "module_id": "events",
+            "types": [
+                {
+                    "type_id": "type:events:zap_events_t",
+                    "name": "zap_events_t",
+                    "module_id": "events",
+                    "kind": "struct",
+                    "visibility": "public",
+                    "defined_in": "public_header",
+                    "purpose": "public callback table",
+                    "fields": [
+                        {
+                            "field_name": "on_packet",
+                            "field_type": "int (*)(zap_unknown_packet_t*)",
+                            "type_ref": "",
+                            "required": True,
+                            "ownership": "BORROWED",
+                            "lifetime": "table lifetime",
+                            "length_field": "",
+                            "capacity_field": "",
+                            "validation_notes": "",
+                        }
+                    ],
+                    "enum_values": [],
+                    "callback_signature": {"return_type": "zap_unknown_result_t", "params": [{"name": "packet", "type": "zap_unknown_packet_t*", "type_ref": "", "ownership": "BORROWED"}]},
+                    "ownership_lifetime": "",
+                    "lifecycle": {"created_by": [], "initialized_by": [], "destroyed_by": [], "freed_by": []},
+                    "related_functions": [],
+                    "dependencies": [],
+                    "trace_ref_keys": [],
+                    "status": "inferred",
+                }
+            ],
+            "assumptions": [],
+            "unresolved_questions": [],
+        }
+        diagnostics = validate_type_inventory_candidate(normalize_type_inventory_candidate(candidate), [module], {"module_artifacts": [module]})
+        codes = {diag.code for diag in diagnostics if diag.level == "error"}
+        self.assertIn("function_pointer_field_unknown_ref", codes)
+        self.assertIn("callback_type_unknown_ref", codes)
+
     def test_type_generation_targets_do_not_create_callback_boundary_from_connection_text_only(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:
             planning_ir, _, _, _, _, _, _ = self._fixtures(Path(raw_tmp))
@@ -1606,9 +1733,10 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             },
         )
         callback = next(item for item in result["candidate"]["types"] if item["name"] == "mqtt_unit_on_accept_fn")
-        self.assertEqual(callback["callback_signature"]["params"][0]["type_ref"], "void")
-        self.assertEqual(callback["dependencies"], [])
-        self.assertFalse(_has_error(validate_type_inventory_candidate(result["candidate"], [module], {"module_artifacts": [module]})))
+        self.assertEqual(callback["callback_signature"]["params"][0]["type_ref"], "type:unit:mqtt_connection_t")
+        self.assertIn("type:unit:mqtt_connection_t", callback["dependencies"])
+        self.assertTrue(any(item.get("code") == "public_type_ref_private_leak" for item in result["diagnostics"]))
+        self.assertTrue(_has_error(validate_type_inventory_candidate(result["candidate"], [module], {"module_artifacts": [module]})))
 
     def test_type_inventory_accepts_system_namespace_and_opaque_backing_pair(self) -> None:
         module = {

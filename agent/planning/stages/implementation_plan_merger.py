@@ -79,9 +79,26 @@ def _is_lifecycle_function(function: dict[str, Any], action: str) -> bool:
     )
 
 
-def _default_signature(function: dict[str, Any], module_id: str, protocol: str = "protocol") -> tuple[dict[str, Any], list[dict[str, Any]], str]:
+def _module_public_handle_type(draft: dict[str, Any] | None, module_id: str, fallback: str) -> str:
+    if not isinstance(draft, dict):
+        return fallback
+    for type_item in draft.get("type_inventory", []) if isinstance(draft.get("type_inventory"), list) else []:
+        if not isinstance(type_item, dict):
+            continue
+        if str(type_item.get("module_id", "")) != module_id:
+            continue
+        if str(type_item.get("kind", "")) != "opaque_handle":
+            continue
+        if str(type_item.get("visibility", "")) == "public" and str(type_item.get("defined_in", "")) == "public_header":
+            name = str(type_item.get("name", "")).strip()
+            if name:
+                return name
+    return fallback
+
+
+def _default_signature(function: dict[str, Any], module_id: str, protocol: str = "protocol", draft: dict[str, Any] | None = None) -> tuple[dict[str, Any], list[dict[str, Any]], str]:
     prefix = f"{_safe_id(protocol)}_{_safe_id(module_id)}"
-    handle_type = f"{prefix}_t"
+    handle_type = _module_public_handle_type(draft, module_id, f"{prefix}_t")
     kind = str(function.get("function_kind", "public_api"))
     name = str(function.get("name", "function"))
     params: list[dict[str, Any]]
@@ -1269,7 +1286,7 @@ def repair_function_inventory_symbols(draft: dict[str, Any], candidate: dict[str
 def fallback_function_signatures(draft: dict[str, Any], module_id: str, functions: list[dict[str, Any]] | None = None, *, batch_index: int = 0, batch_size: int = 0) -> dict[str, Any]:
     updates = []
     for function in _module_functions(draft, module_id, functions):
-        signature, params, _return_type = _default_signature(function, module_id, str(draft.get("protocol_name", "protocol")))
+        signature, params, _return_type = _default_signature(function, module_id, str(draft.get("protocol_name", "protocol")), draft)
         storage_class = "static" if _source_local_function(function) else "none"
         raw = signature["raw"]
         if storage_class == "static" and not raw.startswith("static "):

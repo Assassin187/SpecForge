@@ -39,6 +39,19 @@ CODEC_FUNCTION_FAMILIES = {
     "encoded_buffer_cleanup",
 }
 
+PUBLIC_TYPE_OBLIGATION_CATEGORIES = (
+    "connection/session context",
+    "protocol message/packet",
+    "parser/decoder state",
+    "encoder buffer",
+    "router/topic/resource store",
+    "server/broker context",
+    "transport connection",
+    "callback table",
+    "timer/lifecycle handle",
+    "error/result type",
+)
+
 EXAMPLE_FUNCTION_BASELINES = {
     "network": 28,
     "mqtt_codec": 16,
@@ -83,6 +96,124 @@ def _trace(*values: Any) -> list[str]:
         elif str(value).strip():
             result.append(str(value))
     return sorted(dict.fromkeys(result))
+
+
+def _obligation_text(*items: Any) -> str:
+    chunks: list[str] = []
+    for item in items:
+        if isinstance(item, dict):
+            chunks.extend(str(value) for value in item.values() if not isinstance(value, (dict, list)))
+            for value in item.values():
+                if isinstance(value, list):
+                    chunks.extend(str(part) for part in value)
+        elif isinstance(item, list):
+            chunks.extend(str(part) for part in item)
+        else:
+            chunks.append(str(item))
+    return " ".join(chunks).lower()
+
+
+def _category_required(category: str, module_text: str, target_role: str) -> tuple[bool, str]:
+    role_text = f"{module_text} {target_role}".lower()
+    rules = {
+        "connection/session context": ("session", "connection", "client", "peer", "context"),
+        "protocol message/packet": ("message", "packet", "frame", "payload", "header", "decode", "encode", "protocol"),
+        "parser/decoder state": ("parse", "parser", "decode", "decoder", "framing", "cursor"),
+        "encoder buffer": ("encode", "encoder", "serialize", "writer", "buffer", "response"),
+        "router/topic/resource store": ("route", "router", "topic", "resource", "store", "subscription", "registry"),
+        "server/broker context": ("server", "broker", "runtime", "app", "daemon"),
+        "transport connection": ("transport", "network", "socket", "epoll", "connection", "fd"),
+        "callback table": ("callback", "event", "hook", "register", "dispatch", "epoll", "poll"),
+        "timer/lifecycle handle": ("timer", "timeout", "lifecycle", "start", "run", "destroy", "expiry"),
+        "error/result type": ("error", "result", "status", "validate", "malformed", "decode", "parse", "encode"),
+    }
+    required = any(token in role_text for token in rules[category])
+    if category == "server/broker context" and target_role in {"broker", "server"}:
+        required = required or any(token in module_text for token in ("broker", "server", "app", "runtime"))
+    reason = "derived from module role/capability/profile text" if required else "module role/capability/profile does not require this public category"
+    return required, reason
+
+
+def _category_cover_score(category: str, type_item: dict[str, Any]) -> bool:
+    kind = str(type_item.get("kind", "")).lower()
+    text = _obligation_text(type_item.get("name", ""), type_item.get("purpose", ""), type_item.get("trace_ref_keys", []))
+    if category == "connection/session context":
+        return kind in {"opaque_handle", "internal_state", "struct"} and any(token in text for token in ("session", "connection", "client", "peer", "context"))
+    if category == "protocol message/packet":
+        return kind in {"struct", "enum", "view_struct", "result_struct", "owned_buffer"} and any(token in text for token in ("message", "packet", "frame", "payload", "header"))
+    if category == "parser/decoder state":
+        return any(token in text for token in ("parser", "decoder", "cursor", "parse", "decode", "state")) or kind in {"view_struct", "result_struct"}
+    if category == "encoder buffer":
+        return kind == "owned_buffer" or any(token in text for token in ("encode", "encoder", "serialize", "writer", "buffer", "bytes"))
+    if category == "router/topic/resource store":
+        return any(token in text for token in ("router", "topic", "route", "store", "tree", "subscription", "resource", "registry"))
+    if category == "server/broker context":
+        return kind in {"opaque_handle", "internal_state", "struct"} and any(token in text for token in ("broker", "server", "runtime", "app", "context"))
+    if category == "transport connection":
+        return any(token in text for token in ("transport", "network", "socket", "connection", "fd", "peer"))
+    if category == "callback table":
+        return kind in {"callback_type", "event_struct"} or any(token in text for token in ("callback", "event", "hook", "dispatch"))
+    if category == "timer/lifecycle handle":
+        return any(token in text for token in ("timer", "timeout", "lifecycle", "handle", "expiry"))
+    if category == "error/result type":
+        return kind in {"result_struct", "enum"} and any(token in text for token in ("error", "result", "status", "code", "malformed"))
+    return False
+
+
+def build_public_type_obligation_report(space: dict[str, Any], types: list[dict[str, Any]]) -> dict[str, Any]:
+    source_context = space.get("source_context", {}) if isinstance(space.get("source_context"), dict) else {}
+    target_role = str(source_context.get("target_role", "")).lower()
+    module_ownership = source_context.get("module_ownership", {}) if isinstance(source_context.get("module_ownership"), dict) else {}
+    module_text = _obligation_text(
+        space.get("module_id", ""),
+        module_ownership.get("owned_capabilities", []),
+        module_ownership.get("state_owned", []),
+        module_ownership.get("dependencies", []),
+        [slot.get("source_reason", "") for key in ("mandatory_type_slots", "derived_type_slots", "recommended_type_slots") for slot in space.get(key, []) if isinstance(slot, dict)],
+        [slot.get("name", "") for key in ("mandatory_type_slots", "derived_type_slots", "recommended_type_slots") for slot in space.get(key, []) if isinstance(slot, dict)],
+    )
+    public_types = [
+        item
+        for item in types
+        if isinstance(item, dict)
+        and str(item.get("visibility", "")).lower() == "public"
+        and str(item.get("defined_in", "")).lower() == "public_header"
+    ]
+    obligations: list[dict[str, Any]] = []
+    for category in PUBLIC_TYPE_OBLIGATION_CATEGORIES:
+        required, reason = _category_required(category, module_text, target_role)
+        covered = [item for item in public_types if _category_cover_score(category, item)]
+        if covered:
+            status = "covered"
+            status_reason = "covered by public planned type"
+        elif required:
+            status = "unresolved_assumption"
+            status_reason = "required by role/profile cues but no public planned type covers this category"
+        else:
+            status = "not_required"
+            status_reason = reason
+        obligations.append(
+            {
+                "category": category,
+                "status": status,
+                "reason": status_reason,
+                "owner_module_id": str(space.get("module_id", "")),
+                "covered_type_ids": [str(item.get("type_id", "")) for item in covered if str(item.get("type_id", "")).strip()],
+                "evidence_refs": sorted(
+                    {
+                        str(ref)
+                        for item in covered
+                        for ref in item.get("trace_ref_keys", [])
+                        if str(ref).strip()
+                    }
+                ),
+            }
+        )
+    return {
+        "schema_version": "public_type_obligation_report/v1",
+        "module_id": str(space.get("module_id", "")),
+        "obligations": obligations,
+    }
 
 
 def _decision_ref(kind: str, module_id: str, *parts: Any) -> str:

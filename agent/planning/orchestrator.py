@@ -149,6 +149,7 @@ STEP_FILENAMES = {
     "type_reconciliation_report": "007_5_3_type_data_reconciliation_report.json",
     "type_inventory_diagnostics": "007_5_3_type_data_inventory_diagnostics.json",
     "type_obligations": "007_5_3_type_data_obligations.json",
+    "public_type_obligation_report": "007_5_3_public_type_obligation_report.json",
     "type_inventory_attempt_summary": "007_5_3_type_data_attempt_summary.json",
     "function_planning_space": "007_5_4a_function_inventory_planning_space.json",
     "function_inventory_candidate": "007_5_4a_function_inventory_candidate.json",
@@ -1999,6 +2000,10 @@ class PlanningAgent:
                         _suffixed_step_filename(STEP_FILENAMES["type_obligations"], module_id),
                         reconciliation.get("type_obligations", {}),
                     )
+                    public_obligations_path = store.write_agent_json(
+                        _suffixed_step_filename(STEP_FILENAMES["public_type_obligation_report"], module_id),
+                        reconciliation.get("public_type_obligation_report", {}),
+                    )
                     candidate_path = store.write_agent_json(_suffixed_step_filename(STEP_FILENAMES["type_inventory_candidate"], module_id), type_candidate)
                     report_path = store.write_step_json(
                         _suffixed_step_filename(STEP_FILENAMES["type_inventory_validation_report"], module_id),
@@ -2014,6 +2019,7 @@ class PlanningAgent:
                     artifact_paths[f"type_reconciliation_report_{artifact_suffix}"] = reconciliation_path
                     artifact_paths[f"type_inventory_diagnostics_{artifact_suffix}"] = diagnostics_path
                     artifact_paths[f"type_obligations_{artifact_suffix}"] = obligations_path
+                    artifact_paths[f"public_type_obligation_report_{artifact_suffix}"] = public_obligations_path
                     artifact_paths[f"type_inventory_candidate_{artifact_suffix}"] = candidate_path
                     artifact_paths[f"type_inventory_validation_report_{artifact_suffix}"] = report_path
                     fatal_diags = result.get("fatal_diagnostics", [])

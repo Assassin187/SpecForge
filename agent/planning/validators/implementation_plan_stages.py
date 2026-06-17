@@ -23,7 +23,16 @@ from ..schemas.implementation_plan import (
     WIRE_ACCESS_BINDING_PATCH_SCHEMA_VERSION,
 )
 from ..schemas.implementation_plan_candidates import validate_shape
-from ..stages.coder_spec_lowering import canonical_function_symbol, is_anonymous_c_function_pointer_type, lower_canonical_type_to_header_data, normalize_type_key
+from ..stages.coder_spec_lowering import (
+    canonical_c_type_spelling,
+    canonical_function_symbol,
+    extract_c_signature_type_refs,
+    is_anonymous_c_function_pointer_type,
+    lower_canonical_type_to_header_data,
+    lower_signature_for_coder,
+    normalize_type_key,
+    parse_c_function_signature,
+)
 from ..stages.function_inventory_decomposition import DECOMPOSITION_RULES, select_top_decomposition_hints
 from ..stages.implementation_plan import _handler_surfaces, _safe_id, _surface_units, _wire_fields
 from ..stages.implementation_plan_context import (
@@ -1146,6 +1155,38 @@ def _type_item_by_ref_or_name(
     return None, False
 
 
+def _type_stem(value: Any) -> str:
+    return normalize_type_key(str(value or "").removeprefix("struct ").removesuffix("_t"))
+
+
+def _valid_public_opaque_backing_pointer(raw_type: Any, target: dict[str, Any] | None, type_inventory: dict[str, dict[str, Any]]) -> bool:
+    if not isinstance(target, dict) or "*" not in str(raw_type or ""):
+        return False
+    if _is_public_type(target):
+        return True
+    target_module = str(target.get("module_id", ""))
+    target_stem = _type_stem(target.get("name", ""))
+    if not target_module or not target_stem:
+        return False
+    for candidate in type_inventory.values():
+        if str(candidate.get("module_id", "")) != target_module:
+            continue
+        if str(candidate.get("kind", "")) != "opaque_handle" or not _is_public_type(candidate):
+            continue
+        candidate_stem = _type_stem(candidate.get("name", ""))
+        if candidate_stem == target_stem:
+            return True
+    return False
+
+
+def _canonical_function_signature_spelling(value: Any) -> str:
+    parsed = parse_c_function_signature(value)
+    if not parsed.get("name"):
+        return re.sub(r"\s+", " ", str(value or "").strip().rstrip(";"))
+    params = ", ".join(canonical_c_type_spelling(param.get("type", "")) for param in parsed.get("params", []) if isinstance(param, dict))
+    return f"{canonical_c_type_spelling(parsed.get('return_type', ''))} {parsed.get('name')}({params or 'void'})"
+
+
 def _canonical_type_name_index(canonical_types: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
     result: dict[str, dict[str, Any]] = {}
     for item in canonical_types.values():
@@ -1235,6 +1276,55 @@ def _resolve_type_reference(
     return None
 
 
+def _extracted_type_refs(raw_type: Any) -> list[dict[str, Any]]:
+    return extract_c_signature_type_refs(raw_type)
+
+
+def _check_type_surface_refs(
+    diagnostics: list[PlanningDiagnostic],
+    *,
+    owner_id: str,
+    module_id: str,
+    raw_type: Any,
+    type_ref: Any = "",
+    surface: str,
+    is_public_surface: bool,
+    local_by_id: dict[str, dict[str, Any]],
+    local_by_name: dict[str, dict[str, Any]],
+    provider_by_id: dict[str, dict[str, Any]],
+    provider_by_name: dict[str, dict[str, Any]],
+    path: str | None,
+) -> None:
+    seen: set[str] = set()
+    is_function_pointer_surface = "(*" in str(raw_type or "")
+
+    def check(raw: Any, explicit_ref: Any = "") -> None:
+        normalized_ref = normalize_system_type_ref(explicit_ref)
+        if normalized_ref and _is_system_type_ref(normalized_ref):
+            return
+        target = _resolve_type_reference(normalized_ref, raw, local_by_id, local_by_name, provider_by_id, provider_by_name)
+        key = normalize_type_key(normalized_ref or raw)
+        if not key or key in seen:
+            return
+        seen.add(key)
+        if target is None:
+            code = "function_pointer_field_unknown_ref" if is_function_pointer_surface else "callback_type_unknown_ref" if surface.startswith("callback") else "unknown_type_ref"
+            diagnostics.append(PlanningDiagnostic("error", code, f"{surface} '{owner_id}' references unknown type '{normalized_ref or raw}'", path))
+            if normalized_ref:
+                diagnostics.append(PlanningDiagnostic("error", "stale_type_ref", f"{surface} '{owner_id}' references stale type_ref '{normalized_ref}'", path))
+            return
+        if target.get("module_id") != module_id and not _is_public_type(target):
+            diagnostics.append(PlanningDiagnostic("error", "cross_module_private_type_ref", f"{surface} '{owner_id}' references private type '{target.get('name')}' from another module", path))
+        if is_public_surface and not _is_public_type(target):
+            code = "callback_type_private_ref" if surface.startswith("callback") else "public_type_ref_private_leak"
+            diagnostics.append(PlanningDiagnostic("error", code, f"public {surface} '{owner_id}' references private/internal type '{target.get('name')}'", path))
+
+    if str(type_ref or "").strip():
+        check(raw_type, type_ref)
+    for ref in _extracted_type_refs(raw_type):
+        check(ref.get("raw", ""), "")
+
+
 def validate_type_inventory_candidate(candidate: dict[str, Any], module_artifacts: list[dict[str, Any]], core_design: dict[str, Any], profile: dict[str, Any] | None = None, planning_ir: dict[str, Any] | None = None, *, path: str | None = None) -> list[PlanningDiagnostic]:
     diagnostics = _shape(candidate, TYPE_INVENTORY_CANDIDATE_SCHEMA_VERSION, path=path)
     if has_errors(diagnostics):
@@ -1313,6 +1403,21 @@ def validate_type_inventory_candidate(candidate: dict[str, Any], module_artifact
             is_pointer_like = "*" in field_type or "char*" in lower or "buffer" in lower or "string" in lower or "uint8_t*" in lower
             if is_pointer_like and (not str(field.get("ownership", "")).strip() or field.get("ownership") == "UNKNOWN" or not str(field.get("lifetime", "")).strip()):
                 diagnostics.append(PlanningDiagnostic("error", "pointer_field_missing_ownership", f"field '{type_item['type_id']}.{field.get('field_name')}' lacks ownership/lifetime", path))
+            if not (field.get("variants") and not type_ref):
+                _check_type_surface_refs(
+                    diagnostics,
+                    owner_id=f"{type_id}.{field.get('field_name')}",
+                    module_id=module_id,
+                    raw_type=field_type,
+                    type_ref=type_ref,
+                    surface="field",
+                    is_public_surface=_is_public_type(type_item),
+                    local_by_id=by_id,
+                    local_by_name=by_name,
+                    provider_by_id=provider_by_id,
+                    provider_by_name=provider_by_name,
+                    path=path,
+                )
         if type_item.get("kind") == "owned_buffer":
             field_names = {str(field.get("field_name", "")) for field in type_item.get("fields", []) if isinstance(field, dict)}
             has_size_fields = any(str(field.get("length_field", "")).strip() for field in type_item.get("fields", []) if isinstance(field, dict)) or bool(field_names & {"len", "length", "size", "capacity", "cap"})
@@ -1320,13 +1425,56 @@ def validate_type_inventory_candidate(candidate: dict[str, Any], module_artifact
                 diagnostics.append(PlanningDiagnostic("error", "buffer_type_missing_size_fields", f"owned buffer type '{type_id}' lacks length/capacity fields", path))
         if _type_requires_release_path(type_item) and not _has_release_path(type_item):
             diagnostics.append(PlanningDiagnostic("error", "owned_type_missing_release_path", f"owned type '{type_id}' has no free/destroy path", path))
-        for cb_param in type_item.get("callback_signature", {}).get("params", []):
+        callback_signature = type_item.get("callback_signature", {}) if isinstance(type_item.get("callback_signature"), dict) else {}
+        _check_type_surface_refs(
+            diagnostics,
+            owner_id=type_id,
+            module_id=module_id,
+            raw_type=callback_signature.get("return_type", ""),
+            surface="callback return",
+            is_public_surface=_is_public_type(type_item),
+            local_by_id=by_id,
+            local_by_name=by_name,
+            provider_by_id=provider_by_id,
+            provider_by_name=provider_by_name,
+            path=path,
+        )
+        for cb_param in callback_signature.get("params", []):
             type_ref = normalize_system_type_ref(cb_param.get("type_ref", ""))
             target = _resolve_type_reference(type_ref, "", by_id, by_name, provider_by_id, provider_by_name)
             if type_ref and not _is_system_type_ref(type_ref) and target is None:
                 diagnostics.append(PlanningDiagnostic("error", "unknown_type_ref", f"callback type '{type_id}' references unknown type '{type_ref}'", path))
             if _is_public_type(type_item) and target is not None and not _is_public_type(target):
                 diagnostics.append(PlanningDiagnostic("error", "public_callback_param_uses_private_type", f"public callback type '{type_id}' references private/internal type '{type_ref}'", path))
+            if isinstance(cb_param, dict):
+                _check_type_surface_refs(
+                    diagnostics,
+                    owner_id=f"{type_id}.{cb_param.get('name')}",
+                    module_id=module_id,
+                    raw_type=cb_param.get("type", ""),
+                    type_ref=type_ref,
+                    surface="callback param",
+                    is_public_surface=_is_public_type(type_item),
+                    local_by_id=by_id,
+                    local_by_name=by_name,
+                    provider_by_id=provider_by_id,
+                    provider_by_name=provider_by_name,
+                    path=path,
+                )
+        if str(type_item.get("kind", "")) == "alias":
+            _check_type_surface_refs(
+                diagnostics,
+                owner_id=type_id,
+                module_id=module_id,
+                raw_type=type_item.get("ownership_lifetime", ""),
+                surface="alias",
+                is_public_surface=_is_public_type(type_item),
+                local_by_id=by_id,
+                local_by_name=by_name,
+                provider_by_id=provider_by_id,
+                provider_by_name=provider_by_name,
+                path=path,
+            )
     unresolved = _unresolved_targets(candidate)
     for module_id in sorted(candidate_module_ids & module_ids):
         module = modules_by_id.get(module_id, {})
@@ -1811,6 +1959,7 @@ def validate_function_signature_patch(patch: dict[str, Any], draft: dict[str, An
             diagnostics.append(PlanningDiagnostic("error", "empty_function_signature", f"function '{function_id}' signature is incomplete", path))
         raw = str(signature.get("raw", "")).strip()
         storage_class = str(signature.get("storage_class", ""))
+        parsed_raw = parse_c_function_signature(raw)
         if raw.endswith(";"):
             diagnostics.append(PlanningDiagnostic("warning", "signature_raw_trailing_semicolon", f"function '{function_id}' raw signature should omit the trailing semicolon for coder specs style", path))
         if storage_class == "static" and raw and not raw.startswith("static "):
@@ -1819,6 +1968,19 @@ def validate_function_signature_patch(patch: dict[str, Any], draft: dict[str, An
             diagnostics.append(PlanningDiagnostic("error", "nonstatic_signature_raw_has_static", f"non-static function '{function_id}' raw signature must not include static storage class", path))
         if raw and not _signature_raw_has_name(raw, str(signature.get("name", ""))):
             diagnostics.append(PlanningDiagnostic("warning", "signature_raw_name_mismatch", f"function '{function_id}' raw signature does not spell the signature name", path))
+        if raw and not parsed_raw.get("name"):
+            diagnostics.append(PlanningDiagnostic("error", "signature_raw_structured_mismatch", f"function '{function_id}' raw signature is not parseable as a C declaration", path))
+        elif raw:
+            if parsed_raw.get("name") != signature.get("name"):
+                diagnostics.append(PlanningDiagnostic("error", "signature_raw_structured_mismatch", f"function '{function_id}' raw signature name differs from SIGNATURE.NAME", path))
+            raw_return = canonical_c_type_spelling(parsed_raw.get("return_type", ""))
+            structured_return = canonical_c_type_spelling(signature.get("return_type", ""))
+            if raw_return != structured_return:
+                diagnostics.append(PlanningDiagnostic("error", "signature_raw_structured_mismatch", f"function '{function_id}' raw return type '{raw_return}' differs from structured return type '{structured_return}'", path))
+            raw_params = [canonical_c_type_spelling(param.get("type", "")) for param in parsed_raw.get("params", []) if isinstance(param, dict)]
+            structured_params = [canonical_c_type_spelling(param.get("type", "")) for param in signature.get("params", []) if isinstance(param, dict)]
+            if raw_params != structured_params:
+                diagnostics.append(PlanningDiagnostic("error", "signature_raw_structured_mismatch", f"function '{function_id}' raw parameter types differ from SIGNATURE.PARAMS", path))
         if is_public and signature.get("storage_class") == "static":
             diagnostics.append(PlanningDiagnostic("error", "public_function_static_signature", f"public function '{function_id}' must not have static storage class", path))
         if is_public and (not signature["name"].strip() or not signature["raw"].strip() or not signature["return_type"].strip()):
@@ -1856,7 +2018,7 @@ def validate_function_signature_patch(patch: dict[str, Any], draft: dict[str, An
                 inv_type = type_inventory.get(type_ref) if type_ref else None
                 if inv_type is None and raw_param_type.strip().startswith("struct "):
                     inv_type = type_inventory_by_name.get(normalize_type_key(_strip_c_type(raw_param_type)))
-                if inv_type is not None and not _is_public_type(inv_type):
+                if inv_type is not None and not _is_public_type(inv_type) and not _valid_public_opaque_backing_pointer(raw_param_type, inv_type, type_inventory):
                     diagnostics.append(PlanningDiagnostic("error", "public_signature_uses_private_type", f"public function '{function_id}' exposes private/internal type '{inv_type.get('name')}'", path))
                 param_type_item, param_is_canonical = _type_item_by_ref_or_name(
                     type_ref=type_ref,
@@ -1868,6 +2030,24 @@ def validate_function_signature_patch(patch: dict[str, Any], draft: dict[str, An
                 )
                 if _type_is_by_value(raw_param_type) and _is_public_opaque_type(param_type_item, canonical=param_is_canonical):
                     diagnostics.append(PlanningDiagnostic("error", "public_signature_uses_opaque_by_value", f"public function '{function_id}' exposes opaque public type '{raw_param_type}' by value", path))
+        if is_public:
+            for ref in extract_c_signature_type_refs(signature):
+                key = str(ref.get("key", "")).strip()
+                if not key:
+                    continue
+                target, canonical = _type_item_by_ref_or_name(
+                    type_ref="",
+                    raw_type=ref.get("raw", ""),
+                    type_inventory=type_inventory,
+                    type_inventory_by_name=type_inventory_by_name,
+                    canonical_types=canonical_types,
+                    canonical_types_by_name=canonical_types_by_name,
+                )
+                if target is None:
+                    diagnostics.append(PlanningDiagnostic("error", "public_signature_unknown_type", f"public function '{function_id}' references unknown public type '{ref.get('raw')}'", path))
+                    continue
+                if not canonical and not _valid_public_opaque_backing_pointer(ref.get("raw", ""), target, type_inventory):
+                    diagnostics.append(PlanningDiagnostic("error", "public_signature_private_type_leak", f"public function '{function_id}' exposes private/internal type '{target.get('name')}'", path))
         for dep in update["signature_dependencies"]:
             type_ref = str(dep.get("type_ref", ""))
             owner = str(dep.get("owner_module_id", ""))
@@ -2334,6 +2514,13 @@ def validate_full_implementation_plan(plan: dict[str, Any], *, profile: dict[str
     type_inventory_by_name = _type_inventory_name_index(list(type_inventory.values()))
     canonical_types = _canonical_types_by_id(plan)
     canonical_types_by_name = _canonical_type_name_index(canonical_types)
+    all_type_ids = set(type_inventory) | set(canonical_types) | set(SYSTEM_TYPE_IDS)
+    all_type_inventory_by_id = dict(type_inventory)
+    all_type_inventory_by_name = _type_inventory_name_index(list(type_inventory.values()))
+    provider_indexes = {
+        module_id: _provider_public_type_reference_indexes(plan, plan.get("module_artifacts", []), module_id, planning_ir)
+        for module_id in _module_artifact_ids(plan.get("module_artifacts", []))
+    }
     access_paths_by_id = {
         str(item.get("access_path_id", "")): str(item.get("path", "")).strip()
         for item in plan.get("access_path_table", [])
@@ -2350,11 +2537,136 @@ def validate_full_implementation_plan(plan: dict[str, Any], *, profile: dict[str
         if target_path and target_path != "buffer" and access_path_values and target_path not in access_path_values:
             diagnostics.append(PlanningDiagnostic("error", "readiness_wire_mapping_target_not_accessible", f"wire mapping '{mapping.get('mapping_id')}' target_path '{target_path}' is not an ACCESS_PATHS path", path))
 
+    for type_item in type_inventory.values():
+        module_id = str(type_item.get("module_id", ""))
+        provider_by_id, provider_by_name = provider_indexes.get(module_id, ({}, {}))
+        is_public_surface = _is_public_type(type_item)
+        for dependency in type_item.get("dependencies", []) if isinstance(type_item.get("dependencies"), list) else []:
+            _check_type_surface_refs(
+                diagnostics,
+                owner_id=str(type_item.get("type_id", "")),
+                module_id=module_id,
+                raw_type="",
+                type_ref=dependency,
+                surface="readiness type dependency",
+                is_public_surface=is_public_surface,
+                local_by_id=all_type_inventory_by_id,
+                local_by_name=all_type_inventory_by_name,
+                provider_by_id=provider_by_id,
+                provider_by_name=provider_by_name,
+                path=path,
+            )
+        for field in type_item.get("fields", []) if isinstance(type_item.get("fields"), list) else []:
+            if not isinstance(field, dict):
+                continue
+            if field.get("variants") and not str(field.get("type_ref", "")).strip():
+                continue
+            _check_type_surface_refs(
+                diagnostics,
+                owner_id=f"{type_item.get('type_id')}.{field.get('field_name')}",
+                module_id=module_id,
+                raw_type=field.get("field_type", ""),
+                type_ref=field.get("type_ref", ""),
+                surface="readiness field",
+                is_public_surface=is_public_surface,
+                local_by_id=all_type_inventory_by_id,
+                local_by_name=all_type_inventory_by_name,
+                provider_by_id=provider_by_id,
+                provider_by_name=provider_by_name,
+                path=path,
+            )
+        callback = type_item.get("callback_signature", {}) if isinstance(type_item.get("callback_signature"), dict) else {}
+        _check_type_surface_refs(
+            diagnostics,
+            owner_id=str(type_item.get("type_id", "")),
+            module_id=module_id,
+            raw_type=callback.get("return_type", ""),
+            surface="callback return",
+            is_public_surface=is_public_surface,
+            local_by_id=all_type_inventory_by_id,
+            local_by_name=all_type_inventory_by_name,
+            provider_by_id=provider_by_id,
+            provider_by_name=provider_by_name,
+            path=path,
+        )
+        for param in callback.get("params", []) if isinstance(callback.get("params"), list) else []:
+            if isinstance(param, dict):
+                _check_type_surface_refs(
+                    diagnostics,
+                    owner_id=f"{type_item.get('type_id')}.{param.get('name')}",
+                    module_id=module_id,
+                    raw_type=param.get("type", ""),
+                    type_ref=param.get("type_ref", ""),
+                    surface="callback param",
+                    is_public_surface=is_public_surface,
+                    local_by_id=all_type_inventory_by_id,
+                    local_by_name=all_type_inventory_by_name,
+                    provider_by_id=provider_by_id,
+                    provider_by_name=provider_by_name,
+                    path=path,
+                )
+        if str(type_item.get("kind", "")) == "alias":
+            _check_type_surface_refs(
+                diagnostics,
+                owner_id=str(type_item.get("type_id", "")),
+                module_id=module_id,
+                raw_type=type_item.get("ownership_lifetime", ""),
+                surface="alias",
+                is_public_surface=is_public_surface,
+                local_by_id=all_type_inventory_by_id,
+                local_by_name=all_type_inventory_by_name,
+                provider_by_id=provider_by_id,
+                provider_by_name=provider_by_name,
+                path=path,
+            )
+
+    for access in plan.get("access_path_table", []) if isinstance(plan.get("access_path_table"), list) else []:
+        if not isinstance(access, dict):
+            continue
+        for ref in extract_c_signature_type_refs(access.get("c_type") or access.get("TYPE") or ""):
+            target, _canonical = _type_item_by_ref_or_name(
+                type_ref="",
+                raw_type=ref.get("raw", ""),
+                type_inventory=type_inventory,
+                type_inventory_by_name=type_inventory_by_name,
+                canonical_types=canonical_types,
+                canonical_types_by_name=canonical_types_by_name,
+            )
+            if target is None:
+                diagnostics.append(PlanningDiagnostic("error", "stale_type_ref", f"access path '{access.get('access_path_id')}' references unknown type '{ref.get('raw')}'", path))
+
     for function in functions:
+        signature = function.get("signature", {}) if isinstance(function.get("signature"), dict) else {}
+        for param in signature.get("params", []) if isinstance(signature.get("params"), list) else []:
+            if not isinstance(param, dict):
+                continue
+            type_ref = str(param.get("type_ref", "")).strip()
+            if type_ref and type_ref not in all_type_ids and not _is_system_type_ref(type_ref):
+                diagnostics.append(PlanningDiagnostic("error", "stale_type_ref", f"function '{function.get('function_id')}' parameter '{param.get('name')}' references stale type_ref '{type_ref}'", path))
+        parsed_raw = parse_c_function_signature(signature.get("raw", ""))
+        if str(signature.get("raw", "")).strip() and parsed_raw.get("name"):
+            raw_return = canonical_c_type_spelling(parsed_raw.get("return_type", ""))
+            structured_return = canonical_c_type_spelling(signature.get("return_type", ""))
+            raw_params = [canonical_c_type_spelling(param.get("type", "")) for param in parsed_raw.get("params", []) if isinstance(param, dict)]
+            structured_params = [canonical_c_type_spelling(param.get("type", "")) for param in signature.get("params", []) if isinstance(param, dict)]
+            if parsed_raw.get("name") != signature.get("name") or raw_return != structured_return or raw_params != structured_params:
+                diagnostics.append(PlanningDiagnostic("error", "signature_raw_structured_mismatch", f"function '{function.get('function_id')}' has non-canonical raw/structured signature fields", path))
         if not _is_public_function(function):
             continue
         function_id = str(function.get("function_id", ""))
-        signature = function.get("signature", {}) if isinstance(function.get("signature"), dict) else {}
+        for ref in extract_c_signature_type_refs(signature):
+            target, canonical = _type_item_by_ref_or_name(
+                type_ref="",
+                raw_type=ref.get("raw", ""),
+                type_inventory=type_inventory,
+                type_inventory_by_name=type_inventory_by_name,
+                canonical_types=canonical_types,
+                canonical_types_by_name=canonical_types_by_name,
+            )
+            if target is None:
+                diagnostics.append(PlanningDiagnostic("error", "readiness_public_signature_unknown_type", f"public function '{function_id}' references unknown type '{ref.get('raw')}'", path))
+            elif not canonical and not _valid_public_opaque_backing_pointer(ref.get("raw", ""), target, type_inventory):
+                diagnostics.append(PlanningDiagnostic("error", "readiness_public_signature_private_type_leak", f"public function '{function_id}' exposes private/internal type '{target.get('name')}'", path))
         return_type_item, return_is_canonical = _type_item_by_ref_or_name(
             type_ref="",
             raw_type=signature.get("return_type", ""),
@@ -2408,6 +2720,11 @@ def validate_full_implementation_plan(plan: dict[str, Any], *, profile: dict[str
             if callee is None:
                 diagnostics.append(PlanningDiagnostic("error", "readiness_call_contract_unknown_callee", f"function '{caller_id}' call contract references unknown callee '{callee_id}'", path))
                 continue
+            declared_callee_signature = str(edge.get("callee_signature") or edge.get("signature") or edge.get("SIGNATURE") or "").strip()
+            if declared_callee_signature:
+                canonical_callee_signature = lower_signature_for_coder(callee)["RAW"]
+                if _canonical_function_signature_spelling(declared_callee_signature) != _canonical_function_signature_spelling(canonical_callee_signature):
+                    diagnostics.append(PlanningDiagnostic("error", "call_contract_signature_mismatch", f"call contract '{caller_id}' -> '{callee_id}' callee signature differs from canonical callee signature", path))
             if str(caller.get("module_id", "")) != str(callee.get("module_id", "")) and not _is_public_function(callee):
                 diagnostics.append(PlanningDiagnostic("error", "readiness_call_contract_private_cross_module", f"function '{caller_id}' cannot call non-public callee '{callee_id}' across modules", path))
             bindings = edge.get("param_bindings", [])

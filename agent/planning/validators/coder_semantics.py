@@ -38,6 +38,25 @@ def _check_artifact_item(item: dict[str, Any], diagnostics: list[PlanningDiagnos
         diagnostics.append(PlanningDiagnostic("error", "coder_artifact_invalid_name", f"Artifact name '{name}' is not a C symbol", path))
 
 
+def _type_refs_from_type_spec(type_spec: dict[str, Any]) -> list[dict[str, Any]]:
+    refs: list[dict[str, Any]] = []
+    kind = str(type_spec.get("TYPE_KIND", "")).upper()
+    if kind in {"STRUCT", "UNION"}:
+        member_key = "FIELDS" if kind == "STRUCT" else "VARIANTS"
+        for member in type_spec.get(member_key, []) if isinstance(type_spec.get(member_key), list) else []:
+            if not isinstance(member, dict):
+                continue
+            refs.extend(extract_c_signature_type_refs(member.get("TYPE", "")))
+            nested = member.get("TYPE_SPEC")
+            if isinstance(nested, dict):
+                refs.extend(_type_refs_from_type_spec(nested))
+    elif kind == "ALIAS":
+        refs.extend(extract_c_signature_type_refs(type_spec.get("ALIAS_OF", "")))
+    elif kind == "CALLBACK":
+        refs.extend(extract_c_signature_type_refs(type_spec.get("CALLBACK_SIGNATURE", "")))
+    return refs
+
+
 def _read_sidecar(bundle: Any, filename: str) -> dict[str, Any]:
     spec_root = Path(bundle.spec_root)
     for path in (spec_root.parent / filename, spec_root / filename):
@@ -189,6 +208,8 @@ def validate_coder_semantics(bundle: Any) -> list[PlanningDiagnostic]:
             header_names_by_module.setdefault(module.name, set()).update(name for name, _kind in public_headers)
 
     public_type_keys_by_module: dict[str, set[str]] = {}
+    public_type_keys_by_header: dict[str, set[str]] = {}
+    private_type_keys: set[str] = set()
     all_public_type_keys: set[str] = set()
     for module_name, data_keys in public_data_by_module.items():
         keys = {normalize_type_key(name) for name, kind in data_keys if kind == "TYPE"}
@@ -208,22 +229,74 @@ def validate_coder_semantics(bundle: Any) -> list[PlanningDiagnostic]:
             for item in file_spec.header_data
             if isinstance(item, dict) and item.get("KIND") == "TYPE" and str(item.get("VISIBILITY", "")).upper() == "PUBLIC"
         }
+        if file_spec.header_path:
+            public_type_keys_by_header[file_spec.header_path] = file_type_keys
+        for item in [*file_spec.header_data, *file_spec.source_data]:
+            if isinstance(item, dict) and item.get("KIND") == "TYPE" and str(item.get("VISIBILITY", "")).upper() != "PUBLIC":
+                key = normalize_type_key(item.get("NAME", ""))
+                if key:
+                    private_type_keys.add(key)
+
+    def check_public_header_ref(file_spec: Any, ref: dict[str, Any], *, owner: str, surface: str) -> None:
+        key = str(ref.get("key", "")).strip()
+        if not key:
+            return
+        local_keys = public_type_keys_by_header.get(file_spec.header_path, set())
+        visible_dependency_keys = {
+            dep_key
+            for dependency in file_spec.header_dependencies
+            for dep_key in public_type_keys_by_header.get(dependency, set())
+        }
+        if key in local_keys or key in visible_dependency_keys:
+            return
+        if key in all_public_type_keys:
+            diagnostics.append(
+                PlanningDiagnostic(
+                    "error",
+                    "coder_public_signature_missing_header_dependency",
+                    f"Public {surface} '{owner}' references public type '{ref.get('raw')}' but provider header is not visible from HEADER.DEPENDENCY",
+                    str(file_spec.spec_path),
+                )
+            )
+            return
+        if key in private_type_keys:
+            code = "coder_public_callback_private_type" if surface.startswith("callback") else "coder_public_function_pointer_private_type" if surface.startswith("function pointer") else "coder_public_signature_private_type_leak"
+            diagnostics.append(
+                PlanningDiagnostic(
+                    "error",
+                    code,
+                    f"Public {surface} '{owner}' references private/internal type '{ref.get('raw')}'",
+                    str(file_spec.spec_path),
+                )
+            )
+            return
+        code = "coder_public_callback_unknown_type" if surface.startswith("callback") else "coder_public_function_pointer_unknown_type" if surface.startswith("function pointer") else "coder_public_signature_unknown_type"
+        diagnostics.append(
+            PlanningDiagnostic(
+                "error",
+                code,
+                f"Public {surface} '{owner}' references undeclared public type '{ref.get('raw')}'",
+                str(file_spec.spec_path),
+            )
+        )
+
+    for file_spec in bundle.file_specs_by_trace.values():
         module_name = module_name_by_file_path.get(str(file_spec.spec_path), "")
-        module_type_keys = public_type_keys_by_module.get(module_name, set())
         for interface in file_spec.header_interfaces:
             if interface.visibility != "public":
                 continue
             for ref in extract_c_signature_type_refs(interface.signature):
-                key = str(ref.get("key", ""))
-                if key and key not in file_type_keys and key not in module_type_keys and key not in all_public_type_keys:
-                    diagnostics.append(
-                        PlanningDiagnostic(
-                            "error",
-                            "coder_public_signature_unknown_type",
-                            f"Public function '{interface.name}' in module '{module_name or '<unknown>'}' references undeclared public type '{ref.get('raw')}'",
-                            str(file_spec.spec_path),
-                        )
-                    )
+                check_public_header_ref(file_spec, ref, owner=interface.name, surface="function signature")
+        for item in file_spec.header_data:
+            if not isinstance(item, dict) or item.get("KIND") != "TYPE" or str(item.get("VISIBILITY", "")).upper() != "PUBLIC":
+                continue
+            type_spec = item.get("TYPE_SPEC")
+            if not isinstance(type_spec, dict):
+                continue
+            type_kind = str(type_spec.get("TYPE_KIND", "")).upper()
+            for ref in _type_refs_from_type_spec(type_spec):
+                surface = "callback typedef" if type_kind == "CALLBACK" else "function pointer field" if "(*" in str(ref.get("raw", "")) else "public type field"
+                check_public_header_ref(file_spec, ref, owner=str(item.get("NAME", "")), surface=surface)
 
     all_public_headers = {
         (item.name.strip(), "FUNC")

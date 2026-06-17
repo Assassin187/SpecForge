@@ -15,6 +15,7 @@ from agent.planning.stages.coder_spec_lowering import (
     lower_signature_for_coder,
     normalize_data_visibility_for_coder,
     normalize_param_ownership_for_coder,
+    parse_c_function_signature,
 )
 from agent.planning.stages.dependencies import attach_coder_dependency_sources
 from agent.planning.stages.protocol_profile import build_protocol_profile
@@ -829,6 +830,157 @@ class CoderSchemaLoweringTests(unittest.TestCase):
             self.assertTrue(header_source["file_trace_id"].startswith("zapline/framing/"))
             self.assertEqual(header_source["header_path"], "zapline/framing/framing.h")
             self.assertIn("HEADER.DEPENDENCY", header_source["source_fields"][0])
+
+    def test_public_signature_external_type_requires_visible_provider_header(self) -> None:
+        plan = copy.deepcopy(_zap_plan())
+        _add_payload_module(plan, with_type=True)
+        public_function = plan["function_contracts"][0]
+        public_function["signature"]["raw"] = "int zapline_frame_encode(zapline_payload_t* payload)"
+        public_function["signature"]["params"] = [{"type": "zapline_payload_t*", "name": "payload", "nullable": False, "ownership": "borrowed"}]
+
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(plan, Path(raw_tmp))
+            diagnostics = validate_coder_compatibility(manifest["spec_root"])
+            self.assertFalse([diag.__dict__ for diag in diagnostics if diag.level == "error"])
+
+            framing_path = next(path for path in Path(manifest["spec_root"]).rglob("*_spec.json") if path.name == "framing_spec.json")
+            framing_spec = json.loads(framing_path.read_text(encoding="utf-8"))
+            framing_spec["HEADER"]["DEPENDENCY"] = []
+            framing_path.write_text(json.dumps(framing_spec, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+            diagnostics = validate_coder_compatibility(manifest["spec_root"])
+            self.assertIn("coder_public_signature_missing_header_dependency", {diag.code for diag in diagnostics if diag.level == "error"})
+
+    def test_public_signature_private_type_leak_blocks(self) -> None:
+        plan = copy.deepcopy(_zap_plan())
+        plan["type_inventory"] = [
+            {
+                "type_id": "type:framing:zapline_private_cursor",
+                "name": "zapline_private_cursor_t",
+                "module_id": "framing",
+                "kind": "internal_state",
+                "visibility": "module_internal",
+                "defined_in": "source_file",
+                "purpose": "Private parser cursor.",
+                "fields": [],
+            }
+        ]
+        public_function = plan["function_contracts"][0]
+        public_function["signature"]["raw"] = "int zapline_frame_encode(zapline_private_cursor_t* cursor)"
+        public_function["signature"]["params"] = [{"type": "zapline_private_cursor_t*", "name": "cursor", "nullable": False, "ownership": "borrowed"}]
+
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(plan, Path(raw_tmp))
+            diagnostics = validate_coder_compatibility(manifest["spec_root"])
+            self.assertIn("coder_public_signature_private_type_leak", {diag.code for diag in diagnostics if diag.level == "error"})
+
+    def test_callback_and_function_pointer_external_type_closure(self) -> None:
+        plan = copy.deepcopy(_zap_plan())
+        _add_payload_module(plan, with_type=True)
+        plan["module_artifacts"][0]["artifacts"].extend(
+            [
+                {"name": "zapline_payload_callback_t", "kind": "TYPE", "role": "Payload callback type."},
+                {"name": "zapline_callback_table_t", "kind": "TYPE", "role": "Callback table."},
+            ]
+        )
+        plan["type_inventory"] = [
+            {
+                "type_id": "type:framing:zapline_payload_callback",
+                "name": "zapline_payload_callback_t",
+                "module_id": "framing",
+                "kind": "callback_type",
+                "visibility": "public",
+                "defined_in": "public_header",
+                "purpose": "Public payload callback.",
+                "callback_signature": {"return_type": "int", "params": [{"name": "payload", "type": "zapline_payload_t*", "ownership": "BORROWED"}]},
+            },
+            {
+                "type_id": "type:framing:zapline_callback_table",
+                "name": "zapline_callback_table_t",
+                "module_id": "framing",
+                "kind": "struct",
+                "visibility": "public",
+                "defined_in": "public_header",
+                "purpose": "Public callback table with function pointer field.",
+                "fields": [{"field_name": "on_payload", "field_type": "int (*)(zapline_payload_t*)"}],
+            },
+        ]
+
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(plan, Path(raw_tmp))
+            framing_spec = _file_spec_json(manifest, "framing_spec.json")
+            self.assertEqual(framing_spec["HEADER"]["DEPENDENCY"], ["zapline/payload/payload.h"])
+            diagnostics = validate_coder_compatibility(manifest["spec_root"])
+            self.assertFalse([diag.__dict__ for diag in diagnostics if diag.level == "error"])
+
+    def test_callback_unknown_type_blocks(self) -> None:
+        plan = copy.deepcopy(_zap_plan())
+        plan["module_artifacts"][0]["artifacts"].append({"name": "zapline_payload_callback_t", "kind": "TYPE", "role": "Payload callback type."})
+        plan["type_inventory"] = [
+            {
+                "type_id": "type:framing:zapline_payload_callback",
+                "name": "zapline_payload_callback_t",
+                "module_id": "framing",
+                "kind": "callback_type",
+                "visibility": "public",
+                "defined_in": "public_header",
+                "purpose": "Public payload callback.",
+                "callback_signature": {"return_type": "void", "params": [{"name": "payload", "type": "zapline_missing_payload_t*", "ownership": "BORROWED"}]},
+            }
+        ]
+
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(plan, Path(raw_tmp))
+            diagnostics = validate_coder_compatibility(manifest["spec_root"])
+            self.assertIn("coder_public_callback_unknown_type", {diag.code for diag in diagnostics if diag.level == "error"})
+
+    def test_signature_drift_blocks_in_coder_specs(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(_zap_plan(), Path(raw_tmp))
+            function_path = next(path for path in Path(manifest["spec_root"]).rglob("*_spec.json") if path.name == "zapline_frame_encode_spec.json")
+            function_spec = json.loads(function_path.read_text(encoding="utf-8"))
+            function_spec["SIGNATURE"]["RAW"] = function_spec["SIGNATURE"]["RAW"].replace("int zapline_frame_encode", "long zapline_frame_encode")
+            function_path.write_text(json.dumps(function_spec, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            diagnostics = validate_coder_compatibility(manifest["spec_root"])
+            self.assertIn("coder_signature_raw_structured_mismatch", {diag.code for diag in diagnostics if diag.level == "error"})
+
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(_zap_plan(), Path(raw_tmp))
+            framing_path = next(path for path in Path(manifest["spec_root"]).rglob("*_spec.json") if path.name == "framing_spec.json")
+            framing_spec = json.loads(framing_path.read_text(encoding="utf-8"))
+            framing_spec["HEADER"]["INTERFACE"][0]["SIGNATURE"] = framing_spec["HEADER"]["INTERFACE"][0]["SIGNATURE"].replace("int zapline_frame_encode", "long zapline_frame_encode")
+            framing_path.write_text(json.dumps(framing_spec, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            diagnostics = validate_coder_compatibility(manifest["spec_root"])
+            self.assertIn("coder_header_source_function_signature_mismatch", {diag.code for diag in diagnostics if diag.level == "error"})
+
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(_zap_plan(), Path(raw_tmp))
+            framing_path = next(path for path in Path(manifest["spec_root"]).rglob("*_spec.json") if path.name == "framing_spec.json")
+            framing_spec = json.loads(framing_path.read_text(encoding="utf-8"))
+            framing_spec["CALL_CONTRACTS"] = [{"NAME": "zapline_frame_encode", "SIGNATURE": "void zapline_frame_encode(void)"}]
+            framing_path.write_text(json.dumps(framing_spec, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            diagnostics = validate_coder_compatibility(manifest["spec_root"])
+            self.assertIn("coder_call_contract_signature_mismatch", {diag.code for diag in diagnostics if diag.level == "error"})
+
+    def test_pointer_return_signature_parser_and_canonical_spacing(self) -> None:
+        parsed = parse_c_function_signature("mqtt_packet_t *mqtt_packet_new(const mqtt_connection_t *conn)")
+        self.assertEqual(parsed["name"], "mqtt_packet_new")
+        self.assertEqual(parsed["return_type"], "mqtt_packet_t*")
+        self.assertEqual([param["type"] for param in parsed["params"]], ["const mqtt_connection_t*"])
+        refs = extract_c_signature_type_refs("mqtt_packet_t *mqtt_packet_new(const mqtt_connection_t *conn)")
+        self.assertEqual({ref["key"] for ref in refs}, {"mqtt_packet", "mqtt_connection"})
+
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(_zap_plan(), Path(raw_tmp))
+            framing_path = next(path for path in Path(manifest["spec_root"]).rglob("*_spec.json") if path.name == "framing_spec.json")
+            framing_spec = json.loads(framing_path.read_text(encoding="utf-8"))
+            original = framing_spec["HEADER"]["INTERFACE"][0]["SIGNATURE"]
+            spaced = original.replace("* ", " *")
+            self.assertNotEqual(original, spaced)
+            framing_spec["HEADER"]["INTERFACE"][0]["SIGNATURE"] = spaced
+            framing_path.write_text(json.dumps(framing_spec, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            bundle = load_spec_bundle_from_root(manifest["spec_root"])
+            self.assertNotIn("header_source_function_signature_mismatch", {diag.code for diag in bundle.diagnostics if diag.level == "error"})
 
     def test_invalid_planning_symbols_lower_to_canonical_c_specs(self) -> None:
         plan = copy.deepcopy(_zap_plan())

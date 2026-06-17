@@ -158,6 +158,32 @@ def _strip_param_name(param: str) -> str:
     return text
 
 
+def canonical_c_type_spelling(value: Any) -> str:
+    text = str(value or "").strip().rstrip(";")
+    text = re.sub(r"\b(?:static|extern)\b", " ", text)
+    text = re.sub(r"\s*\*\s*", "*", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+def parse_c_function_signature(value: Any) -> dict[str, Any]:
+    raw = str(value or "").strip().rstrip(";")
+    match = re.match(r"^(?P<left>.+?[*\s])(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*\((?P<params>.*)\)$", raw)
+    if not match:
+        return {"raw": raw, "name": "", "return_type": "", "params": []}
+    return_type = canonical_c_type_spelling(match.group("left"))
+    params = [
+        {"type": canonical_c_type_spelling(_strip_param_name(param))}
+        for param in _split_c_params(match.group("params"))
+    ]
+    return {
+        "raw": raw,
+        "name": match.group("name"),
+        "return_type": return_type,
+        "params": [param for param in params if param["type"]],
+    }
+
+
 def is_anonymous_c_function_pointer_type(value: Any) -> bool:
     return bool(re.search(r"\(\s*\*\s*\)\s*\(", str(value or "")))
 
@@ -240,12 +266,12 @@ def extract_c_signature_type_refs(signature_or_params: Any) -> list[dict[str, An
     if _function_pointer_parts(raw) is not None:
         add(raw)
         return refs
-    left, rest = raw.split("(", 1)
-    params = rest.rsplit(")", 1)[0]
-    return_type = re.sub(r"\s+[A-Za-z_][A-Za-z0-9_]*\s*$", "", left).strip()
-    add(return_type)
-    for param in _split_c_params(params):
-        add(_strip_param_name(param))
+    parsed = parse_c_function_signature(raw)
+    if parsed.get("name"):
+        add(parsed.get("return_type", ""))
+        for param in parsed.get("params", []):
+            if isinstance(param, dict):
+                add(param.get("type", ""))
     return refs
 
 

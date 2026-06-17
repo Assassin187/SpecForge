@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from .models import FileSpec
 
 
@@ -42,6 +44,9 @@ def _render_member(item: dict[str, object], indent: str = "    ") -> list[str]:
             return lines
     if not member_type:
         return []
+    function_pointer = re.match(r"^(.+?)\(\s*\*\s*(?:[A-Za-z_][A-Za-z0-9_]*)?\s*\)\s*\((.*)\)$", member_type)
+    if function_pointer:
+        return [f"{indent}{function_pointer.group(1).strip()} (*{member_name})({function_pointer.group(2).strip()});"]
     if array_len:
         return [f"{indent}{member_type} {member_name}[{array_len}];"]
     return [f"{indent}{member_type} {member_name};"]
