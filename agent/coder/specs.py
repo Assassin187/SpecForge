@@ -295,13 +295,8 @@ def _validate_module_file_coverage(bundle: SpecBundle) -> None:
     known_paths = set(bundle.file_specs_by_header_path) | set(bundle.file_specs_by_source_path)
     for module in bundle.modules_in_order:
         for file_path in module.files:
-            normalized = normalize_repo_path(file_path)
-            if normalized.endswith("/main.c") or normalized == "main.c":
-                known_paths.add(normalized)
-    for module in bundle.modules_in_order:
-        for file_path in module.files:
             if file_path not in known_paths:
-                bundle.diagnostics.append(Diagnostic("warning", "unmapped_module_file", f"Module '{module.name}' references '{file_path}' with no matching file spec", str(bundle.module_spec_path)))
+                bundle.diagnostics.append(Diagnostic("error", "layout_module_file_unknown", f"Module '{module.name}' references '{file_path}' with no matching file spec", str(bundle.module_spec_path)))
 
 
 def _validate_file_specs(bundle: SpecBundle) -> None:
@@ -474,10 +469,20 @@ def _validate_rendered_headers_compile(bundle: SpecBundle) -> None:
 
 def _validate_uniqueness(bundle: SpecBundle) -> None:
     seen_paths: dict[str, str] = {}
+    seen_headers: dict[str, str] = {}
+    seen_sources: dict[str, str] = {}
     for file_spec in bundle.file_specs_by_trace.values():
-        for path in (file_spec.header_path, file_spec.source_path):
+        for path, seen, code in (
+            (file_spec.header_path, seen_headers, "layout_duplicate_header_path"),
+            (file_spec.source_path, seen_sources, "layout_duplicate_source_path"),
+        ):
             if not path:
                 continue
+            scoped_owner = seen.get(path)
+            if scoped_owner and scoped_owner != file_spec.trace_id:
+                bundle.diagnostics.append(Diagnostic("error", code, f"Path '{path}' is claimed by both '{scoped_owner}' and '{file_spec.trace_id}'", str(file_spec.spec_path)))
+            else:
+                seen[path] = file_spec.trace_id
             owner = seen_paths.get(path)
             if owner and owner != file_spec.trace_id:
                 bundle.diagnostics.append(Diagnostic("error", "duplicate_file_path", f"Path '{path}' is claimed by both '{owner}' and '{file_spec.trace_id}'", str(file_spec.spec_path)))

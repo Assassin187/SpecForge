@@ -192,7 +192,142 @@ def _find_interface_name(file_spec: FileSpec, suffix: str) -> str | None:
     return None
 
 
+def _find_main_file_spec(bundle: SpecBundle) -> FileSpec | None:
+    return bundle.file_specs_by_source_path.get("main.c") or next(
+        (file_spec for file_spec in bundle.file_specs_by_trace.values() if file_spec.source_path.endswith("/main.c")),
+        None,
+    )
+
+
+def _find_entrypoint_function(bundle: SpecBundle, main_spec: FileSpec) -> Any | None:
+    for source in main_spec.source_interfaces:
+        linked = bundle.function_specs_by_trace.get(source.trace_id)
+        if linked is not None and linked.function_type.upper() == "ENTRYPOINT":
+            return linked
+    return next(
+        (
+            function
+            for function in bundle.function_specs_by_trace.values()
+            if function.function_type.upper() == "ENTRYPOINT" and function.signature.name == "main"
+        ),
+        None,
+    )
+
+
+def _function_by_name(bundle: SpecBundle) -> dict[str, Any]:
+    return {
+        function.signature.name: function
+        for function in bundle.function_specs_by_trace.values()
+        if function.signature.name
+    }
+
+
+def _lifecycle_name(action: str, entrypoint: Any, functions_by_name: dict[str, Any]) -> str:
+    suffixes = ("_run", "_serve") if action == "run" else (f"_{action}",)
+    contracts = entrypoint.raw.get("CALL_CONTRACTS", []) if isinstance(entrypoint.raw, dict) else []
+    for contract in contracts if isinstance(contracts, list) else []:
+        if not isinstance(contract, dict):
+            continue
+        name = str(contract.get("NAME", "")).strip()
+        if name in functions_by_name and name.endswith(suffixes):
+            return name
+    rely = entrypoint.raw.get("RELY", {}) if isinstance(entrypoint.raw, dict) else {}
+    for item in rely.get("FUNC", []) if isinstance(rely.get("FUNC", []), list) else []:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("NAME", "")).strip()
+        if name in functions_by_name and name.endswith(suffixes):
+            return name
+    return ""
+
+
+def _strip_pointer_type(c_type: str) -> str:
+    return c_type.replace("const ", "").replace("*", "").strip()
+
+
+def _arg_for_param(param: dict[str, Any], *, handle_type: str, handle_var: str, port_var: str) -> str:
+    param_type = str(param.get("TYPE", param.get("type", ""))).strip()
+    param_name = str(param.get("NAME", param.get("name", ""))).strip()
+    if param_name == "argc":
+        return "argc"
+    if param_name == "argv":
+        return "argv"
+    if "uint16_t" in param_type or param_name == "port":
+        return port_var
+    if "*" in param_type:
+        if handle_type and _strip_pointer_type(param_type) == _strip_pointer_type(handle_type):
+            return handle_var
+        return "NULL"
+    if param_type in {"int", "unsigned", "unsigned int", "long", "unsigned long", "size_t"}:
+        return "0"
+    if param_type == "bool":
+        return "false"
+    return "0"
+
+
+def _call_expr(function: Any, *, handle_type: str, handle_var: str, port_var: str) -> str:
+    args = [
+        _arg_for_param(param, handle_type=handle_type, handle_var=handle_var, port_var=port_var)
+        for param in function.signature.params
+        if isinstance(param, dict)
+    ]
+    return f"{function.signature.name}({', '.join(args)})"
+
+
 def render_main_c(bundle: SpecBundle) -> str:
+    main_spec = _find_main_file_spec(bundle)
+    if main_spec is not None:
+        entrypoint = _find_entrypoint_function(bundle, main_spec)
+        functions_by_name = _function_by_name(bundle)
+        lifecycle = {
+            action: functions_by_name.get(_lifecycle_name(action, entrypoint, functions_by_name)) if entrypoint is not None else None
+            for action in ("create", "start", "run", "destroy")
+        }
+        if entrypoint is not None and lifecycle["create"] is not None:
+            create = lifecycle["create"]
+            handle_type = _strip_pointer_type(create.signature.return_type)
+            handle_var = "app"
+            port_var = "port"
+            lines = [f'#include "{dependency}"' for dependency in main_spec.source_dependencies]
+            lines.extend(
+                [
+                    "",
+                    "#include <stdbool.h>",
+                    "#include <stdint.h>",
+                    "#include <stdio.h>",
+                    "#include <stdlib.h>",
+                    "",
+                    "static uint16_t parse_port(int argc, char** argv) {",
+                    "    if (argc < 2) {",
+                    f"        return {bundle.protocol.default_port or 1884};",
+                    "    }",
+                    "    char* end = NULL;",
+                    "    unsigned long raw = strtoul(argv[1], &end, 10);",
+                    "    if (!argv[1][0] || (end && *end != '\\0') || raw == 0 || raw > 65535UL) {",
+                    f"        return {bundle.protocol.default_port or 1884};",
+                    "    }",
+                    "    return (uint16_t)raw;",
+                    "}",
+                    "",
+                    "int main(int argc, char** argv) {",
+                    f"    const uint16_t {port_var} = parse_port(argc, argv);",
+                    f"    {handle_type}* {handle_var} = {_call_expr(create, handle_type=handle_type, handle_var=handle_var, port_var=port_var)};",
+                    f"    if (!{handle_var}) {{",
+                    '        fprintf(stderr, "failed to create application on port %u\\n", (unsigned)port);',
+                    "        return 1;",
+                    "    }",
+                ]
+            )
+            for action in ("start", "run"):
+                function = lifecycle.get(action)
+                if function is not None:
+                    lines.append(f"    (void){_call_expr(function, handle_type=handle_type, handle_var=handle_var, port_var=port_var)};")
+            destroy = lifecycle.get("destroy")
+            if destroy is not None:
+                lines.append(f"    {_call_expr(destroy, handle_type=handle_type, handle_var=handle_var, port_var=port_var)};")
+            lines.extend(["    return 0;", "}", ""])
+            return "\n".join(lines)
+
     app_spec = _find_app_file_spec(bundle)
     if app_spec is None:
         return "int main(void) {\n    return 0;\n}\n"
@@ -564,6 +699,11 @@ class ProjectGenerator:
                 if file_spec is None:
                     continue
                 print(f"[agent.generate] source={source_path} start", flush=True)
+                if Path(source_path).name == "main.c":
+                    main_content = render_main_c(self.bundle)
+                    self._write_file(source_path, main_content)
+                    print(f"[agent.generate] source={source_path} done", flush=True)
+                    continue
                 module_entry = self._module_for_spec(file_spec)
                 function_specs = function_specs_for_file(self.bundle, file_spec)
                 header_content = ""

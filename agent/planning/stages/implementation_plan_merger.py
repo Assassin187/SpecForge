@@ -458,13 +458,83 @@ def _module_artifacts_for(module: dict[str, Any], protocol: str, target_role: st
         role = _safe_id(target_role or "app")
         add(f"{prefix}_{role}_t", "TYPE", "Top-level protocol runtime object.")
         add(f"{prefix}_{role}_create", "FUNC", "Create the top-level protocol runtime.")
+        add(f"{prefix}_{role}_start", "FUNC", "Start the top-level protocol runtime.")
         add(f"{prefix}_{role}_run", "FUNC", "Run the top-level protocol runtime.")
         add(f"{prefix}_{role}_destroy", "FUNC", "Destroy the top-level protocol runtime.")
-        add("main", "FUNC", "Process entrypoint for the generated target.")
     else:
         add(f"{prefix}_{module_id}_t", "TYPE", f"Opaque {module_id} module object.")
         add(f"{prefix}_{module_id}_init", "FUNC", f"Initialize the {module_id} module boundary.")
     return artifacts
+
+
+def _target_role_from_draft(draft: dict[str, Any]) -> str:
+    directives_ref = draft.get("target_directives_ref", {}) if isinstance(draft.get("target_directives_ref"), dict) else {}
+    directives = directives_ref.get("directives", {}) if isinstance(directives_ref.get("directives"), dict) else {}
+    return _safe_id(_field_value(directives.get("target_role"), ""))
+
+
+def _runtime_artifact_base(protocol: str, target_role: str, artifacts: list[dict[str, Any]]) -> str:
+    for suffix in ("_run", "_serve", "_create", "_start", "_destroy"):
+        for artifact in artifacts:
+            if str(artifact.get("kind", "")).upper() == "FUNC":
+                name = _safe_id(str(artifact.get("name", "")))
+                if name.endswith(suffix):
+                    return name[: -len(suffix)]
+    for artifact in artifacts:
+        if str(artifact.get("kind", "")).upper() == "TYPE":
+            name = _safe_id(str(artifact.get("name", "")))
+            text = f"{name} {artifact.get('role', '')}".lower()
+            if name.endswith("_t") and any(word in text for word in (target_role, "runtime", "app", "broker", "server", "client")):
+                return name[:-2]
+    return f"{_safe_id(protocol)}_{target_role or 'app'}"
+
+
+def _has_artifact_suffix(artifacts: list[dict[str, Any]], kind: str, suffix: str) -> bool:
+    return any(str(item.get("kind", "")).upper() == kind and _safe_id(str(item.get("name", ""))).endswith(suffix) for item in artifacts)
+
+
+def _has_runtime_handle_artifact(artifacts: list[dict[str, Any]], target_role: str) -> bool:
+    for artifact in artifacts:
+        if not isinstance(artifact, dict) or str(artifact.get("kind", "")).upper() != "TYPE":
+            continue
+        name = _safe_id(str(artifact.get("name", "")))
+        text = f"{name} {artifact.get('role', '')}".lower()
+        if name.endswith("_t") and any(word in text for word in (target_role, "runtime", "app", "broker", "server", "client")):
+            return True
+    return False
+
+
+def _ensure_deployable_runtime_artifacts(draft: dict[str, Any]) -> None:
+    target_role = _target_role_from_draft(draft)
+    if target_role not in {"broker", "server", "client"}:
+        return
+    key_module_id = _key_flow_module_id(draft)
+    module = next((item for item in draft.get("module_artifacts", []) if isinstance(item, dict) and str(item.get("module_id", "")) == key_module_id), None)
+    if module is None:
+        return
+    artifacts = module.setdefault("artifacts", [])
+    if not isinstance(artifacts, list):
+        module["artifacts"] = artifacts = []
+    protocol = _safe_id(str(draft.get("protocol_name", "protocol")))
+    base = _runtime_artifact_base(protocol, target_role, [item for item in artifacts if isinstance(item, dict)])
+    existing = {(str(item.get("name", "")), str(item.get("kind", "")).upper()) for item in artifacts if isinstance(item, dict)}
+
+    def add(name: str, kind: str, role: str) -> None:
+        key = (name, kind)
+        if key not in existing:
+            artifacts.append({"name": name, "kind": kind, "role": role})
+            existing.add(key)
+
+    if not _has_runtime_handle_artifact(artifacts, target_role):
+        add(f"{base}_t", "TYPE", "Top-level protocol runtime object.")
+    for action, role in (
+        ("create", "Create the top-level protocol runtime."),
+        ("start", "Start the top-level protocol runtime."),
+        ("run", "Run the top-level protocol runtime."),
+        ("destroy", "Destroy the top-level protocol runtime."),
+    ):
+        if not _has_artifact_suffix(artifacts, "FUNC", f"_{action}"):
+            add(f"{base}_{action}", "FUNC", role)
 
 
 def _module_generation_order(modules: list[dict[str, Any]], dependencies_by_module: dict[str, list[str]]) -> list[str]:
@@ -561,6 +631,7 @@ def merge_module_artifacts(draft: dict[str, Any], candidate: dict[str, Any]) -> 
                 "decision_ids": [f"decision:module:{module_id}"],
             }
         )
+    _ensure_deployable_runtime_artifacts(result)
     result["module_generation_order"] = [str(item) for item in candidate.get("generation_order", []) if str(item).strip()]
     result["module_consistency_rules"] = deepcopy(candidate.get("consistency_rules", []))
     result["forbidden_symbols"] = deepcopy(candidate.get("forbidden_symbols", []))
@@ -2786,7 +2857,7 @@ def _find_lifecycle_function_id(draft: dict[str, Any], module_id: str, action: s
         name = str(function.get("name", ""))
         if any(name.endswith(suffix) for suffix in suffixes) and _is_lifecycle_function(function, action):
             return str(function.get("function_id", ""))
-    return f"fn:{module_id}:{action}"
+    return ""
 
 
 def fallback_runtime_entrypoint(draft: dict[str, Any]) -> dict[str, Any]:
@@ -2821,150 +2892,42 @@ def fallback_runtime_entrypoint(draft: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _lifecycle_signature(protocol: str, module_id: str, action: str, name: str) -> dict[str, Any]:
-    handle_type = f"{_safe_id(protocol)}_{_safe_id(module_id)}_t"
-    if action == "create":
-        return _function_signature(
-            f"{handle_type}*",
-            name,
-            [{"type": "uint16_t", "name": "port", "nullable": False, "ownership": "BORROWED"}],
-        )
-    if action == "destroy":
-        return _function_signature(
-            "void",
-            name,
-            [{"type": f"{handle_type}*", "name": "self", "nullable": False, "ownership": "BORROWED"}],
-        )
-    return _function_signature(
-        "int",
-        name,
-        [{"type": f"{handle_type}*", "name": "self", "nullable": False, "ownership": "BORROWED"}],
-    )
-
-
-def _runtime_function_base(
-    *,
-    protocol: str,
-    module_id: str,
-    function_id: str,
-    action: str,
-    file_id: str,
-    capability_ids: list[str],
-) -> dict[str, Any]:
-    name = f"{_safe_id(protocol)}_{_safe_id(module_id)}_{action}"
-    signature = _lifecycle_signature(protocol, module_id, action, name)
-    return {
-        "function_id": function_id,
-        "name": name,
-        "module_id": module_id,
-        "file_id": file_id,
-        "declared_in": file_id,
-        "function_kind": "resource_lifecycle" if action in {"create", "destroy"} else "public_api",
-        "coder_function_type": "ALGORITHM",
-        "visibility": "public",
-        "api_surface": "public",
-        "exported": True,
-        "export_reason": "Required by runtime entrypoint startup sequence.",
-        "public_api_role": f"runtime_{action}",
-        "grouping_hint": module_id,
-        "purpose": f"{action.capitalize()} the deployable protocol key flow object.",
-        "capability_ids": capability_ids,
-        "covers_handler_ids": [],
-        "covers_message_ids": [],
-        "covers_field_ids": [],
-        "signature": {
-            "raw": signature["raw"],
-            "name": signature["name"],
-            "storage_class": "none",
-            "return_type": signature["return_type"],
-            "params": [
-                {
-                    "name": param["name"],
-                    "type": param["type"],
-                    "type_ref": "",
-                    "direction": "in",
-                    "nullable": bool(param.get("nullable", False)),
-                    "ownership": normalize_param_ownership_for_coder(param.get("ownership")),
-                    "passing_mode": "by_pointer" if "*" in str(param.get("type", "")) else "by_value",
-                }
-                for param in signature["params"]
-            ],
-        },
-        "input_contract": {"params": signature["params"]},
-        "output_contract": {"return_type": signature["return_type"]},
-        "state_access": [],
-        "wire_mapping": [],
-        "access_paths": [],
-        "error_behavior": "propagation=return_code; recovery=cleanup; return_policy=status_code",
-        "calls_allowed": [],
-        "call_contracts": [],
-        "side_effects": [],
-        "signature_dependencies": [],
-        "interface_type_declarations": [],
-        "resource_access": [],
-        "internal_type_refs": [],
-        "service_requirements": [],
-        "forbidden_symbols": [],
-        "logic_kind": "LOGIC",
-        "behavior_contract": {
-            "input": "The key flow object and runtime parameters.",
-            "action": f"{action.capitalize()} the deployable protocol runtime boundary.",
-            "output": "Lifecycle status or object pointer.",
-            "preconditions": [],
-            "postconditions": [],
-            "invariants_used": [],
-            "idempotent": False,
-            "thread_safety": "single_thread_only",
-        },
-        "traceability": {"source_fact_ids": [], "decision_ids": [f"decision:runtime:{module_id}:{action}"]},
-    }
-
-
 def merge_runtime_entrypoint(draft: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any]:
     result = deepcopy(draft)
-    protocol = str(result.get("protocol_name", "protocol"))
     module_ids = {str(item.get("module_id", "")) for item in result.get("module_artifacts", []) if isinstance(item, dict)}
     module_id = str(candidate.get("key_flow_module_id") or _key_flow_module_id(result))
     if module_id not in module_ids:
         module_id = _key_flow_module_id(result)
     key_file_id = _primary_file_id(result, module_id)
     lifecycle_ids = candidate.get("lifecycle_function_ids", {}) if isinstance(candidate.get("lifecycle_function_ids"), dict) else {}
-    module = next((item for item in result.get("module_artifacts", []) if isinstance(item, dict) and str(item.get("module_id", "")) == module_id), {})
-    capability_ids = [str(cap) for cap in module.get("owned_capabilities", []) if str(cap).strip()]
     functions_by_id = {str(item.get("function_id", "")): item for item in result.get("function_contracts", []) if isinstance(item, dict)}
-    key_file = next((item for item in result.get("file_layout", {}).get("files", []) if isinstance(item, dict) and str(item.get("file_id", "")) == key_file_id), None)
 
     resolved_lifecycle_ids: dict[str, str] = {}
     for action in ("create", "start", "run", "destroy"):
         requested_id = str(lifecycle_ids.get(action) or "").strip()
         requested_function = functions_by_id.get(requested_id)
-        function_id = requested_id if requested_function and _is_lifecycle_function(requested_function, action) else f"fn:{module_id}:{action}"
+        function_id = requested_id if requested_function and _is_lifecycle_function(requested_function, action) else ""
         resolved_lifecycle_ids[action] = function_id
-        if function_id not in functions_by_id:
-            function = _runtime_function_base(protocol=protocol, module_id=module_id, function_id=function_id, action=action, file_id=key_file_id, capability_ids=capability_ids)
-            result.setdefault("function_contracts", []).append(function)
-            functions_by_id[function_id] = function
-        else:
-            function = functions_by_id[function_id]
-            function["module_id"] = module_id
-            function["visibility"] = "public"
-            function["api_surface"] = "public"
-            function["exported"] = True
-            function["export_reason"] = function.get("export_reason") or "Required by runtime entrypoint startup sequence."
-            function["public_api_role"] = function.get("public_api_role") or f"runtime_{action}"
-            function["file_id"] = function.get("file_id") or key_file_id
-            function["declared_in"] = function.get("declared_in") or key_file_id
-        if key_file is not None:
-            for key in ("implements", "exports"):
-                key_file.setdefault(key, [])
-                if function_id not in key_file[key]:
-                    key_file[key].append(function_id)
 
     source_path = str(candidate.get("source_path") or "main.c").strip() or "main.c"
     if not source_path.endswith(".c"):
         source_path = "main.c"
     file_id = f"file:{source_path.removesuffix('.c')}"
-    main_function_id = f"fn:{module_id}:runtime_entrypoint_main"
+    existing_main = next(
+        (
+            function
+            for function in result.get("function_contracts", [])
+            if isinstance(function, dict)
+            and str(function.get("module_id", "")) == module_id
+            and (
+                str(function.get("coder_function_type", "")).upper() == "ENTRYPOINT"
+                or str(function.get("name", "")) == "main"
+                or str((function.get("signature", {}) if isinstance(function.get("signature"), dict) else {}).get("name", "")) == "main"
+            )
+        ),
+        None,
+    )
+    main_function_id = str(existing_main.get("function_id", "")) if isinstance(existing_main, dict) and str(existing_main.get("function_id", "")).strip() else f"fn:{module_id}:runtime_entrypoint_main"
     signature = candidate.get("entrypoint_signature", {}) if isinstance(candidate.get("entrypoint_signature"), dict) else {}
     if not str(signature.get("raw", "")).strip():
         signature = fallback_runtime_entrypoint(result)["entrypoint_signature"]
@@ -2994,7 +2957,7 @@ def merge_runtime_entrypoint(draft: dict[str, Any], candidate: dict[str, Any]) -
         "wire_mapping": [],
         "access_paths": [],
         "error_behavior": "propagation=return_code; recovery=cleanup; return_policy=status_code",
-        "calls_allowed": [resolved_lifecycle_ids[action] for action in ("create", "start", "run", "destroy")],
+        "calls_allowed": [resolved_lifecycle_ids[action] for action in ("create", "start", "run", "destroy") if resolved_lifecycle_ids[action]],
         "call_contracts": [
             {
                 "callee_function_id": resolved_lifecycle_ids[action],
@@ -3009,6 +2972,7 @@ def merge_runtime_entrypoint(draft: dict[str, Any], candidate: dict[str, Any]) -
                 "status": "inferred",
             }
             for action in ("create", "start", "run", "destroy")
+            if resolved_lifecycle_ids[action]
         ],
         "side_effects": [],
         "signature_dependencies": [],
@@ -3034,6 +2998,16 @@ def merge_runtime_entrypoint(draft: dict[str, Any], candidate: dict[str, Any]) -
         result.setdefault("function_contracts", []).append(main_function)
     else:
         functions_by_id[main_function_id].update(main_function)
+    for old_function in result.get("function_contracts", []):
+        if not isinstance(old_function, dict) or old_function.get("function_id") == main_function_id:
+            continue
+        if str(old_function.get("module_id", "")) != module_id:
+            continue
+        if str(old_function.get("coder_function_type", "")).upper() == "ENTRYPOINT" or str(old_function.get("name", "")) == "main":
+            old_function["coder_function_type"] = "ALGORITHM"
+            old_function["visibility"] = "internal"
+            old_function["api_surface"] = "module_internal"
+            old_function["exported"] = False
 
     files = result.setdefault("file_layout", {}).setdefault("files", [])
     existing_entry_file = next((item for item in files if isinstance(item, dict) and str(item.get("file_id", "")) == file_id), None)

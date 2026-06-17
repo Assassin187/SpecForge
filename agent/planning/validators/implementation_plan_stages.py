@@ -2043,16 +2043,27 @@ def validate_runtime_entrypoint_candidate(candidate: dict[str, Any], draft: dict
             diagnostics.append(PlanningDiagnostic("error", "runtime_entrypoint_missing_lifecycle_id", f"runtime entrypoint missing {action} lifecycle function id", path))
             continue
         known = functions.get(function_id)
+        if known is None:
+            diagnostics.append(PlanningDiagnostic("error", "runtime_entrypoint_unknown_lifecycle_function", f"runtime entrypoint {action} lifecycle function '{function_id}' does not exist", path))
+            continue
         if known and str(known.get("module_id", "")) != key_module:
             diagnostics.append(PlanningDiagnostic("error", "runtime_entrypoint_lifecycle_wrong_module", f"lifecycle function '{function_id}' is not in key flow module '{key_module}'", path))
         if known and not _is_lifecycle_api(known, action):
             diagnostics.append(PlanningDiagnostic("error", "runtime_entrypoint_lifecycle_not_api", f"lifecycle function '{function_id}' is not a public {action} lifecycle API", path))
-        if not known and not function_id.startswith(f"fn:{key_module}:"):
-            diagnostics.append(PlanningDiagnostic("error", "runtime_entrypoint_lifecycle_id_outside_module", f"new lifecycle function '{function_id}' must belong to key flow module '{key_module}'", path))
     sequence_steps = {str(item.get("step", "")) for item in candidate.get("startup_sequence", []) if isinstance(item, dict)}
     for required in ("parse_args", "create", "start", "run", "destroy"):
         if required not in sequence_steps:
             diagnostics.append(PlanningDiagnostic("error", "runtime_entrypoint_sequence_missing_step", f"startup_sequence missing '{required}' step", path))
+    lifecycle_values = {str(value).strip() for value in lifecycle.values() if str(value).strip()}
+    for step in candidate.get("startup_sequence", []) if isinstance(candidate.get("startup_sequence", []), list) else []:
+        if not isinstance(step, dict):
+            continue
+        step_name = str(step.get("step", "")).strip()
+        function_id = str(step.get("function_id", "")).strip()
+        if step_name in {"create", "start", "run", "destroy"} and function_id != str(lifecycle.get(step_name, "")).strip():
+            diagnostics.append(PlanningDiagnostic("error", "runtime_entrypoint_sequence_lifecycle_mismatch", f"startup_sequence step '{step_name}' must reference lifecycle_function_ids.{step_name}", path))
+        elif function_id and function_id not in lifecycle_values:
+            diagnostics.append(PlanningDiagnostic("error", "runtime_entrypoint_non_lifecycle_call", f"startup_sequence references non-lifecycle function '{function_id}'", path))
     return diagnostics
 
 
@@ -2432,9 +2443,41 @@ def validate_full_implementation_plan(plan: dict[str, Any], *, profile: dict[str
         for item in files
         if str(item.get("source_path") or item.get("path") or "").replace("\\", "/").endswith("main.c")
     ]
+    file_by_id = {str(item.get("file_id", "")): item for item in files if str(item.get("file_id", "")).strip()}
     target_role = str(profile.get("target_role", {}).get("value", profile.get("target_role", "")) if isinstance(profile.get("target_role"), dict) else profile.get("target_role", "")).strip()
     if target_role and not (entrypoints and main_files):
         diagnostics.append(PlanningDiagnostic("error", "missing_runtime_entrypoint", f"deployable target role '{target_role}' requires a runtime entrypoint main.c", path))
+    for entrypoint in entrypoints:
+        entrypoint_id = str(entrypoint.get("function_id", ""))
+        entry_file_id = str(entrypoint.get("file_id", "")).strip()
+        entry_file = file_by_id.get(entry_file_id, {})
+        source_imports = {
+            str(item).strip()
+            for item in entry_file.get("imports_allowed", [])
+            if str(item).strip()
+        } if isinstance(entry_file.get("imports_allowed", []), list) else set()
+        lifecycle_refs = {
+            str(item).strip()
+            for item in entrypoint.get("calls_allowed", [])
+            if str(item).strip()
+        } if isinstance(entrypoint.get("calls_allowed", []), list) else set()
+        for contract in entrypoint.get("call_contracts", []) if isinstance(entrypoint.get("call_contracts", []), list) else []:
+            if isinstance(contract, dict) and str(contract.get("callee_function_id", "")).strip():
+                lifecycle_refs.add(str(contract["callee_function_id"]).strip())
+        if not lifecycle_refs:
+            diagnostics.append(PlanningDiagnostic("error", "runtime_entrypoint_unknown_lifecycle_function", f"runtime entrypoint '{entrypoint_id}' does not call lifecycle functions", path))
+        for callee_id in sorted(lifecycle_refs):
+            callee = functions_by_id.get(callee_id)
+            if callee is None:
+                diagnostics.append(PlanningDiagnostic("error", "runtime_entrypoint_unknown_lifecycle_function", f"runtime entrypoint '{entrypoint_id}' references unknown lifecycle function '{callee_id}'", path))
+                continue
+            action = str(callee.get("public_api_role", "")).removeprefix("runtime_")
+            if action not in {"create", "start", "run", "destroy"} or not _is_lifecycle_api(callee, action):
+                diagnostics.append(PlanningDiagnostic("error", "runtime_entrypoint_non_lifecycle_call", f"runtime entrypoint '{entrypoint_id}' may only call public lifecycle APIs, not '{callee_id}'", path))
+                continue
+            callee_file_id = str(callee.get("declared_in") or callee.get("file_id") or "").strip()
+            if callee_file_id and callee_file_id != entry_file_id and callee_file_id not in source_imports:
+                diagnostics.append(PlanningDiagnostic("error", "runtime_entrypoint_missing_source_dependency", f"runtime entrypoint '{entrypoint_id}' must import lifecycle file '{callee_file_id}' for '{callee_id}'", path))
     if target_role.lower() in {"broker", "server"}:
         runtime_tests = [
             item

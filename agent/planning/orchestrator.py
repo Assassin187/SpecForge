@@ -51,6 +51,7 @@ from .stages.implementation_plan_context import (
 )
 from .stages.inventory_planning_space import build_function_planning_space, build_type_planning_space
 from .stages.inventory_reconciliation import reconcile_function_annotation_candidate, reconcile_type_filling_candidate
+from .stages.layout_runtime_mapping import build_layout_runtime_mapping_report
 from .stages.implementation_plan_merger import (
     apply_dependency_repair_patch,
     apply_deterministic_dependency_fallback,
@@ -171,6 +172,7 @@ STEP_FILENAMES = {
     "dependency_repair_validation_report": "007_5_6_dependency_repair_validation_report.json",
     "implementation_plan": "007_implementation_plan.json",
     "dependency_validation_report": "008_dependency_validation_report.json",
+    "layout_runtime_mapping_report": "009_layout_runtime_mapping_report.json",
     "planning_repair_statistics": "012_planning_repair_statistics.json",
     "token_usage_summary": "013_token_usage_summary.json",
     "planning_validation_report": "014_planning_validation_report.json",
@@ -2636,10 +2638,14 @@ class PlanningAgent:
             dependency_report = build_dependency_validation_report(implementation_plan, dependency_diags)
             dependency_report_path = store.write_step_json(STEP_FILENAMES["dependency_validation_report"], dependency_report)
             artifact_paths["dependency_validation_report"] = dependency_report_path
+            layout_runtime_report, layout_runtime_diags = build_layout_runtime_mapping_report(implementation_plan)
+            layout_runtime_report_path = store.write_step_json(STEP_FILENAMES["layout_runtime_mapping_report"], layout_runtime_report)
+            artifact_paths["layout_runtime_mapping_report"] = layout_runtime_report_path
             diagnostics.extend(plan_diags)
             diagnostics.extend(dependency_diags)
-            final_readiness_passed = not has_errors([*plan_diags, *dependency_diags])
-            readiness_errors = [diag for diag in [*plan_diags, *dependency_diags] if diag.level == "error"]
+            diagnostics.extend(layout_runtime_diags)
+            final_readiness_passed = not has_errors([*plan_diags, *dependency_diags, *layout_runtime_diags])
+            readiness_errors = [diag for diag in [*plan_diags, *dependency_diags, *layout_runtime_diags] if diag.level == "error"]
             validator_stats.record(
                 stage_key="implementation_plan_5_7",
                 substage="5.7_spec_readiness_validation",
@@ -2664,6 +2670,13 @@ class PlanningAgent:
 
         if _stage_should_run("specs_compile", resume_from_stage):
             store.log_event("stage=specs_compile start")
+            if "layout_runtime_mapping_report" not in artifact_paths:
+                layout_runtime_report, layout_runtime_diags = build_layout_runtime_mapping_report(implementation_plan)
+                artifact_paths["layout_runtime_mapping_report"] = store.write_step_json(STEP_FILENAMES["layout_runtime_mapping_report"], layout_runtime_report)
+                diagnostics.extend(layout_runtime_diags)
+                if has_errors(layout_runtime_diags):
+                    store.log_event("stage=specs_compile blocked by layout_runtime_mapping_report")
+                    return finish_run("specs_compile", status="failed", failure={"stage": "specs_compile", "code": "layout_runtime_mapping_errors"})
             coder_manifest, coder_manifest_path = compile_spec_bundle(implementation_plan, self.output_dir)
             artifact_paths["coder_manifest"] = coder_manifest_path
             spec_root = Path(coder_manifest["spec_root"])

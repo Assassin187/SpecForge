@@ -244,6 +244,8 @@ def validate_coder_semantics(bundle: Any) -> list[PlanningDiagnostic]:
                     )
                 )
 
+    diagnostics.extend(_runtime_entrypoint_diagnostics(bundle))
+
     if public_artifact_count == 0:
         level = "error" if module_intent or public_function_intent_ids else "warning"
         diagnostics.append(PlanningDiagnostic(level, "coder_no_public_artifacts", "Spec bundle contains no module public artifacts", str(bundle.module_spec_path)))
@@ -298,4 +300,49 @@ def validate_coder_semantics(bundle: Any) -> list[PlanningDiagnostic]:
             if str(item.get("VISIBILITY", "")).upper() == "PUBLIC" and name and name not in rendered:
                 diagnostics.append(PlanningDiagnostic("error", "coder_header_render_missing_data", f"Rendered header omitted public data symbol '{name}'", str(file_spec.spec_path)))
 
+    return diagnostics
+
+
+def _runtime_entrypoint_diagnostics(bundle: Any) -> list[PlanningDiagnostic]:
+    diagnostics: list[PlanningDiagnostic] = []
+    main_spec = bundle.file_specs_by_source_path.get("main.c") or next(
+        (file_spec for file_spec in bundle.file_specs_by_trace.values() if str(file_spec.source_path).endswith("/main.c")),
+        None,
+    )
+    if main_spec is None:
+        return diagnostics
+    entrypoint = None
+    for source in main_spec.source_interfaces:
+        linked = bundle.function_specs_by_trace.get(source.trace_id)
+        if linked is not None and str(linked.function_type).upper() == "ENTRYPOINT":
+            entrypoint = linked
+            break
+    if entrypoint is None:
+        return diagnostics
+    public_header_by_name = {
+        interface.name.strip(): file_spec.header_path
+        for file_spec in bundle.file_specs_by_trace.values()
+        for interface in file_spec.header_interfaces
+        if interface.visibility == "public" and interface.name.strip()
+    }
+    lifecycle_names: set[str] = set()
+    contracts = entrypoint.raw.get("CALL_CONTRACTS", []) if isinstance(entrypoint.raw, dict) else []
+    for contract in contracts if isinstance(contracts, list) else []:
+        if isinstance(contract, dict) and str(contract.get("NAME", "")).strip():
+            lifecycle_names.add(str(contract["NAME"]).strip())
+    rely = entrypoint.raw.get("RELY", {}) if isinstance(entrypoint.raw, dict) else {}
+    for item in rely.get("FUNC", []) if isinstance(rely.get("FUNC", []), list) else []:
+        if isinstance(item, dict) and str(item.get("NAME", "")).strip():
+            lifecycle_names.add(str(item["NAME"]).strip())
+    source_dependencies = {str(item).strip() for item in main_spec.source_dependencies if str(item).strip()}
+    for name in sorted(lifecycle_names):
+        if not name.endswith(("_create", "_start", "_run", "_serve", "_destroy")):
+            diagnostics.append(PlanningDiagnostic("error", "runtime_entrypoint_non_lifecycle_call", f"runtime entrypoint may only call public lifecycle APIs, not '{name}'", str(main_spec.spec_path)))
+            continue
+        header = public_header_by_name.get(name, "")
+        if not header:
+            diagnostics.append(PlanningDiagnostic("error", "runtime_entrypoint_unknown_lifecycle_function", f"runtime entrypoint references lifecycle function '{name}' with no public HEADER.INTERFACE", str(main_spec.spec_path)))
+            continue
+        if header not in source_dependencies:
+            diagnostics.append(PlanningDiagnostic("error", "runtime_entrypoint_missing_source_dependency", f"runtime entrypoint SOURCE.DEPENDENCY must include '{header}' for lifecycle function '{name}'", str(main_spec.spec_path)))
     return diagnostics

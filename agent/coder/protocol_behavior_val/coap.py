@@ -91,121 +91,163 @@ def run(project_dir: Path, binary_name: str, scenarios: list[dict[str, str]]) ->
         time.sleep(0.15)
 
         # --------------------------------------------------- 1. GET /hello
-        # Verify codec/parser, codec/serializer, handler, and UDP transport
-        # all work together: request dispatched to /hello resource, 2.05 response
-        # with correct token, message ID, payload and Content-Format option.
-        hello = _coap_exchange(sock, port, _coap_request("/hello", 0x1234))
-        if hello["type"] != 2 or hello["code"] != 69 or hello["message_id"] != 0x1234 or hello["token"] != b"\xaa":
-            raise RuntimeError(
-                "CoAP GET /hello: invalid response envelope — "
-                f"type={hello['type']} code={hello['code']} "
-                f"mid={hello['message_id']} token={hello['token']!r}"
-            )
-        if hello["payload"] != b"hello from CoAP server" or (12, b"") not in hello["options"]:
-            raise RuntimeError(
-                f"CoAP GET /hello: payload or Content-Format mismatch — "
-                f"payload={hello['payload']!r}"
-            )
-        scenarios.append({
-            "name": "coap_get_hello",
-            "status": "passed",
-            "detail": "received valid 2.05 Content with correct payload and Content-Format option",
-        })
-
-        # --------------------------------------------------- 2. unknown path
-        # Verify error handling: unknown resource path returns 4.04 Not Found.
-        unknown = _coap_exchange(sock, port, _coap_request("/unknown", 0x1235))
-        if unknown["code"] != 132:
-            raise RuntimeError(
-                f"CoAP GET /unknown: expected 4.04 (132), got code={unknown['code']}"
-            )
-        scenarios.append({
-            "name": "coap_unknown_not_found",
-            "status": "passed",
-            "detail": "received 4.04 Not Found for unknown path",
-        })
-
-        # --------------------------------------------------- 3. malformed survival
-        # Verify error handling: sending garbage UDP datagram does not crash
-        # the server, and it continues to serve valid requests afterwards.
-        sock.sendto(b"\xff\xfe\xfd\xfc\xfb\xfa", ("127.0.0.1", port))
-        time.sleep(0.05)
-        # Drain stale RST datagram the server correctly sends per RFC 7252.
-        # Without draining, recvfrom() in _coap_exchange() reads the stale RST
-        # instead of the response to the subsequent valid GET /hello.
         try:
-            while True:
-                sock.settimeout(0.01)
-                sock.recvfrom(2048)
-        except socket.timeout:
-            pass
-        sock.settimeout(2)
-        survivor = _coap_exchange(sock, port, _coap_request("/hello", 0x1236))
-        if survivor["code"] != 69:
-            raise RuntimeError(
-                f"CoAP malformed survival: server responded with code={survivor['code']} "
-                f"instead of 2.05 after malformed datagram"
-            )
-        if process.poll() is not None:
-            raise RuntimeError("CoAP server exited after malformed packet")
-        scenarios.append({
-            "name": "coap_malformed_survival",
-            "status": "passed",
-            "detail": "server survived malformed UDP datagram and continued serving /hello",
-        })
-
-        # --------------------------------------------------- 4. extended option
-        # Verify codec/parser handles CoAP option extensions (option delta > 12)
-        # without misclassifying the packet as malformed.
-        extended = _coap_exchange(sock, port, bytes.fromhex("40010001d10078"))
-        if extended["type"] == 3 or extended["code"] != 132:
-            raise RuntimeError(
-                "CoAP extended option: valid request with extended option delta "
-                f"was rejected — type={extended['type']} code={extended['code']}"
-            )
-        scenarios.append({
-            "name": "coap_extended_option",
-            "status": "passed",
-            "detail": "valid extended option delta decoded, request processed normally",
-        })
-
-        # --------------------------------------------------- 5. smoke test
-        # Verify the server main loop handles multiple sequential requests
-        # without crashing or returning incorrect results.
-        for i in range(5):
-            smoke = _coap_exchange(sock, port, _coap_request("/hello", 0x2000 + i))
-            if smoke["code"] != 69 or smoke["payload"] != b"hello from CoAP server":
+            # Verify codec/parser, codec/serializer, handler, and UDP transport
+            # all work together: request dispatched to /hello resource, 2.05 response
+            # with correct token, message ID, payload and Content-Format option.
+            hello = _coap_exchange(sock, port, _coap_request("/hello", 0x1234))
+            if hello["type"] != 2 or hello["code"] != 69 or hello["message_id"] != 0x1234 or hello["token"] != b"\xaa":
                 raise RuntimeError(
-                    f"CoAP smoke test iteration {i}: "
-                    f"expected 2.05 'hello from CoAP server', "
-                    f"got code={smoke['code']} payload={smoke['payload']!r}"
+                    "CoAP GET /hello: invalid response envelope — "
+                    f"type={hello['type']} code={hello['code']} "
+                    f"mid={hello['message_id']} token={hello['token']!r}"
                 )
-        scenarios.append({
-            "name": "coap_smoke_test",
-            "status": "passed",
-            "detail": "main loop handled 5 sequential GET /hello requests without failure",
-        })
-
-        # --------------------------------------------------- 6. client interop
-        # Verify interoperability with a third-party CoAP client (coap-client-notls
-        # from libcoap). Skipped if the tool is not installed.
-        if shutil.which("coap-client-notls"):
-            result = subprocess.run(
-                ["coap-client-notls", "-m", "get", f"coap://127.0.0.1:{port}/hello"],
-                text=True,
-                capture_output=True,
-                timeout=5,
-                check=False,
-            )
-            if result.returncode or result.stdout.strip() != "hello from CoAP server":
+            if hello["payload"] != b"hello from CoAP server" or (12, b"") not in hello["options"]:
                 raise RuntimeError(
-                    "coap-client-notls interoperability failed: "
-                    f"{result.stderr or result.stdout}".strip()
+                    f"CoAP GET /hello: payload or Content-Format mismatch — "
+                    f"payload={hello['payload']!r}"
                 )
             scenarios.append({
-                "name": "coap_client_interop",
+                "name": "coap_get_hello",
                 "status": "passed",
-                "detail": "coap-client-notls received /hello payload",
+                "detail": "received valid 2.05 Content with correct payload and Content-Format option",
+            })
+        except Exception as _e:
+            scenarios.append({
+                "name": "coap_get_hello",
+                "status": "failed",
+                "detail": str(_e),
+            })
+
+        # --------------------------------------------------- 2. unknown path
+        try:
+            # Verify error handling: unknown resource path returns 4.04 Not Found.
+            unknown = _coap_exchange(sock, port, _coap_request("/unknown", 0x1235))
+            if unknown["code"] != 132:
+                raise RuntimeError(
+                    f"CoAP GET /unknown: expected 4.04 (132), got code={unknown['code']}"
+                )
+            scenarios.append({
+                "name": "coap_unknown_not_found",
+                "status": "passed",
+                "detail": "received 4.04 Not Found for unknown path",
+            })
+        except Exception as _e:
+            scenarios.append({
+                "name": "coap_unknown_not_found",
+                "status": "failed",
+                "detail": str(_e),
+            })
+
+        # --------------------------------------------------- 3. malformed survival
+        try:
+            # Verify error handling: sending garbage UDP datagram does not crash
+            # the server, and it continues to serve valid requests afterwards.
+            sock.sendto(b"\xff\xfe\xfd\xfc\xfb\xfa", ("127.0.0.1", port))
+            time.sleep(0.05)
+            # Drain stale RST datagram the server correctly sends per RFC 7252.
+            # Without draining, recvfrom() in _coap_exchange() reads the stale RST
+            # instead of the response to the subsequent valid GET /hello.
+            try:
+                while True:
+                    sock.settimeout(0.01)
+                    sock.recvfrom(2048)
+            except socket.timeout:
+                pass
+            sock.settimeout(2)
+            survivor = _coap_exchange(sock, port, _coap_request("/hello", 0x1236))
+            if survivor["code"] != 69:
+                raise RuntimeError(
+                    f"CoAP malformed survival: server responded with code={survivor['code']} "
+                    f"instead of 2.05 after malformed datagram"
+                )
+            if process.poll() is not None:
+                raise RuntimeError("CoAP server exited after malformed packet")
+            scenarios.append({
+                "name": "coap_malformed_survival",
+                "status": "passed",
+                "detail": "server survived malformed UDP datagram and continued serving /hello",
+            })
+        except Exception as _e:
+            scenarios.append({
+                "name": "coap_malformed_survival",
+                "status": "failed",
+                "detail": str(_e),
+            })
+
+        # --------------------------------------------------- 4. extended option
+        try:
+            # Verify codec/parser handles CoAP option extensions (option delta > 12)
+            # without misclassifying the packet as malformed.
+            extended = _coap_exchange(sock, port, bytes.fromhex("40010001d10078"))
+            if extended["type"] == 3 or extended["code"] != 132:
+                raise RuntimeError(
+                    "CoAP extended option: valid request with extended option delta "
+                    f"was rejected — type={extended['type']} code={extended['code']}"
+                )
+            scenarios.append({
+                "name": "coap_extended_option",
+                "status": "passed",
+                "detail": "valid extended option delta decoded, request processed normally",
+            })
+        except Exception as _e:
+            scenarios.append({
+                "name": "coap_extended_option",
+                "status": "failed",
+                "detail": str(_e),
+            })
+
+        # --------------------------------------------------- 5. smoke test
+        try:
+            # Verify the server main loop handles multiple sequential requests
+            # without crashing or returning incorrect results.
+            for i in range(5):
+                smoke = _coap_exchange(sock, port, _coap_request("/hello", 0x2000 + i))
+                if smoke["code"] != 69 or smoke["payload"] != b"hello from CoAP server":
+                    raise RuntimeError(
+                        f"CoAP smoke test iteration {i}: "
+                        f"expected 2.05 'hello from CoAP server', "
+                        f"got code={smoke['code']} payload={smoke['payload']!r}"
+                    )
+            scenarios.append({
+                "name": "coap_smoke_test",
+                "status": "passed",
+                "detail": "main loop handled 5 sequential GET /hello requests without failure",
+            })
+        except Exception as _e:
+            scenarios.append({
+                "name": "coap_smoke_test",
+                "status": "failed",
+                "detail": str(_e),
+            })
+
+        # --------------------------------------------------- 6. client interop
+        try:
+            # Verify interoperability with a third-party CoAP client (coap-client-notls
+            # from libcoap). Skipped if the tool is not installed.
+            if shutil.which("coap-client-notls"):
+                result = subprocess.run(
+                    ["coap-client-notls", "-m", "get", f"coap://127.0.0.1:{port}/hello"],
+                    text=True,
+                    capture_output=True,
+                    timeout=5,
+                    check=False,
+                )
+                if result.returncode or result.stdout.strip() != "hello from CoAP server":
+                    raise RuntimeError(
+                        "coap-client-notls interoperability failed: "
+                        f"{result.stderr or result.stdout}".strip()
+                    )
+                scenarios.append({
+                    "name": "coap_client_interop",
+                    "status": "passed",
+                    "detail": "coap-client-notls received /hello payload",
+                })
+        except Exception as _e:
+            scenarios.append({
+                "name": "coap_client_interop",
+                "status": "failed",
+                "detail": str(_e),
             })
         else:
             scenarios.append({

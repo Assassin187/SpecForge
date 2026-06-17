@@ -23,11 +23,11 @@ def verify_protocol_behavior(protocol_slug: str, project_dir: Path, binary_name:
     try:
         runner.run(project_dir, binary_name, scenarios)
     except Exception as exc:  # noqa: BLE001
-        failed_index = len(scenarios)
-        failed_name = runner.EXPECTED_SCENARIOS[failed_index] if failed_index < len(runner.EXPECTED_SCENARIOS) else "runtime_smoke"
-        scenarios.append({"name": failed_name, "status": "failed", "detail": str(exc)})
-        for name in runner.EXPECTED_SCENARIOS[failed_index + 1 :]:
-            scenarios.append({"name": name, "status": "skipped", "detail": f"not run after {failed_name} failed"})
+        scenarios.append({"name": "runtime_error", "status": "failed", "detail": str(exc)})
         return False, scenarios, str(exc)
 
-    return True, scenarios, None
+    # Determine overall success: all expected scenarios must have passed
+    expected = set(runner.EXPECTED_SCENARIOS)
+    passed = {s["name"] for s in scenarios if s.get("status") == "passed"}
+    all_passed = expected.issubset(passed)
+    return all_passed, scenarios, None

@@ -97,165 +97,207 @@ def run(project_dir: Path, binary_name: str, scenarios: list[dict[str, str]]) ->
         wait_for_tcp(port)
 
         # -------------------------------------------- 1. cross-client pub/sub
-        # Verify transport (TCP listen/accept, 2 concurrent clients),
-        # codec/parser (CONNECT, SUBSCRIBE, PUBLISH), codec/serializer
-        # (CONNACK, SUBACK, forwarded PUBLISH), session (topic→subscriber
-        # mapping), and handler (CONNECT, SUBSCRIBE, PUBLISH).
-        subscriber = _mqtt_client(port, "smoke-sub")
-        sockets.append(subscriber)
-        subscriber.sendall(_pkt_subscribe(1, "a/#"))
-        if _read_mqtt_packet(subscriber)[0] != 9:
-            raise RuntimeError("MQTT subscriber did not receive SUBACK")
-
-        publisher = _mqtt_client(port, "smoke-pub")
-        sockets.append(publisher)
-        publisher.sendall(_pkt_publish("a/b", b"cross-client"))
-        packet_type, body = _read_mqtt_packet(subscriber)
-        if packet_type != 3 or b"cross-client" not in body:
-            raise RuntimeError(
-                "MQTT broker did not forward PUBLISH to another client: "
-                f"type={packet_type} body={body!r}"
-            )
-        scenarios.append({
-            "name": "mqtt_cross_client_pubsub",
-            "status": "passed",
-            "detail": "QoS0 PUBLISH forwarded from publisher to subscriber",
-        })
-
-        # ----------------------------------------------- 2. buffer before EOF
-        # Verify the broker processes buffered data in the socket before
-        # handling a peer close — a PUBLISH immediately followed by DISCONNECT
-        # should still be delivered to the subscriber.
-        quick = _mqtt_client(port, "quick-pub")
-        quick.sendall(_pkt_publish("a/quick", b"before-eof") + b"\xe0\x00")
-        quick.close()
-        packet_type, body = _read_mqtt_packet(subscriber)
-        if packet_type != 3 or b"before-eof" not in body:
-            raise RuntimeError(
-                "MQTT broker discarded buffered PUBLISH before peer EOF: "
-                f"type={packet_type} body={body!r}"
-            )
-        scenarios.append({
-            "name": "mqtt_buffer_before_eof",
-            "status": "passed",
-            "detail": "buffered PUBLISH processed before peer close",
-        })
-
-        # ---------------------------------------------- 3. malformed survival
-        # Verify error handling: a malformed packet does not crash the broker;
-        # a new client can still CONNECT afterwards.
-        malformed = socket.create_connection(("127.0.0.1", port), timeout=2)
-        malformed.sendall(b"\xff\xff\xff\xff\xff")
-        malformed.close()
-        time.sleep(0.1)
-        survivor = _mqtt_client(port, "after-malformed")
-        survivor.close()
-        if process.poll() is not None:
-            raise RuntimeError("MQTT broker exited after malformed packet")
-        scenarios.append({
-            "name": "mqtt_malformed_survival",
-            "status": "passed",
-            "detail": "broker accepted a later CONNECT after malformed packet",
-        })
-
-        # -------------------------------------------- 4. DISCONNECT handler
-        # Verify the broker properly handles a client DISCONNECT: the
-        # disconnecting client is cleaned up, the broker remains stable, and
-        # other connected clients continue to receive messages.
-        dc_pub = _mqtt_client(port, "dc-pub")
-        dc_pub.sendall(_pkt_publish("a/disconnect", b"before-disconnect"))
-        packet_type, body = _read_mqtt_packet(subscriber)
-        if packet_type != 3 or b"before-disconnect" not in body:
-            raise RuntimeError(
-                "MQTT DISCONNECT pre-check: expected PUBLISH to subscriber, "
-                f"got type={packet_type} body={body!r}"
-            )
-        # Send DISCONNECT and close the publisher.
-        dc_pub.sendall(_pkt_disconnect())
-        dc_pub.close()
-
-        # Connect a new publisher — broker must still accept connections and
-        # forward messages to the existing subscriber.
-        after_pub = _mqtt_client(port, "after-dc-pub")
-        sockets.append(after_pub)
-        after_pub.sendall(_pkt_publish("a/after-disconnect", b"after-disconnect"))
-        packet_type, body = _read_mqtt_packet(subscriber)
-        if packet_type != 3 or b"after-disconnect" not in body:
-            raise RuntimeError(
-                "MQTT DISCONNECT handler: broker did not forward PUBLISH "
-                f"after previous client disconnected — type={packet_type} body={body!r}"
-            )
-        scenarios.append({
-            "name": "mqtt_disconnect_handler",
-            "status": "passed",
-            "detail": "DISCONNECT cleaned up client; new publisher and subscriber still work",
-        })
-
-        # --------------------------------------------------- 5. smoke test
-        # Verify the broker main loop handles multiple sequential pub/sub
-        # cycles without crashing or losing messages.
-        subscriber.sendall(_pkt_subscribe(2, "smoke/#"))
-        if _read_mqtt_packet(subscriber)[0] != 9:
-            raise RuntimeError("MQTT smoke test: SUBACK not received for smoke/#")
-        for i in range(5):
-            pub = _mqtt_client(port, f"smoke-pub-{i}")
-            topic = f"smoke/{i}"
-            payload = f"msg-{i}".encode()
-            pub.sendall(_pkt_publish(topic, payload))
+        try:
+            # Verify transport (TCP listen/accept, 2 concurrent clients),
+            # codec/parser (CONNECT, SUBSCRIBE, PUBLISH), codec/serializer
+            # (CONNACK, SUBACK, forwarded PUBLISH), session (topic→subscriber
+            # mapping), and handler (CONNECT, SUBSCRIBE, PUBLISH).
+            subscriber = _mqtt_client(port, "smoke-sub")
+            sockets.append(subscriber)
+            subscriber.sendall(_pkt_subscribe(1, "a/#"))
+            if _read_mqtt_packet(subscriber)[0] != 9:
+                raise RuntimeError("MQTT subscriber did not receive SUBACK")
+    
+            publisher = _mqtt_client(port, "smoke-pub")
+            sockets.append(publisher)
+            publisher.sendall(_pkt_publish("a/b", b"cross-client"))
             packet_type, body = _read_mqtt_packet(subscriber)
-            pub.sendall(_pkt_disconnect())
-            pub.close()
-            if packet_type != 3 or payload not in body:
+            if packet_type != 3 or b"cross-client" not in body:
                 raise RuntimeError(
-                    f"MQTT smoke test iteration {i}: "
-                    f"expected PUBLISH with {payload!r}, "
-                    f"got type={packet_type} body={body!r}"
-                )
-        scenarios.append({
-            "name": "mqtt_smoke_test",
-            "status": "passed",
-            "detail": "5 sequential pub/sub cycles completed without failure",
-        })
-
-        # ----------------------------------------- 6. mosquitto interop
-        # Verify interoperability with mosquitto_sub / mosquitto_pub clients.
-        # Skipped if the tools are not installed.
-        if shutil.which("mosquitto_sub") and shutil.which("mosquitto_pub"):
-            sub = subprocess.Popen(
-                [
-                    "mosquitto_sub", "-h", "127.0.0.1", "-p", str(port),
-                    "-t", "interop/topic", "-q", "0", "-C", "1", "-W", "3",
-                ],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-            )
-            try:
-                time.sleep(0.4)
-                pub = subprocess.run(
-                    [
-                        "mosquitto_pub", "-h", "127.0.0.1", "-p", str(port),
-                        "-t", "interop/topic", "-q", "0", "-m", "interop-ok",
-                    ],
-                    text=True,
-                    capture_output=True,
-                    timeout=4,
-                    check=False,
-                )
-                output, error = sub.communicate(timeout=5)
-            finally:
-                if sub.poll() is None:
-                    sub.terminate()
-                    sub.wait(timeout=2)
-            if pub.returncode or sub.returncode or "interop-ok" not in output:
-                raise RuntimeError(
-                    "mosquitto interoperability failed: "
-                    f"{error or pub.stderr}".strip()
+                    "MQTT broker did not forward PUBLISH to another client: "
+                    f"type={packet_type} body={body!r}"
                 )
             scenarios.append({
-                "name": "mqtt_mosquitto_interop",
+                "name": "mqtt_cross_client_pubsub",
                 "status": "passed",
-                "detail": "mosquitto_sub received mosquitto_pub payload",
+                "detail": "QoS0 PUBLISH forwarded from publisher to subscriber",
+            })
+        except Exception as _e:
+            scenarios.append({
+                "name": "mqtt_cross_client_pubsub",
+                "status": "failed",
+                "detail": str(_e),
+            })
+
+        # ----------------------------------------------- 2. buffer before EOF
+        try:
+            # Verify the broker processes buffered data in the socket before
+            # handling a peer close — a PUBLISH immediately followed by DISCONNECT
+            # should still be delivered to the subscriber.
+            quick = _mqtt_client(port, "quick-pub")
+            quick.sendall(_pkt_publish("a/quick", b"before-eof") + b"\xe0\x00")
+            quick.close()
+            packet_type, body = _read_mqtt_packet(subscriber)
+            if packet_type != 3 or b"before-eof" not in body:
+                raise RuntimeError(
+                    "MQTT broker discarded buffered PUBLISH before peer EOF: "
+                    f"type={packet_type} body={body!r}"
+                )
+            scenarios.append({
+                "name": "mqtt_buffer_before_eof",
+                "status": "passed",
+                "detail": "buffered PUBLISH processed before peer close",
+            })
+        except Exception as _e:
+            scenarios.append({
+                "name": "mqtt_buffer_before_eof",
+                "status": "failed",
+                "detail": str(_e),
+            })
+
+        # ---------------------------------------------- 3. malformed survival
+        try:
+            # Verify error handling: a malformed packet does not crash the broker;
+            # a new client can still CONNECT afterwards.
+            malformed = socket.create_connection(("127.0.0.1", port), timeout=2)
+            malformed.sendall(b"\xff\xff\xff\xff\xff")
+            malformed.close()
+            time.sleep(0.1)
+            survivor = _mqtt_client(port, "after-malformed")
+            survivor.close()
+            if process.poll() is not None:
+                raise RuntimeError("MQTT broker exited after malformed packet")
+            scenarios.append({
+                "name": "mqtt_malformed_survival",
+                "status": "passed",
+                "detail": "broker accepted a later CONNECT after malformed packet",
+            })
+        except Exception as _e:
+            scenarios.append({
+                "name": "mqtt_malformed_survival",
+                "status": "failed",
+                "detail": str(_e),
+            })
+
+        # -------------------------------------------- 4. DISCONNECT handler
+        try:
+            # Verify the broker properly handles a client DISCONNECT: the
+            # disconnecting client is cleaned up, the broker remains stable, and
+            # other connected clients continue to receive messages.
+            dc_pub = _mqtt_client(port, "dc-pub")
+            dc_pub.sendall(_pkt_publish("a/disconnect", b"before-disconnect"))
+            packet_type, body = _read_mqtt_packet(subscriber)
+            if packet_type != 3 or b"before-disconnect" not in body:
+                raise RuntimeError(
+                    "MQTT DISCONNECT pre-check: expected PUBLISH to subscriber, "
+                    f"got type={packet_type} body={body!r}"
+                )
+            # Send DISCONNECT and close the publisher.
+            dc_pub.sendall(_pkt_disconnect())
+            dc_pub.close()
+    
+            # Connect a new publisher — broker must still accept connections and
+            # forward messages to the existing subscriber.
+            after_pub = _mqtt_client(port, "after-dc-pub")
+            sockets.append(after_pub)
+            after_pub.sendall(_pkt_publish("a/after-disconnect", b"after-disconnect"))
+            packet_type, body = _read_mqtt_packet(subscriber)
+            if packet_type != 3 or b"after-disconnect" not in body:
+                raise RuntimeError(
+                    "MQTT DISCONNECT handler: broker did not forward PUBLISH "
+                    f"after previous client disconnected — type={packet_type} body={body!r}"
+                )
+            scenarios.append({
+                "name": "mqtt_disconnect_handler",
+                "status": "passed",
+                "detail": "DISCONNECT cleaned up client; new publisher and subscriber still work",
+            })
+        except Exception as _e:
+            scenarios.append({
+                "name": "mqtt_disconnect_handler",
+                "status": "failed",
+                "detail": str(_e),
+            })
+
+        # --------------------------------------------------- 5. smoke test
+        try:
+            # Verify the broker main loop handles multiple sequential pub/sub
+            # cycles without crashing or losing messages.
+            subscriber.sendall(_pkt_subscribe(2, "smoke/#"))
+            if _read_mqtt_packet(subscriber)[0] != 9:
+                raise RuntimeError("MQTT smoke test: SUBACK not received for smoke/#")
+            for i in range(5):
+                pub = _mqtt_client(port, f"smoke-pub-{i}")
+                topic = f"smoke/{i}"
+                payload = f"msg-{i}".encode()
+                pub.sendall(_pkt_publish(topic, payload))
+                packet_type, body = _read_mqtt_packet(subscriber)
+                pub.sendall(_pkt_disconnect())
+                pub.close()
+                if packet_type != 3 or payload not in body:
+                    raise RuntimeError(
+                        f"MQTT smoke test iteration {i}: "
+                        f"expected PUBLISH with {payload!r}, "
+                        f"got type={packet_type} body={body!r}"
+                    )
+            scenarios.append({
+                "name": "mqtt_smoke_test",
+                "status": "passed",
+                "detail": "5 sequential pub/sub cycles completed without failure",
+            })
+        except Exception as _e:
+            scenarios.append({
+                "name": "mqtt_smoke_test",
+                "status": "failed",
+                "detail": str(_e),
+            })
+
+        # ----------------------------------------- 6. mosquitto interop
+        try:
+            # Verify interoperability with mosquitto_sub / mosquitto_pub clients.
+            # Skipped if the tools are not installed.
+            if shutil.which("mosquitto_sub") and shutil.which("mosquitto_pub"):
+                sub = subprocess.Popen(
+                    [
+                        "mosquitto_sub", "-h", "127.0.0.1", "-p", str(port),
+                        "-t", "interop/topic", "-q", "0", "-C", "1", "-W", "3",
+                    ],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
+                try:
+                    time.sleep(0.4)
+                    pub = subprocess.run(
+                        [
+                            "mosquitto_pub", "-h", "127.0.0.1", "-p", str(port),
+                            "-t", "interop/topic", "-q", "0", "-m", "interop-ok",
+                        ],
+                        text=True,
+                        capture_output=True,
+                        timeout=4,
+                        check=False,
+                    )
+                    output, error = sub.communicate(timeout=5)
+                finally:
+                    if sub.poll() is None:
+                        sub.terminate()
+                        sub.wait(timeout=2)
+                if pub.returncode or sub.returncode or "interop-ok" not in output:
+                    raise RuntimeError(
+                        "mosquitto interoperability failed: "
+                        f"{error or pub.stderr}".strip()
+                    )
+                scenarios.append({
+                    "name": "mqtt_mosquitto_interop",
+                    "status": "passed",
+                    "detail": "mosquitto_sub received mosquitto_pub payload",
+                })
+        except Exception as _e:
+            scenarios.append({
+                "name": "mqtt_mosquitto_interop",
+                "status": "failed",
+                "detail": str(_e),
             })
         else:
             scenarios.append({

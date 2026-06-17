@@ -83,6 +83,7 @@ from agent.planning.stages.implementation_plan_merger import (
     merge_wire_access_binding,
     reconcile_type_inventory_function_refs,
 )
+from agent.planning.stages.layout_runtime_mapping import build_layout_runtime_mapping_report, validate_layout_runtime_mapping_report
 from agent.planning.stages.protocol_profile import build_protocol_profile
 from agent.planning.tests.current_flow_fixtures import (
     current_architecture_candidates,
@@ -833,8 +834,143 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
         }
         runtime = fallback_runtime_entrypoint(draft)
         self.assertEqual(runtime["key_flow_module_id"], "broker_app")
-        self.assertEqual(runtime["lifecycle_function_ids"]["create"], "fn:broker_app:create")
+        self.assertEqual(runtime["lifecycle_function_ids"]["create"], "")
+        self.assertTrue(_has(validate_runtime_entrypoint_candidate(runtime, draft), "runtime_entrypoint_missing_lifecycle_id"))
+
+    def test_runtime_entrypoint_fallback_uses_existing_public_lifecycle_only(self) -> None:
+        def lifecycle(action: str) -> dict:
+            return {
+                "function_id": f"fn:broker_app:{action}",
+                "name": f"mqtt_broker_app_{action}",
+                "module_id": "broker_app",
+                "file_id": "file:broker_app/app",
+                "declared_in": "file:broker_app/app",
+                "function_kind": "resource_lifecycle" if action in {"create", "destroy"} else "public_api",
+                "visibility": "public",
+                "api_surface": "public",
+                "exported": True,
+                "public_api_role": f"runtime_{action}",
+            }
+
+        draft = {
+            "protocol_name": "mqtt",
+            "module_artifacts": [{"module_id": "broker_app", "owned_capabilities": ["role_composition"]}],
+            "file_layout": {
+                "files": [
+                    {
+                        "file_id": "file:broker_app/app",
+                        "module_id": "broker_app",
+                        "source_path": "mqtt/broker_app/app.c",
+                        "header_path": "mqtt/broker_app/app.h",
+                        "imports_allowed": [],
+                    }
+                ]
+            },
+            "function_contracts": [lifecycle(action) for action in ("create", "start", "run", "destroy")],
+        }
+        runtime = fallback_runtime_entrypoint(draft)
+        self.assertEqual(runtime["lifecycle_function_ids"], {action: f"fn:broker_app:{action}" for action in ("create", "start", "run", "destroy")})
         self.assertFalse(validate_runtime_entrypoint_candidate(runtime, draft))
+
+        merged = merge_runtime_entrypoint(draft, runtime)
+        self.assertEqual(len(merged["function_contracts"]), len(draft["function_contracts"]) + 1)
+        entrypoint = next(function for function in merged["function_contracts"] if function.get("coder_function_type") == "ENTRYPOINT")
+        self.assertEqual(set(entrypoint["calls_allowed"]), set(runtime["lifecycle_function_ids"].values()))
+
+    def test_full_readiness_closes_runtime_entrypoint_lifecycle_refs(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            planning_ir, profile, _constraints, _selected, _draft, plan, _items = self._fixtures(Path(raw_tmp))
+            entrypoint = next(function for function in plan["function_contracts"] if function.get("coder_function_type") == "ENTRYPOINT")
+
+            missing = copy.deepcopy(plan)
+            next(function for function in missing["function_contracts"] if function.get("coder_function_type") == "ENTRYPOINT")["calls_allowed"] = ["fn:missing:lifecycle"]
+            diagnostics = validate_full_implementation_plan(missing, profile=profile, planning_ir=planning_ir)
+            self.assertTrue(_has(diagnostics, "runtime_entrypoint_unknown_lifecycle_function"))
+
+            non_lifecycle = copy.deepcopy(plan)
+            parser = next(function for function in non_lifecycle["function_contracts"] if function.get("function_id") not in set(entrypoint["calls_allowed"]) and function.get("coder_function_type") != "ENTRYPOINT")
+            next(function for function in non_lifecycle["function_contracts"] if function.get("coder_function_type") == "ENTRYPOINT")["calls_allowed"] = [parser["function_id"]]
+            diagnostics = validate_full_implementation_plan(non_lifecycle, profile=profile, planning_ir=planning_ir)
+            self.assertTrue(_has(diagnostics, "runtime_entrypoint_non_lifecycle_call"))
+
+            missing_import = copy.deepcopy(plan)
+            main = next(function for function in missing_import["function_contracts"] if function.get("coder_function_type") == "ENTRYPOINT")
+            main_file = next(file_item for file_item in missing_import["file_layout"]["files"] if file_item["file_id"] == main["file_id"])
+            main_file["imports_allowed"] = []
+            diagnostics = validate_full_implementation_plan(missing_import, profile=profile, planning_ir=planning_ir)
+            self.assertTrue(_has(diagnostics, "runtime_entrypoint_missing_source_dependency"))
+
+    def test_layout_runtime_mapping_report_explains_merged_roles(self) -> None:
+        modules = [
+            ("mqtt_codec", "MQTT codec parser serializer packet", []),
+            ("session", "session state machine", ["mqtt_codec"]),
+            ("network", "TCP transport network socket epoll", []),
+            ("topic_router", "topic router resource routing index", ["session"]),
+            ("broker_app", "broker app server role_composition", ["network", "mqtt_codec", "session", "topic_router"]),
+            ("timer", "timer lifecycle keepalive timeout schedule", ["broker_app"]),
+            ("errors", "error handling validation cleanup recovery malformed packets", ["mqtt_codec"]),
+        ]
+        plan = {
+            "module_artifacts": [
+                {
+                    "module_id": module_id,
+                    "name": module_id,
+                    "role": role,
+                    "dependencies": deps,
+                    "artifacts": [{"name": f"{module_id}_api", "kind": "FUNC", "role": role}],
+                }
+                for module_id, role, deps in modules
+            ],
+            "file_layout": {
+                "files": [
+                    {
+                        "file_id": f"file:{module_id}",
+                        "module_id": module_id,
+                        "source_path": f"mqtt/{module_id}.c",
+                        "header_path": f"mqtt/{module_id}.h",
+                        "responsibility": role,
+                        "imports_allowed": [],
+                    }
+                    for module_id, role, _deps in modules
+                ]
+                + [{"file_id": "file:main", "module_id": "broker_app", "kind": "source_only_entrypoint", "source_path": "main.c", "imports_allowed": ["file:broker_app"]}]
+            },
+            "function_contracts": [
+                {
+                    "function_id": f"fn:{module_id}:api",
+                    "name": f"{module_id}_api",
+                    "module_id": module_id,
+                    "file_id": f"file:{module_id}",
+                    "visibility": "public",
+                    "api_surface": "public",
+                    "exported": True,
+                    "purpose": role,
+                }
+                for module_id, role, _deps in modules
+            ]
+            + [
+                {
+                    "function_id": "fn:broker_app:main",
+                    "name": "main",
+                    "module_id": "broker_app",
+                    "file_id": "file:main",
+                    "coder_function_type": "ENTRYPOINT",
+                    "signature": {"name": "main"},
+                    "calls_allowed": ["fn:broker_app:api"],
+                }
+            ],
+        }
+        report, diagnostics = build_layout_runtime_mapping_report(plan)
+        self.assertFalse([diag.__dict__ for diag in diagnostics if diag.level == "error"])
+        router_row = next(row for row in report["required_roles"] if row["role"] == "router/topic/resource")
+        self.assertEqual(router_row["status"], "merged")
+        self.assertIn("topic", router_row["merged_role_explanation"])
+        self.assertIn("router", router_row["merged_role_explanation"])
+        self.assertFalse(validate_layout_runtime_mapping_report(report))
+
+        missing_explanation = copy.deepcopy(report)
+        next(row for row in missing_explanation["required_roles"] if row["role"] == "router/topic/resource")["merged_role_explanation"] = ""
+        self.assertTrue(_has(validate_layout_runtime_mapping_report(missing_explanation), "layout_merged_role_missing_explanation"))
 
     def test_module_artifacts_candidate_rules(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:
@@ -2324,6 +2460,68 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             key_module = next(module for module in modules["modules"] if "broker" in module["module_id"] or "app" in module["module_id"])
             key_module["artifacts"] = [artifact for artifact in key_module["artifacts"] if artifact["kind"] != "FUNC"]
             self.assertTrue(_has(validate_module_artifacts_candidate(modules, selected, profile, constraints, draft), "broker_role_module_missing_lifecycle_artifact"))
+
+    def test_merge_module_artifacts_augments_deployable_runtime_lifecycle_seeds(self) -> None:
+        draft = {
+            "protocol_name": "mqtt",
+            "target_directives_ref": {"directives": {"target_role": "broker"}},
+            "deterministic_indexes": {
+                "module_index": {
+                    "broker_app": {
+                        "module_id": "broker_app",
+                        "owned_capabilities": ["role_composition"],
+                        "state_owned": ["application runtime"],
+                        "support_module": False,
+                    }
+                }
+            },
+            "module_artifacts": [],
+            "handler_matrix": [],
+            "traceability": {"required_capabilities": []},
+            "type_inventory": [],
+            "canonical_types": [],
+            "function_contracts": [],
+            "unresolved_questions": [],
+        }
+        candidate = {
+            "schema_version": "module_artifacts_candidate/v1",
+            "candidate_id": "candidate:test:missing_lifecycle_seeds",
+            "producer": {"stage": "5.2b_module_artifacts", "prompt_name": "module_artifacts_candidate_prompt", "prompt_version": "test"},
+            "modules": [
+                {
+                    "module_id": "broker_app",
+                    "name": "broker_app",
+                    "role": "Broker role composition and event loop orchestration",
+                    "dependencies": [],
+                    "artifacts": [
+                        {"name": "mqtt_broker_t", "kind": "TYPE", "role": "Global broker application context"},
+                        {"name": "mqtt_broker_run", "kind": "FUNC", "role": "Execute main event loop integrating I/O and sessions"},
+                    ],
+                    "files": [],
+                    "doc_ref": [],
+                }
+            ],
+            "generation_order": ["broker_app"],
+            "consistency_rules": [],
+            "forbidden_symbols": [],
+            "assumptions": [],
+            "unresolved_questions": [],
+        }
+
+        merged = merge_module_artifacts(draft, candidate)
+        broker = merged["module_artifacts"][0]
+        artifact_keys = {(artifact["name"], artifact["kind"]) for artifact in broker["artifacts"]}
+        self.assertIn(("mqtt_broker_t", "TYPE"), artifact_keys)
+        self.assertIn(("mqtt_broker_create", "FUNC"), artifact_keys)
+        self.assertIn(("mqtt_broker_start", "FUNC"), artifact_keys)
+        self.assertIn(("mqtt_broker_run", "FUNC"), artifact_keys)
+        self.assertIn(("mqtt_broker_destroy", "FUNC"), artifact_keys)
+
+        profile = {"target_role": "broker", "required_capabilities": [{"capability_id": "role_composition"}]}
+        inventory = current_function_inventory_candidate(merged, broker, {}, profile, {})
+        roles = {function.get("public_api_role") for function in inventory["functions"]}
+        self.assertTrue({"runtime_create", "runtime_start", "runtime_run", "runtime_destroy"}.issubset(roles))
+        self.assertFalse(_has_error(validate_function_inventory_candidate(inventory, merged["module_artifacts"], merged, profile, {})))
 
     def test_function_inventory_public_api_visibility_rules(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:

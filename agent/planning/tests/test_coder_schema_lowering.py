@@ -23,7 +23,7 @@ from agent.planning.stages.specs_compiler import compile_spec_bundle
 from agent.planning.tests.current_flow_fixtures import current_architecture_candidates, current_implementation_plan
 from agent.planning.validators.coder_compat import validate_coder_compatibility
 from agent.planning.validators.coder_schema import validate_coder_spec_bundle_against_schema
-from agent.coder.generation import render_header
+from agent.coder.generation import render_header, render_main_c
 from agent.coder.specs import load_spec_bundle_from_root
 
 
@@ -216,6 +216,121 @@ def _add_payload_module(plan: dict, *, with_type: bool = True, with_function: bo
         }
     )
     plan["module_generation_order"] = ["payload", *[item for item in plan["module_generation_order"] if item != "payload"]]
+
+
+def _add_runtime_entrypoint(plan: dict) -> None:
+    plan["canonical_types"].append(
+        {
+            "type_id": "type:zapline_runtime",
+            "name": "zapline_runtime_t",
+            "kind": "struct",
+            "owner_module_id": "framing",
+            "source_message_ids": [],
+            "source_field_ids": [],
+            "fields": [],
+            "enum_values": [],
+            "trace_ref_keys": [],
+            "status": "supported",
+        }
+    )
+    plan["module_artifacts"][0]["artifacts"].extend(
+        [
+            {"name": "zapline_runtime_t", "kind": "TYPE", "role": "Public runtime handle."},
+            {"name": "zapline_runtime_create", "kind": "FUNC", "role": "Create runtime."},
+            {"name": "zapline_runtime_start", "kind": "FUNC", "role": "Start runtime."},
+            {"name": "zapline_runtime_run", "kind": "FUNC", "role": "Run runtime."},
+            {"name": "zapline_runtime_destroy", "kind": "FUNC", "role": "Destroy runtime."},
+        ]
+    )
+    plan["file_layout"]["files"][0]["exports_type_ids"].append("type:zapline_runtime")
+    lifecycle = [
+        ("create", "zapline_runtime_t*", [{"type": "uint16_t", "name": "port", "nullable": False, "ownership": "borrowed"}]),
+        ("start", "int", [{"type": "zapline_runtime_t*", "name": "runtime", "nullable": False, "ownership": "borrowed"}]),
+        ("run", "int", [{"type": "zapline_runtime_t*", "name": "runtime", "nullable": False, "ownership": "borrowed"}]),
+        ("destroy", "void", [{"type": "zapline_runtime_t*", "name": "runtime", "nullable": False, "ownership": "borrowed"}]),
+    ]
+    for action, return_type, params in lifecycle:
+        function_id = f"func:framing:runtime_{action}"
+        name = f"zapline_runtime_{action}"
+        raw_params = ", ".join(f"{param['type']} {param['name']}" for param in params)
+        plan["file_layout"]["files"][0]["exports"].append(function_id)
+        plan["function_contracts"].append(
+            {
+                "function_id": function_id,
+                "file_id": "file:zapline/framing/framing",
+                "declared_in": "file:zapline/framing/framing",
+                "module_id": "framing",
+                "name": name,
+                "function_kind": "resource_lifecycle" if action in {"create", "destroy"} else "public_api",
+                "visibility": "public",
+                "api_surface": "public",
+                "exported": True,
+                "export_reason": "Runtime lifecycle API.",
+                "public_api_role": f"runtime_{action}",
+                "purpose": f"{action.capitalize()} ZapLine runtime.",
+                "signature": {
+                    "raw": f"{return_type} {name}({raw_params})",
+                    "name": name,
+                    "return_type": return_type,
+                    "params": params,
+                },
+                "behavior_contract": {"input": "runtime", "action": action, "output": "status"},
+            }
+        )
+    plan["file_layout"]["files"].append(
+        {
+            "file_id": "file:main",
+            "module_id": "framing",
+            "kind": "source_only_entrypoint",
+            "source_path": "main.c",
+            "header_path": "",
+            "responsibility": "Source-only runtime entrypoint.",
+            "exports": [],
+            "exports_type_ids": [],
+            "implements": ["func:framing:main"],
+            "imports_allowed": ["file:zapline/framing/framing"],
+        }
+    )
+    plan["function_contracts"].append(
+        {
+            "function_id": "func:framing:main",
+            "file_id": "file:main",
+            "module_id": "framing",
+            "name": "main",
+            "function_kind": "public_api",
+            "coder_function_type": "ENTRYPOINT",
+            "visibility": "internal",
+            "api_surface": "module_internal",
+            "exported": False,
+            "export_reason": "",
+            "public_api_role": "",
+            "purpose": "Start the process.",
+            "signature": {
+                "raw": "int main(int argc, char** argv)",
+                "name": "main",
+                "return_type": "int",
+                "params": [
+                    {"type": "int", "name": "argc", "nullable": False, "ownership": "borrowed"},
+                    {"type": "char**", "name": "argv", "nullable": False, "ownership": "borrowed"},
+                ],
+            },
+            "calls_allowed": [f"func:framing:runtime_{action}" for action in ("create", "start", "run", "destroy")],
+            "call_contracts": [
+                {
+                    "callee_function_id": f"func:framing:runtime_{action}",
+                    "call_kind": "runtime_lifecycle",
+                    "required": True,
+                    "service_requirement_ids": [],
+                    "call_reason": f"{action} runtime",
+                    "param_bindings": [],
+                    "return_binding": {"policy": "ignore", "target_ref": "", "cleanup_function_id": ""},
+                    "failure_behavior": "return_error",
+                }
+                for action in ("create", "start", "run", "destroy")
+            ],
+            "behavior_contract": {"input": "argc/argv", "action": "start", "output": "status"},
+        }
+    )
 
 
 class CoderSchemaLoweringTests(unittest.TestCase):
@@ -540,6 +655,127 @@ class CoderSchemaLoweringTests(unittest.TestCase):
 
             diagnostics = validate_coder_compatibility(manifest["spec_root"])
             self.assertTrue(any(diag.code == "coder_unknown_source_dependency" for diag in diagnostics), [diag.__dict__ for diag in diagnostics])
+
+    def test_coder_compatibility_accepts_existing_generated_header_dependency(self) -> None:
+        plan = copy.deepcopy(_zap_plan())
+        _add_payload_module(plan, with_type=True)
+        public_function = plan["function_contracts"][0]
+        public_function["signature"]["raw"] = "int zapline_frame_encode(zapline_payload_t* payload, size_t len)"
+        public_function["signature"]["params"] = [
+            {"type": "zapline_payload_t*", "name": "payload", "nullable": False, "ownership": "borrowed"},
+            {"type": "size_t", "name": "len", "nullable": False, "ownership": "borrowed"},
+        ]
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(plan, Path(raw_tmp))
+            diagnostics = validate_coder_compatibility(manifest["spec_root"])
+            self.assertNotIn("coder_unknown_header_dependency", {diag.code for diag in diagnostics if diag.level == "error"})
+            self.assertNotIn("coder_unknown_source_dependency", {diag.code for diag in diagnostics if diag.level == "error"})
+
+    def test_coder_compatibility_rejects_unknown_module_dependency_and_module_file(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(_zap_plan(), Path(raw_tmp))
+            module_path = Path(manifest["module_spec_path"])
+            module_spec = json.loads(module_path.read_text(encoding="utf-8"))
+            module_spec["MODULES"][0]["DEPENDENCIES"].append("missing")
+            module_path.write_text(json.dumps(module_spec, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            diagnostics = validate_coder_compatibility(manifest["spec_root"])
+            self.assertIn("coder_unknown_module_dependency", {diag.code for diag in diagnostics if diag.level == "error"})
+
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(_zap_plan(), Path(raw_tmp))
+            module_path = Path(manifest["module_spec_path"])
+            module_spec = json.loads(module_path.read_text(encoding="utf-8"))
+            module_spec["MODULES"][0]["FILES"].append("zapline/missing/missing.h")
+            module_path.write_text(json.dumps(module_spec, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            diagnostics = validate_coder_compatibility(manifest["spec_root"])
+            self.assertIn("coder_layout_module_file_unknown", {diag.code for diag in diagnostics if diag.level == "error"})
+
+    def test_coder_compatibility_rejects_duplicate_header_and_source_paths(self) -> None:
+        plan = copy.deepcopy(_zap_plan())
+        _add_payload_module(plan, with_type=True)
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(plan, Path(raw_tmp))
+            payload_path = next(path for path in Path(manifest["spec_root"]).rglob("*_spec.json") if path.name == "payload_spec.json")
+            payload_spec = json.loads(payload_path.read_text(encoding="utf-8"))
+            payload_spec["HEADER"]["PATH"] = "zapline/framing/framing.h"
+            payload_path.write_text(json.dumps(payload_spec, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            diagnostics = validate_coder_compatibility(manifest["spec_root"])
+            self.assertIn("coder_layout_duplicate_header_path", {diag.code for diag in diagnostics if diag.level == "error"})
+
+        plan = copy.deepcopy(_zap_plan())
+        _add_payload_module(plan, with_type=True)
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(plan, Path(raw_tmp))
+            payload_path = next(path for path in Path(manifest["spec_root"]).rglob("*_spec.json") if path.name == "payload_spec.json")
+            payload_spec = json.loads(payload_path.read_text(encoding="utf-8"))
+            payload_spec["SOURCE"]["PATH"] = "zapline/framing/framing.c"
+            payload_path.write_text(json.dumps(payload_spec, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            diagnostics = validate_coder_compatibility(manifest["spec_root"])
+            self.assertIn("coder_layout_duplicate_source_path", {diag.code for diag in diagnostics if diag.level == "error"})
+
+    def test_runtime_entrypoint_uses_existing_public_lifecycle_api(self) -> None:
+        plan = copy.deepcopy(_zap_plan())
+        _add_runtime_entrypoint(plan)
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(plan, Path(raw_tmp))
+            diagnostics = validate_coder_compatibility(manifest["spec_root"])
+            self.assertFalse([diag.__dict__ for diag in diagnostics if diag.level == "error"])
+            main_spec = _file_spec_json(manifest, "main_spec.json")
+            self.assertEqual(main_spec["SOURCE"]["DEPENDENCY"], ["zapline/framing/framing.h"])
+            bundle = load_spec_bundle_from_root(manifest["spec_root"])
+            rendered = render_main_c(bundle)
+            self.assertIn('#include "zapline/framing/framing.h"', rendered)
+            self.assertIn("zapline_runtime_create(port)", rendered)
+            self.assertIn("zapline_runtime_start(app)", rendered)
+            self.assertIn("zapline_runtime_run(app)", rendered)
+            self.assertIn("zapline_runtime_destroy(app)", rendered)
+
+    def test_runtime_entrypoint_rejects_missing_lifecycle_header_dependency_and_function(self) -> None:
+        plan = copy.deepcopy(_zap_plan())
+        _add_runtime_entrypoint(plan)
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(plan, Path(raw_tmp))
+            main_path = next(path for path in Path(manifest["spec_root"]).rglob("*_spec.json") if path.name == "main_spec.json")
+            main_spec = json.loads(main_path.read_text(encoding="utf-8"))
+            main_spec["SOURCE"]["DEPENDENCY"] = []
+            main_path.write_text(json.dumps(main_spec, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            diagnostics = validate_coder_compatibility(manifest["spec_root"])
+            self.assertIn("runtime_entrypoint_missing_source_dependency", {diag.code for diag in diagnostics if diag.level == "error"})
+
+        plan = copy.deepcopy(_zap_plan())
+        _add_runtime_entrypoint(plan)
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(plan, Path(raw_tmp))
+            main_function_path = next(
+                path
+                for path in Path(manifest["spec_root"]).rglob("*_spec.json")
+                if json.loads(path.read_text(encoding="utf-8")).get("KIND") == "FUNCTION_SPEC"
+                and json.loads(path.read_text(encoding="utf-8")).get("SIGNATURE", {}).get("NAME") == "main"
+            )
+            main_function = json.loads(main_function_path.read_text(encoding="utf-8"))
+            main_function["CALL_CONTRACTS"][0]["NAME"] = "zapline_missing_start"
+            main_function["RELY"]["FUNC"][0]["NAME"] = "zapline_missing_start"
+            main_function_path.write_text(json.dumps(main_function, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            diagnostics = validate_coder_compatibility(manifest["spec_root"])
+            self.assertIn("runtime_entrypoint_unknown_lifecycle_function", {diag.code for diag in diagnostics if diag.level == "error"})
+
+    def test_runtime_entrypoint_rejects_non_lifecycle_call(self) -> None:
+        plan = copy.deepcopy(_zap_plan())
+        _add_runtime_entrypoint(plan)
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(plan, Path(raw_tmp))
+            main_function_path = next(
+                path
+                for path in Path(manifest["spec_root"]).rglob("*_spec.json")
+                if json.loads(path.read_text(encoding="utf-8")).get("KIND") == "FUNCTION_SPEC"
+                and json.loads(path.read_text(encoding="utf-8")).get("SIGNATURE", {}).get("NAME") == "main"
+            )
+            main_function = json.loads(main_function_path.read_text(encoding="utf-8"))
+            main_function["CALL_CONTRACTS"].append({"NAME": "zapline_frame_encode", "SIGNATURE": "int zapline_frame_encode(void)", "PARAMS": [], "RETURN": "int", "FAILURE": "return_error"})
+            main_function["RELY"]["FUNC"].append({"NAME": "zapline_frame_encode", "KIND": "CALL", "ROLE": "bad direct parser call"})
+            main_function_path.write_text(json.dumps(main_function, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            diagnostics = validate_coder_compatibility(manifest["spec_root"])
+            self.assertIn("runtime_entrypoint_non_lifecycle_call", {diag.code for diag in diagnostics if diag.level == "error"})
 
     def test_public_data_external_type_refs_lower_to_header_dependency(self) -> None:
         plan = copy.deepcopy(_zap_plan())
