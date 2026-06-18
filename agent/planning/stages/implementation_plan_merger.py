@@ -1148,24 +1148,6 @@ def _unique_function_name(base: str, used: set[str]) -> str:
     return candidate
 
 
-def _preferred_lifecycle_repair_name(type_item: dict[str, Any], old_name: str) -> str:
-    lifecycle = type_item.get("lifecycle", {}) if isinstance(type_item.get("lifecycle"), dict) else {}
-    type_base = _safe_id(str(type_item.get("name", "")).removeprefix("struct ").removesuffix("_t"))
-    if not type_base:
-        return ""
-    if old_name in [str(item) for item in lifecycle.get("created_by", [])]:
-        return f"{type_base}_create"
-    if old_name in [str(item) for item in lifecycle.get("initialized_by", [])]:
-        return f"{type_base}_init"
-    if old_name in [str(item) for item in lifecycle.get("freed_by", [])]:
-        return f"{type_base}_free"
-    if old_name in [str(item) for item in lifecycle.get("destroyed_by", [])]:
-        return f"{type_base}_destroy"
-    if old_name in [str(item) for item in type_item.get("related_functions", [])]:
-        return f"{type_base}_helper"
-    return ""
-
-
 def _fallback_repair_name(protocol: str, module_id: str, old_name: str) -> str:
     prefix = f"{_safe_id(protocol)}_{_safe_id(module_id)}"
     safe_old = _safe_id(old_name)
@@ -1199,87 +1181,220 @@ def _replace_type_function_refs(type_item: dict[str, Any], old_name: str, new_na
     return changed
 
 
+def _replace_name_list_refs(container: dict[str, Any], key: str, old_name: str, new_name: str) -> bool:
+    values = container.get(key, [])
+    if not isinstance(values, list):
+        return False
+    repaired = [new_name if str(item) == old_name else item for item in values]
+    if repaired == values:
+        return False
+    container[key] = repaired
+    return True
+
+
+def _replace_call_contract_name_refs(function: dict[str, Any], old_name: str, new_name: str) -> bool:
+    changed = False
+    contracts = function.get("call_contracts", [])
+    if not isinstance(contracts, list):
+        return False
+    for contract in contracts:
+        if not isinstance(contract, dict):
+            continue
+        bindings = contract.get("param_bindings", [])
+        if isinstance(bindings, list):
+            for binding in bindings:
+                if isinstance(binding, dict) and str(binding.get("value_ref", "")) == old_name:
+                    binding["value_ref"] = new_name
+                    changed = True
+        return_binding = contract.get("return_binding", {})
+        if isinstance(return_binding, dict):
+            for key in ("target_ref", "cleanup_function_id"):
+                if str(return_binding.get(key, "")) == old_name:
+                    return_binding[key] = new_name
+                    changed = True
+    return changed
+
+
+class FunctionNameAllocator:
+    def __init__(self, draft: dict[str, Any], candidate: dict[str, Any]) -> None:
+        self.draft = draft
+        self.candidate = candidate
+        self.protocol = str(draft.get("protocol_name", "protocol"))
+        self.draft_by_id = {
+            str(item.get("function_id", "")): item
+            for item in draft.get("function_contracts", [])
+            if isinstance(item, dict) and str(item.get("function_id", "")).strip()
+        }
+        self.candidate_by_id = {
+            str(item.get("function_id", "")): item
+            for item in candidate.get("functions", [])
+            if isinstance(item, dict) and str(item.get("function_id", "")).strip()
+        }
+        self.used_names = {
+            str(item.get("name", "")).strip()
+            for item in [*self.draft_by_id.values(), *self.candidate_by_id.values()]
+            if str(item.get("name", "")).strip()
+        }
+        self.artifact_public_functions = {
+            (str(module.get("module_id", "")), str(artifact.get("name", "")))
+            for module in draft.get("module_artifacts", [])
+            if isinstance(module, dict)
+            for artifact in module.get("artifacts", [])
+            if isinstance(artifact, dict)
+            and str(artifact.get("kind", "")).upper() == "FUNC"
+            and str(artifact.get("name", "")).strip()
+        }
+        self.report = {
+            "schema_version": "function_symbol_repair_report/v1",
+            "stage": "5.4a.1_function_symbol_repair",
+            "renamed_functions": [],
+            "preserved_public_symbols": [],
+            "unrepaired_duplicates": [],
+            "reason": "deterministic repair for globally duplicated C-facing function names before signature planning",
+        }
+
+    def allocate(self) -> dict[str, Any]:
+        by_name: dict[str, list[dict[str, Any]]] = {}
+        for function in self._function_records():
+            name = str(function.get("name", "")).strip()
+            if name:
+                by_name.setdefault(name, []).append(function)
+        for name, duplicates in sorted(by_name.items()):
+            if len(duplicates) < 2:
+                continue
+            preserve = self._preserved_function(duplicates)
+            self.report["preserved_public_symbols"].append(
+                {
+                    "function_id": preserve.get("function_id", ""),
+                    "name": name,
+                    "reason": self._preserve_reason(preserve),
+                }
+            )
+            for function in duplicates:
+                if str(function.get("function_id", "")) == str(preserve.get("function_id", "")):
+                    continue
+                if not self._can_rename(function):
+                    self.report["unrepaired_duplicates"].append(
+                        {
+                            "function_id": function.get("function_id", ""),
+                            "name": name,
+                            "reason": "duplicate stable public/exported API symbol was not renamed deterministically",
+                        }
+                    )
+                    continue
+                new_name = _unique_function_name(
+                    _fallback_repair_name(self.protocol, str(function.get("module_id", "")), name),
+                    self.used_names,
+                )
+                self._rename(function, name, new_name)
+        return self.report
+
+    def _function_records(self) -> list[dict[str, Any]]:
+        records: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for function in self.draft_by_id.values():
+            function_id = str(function.get("function_id", ""))
+            records.append(function)
+            seen.add(function_id)
+        for function_id, function in self.candidate_by_id.items():
+            if function_id not in seen:
+                records.append(function)
+        return records
+
+    def _is_runtime_lifecycle(self, function: dict[str, Any]) -> bool:
+        role = str(function.get("public_api_role", ""))
+        action = role.removeprefix("runtime_")
+        return role in {"runtime_create", "runtime_start", "runtime_run", "runtime_destroy"} and _lifecycle_name_matches(action, str(function.get("name", "")))
+
+    def _is_module_artifact_public(self, function: dict[str, Any]) -> bool:
+        return (
+            _function_is_public(function)
+            and (str(function.get("module_id", "")), str(function.get("name", ""))) in self.artifact_public_functions
+        )
+
+    def _is_generated_obligation(self, function: dict[str, Any]) -> bool:
+        text = " ".join(
+            str(function.get(key, ""))
+            for key in ("export_reason", "grouping_hint", "purpose")
+        ).lower()
+        return "type_obligation" in text or "obligation" in text or str(function.get("grouping_hint", "")) == "resource_lifecycle_helpers"
+
+    def _can_rename(self, function: dict[str, Any]) -> bool:
+        if self._is_runtime_lifecycle(function):
+            return False
+        if self._is_module_artifact_public(function):
+            return False
+        if self._is_generated_obligation(function):
+            return True
+        return not _function_is_public(function)
+
+    def _priority(self, function: dict[str, Any], index: int) -> tuple[int, int]:
+        if self._is_runtime_lifecycle(function):
+            return 100, -index
+        if self._is_module_artifact_public(function):
+            return 90, -index
+        if _function_is_public(function) and not self._is_generated_obligation(function):
+            return 80, -index
+        if _function_is_public(function):
+            return 50, -index
+        return 10, -index
+
+    def _preserved_function(self, duplicates: list[dict[str, Any]]) -> dict[str, Any]:
+        ranked = sorted(enumerate(duplicates), key=lambda item: self._priority(item[1], item[0]), reverse=True)
+        return ranked[0][1]
+
+    def _preserve_reason(self, function: dict[str, Any]) -> str:
+        if self._is_runtime_lifecycle(function):
+            return "runtime lifecycle API kept"
+        if self._is_module_artifact_public(function):
+            return "mandatory module artifact public API kept"
+        if _function_is_public(function):
+            return "stable public/exported API kept"
+        return "first internal symbol kept"
+
+    def _rename(self, function: dict[str, Any], old_name: str, new_name: str) -> None:
+        function_id = str(function.get("function_id", ""))
+        touched_types: list[str] = []
+        for target in (self.draft_by_id.get(function_id), self.candidate_by_id.get(function_id)):
+            if not isinstance(target, dict):
+                continue
+            target["name"] = new_name
+            signature = target.get("signature", {})
+            if isinstance(signature, dict):
+                if str(signature.get("name", "")) == old_name:
+                    signature["name"] = new_name
+                raw = str(signature.get("raw", ""))
+                if raw:
+                    signature["raw"] = re.sub(rf"\b{re.escape(old_name)}\b", new_name, raw, count=1)
+        for type_item in self.draft.get("type_inventory", []):
+            if isinstance(type_item, dict) and str(type_item.get("module_id", "")) == str(function.get("module_id", "")) and _replace_type_function_refs(type_item, old_name, new_name):
+                touched_types.append(str(type_item.get("type_id", "")))
+        for file_item in self.draft.get("file_layout", {}).get("files", []):
+            if not isinstance(file_item, dict):
+                continue
+            for key in ("exports", "implements", "exports_function_ids", "implements_function_ids"):
+                _replace_name_list_refs(file_item, key, old_name, new_name)
+        touched_call_contracts = []
+        for caller in self.draft_by_id.values():
+            if _replace_call_contract_name_refs(caller, old_name, new_name):
+                touched_call_contracts.append(str(caller.get("function_id", "")))
+        self.report["renamed_functions"].append(
+            {
+                "function_id": function_id,
+                "old_name": old_name,
+                "new_name": new_name,
+                "module_id": function.get("module_id", ""),
+                "updated_type_refs": sorted(set(touched_types)),
+                "updated_call_contract_refs": sorted(set(touched_call_contracts)),
+                "reason": "duplicate rename with deterministic module-prefixed C symbol",
+            }
+        )
+
+
 def repair_function_inventory_symbols(draft: dict[str, Any], candidate: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     result_draft = deepcopy(draft)
     result_candidate = deepcopy(candidate)
-    candidate_functions = [item for item in result_candidate.get("functions", []) if isinstance(item, dict)]
-    draft_functions_by_id = {
-        str(item.get("function_id", "")): item
-        for item in result_draft.get("function_contracts", [])
-        if isinstance(item, dict)
-    }
-    used_names = {str(item.get("name", "")) for item in candidate_functions if str(item.get("name", "")).strip()}
-    by_name: dict[str, list[dict[str, Any]]] = {}
-    for function in candidate_functions:
-        name = str(function.get("name", "")).strip()
-        if name:
-            by_name.setdefault(name, []).append(function)
-    report = {
-        "schema_version": "function_symbol_repair_report/v1",
-        "stage": "5.4a.1_function_symbol_repair",
-        "renamed_functions": [],
-        "preserved_public_symbols": [],
-        "unrepaired_duplicates": [],
-        "reason": "deterministic repair for globally duplicated C-facing function names before signature planning",
-    }
-    protocol = str(result_draft.get("protocol_name", "protocol"))
-    type_inventory = [item for item in result_draft.get("type_inventory", []) if isinstance(item, dict)]
-    for name, duplicates in sorted(by_name.items()):
-        if len(duplicates) < 2:
-            continue
-        public = [item for item in duplicates if _function_is_public(item)]
-        preserve = public[0] if public else duplicates[0]
-        report["preserved_public_symbols"].append(
-            {
-                "function_id": preserve.get("function_id", ""),
-                "name": name,
-                "reason": "public/exported API kept" if _function_is_public(preserve) else "first internal symbol kept",
-            }
-        )
-        for function in duplicates:
-            if function is preserve:
-                continue
-            if _function_is_public(function):
-                report["unrepaired_duplicates"].append(
-                    {
-                        "function_id": function.get("function_id", ""),
-                        "name": name,
-                        "reason": "duplicate public/exported API symbol was not renamed deterministically",
-                    }
-                )
-                continue
-            module_id = str(function.get("module_id", ""))
-            preferred = ""
-            for type_item in type_inventory:
-                if str(type_item.get("module_id", "")) != module_id:
-                    continue
-                preferred = preferred or _preferred_lifecycle_repair_name(type_item, name)
-            preferred = preferred or _fallback_repair_name(protocol, module_id, name)
-            new_name = _unique_function_name(preferred, used_names)
-            function["name"] = new_name
-            draft_function = draft_functions_by_id.get(str(function.get("function_id", "")))
-            if draft_function is not None:
-                draft_function["name"] = new_name
-                signature = draft_function.get("signature", {})
-                if isinstance(signature, dict) and signature.get("name") == name:
-                    signature["name"] = new_name
-                    raw = str(signature.get("raw", ""))
-                    if raw:
-                        signature["raw"] = raw.replace(name, new_name, 1)
-            touched_types = []
-            for type_item in type_inventory:
-                if str(type_item.get("module_id", "")) == module_id and _replace_type_function_refs(type_item, name, new_name):
-                    touched_types.append(str(type_item.get("type_id", "")))
-            report["renamed_functions"].append(
-                {
-                    "function_id": function.get("function_id", ""),
-                    "old_name": name,
-                    "new_name": new_name,
-                    "module_id": module_id,
-                    "updated_type_refs": touched_types,
-                    "reason": "non-public duplicate renamed with owner/type-derived symbol",
-                }
-            )
+    report = FunctionNameAllocator(result_draft, result_candidate).allocate()
     return result_draft, result_candidate, report
 
 

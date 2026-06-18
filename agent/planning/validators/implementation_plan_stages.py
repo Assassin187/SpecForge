@@ -245,6 +245,35 @@ def _target_role(profile: dict[str, Any]) -> str:
     return str(value).lower()
 
 
+def _key_flow_module_id(module_artifacts: list[dict[str, Any]]) -> str:
+    modules = [item for item in module_artifacts if isinstance(item, dict)]
+    if not modules:
+        return ""
+    scored: list[tuple[int, str]] = []
+    for index, module in enumerate(modules):
+        module_id = str(module.get("module_id", ""))
+        text = " ".join(
+            [
+                module_id,
+                str(module.get("name", "")),
+                str(module.get("purpose", "")),
+                " ".join(str(cap) for cap in module.get("owned_capabilities", [])),
+            ]
+        ).lower()
+        score = 0
+        if any(word in text for word in ("broker", "server", "client", "flow", "app")):
+            score += 40
+        if "role_composition" in module.get("owned_capabilities", []):
+            score += 30
+        if "semantic_dispatch" in module.get("owned_capabilities", []):
+            score += 20
+        if module.get("support_module"):
+            score -= 30
+        scored.append((score - index, module_id))
+    scored.sort(reverse=True)
+    return scored[0][1]
+
+
 def _state_ids(draft: dict[str, Any]) -> set[str]:
     return {str(item.get("state_id", "")) for item in draft.get("state_design", []) if isinstance(item, dict) and item.get("state_id")}
 
@@ -1574,6 +1603,8 @@ def validate_function_inventory_candidate(candidate: dict[str, Any], module_arti
     handler_ids = _handler_ids(core_design)
     message_ids = _message_ids(planning_ir or {})
     field_ids = _field_ids(planning_ir or {})
+    target_role = _target_role(profile)
+    key_flow_module = _key_flow_module_id(module_artifacts) if target_role in {"broker", "server", "client"} else ""
     seen_ids: set[str] = set()
     seen_names: set[str] = set()
     kinds: set[str] = set()
@@ -1706,6 +1737,20 @@ def validate_function_inventory_candidate(candidate: dict[str, Any], module_arti
             for function in candidate.get("functions", [])
             if isinstance(function, dict) and str(function.get("module_id", "")) == module_id
         ]
+        if module_id == key_flow_module:
+            missing_lifecycle = []
+            for action in ("create", "start", "run", "destroy"):
+                if not any(_is_lifecycle_api(function, action) for function in module_functions):
+                    missing_lifecycle.append(action)
+            if missing_lifecycle:
+                diagnostics.append(
+                    PlanningDiagnostic(
+                        "error",
+                        "runtime_lifecycle_api_missing",
+                        f"key flow module '{module_id}' lacks public runtime lifecycle APIs: {', '.join(missing_lifecycle)}",
+                        path,
+                    )
+                )
         missing_trace = [str(function.get("function_id", "")) for function in module_functions if not [ref for ref in function.get("trace_ref_keys", []) if str(ref).strip()]]
         if missing_trace:
             diagnostics.append(PlanningDiagnostic("warning", "function_inventory_missing_trace_refs", f"module '{module_id}' has {len(missing_trace)} function inventory entries without trace_ref_keys", path))

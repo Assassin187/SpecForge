@@ -465,6 +465,28 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
     def test_function_symbol_repair_renames_internal_duplicate_and_updates_type_refs(self) -> None:
         public_codec = _inventory_function("mqtt_encoder_encode", "codec", function_id="fn:codec:mqtt_encoder_encode", kind="serializer", public=True)
         internal_network = _inventory_function("mqtt_encoder_encode", "network", function_id="fn:network:mqtt_encoder_encode", kind="resource_lifecycle", public=False)
+        draft_network = copy.deepcopy(internal_network)
+        draft_network["signature"] = {
+            "name": "mqtt_encoder_encode",
+            "raw": "int mqtt_encoder_encode(void *self)",
+            "return_type": "int",
+            "params": [{"name": "self", "type": "void *"}],
+        }
+        draft_public = copy.deepcopy(public_codec)
+        draft_public["call_contracts"] = [
+            {
+                "callee_function_id": internal_network["function_id"],
+                "call_kind": "utility",
+                "required": True,
+                "service_requirement_ids": [],
+                "call_reason": "test name-valued binding repair",
+                "param_bindings": [{"param_name": "callback", "value_ref": "mqtt_encoder_encode", "ownership": "borrowed", "nullability": "non_null"}],
+                "return_binding": {"policy": "store", "target_ref": "mqtt_encoder_encode", "cleanup_function_id": "mqtt_encoder_encode"},
+                "failure_behavior": "return_error",
+                "trace_ref_keys": [],
+                "status": "inferred",
+            }
+        ]
         candidate = {
             "schema_version": "function_inventory_candidate/v2",
             "candidate_id": "candidate:function_inventory:all_modules",
@@ -477,7 +499,7 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
         draft = {
             "protocol_name": "mqtt",
             "module_artifacts": [{"module_id": "codec"}, {"module_id": "network"}],
-            "function_contracts": [copy.deepcopy(public_codec), copy.deepcopy(internal_network)],
+            "function_contracts": [draft_public, draft_network],
             "type_inventory": [
                 {
                     "type_id": "type:network:mqtt_network_encode_buffer_t",
@@ -489,16 +511,89 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
                     "related_functions": ["mqtt_encoder_encode"],
                 }
             ],
+            "file_layout": {"files": [{"file_id": "file:network", "exports": ["mqtt_encoder_encode"], "implements": ["mqtt_encoder_encode"]}]},
         }
         self.assertTrue(_has(validate_function_inventory_candidate(candidate, draft["module_artifacts"], draft, {}, {}), "duplicate_function_name"))
         repaired_draft, repaired_candidate, report = repair_function_inventory_symbols(draft, candidate)
         self.assertFalse(_has(validate_function_inventory_candidate(repaired_candidate, draft["module_artifacts"], repaired_draft, {}, {}), "duplicate_function_name"))
         repaired_network = next(item for item in repaired_candidate["functions"] if item["function_id"] == "fn:network:mqtt_encoder_encode")
-        self.assertEqual(repaired_network["name"], "mqtt_network_encode_buffer_create")
+        self.assertEqual(repaired_network["name"], "mqtt_network_encoder_encode")
+        repaired_draft_network = next(item for item in repaired_draft["function_contracts"] if item["function_id"] == "fn:network:mqtt_encoder_encode")
+        self.assertEqual(repaired_draft_network["signature"]["name"], "mqtt_network_encoder_encode")
+        self.assertEqual(repaired_draft_network["signature"]["raw"], "int mqtt_network_encoder_encode(void *self)")
         lifecycle = repaired_draft["type_inventory"][0]["lifecycle"]
-        self.assertEqual(lifecycle["created_by"], ["mqtt_network_encode_buffer_create"])
-        self.assertEqual(lifecycle["initialized_by"], ["mqtt_network_encode_buffer_create"])
+        self.assertEqual(lifecycle["created_by"], ["mqtt_network_encoder_encode"])
+        self.assertEqual(lifecycle["initialized_by"], ["mqtt_network_encoder_encode"])
+        self.assertEqual(repaired_draft["file_layout"]["files"][0]["exports"], ["mqtt_network_encoder_encode"])
+        self.assertEqual(repaired_draft["file_layout"]["files"][0]["implements"], ["mqtt_network_encoder_encode"])
+        repaired_contract = repaired_draft["function_contracts"][0]["call_contracts"][0]
+        self.assertEqual(repaired_contract["callee_function_id"], "fn:network:mqtt_encoder_encode")
+        self.assertEqual(repaired_contract["param_bindings"][0]["value_ref"], "mqtt_network_encoder_encode")
+        self.assertEqual(repaired_contract["return_binding"]["target_ref"], "mqtt_network_encoder_encode")
+        self.assertEqual(repaired_contract["return_binding"]["cleanup_function_id"], "mqtt_network_encoder_encode")
         self.assertEqual(report["renamed_functions"][0]["function_id"], "fn:network:mqtt_encoder_encode")
+
+    def test_20260612_duplicate_transport_close_replay_is_repaired(self) -> None:
+        replay_root = ROOT / "agent" / "planning" / "out" / "mqtt" / "broker__c__linux_epoll__minimum_v1" / "20260612_092317_251284" / "_step_logs"
+        if replay_root.exists():
+            profile = json.loads((replay_root / "004_protocol_profile.json").read_text(encoding="utf-8"))
+            planning_ir = json.loads((replay_root / "003_planning_ir.json").read_text(encoding="utf-8"))
+            modules = json.loads((replay_root / "007_5_2b_module_artifacts_candidate.json").read_text(encoding="utf-8"))
+            type_inventory = json.loads((replay_root / "007_5_3_type_data_inventory_candidate.json").read_text(encoding="utf-8"))
+            candidate = json.loads((replay_root / "007_5_4a_function_inventory_candidate.json").read_text(encoding="utf-8"))
+            draft = {
+                "protocol_name": "mqtt",
+                "module_artifacts": [
+                    {
+                        "module_id": module["module_id"],
+                        "name": module.get("name", module["module_id"]),
+                        "purpose": module.get("role", ""),
+                        "role": module.get("role", ""),
+                        "owned_capabilities": [],
+                        "support_module": False,
+                        "dependencies": module.get("dependencies", []),
+                        "artifacts": module.get("artifacts", []),
+                    }
+                    for module in modules["modules"]
+                ],
+                "type_inventory": type_inventory["types"],
+                "function_contracts": copy.deepcopy(candidate["functions"]),
+                "file_layout": {"files": []},
+            }
+        else:
+            profile = {}
+            planning_ir = {}
+            transport = _inventory_function("mqtt_transport_close", "transport", function_id="fn:transport:mqtt_transport_close", public=True)
+            broker = _inventory_function("mqtt_transport_close", "broker", function_id="fn:broker:mqtt_transport_close", kind="resource_lifecycle", public=True)
+            broker["export_reason"] = "Exported by type_obligation."
+            broker["grouping_hint"] = "resource_lifecycle_helpers"
+            candidate = {
+                "schema_version": "function_inventory_candidate/v2",
+                "candidate_id": "candidate:test:20260612",
+                "producer": {"stage": "5.4a_function_inventory", "prompt_name": "test", "prompt_version": "test"},
+                "module_id": "all_modules",
+                "functions": [transport, broker],
+                "assumptions": [],
+                "unresolved_questions": [],
+            }
+            draft = {
+                "protocol_name": "mqtt",
+                "module_artifacts": [
+                    {"module_id": "transport", "artifacts": [{"name": "mqtt_transport_close", "kind": "FUNC"}]},
+                    {"module_id": "broker", "artifacts": []},
+                ],
+                "type_inventory": [],
+                "function_contracts": copy.deepcopy(candidate["functions"]),
+                "file_layout": {"files": []},
+            }
+
+        self.assertTrue(_has(validate_function_inventory_candidate(candidate, draft["module_artifacts"], draft, profile, planning_ir), "duplicate_function_name"))
+        repaired_draft, repaired_candidate, report = repair_function_inventory_symbols(draft, candidate)
+        self.assertFalse(_has(validate_function_inventory_candidate(repaired_candidate, repaired_draft["module_artifacts"], repaired_draft, profile, planning_ir), "duplicate_function_name"))
+        by_id = {function["function_id"]: function for function in repaired_candidate["functions"]}
+        self.assertEqual(by_id["fn:transport:mqtt_transport_close"]["name"], "mqtt_transport_close")
+        self.assertEqual(by_id["fn:broker:mqtt_transport_close"]["name"], "mqtt_broker_transport_close")
+        self.assertFalse(report["unrepaired_duplicates"])
 
     def test_signature_normalizer_canonicalizes_mechanical_fields(self) -> None:
         function = _inventory_function("mqtt_codec_helper", "codec", function_id="fn:codec:mqtt_codec_helper", kind="resource_lifecycle", public=False)
@@ -988,6 +1083,39 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
         self.assertEqual(runtime["key_flow_module_id"], "broker_app")
         self.assertEqual(runtime["lifecycle_function_ids"]["create"], "")
         self.assertTrue(_has(validate_runtime_entrypoint_candidate(runtime, draft), "runtime_entrypoint_missing_lifecycle_id"))
+
+    def test_20260616_runtime_fallback_does_not_create_missing_lifecycle_apis(self) -> None:
+        replay_root = ROOT / "agent" / "planning" / "out" / "mqtt" / "broker__c__linux_epoll__minimum_v1" / "20260616_194800_796436" / "_step_logs"
+        if replay_root.exists():
+            draft = json.loads((replay_root / "007_implementation_plan.json").read_text(encoding="utf-8"))
+        else:
+            draft = {
+                "protocol_name": "mqtt",
+                "module_artifacts": [{"module_id": "broker_app", "owned_capabilities": ["role_composition"]}],
+                "function_contracts": [
+                    {
+                        "function_id": "fn:broker_app:mqtt_broker_run",
+                        "name": "mqtt_broker_run",
+                        "module_id": "broker_app",
+                        "function_kind": "resource_lifecycle",
+                        "visibility": "public",
+                        "api_surface": "public",
+                        "exported": True,
+                        "public_api_role": "runtime_run",
+                    }
+                ],
+            }
+        before_ids = {function["function_id"] for function in draft.get("function_contracts", []) if isinstance(function, dict)}
+        runtime = fallback_runtime_entrypoint(draft)
+        after_ids = {function["function_id"] for function in draft.get("function_contracts", []) if isinstance(function, dict)}
+        self.assertEqual(before_ids, after_ids)
+        self.assertEqual(runtime["key_flow_module_id"], "broker_app")
+        self.assertEqual(runtime["lifecycle_function_ids"]["run"], "fn:broker_app:mqtt_broker_run")
+        self.assertEqual(runtime["lifecycle_function_ids"]["create"], "")
+        self.assertEqual(runtime["lifecycle_function_ids"]["start"], "")
+        self.assertEqual(runtime["lifecycle_function_ids"]["destroy"], "")
+        diagnostics = validate_runtime_entrypoint_candidate(runtime, draft)
+        self.assertTrue(_has(diagnostics, "runtime_entrypoint_missing_lifecycle_id"))
 
     def test_runtime_entrypoint_fallback_uses_existing_public_lifecycle_only(self) -> None:
         def lifecycle(action: str) -> dict:
@@ -2931,6 +3059,57 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
         roles = {function.get("public_api_role") for function in inventory["functions"]}
         self.assertTrue({"runtime_create", "runtime_start", "runtime_run", "runtime_destroy"}.issubset(roles))
         self.assertFalse(_has_error(validate_function_inventory_candidate(inventory, merged["module_artifacts"], merged, profile, {})))
+
+    def test_20260616_lifecycle_replay_has_5_4a_public_runtime_apis(self) -> None:
+        replay_root = ROOT / "agent" / "planning" / "out" / "mqtt" / "broker__c__linux_epoll__minimum_v1" / "20260616_194800_796436" / "_step_logs"
+        if replay_root.exists():
+            planning_ir = json.loads((replay_root / "003_planning_ir.json").read_text(encoding="utf-8"))
+            profile = json.loads((replay_root / "004_protocol_profile.json").read_text(encoding="utf-8"))
+            constraints = json.loads((replay_root / "005_engineering_constraints.json").read_text(encoding="utf-8"))
+            draft = json.loads((replay_root / "007_5_1_plan_skeleton.json").read_text(encoding="utf-8"))
+            core = json.loads((replay_root / "007_5_2a_core_design_candidate.json").read_text(encoding="utf-8"))
+            modules = json.loads((replay_root / "007_5_2b_module_artifacts_candidate.json").read_text(encoding="utf-8"))
+            type_inventory = json.loads((replay_root / "007_5_3_type_data_inventory_candidate.json").read_text(encoding="utf-8"))
+            raw_broker = next(module for module in modules["modules"] if module["module_id"] == "broker_app")
+            raw_funcs = {(artifact["name"], artifact["kind"]) for artifact in raw_broker["artifacts"]}
+            self.assertNotIn(("mqtt_broker_create", "FUNC"), raw_funcs)
+            self.assertNotIn(("mqtt_broker_start", "FUNC"), raw_funcs)
+            self.assertNotIn(("mqtt_broker_destroy", "FUNC"), raw_funcs)
+            draft = merge_core_design(draft, core)
+            draft = merge_module_artifacts(draft, modules)
+            draft = merge_type_inventory(draft, type_inventory)
+        else:
+            planning_ir = {}
+            profile = {"target_role": "broker", "required_capabilities": [{"capability_id": "role_composition"}]}
+            constraints = {}
+            draft = {
+                "protocol_name": "mqtt",
+                "target_directives_ref": {"directives": {"target_role": "broker"}},
+                "module_artifacts": [
+                    {
+                        "module_id": "broker_app",
+                        "name": "broker_app",
+                        "purpose": "Broker role composition and event loop orchestration",
+                        "owned_capabilities": ["role_composition"],
+                        "support_module": False,
+                        "artifacts": [{"name": "mqtt_broker_run", "kind": "FUNC", "role": "Execute main event loop"}],
+                    }
+                ],
+                "handler_matrix": [],
+                "type_inventory": [],
+                "canonical_types": [],
+                "function_contracts": [],
+            }
+
+        broker = next(module for module in draft["module_artifacts"] if module["module_id"] == "broker_app")
+        inventory = current_function_inventory_candidate(draft, broker, planning_ir, profile, constraints)
+        lifecycle_functions = {function["public_api_role"]: function for function in inventory["functions"] if str(function.get("public_api_role", "")).startswith("runtime_")}
+        self.assertEqual(set(lifecycle_functions), {"runtime_create", "runtime_start", "runtime_run", "runtime_destroy"})
+        for function in lifecycle_functions.values():
+            self.assertTrue(function["exported"])
+            self.assertEqual(function["visibility"], "public")
+            self.assertEqual(function["api_surface"], "public")
+        self.assertFalse(_has(validate_function_inventory_candidate(inventory, draft["module_artifacts"], draft, profile, planning_ir), "runtime_lifecycle_api_missing"))
 
     def test_function_inventory_public_api_visibility_rules(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:

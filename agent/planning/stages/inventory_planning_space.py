@@ -20,6 +20,8 @@ from .implementation_plan_context import (
 
 
 FUNCTION_KINDS = {"public_api", "handler", "parser", "serializer", "validator", "state_machine", "resource_lifecycle", "error_helper", "internal_helper"}
+RUNTIME_LIFECYCLE_ACTIONS = ("create", "start", "run", "destroy")
+DEPLOYABLE_TARGET_ROLES = {"broker", "server", "client"}
 CODEC_FUNCTION_FAMILIES = {
     "parser_helpers",
     "serializer_helpers",
@@ -1213,6 +1215,111 @@ def _module_function_prefix(protocol: str, module_id: str) -> str:
     return f"{protocol}_{safe_module}" if safe_module else protocol
 
 
+def _target_role_value(profile: dict[str, Any] | None, draft: dict[str, Any]) -> str:
+    value: Any = (profile or {}).get("target_role", "")
+    if isinstance(value, dict):
+        value = value.get("value", "")
+    if not str(value).strip():
+        directives_ref = draft.get("target_directives_ref", {}) if isinstance(draft.get("target_directives_ref"), dict) else {}
+        directives = directives_ref.get("directives", {}) if isinstance(directives_ref.get("directives"), dict) else {}
+        value = directives.get("target_role", "")
+        if isinstance(value, dict):
+            value = value.get("value", "")
+    return _safe_id(str(value))
+
+
+def _key_flow_module_id(draft: dict[str, Any]) -> str:
+    modules = [item for item in draft.get("module_artifacts", []) if isinstance(item, dict)]
+    if not modules:
+        return ""
+    scored: list[tuple[int, str]] = []
+    for index, module in enumerate(modules):
+        module_id = str(module.get("module_id", ""))
+        text = " ".join(
+            [
+                module_id,
+                str(module.get("name", "")),
+                str(module.get("purpose", "")),
+                " ".join(str(cap) for cap in module.get("owned_capabilities", [])),
+            ]
+        ).lower()
+        score = 0
+        if any(word in text for word in ("broker", "server", "client", "flow", "app")):
+            score += 40
+        if "role_composition" in module.get("owned_capabilities", []):
+            score += 30
+        if "semantic_dispatch" in module.get("owned_capabilities", []):
+            score += 20
+        if module.get("support_module"):
+            score -= 30
+        scored.append((score - index, module_id))
+    scored.sort(reverse=True)
+    return scored[0][1]
+
+
+def _runtime_lifecycle_base(protocol: str, target_role: str, module_artifact: dict[str, Any], seeds: list[dict[str, Any]]) -> str:
+    for suffix in ("_run", "_serve", "_create", "_start", "_destroy"):
+        for item in [*seeds, *[artifact for artifact in module_artifact.get("artifacts", []) if isinstance(artifact, dict)]]:
+            name = _safe_id(str(item.get("name", "")))
+            if str(item.get("kind", "FUNC")).upper() in {"FUNC", ""} and name.endswith(suffix):
+                return name[: -len(suffix)]
+    for artifact in module_artifact.get("artifacts", []):
+        if not isinstance(artifact, dict) or str(artifact.get("kind", "")).upper() != "TYPE":
+            continue
+        name = _safe_id(str(artifact.get("name", "")))
+        text = f"{name} {artifact.get('role', '')}".lower()
+        if name.endswith("_t") and any(word in text for word in (target_role, "runtime", "app", "broker", "server", "client")):
+            return name[:-2]
+    return f"{_safe_id(protocol)}_{target_role or 'app'}"
+
+
+def _has_runtime_lifecycle_seed(seeds: list[dict[str, Any]], action: str) -> bool:
+    role = f"runtime_{action}"
+    suffixes = ("_run", "_serve") if action == "run" else (f"_{action}",)
+    for seed in seeds:
+        if str(seed.get("public_api_role", "")) == role:
+            return True
+        if bool(seed.get("exported")) and any(str(seed.get("name", "")).endswith(suffix) for suffix in suffixes):
+            return True
+    return False
+
+
+def _deployable_runtime_lifecycle_seeds(
+    draft: dict[str, Any],
+    module_artifact: dict[str, Any],
+    protocol: str,
+    target_role: str,
+    existing_seeds: list[dict[str, Any]],
+    owned_caps: list[str],
+) -> list[dict[str, Any]]:
+    module_id = str(module_artifact.get("module_id", ""))
+    if target_role not in DEPLOYABLE_TARGET_ROLES or module_id != _key_flow_module_id(draft):
+        return []
+    base = _runtime_lifecycle_base(protocol, target_role, module_artifact, existing_seeds)
+    seeds: list[dict[str, Any]] = []
+    for action in RUNTIME_LIFECYCLE_ACTIONS:
+        if _has_runtime_lifecycle_seed([*existing_seeds, *seeds], action):
+            continue
+        name = f"{base}_{action}"
+        seeds.append(
+            _function_seed(
+                module_id=module_id,
+                seed_class="obligation",
+                source_kind="deployable_runtime_lifecycle",
+                source_id=f"runtime_lifecycle:{module_id}:{action}",
+                name=name,
+                function_kind="resource_lifecycle",
+                purpose=f"Provide the public {action} API for the deployable {target_role} runtime lifecycle.",
+                capability_ids=owned_caps[:1],
+                exported=True,
+                public_api_role=f"runtime_{action}",
+                trace_ref_keys=[_decision_ref("function_slot", module_id, "deployable_runtime_lifecycle", action)],
+                family="runtime_lifecycle",
+            )
+        )
+    return seeds
+
+
 def _c_symbol(value: str) -> bool:
     if not value or not (value[0].isalpha() or value[0] == "_"):
         return False
@@ -1334,7 +1441,15 @@ def build_function_planning_space(
             )
         )
 
-    obligations: list[dict[str, Any]] = []
+    target_role = _target_role_value(profile, draft)
+    obligations: list[dict[str, Any]] = _deployable_runtime_lifecycle_seeds(
+        draft,
+        module_artifact,
+        protocol,
+        target_role,
+        mandatory,
+        owned_caps,
+    )
     for obligation in derive_type_obligations(draft, module_artifact):
         names = [str(name) for name in obligation.get("required_function_names", []) if str(name).strip()]
         if not names:

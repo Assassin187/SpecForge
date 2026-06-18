@@ -13,7 +13,7 @@ PIPELINE_INVARIANT_REPAIR_PLAN.md
 当前阶段：
 
 ```text
-第 1 轮已完成；等待第 2 轮。
+第 1-3 轮已完成；等待第 4 轮。
 ```
 
 当前目标：
@@ -36,7 +36,7 @@ docs/CURRENT_TASK_STATUS.md 记录旧 planning stabilization 路线。
 |---|---|---|---|
 | 第 1 轮 | 高收益低耦合：type canonicalization + 5.3 fixtures | completed | 已完成 string/buffer/byte_buffer alias canonicalization 与 5.3 regression |
 | 第 2 轮 | calls_allowed 与 wire mapping | completed | 已完成 value_ref contract 统一与 wire coverage deterministic closure |
-| 第 3 轮 | runtime lifecycle + function name allocator | not_started | 等待前移 lifecycle obligations 并修复 symbol collision |
+| 第 3 轮 | runtime lifecycle + function name allocator | completed | 已完成 deployable runtime lifecycle 前移与 global FunctionNameAllocator |
 | 第 4 轮 | C header surface closure | not_started | 等待修复 header cycle / public type owner split |
 | 第 5 轮 | 端到端 regression/golden | not_started | 等待集中固化 7 个历史失败 fixtures 与 MQTT golden |
 
@@ -194,7 +194,7 @@ fixed-header-only patch 必须在 5.4d 阶段失败，不能拖到 final readine
 状态：
 
 ```text
-not_started
+completed
 ```
 
 目标：
@@ -206,26 +206,49 @@ not_started
 任务清单：
 
 ```text
-[ ] key flow module 识别逻辑复核。
-[ ] broker/server/client deployable target lifecycle obligations 生成。
-[ ] 5.4a deterministic seed 或 fail-closed。
-[ ] runtime_entrypoint 只复用 existing lifecycle API。
-[ ] 设计 global function symbol table。
-[ ] 对 duplicate names 做 deterministic rename。
-[ ] 保留 public API / runtime lifecycle stable names。
-[ ] 同步更新 call_contracts / calls_allowed / lifecycle / file layout refs。
-[ ] 增加 missing lifecycle 与 duplicate function name regression tests。
-[ ] 运行相关 unittest。
+[x] key flow module 识别逻辑复核。
+[x] broker/server/client deployable target lifecycle obligations 生成。
+[x] 5.4a deterministic seed 或 fail-closed。
+[x] runtime_entrypoint 只复用 existing lifecycle API。
+[x] 设计 global function symbol table。
+[x] 对 duplicate names 做 deterministic rename。
+[x] 保留 public API / runtime lifecycle stable names。
+[x] 同步更新 call_contracts / calls_allowed / lifecycle / file layout refs。
+[x] 增加 missing lifecycle 与 duplicate function name regression tests。
+[x] 运行相关 unittest。
 ```
 
 完成标准：
 
 ```text
-[ ] broker target 缺 create/start/destroy 时，5.4a 补齐或 blocking。
-[ ] 5.5b runtime entrypoint candidate 不再出现 empty lifecycle ids。
-[ ] main.c 只编排 existing public lifecycle APIs。
-[ ] 两个 module 同时生成 mqtt_transport_close 时，repair 后 C symbol 唯一。
-[ ] function_id、function name、call_contracts、calls_allowed、file layout refs 同步一致。
+[x] broker target 缺 create/start/destroy 时，5.4a 补齐或 blocking。
+[x] 5.5b runtime entrypoint candidate 不再出现 empty lifecycle ids。
+[x] main.c 只编排 existing public lifecycle APIs。
+[x] 两个 module 同时生成 mqtt_transport_close 时，repair 后 C symbol 唯一。
+[x] function_id、function name、call_contracts、calls_allowed、file layout refs 同步一致。
+```
+
+完成记录：
+
+```text
+2026-06-18：已完成第 3 轮。
+- 5.4a function planning space 对 deployable broker/server/client key flow module 增加 runtime_create/runtime_start/runtime_run/runtime_destroy safety-net seeds。
+- 5.4a validator 增加 runtime_lifecycle_api_missing fail-closed 检查。
+- fallback_runtime_entrypoint() 仍只选择 existing public lifecycle APIs；缺失 lifecycle id 保持 blocking。
+- 新增 global FunctionNameAllocator，在 5.4a 后、5.4b 前修复 C-facing function symbol collision。
+- FunctionNameAllocator 保持 function_id 稳定，同步更新 function.name、signature.name/raw、type lifecycle refs、legacy file layout name refs 与 name-valued call bindings。
+- 20260616_194800_796436 replay 覆盖 broker_app create/start/destroy 缺失，并验证 5.4a 后 public lifecycle APIs 完整。
+- 20260612_092317_251284 replay 覆盖 mqtt_transport_close duplicate，保留 transport public API 并将 broker obligation symbol 重命名为 mqtt_broker_transport_close。
+```
+
+验证：
+
+```text
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest agent.planning.tests.test_implementation_plan_stage_candidates
+结果：145 tests passed。
+
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest agent.planning.tests.test_implementation_plan_stage_candidates agent.planning.tests.test_coder_schema_lowering agent.planning.tests.test_validators
+结果：204 tests passed。
 ```
 
 本轮入口提示词：
