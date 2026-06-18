@@ -6,7 +6,7 @@ from typing import Any
 from .function_inventory_decomposition import DECOMPOSITION_RULES
 from .implementation_plan import _safe_id
 from .implementation_plan_context import SYSTEM_TYPE_IDS, normalize_system_type_ref
-from .inventory_planning_space import build_public_type_obligation_report
+from .inventory_planning_space import build_function_family_obligation_report, build_public_type_obligation_report
 
 
 TYPE_KIND_VALUES = {
@@ -89,6 +89,15 @@ def _type_field(
 def _system_type_ref(field_type: str) -> str:
     raw = str(field_type).replace("const", "").replace("*", "").strip()
     return raw if raw in SYSTEM_TYPE_IDS else ""
+
+
+def _abstract_view_alias(value: Any) -> str:
+    key = _safe_id(str(value).replace("const", "").replace("*", "").strip())
+    if key in {"string_view", "utf8_string_view"}:
+        return "string_view"
+    if key in {"buffer_view", "bytes_view", "payload_view"}:
+        return "buffer_view"
+    return ""
 
 
 def _type_ref_for_field(field_type: str, allowed_refs: set[str], name_aliases: dict[str, str]) -> str:
@@ -343,6 +352,10 @@ def _allowed_type_refs(space: dict[str, Any]) -> tuple[set[str], dict[str, str],
             if name:
                 refs.add(name)
                 aliases[_safe_id(name.removeprefix("struct "))] = type_id or name
+                if name.endswith("_string_view_t"):
+                    aliases["string_view"] = type_id or name
+                if name.endswith("_buffer_view_t"):
+                    aliases["buffer_view"] = type_id or name
                 local_meta[name] = item
     return refs, aliases, local_meta
 
@@ -371,6 +384,10 @@ def _sanitize_type_refs(type_item: dict[str, Any], allowed_refs: set[str], name_
     def normalize_surface_ref(ref: Any, c_type: Any, *, surface: str, owner_name: Any, fallback_to_void: bool) -> str:
         normalized = normalize(ref, c_type)
         if not normalized:
+            alias = _abstract_view_alias(ref) or _abstract_view_alias(c_type)
+            if alias:
+                diagnostics.append({"level": "error", "code": "undeclared_view_type_alias", "message": f"{surface} ref in {owner_name} uses abstract alias '{alias}' without a declared view type"})
+                return ""
             if is_public and str(ref or "").strip() and str(ref or "").strip().lower() not in {"void", "struct", "union", "enum"}:
                 diagnostics.append({"level": "error", "code": "stale_type_ref", "message": f"public {surface} ref '{ref}' in {owner_name} is not declared"})
                 return ""
@@ -396,6 +413,12 @@ def _sanitize_type_refs(type_item: dict[str, Any], allowed_refs: set[str], name_
         if not isinstance(field, dict):
             continue
         normalized = normalize_surface_ref(field.get("type_ref", ""), field.get("field_type", ""), surface="field", owner_name=f"{item.get('type_id')}.{field.get('field_name')}", fallback_to_void=True)
+        alias = _abstract_view_alias(field.get("type_ref", "")) or _abstract_view_alias(field.get("field_type", ""))
+        if alias and normalized:
+            target = local_meta.get(normalized)
+            target_name = str((target or {}).get("name", "")).strip()
+            if target_name:
+                field["field_type"] = target_name
         if normalized == "void" and not _system_type_ref(str(field.get("field_type", ""))):
             field["field_type"] = "void*"
             field["type_ref"] = "void"
@@ -783,6 +806,12 @@ def reconcile_function_annotation_candidate(space: dict[str, Any], annotation_ca
         "assumptions": deepcopy(annotation_candidate.get("assumptions", [])),
         "unresolved_questions": deepcopy(annotation_candidate.get("unresolved_questions", [])),
     }
+    function_family_obligation_report = build_function_family_obligation_report(
+        space,
+        functions,
+        assumptions=candidate.get("assumptions", []),
+        unresolved_questions=candidate.get("unresolved_questions", []),
+    )
     return {
         "candidate": candidate,
         "reconciliation_report": {
@@ -792,7 +821,9 @@ def reconcile_function_annotation_candidate(space: dict[str, Any], annotation_ca
             "recommended_seed_count": len(space.get("recommended_function_families", [])),
             "accepted_optional_functions": accepted_optional,
             "rejected_optional_functions": rejected_optional,
+            "function_family_obligation_report": function_family_obligation_report,
             "diagnostic_count": len(diagnostics),
         },
+        "function_family_obligation_report": function_family_obligation_report,
         "diagnostics": diagnostics,
     }

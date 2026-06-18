@@ -804,8 +804,11 @@ def _data_declarations(
         target.append(declaration)
         seen.add(name)
         if target_public:
-            seen_header_keys.add(key)
-            header_type_specs_by_key[key] = declaration.get("TYPE_SPEC", {"TYPE_KIND": "OPAQUE"})
+            type_spec = declaration.get("TYPE_SPEC", {"TYPE_KIND": "OPAQUE"})
+            for type_key in type_keys | {key}:
+                if type_key:
+                    seen_header_keys.add(type_key)
+                    header_type_specs_by_key[type_key] = type_spec
 
     for type_item in module_type_inventory:
         add_inventory_type(type_item)
@@ -843,6 +846,9 @@ def _data_declarations(
     expected_roles = []
     expected_roles.extend(str(role) for role in file_item.get("exports_type_ids", []) if str(role).strip())
     for role in expected_roles:
+        if normalize_type_key(role) in seen_header_keys:
+            module_item.setdefault("resolved_public_type_roles", {})[role] = role
+            continue
         type_item = _resolve_canonical_type(role, canonical_type_index)
         if type_item is None:
             _add_unresolved(unresolved, kind="public_type_role", module_id=module_id, file_id=str(file_item.get("file_id", "")), type_name=role, reason="Expected public type role could not be resolved to a canonical type.")

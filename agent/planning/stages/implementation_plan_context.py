@@ -78,7 +78,6 @@ MQTT_PACKET_TYPE_VALUES = {
     "DISCONNECT": "14",
 }
 
-
 def normalize_system_type_ref(value: Any) -> str:
     text = str(value or "").strip()
     if text.startswith("system:"):
@@ -102,6 +101,33 @@ def system_headers_for_type_ref(value: Any) -> list[str]:
                 if header not in headers:
                     headers.append(header)
     return headers
+
+
+def protocol_view_type_name(protocol: str, alias: str) -> str:
+    key = _safe_id(str(alias).removesuffix("_t"))
+    if key in {"string", "string_view"}:
+        return f"{_safe_id(protocol)}_string_view_t"
+    if key in {"buffer", "bytes", "payload", "buffer_view"}:
+        return f"{_safe_id(protocol)}_buffer_view_t"
+    return str(alias)
+
+
+def normalize_protocol_field_type(protocol: str, field_type: Any, field_name: str = "", field_summary: str = "", syntax: str = "", entry_summary: str = "") -> str:
+    raw = str(field_type or "").strip()
+    lowered = raw.lower().replace("-", "_").replace(" ", "_")
+    name = str(field_name or "").lower().replace("-", "_")
+    text = f"{name} {raw} {field_summary} {syntax} {entry_summary}".lower()
+    if lowered in {"string_view", "utf8_string_view"}:
+        return protocol_view_type_name(protocol, "string_view")
+    if lowered in {"buffer_view", "bytes_view", "payload_view"}:
+        return protocol_view_type_name(protocol, "buffer_view")
+    if raw:
+        return raw
+    if name in {"client_id", "topic_name", "topic_filter", "protocol_name", "filter"} or "utf-8 string" in text or "utf8 string" in text:
+        return protocol_view_type_name(protocol, "string_view")
+    if "payload" in name and ("byte" in text or "opaque" in text or "remaining bytes" in text):
+        return protocol_view_type_name(protocol, "buffer_view")
+    return _infer_protocol_field_type(field_name, field_summary, syntax, entry_summary)
 
 
 def _empty_callback_signature() -> dict[str, Any]:
@@ -400,6 +426,7 @@ def _module_has_context_type_artifact(module_artifact: dict[str, Any], protocol:
 
 def _message_fields_from_source(planning_ir: dict[str, Any] | None, draft: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
     fields: list[dict[str, Any]] = []
+    protocol = _protocol_prefix(draft)
     facts = (planning_ir or {}).get("protocol_facts", {}) if isinstance(planning_ir, dict) else {}
     message_model = facts.get("message_model", {}) if isinstance(facts, dict) and isinstance(facts.get("message_model"), dict) else {}
     entries = message_model.get("message_or_command_entries", []) if isinstance(message_model.get("message_or_command_entries"), list) else []
@@ -420,7 +447,7 @@ def _message_fields_from_source(planning_ir: dict[str, Any] | None, draft: dict[
                     "field_id": str(field.get("fact_id") or f"fact:message_model_message_or_command_entries_{entry_idx}_fields_{field_idx}"),
                     "message": message,
                     "field": field_name,
-                    "field_type": field_type or _infer_protocol_field_type(field_name, field_summary, syntax, entry_summary),
+                    "field_type": normalize_protocol_field_type(protocol, field_type, field_name, field_summary, syntax, entry_summary),
                     "field_summary": field_summary,
                     "entry_summary": entry_summary,
                     "syntax_or_layout": syntax,
@@ -434,7 +461,7 @@ def _message_fields_from_source(planning_ir: dict[str, Any] | None, draft: dict[
                 "field_id": str(item.get("field_id", "")),
                 "message": str(item.get("message", "")),
                 "field": str(item.get("field", "")),
-                "field_type": str(item.get("field_type", "")),
+                "field_type": normalize_protocol_field_type(protocol, item.get("field_type", ""), item.get("field", "")),
                 "access_path_id": str(item.get("access_path_id", "")),
                 "access_path": str(item.get("access_path", "")),
             }
@@ -497,17 +524,18 @@ def _infer_protocol_field_type(field_name: str, field_summary: str = "", syntax:
     return "uint8_t"
 
 
-def _target_field(field: dict[str, Any]) -> dict[str, str]:
+def _target_field(field: dict[str, Any], protocol: str = "") -> dict[str, str]:
+    field_name = str(field.get("field", "")).lower().replace(" ", "_")
     return {
-        "field_name": str(field.get("field", "")).lower().replace(" ", "_"),
-        "field_type": str(field.get("field_type") or _infer_protocol_field_type(str(field.get("field", "")))),
+        "field_name": field_name,
+        "field_type": normalize_protocol_field_type(protocol or "protocol", field.get("field_type", ""), field_name),
         "source_field_id": str(field.get("field_id", "")),
     }
 
 
 def _payload_target_fields(protocol: str, message_key: str, fields: list[dict[str, Any]]) -> tuple[list[dict[str, str]], list[dict[str, Any]]]:
     field_names = {str(field.get("field", "")).lower().replace(" ", "_") for field in fields}
-    payload_fields = [_target_field(field) for field in fields]
+    payload_fields = [_target_field(field, protocol) for field in fields]
     extra_targets: list[dict[str, Any]] = []
     if message_key == "subscribe" and {"topic_filter", "requested_qos"}.issubset(field_names):
         item_name = f"{protocol}_subscribe_topic_t"
@@ -520,7 +548,7 @@ def _payload_target_fields(protocol: str, message_key: str, fields: list[dict[st
                 "source_message_ids": ["message:subscribe"],
                 "source_field_ids": [str(field.get("field_id", "")) for field in fields if str(field.get("field", "")).lower().replace(" ", "_") in {"topic_filter", "requested_qos"}],
                 "required_fields": [
-                    {"field_name": "filter", "field_type": "char*", "source_field_id": ""},
+                    {"field_name": "filter", "field_type": protocol_view_type_name(protocol, "string_view"), "source_field_id": ""},
                     {"field_name": "qos", "field_type": "uint8_t", "source_field_id": ""},
                 ],
                 "reason": "Repeated SUBSCRIBE topic filters need a stable item struct.",
@@ -569,6 +597,38 @@ def derive_type_generation_targets(draft: dict[str, Any], module_artifact: dict[
         enum_names = ["RESERVED"] if protocol == "mqtt" else []
         enum_names.extend(str(item["name"]).upper().replace(" ", "_") for item in enum_messages)
         source_message_ids = [str(item["message_id"]) for item in enum_messages]
+        needed_view_types = sorted(
+            {
+                str(field.get("field_type", "")).strip()
+                for fields in grouped_fields.values()
+                for field in fields
+                if str(field.get("field_type", "")).strip()
+                in {protocol_view_type_name(protocol, "string_view"), protocol_view_type_name(protocol, "buffer_view")}
+            }
+        )
+        for view_type_name in needed_view_types:
+            view_kind = "string_view" if "string" in view_type_name else "buffer_view"
+            targets.append(
+                {
+                    "target_id": f"target:{module_id}:{view_kind}",
+                    "target_kind": "view_struct",
+                    "suggested_name": view_type_name,
+                    "owner_module_id": module_id,
+                    "source_message_ids": source_message_ids,
+                    "source_field_ids": [
+                        str(field.get("field_id", ""))
+                        for fields in grouped_fields.values()
+                        for field in fields
+                        if str(field.get("field_type", "")).strip() == view_type_name and str(field.get("field_id", "")).strip()
+                    ],
+                    "required_fields": [
+                        {"field_name": "data", "field_type": "const uint8_t*", "source_field_id": ""},
+                        {"field_name": "len", "field_type": "size_t", "source_field_id": ""},
+                    ],
+                    "reason": f"Protocol {view_kind.replace('_', ' ')} fields require a declared C-facing view type.",
+                    "trace_ref_keys": source_message_ids,
+                }
+            )
         targets.append(
             {
                 "target_id": f"target:{module_id}:packet_enum",
@@ -1775,6 +1835,8 @@ def _provider_consumer_modules(draft: dict[str, Any], module_artifact: dict[str,
 
 def _type_seed_kind(name: str, role: str, target_kind: str = "") -> str:
     text = f"{name} {role} {target_kind}".lower()
+    if target_kind == "view_struct":
+        return "view_struct"
     if "connection" in text and name.endswith("_t"):
         return "opaque_handle"
     if target_kind == "packet_enum" or "enum" in text or "packet_type" in text:
@@ -1893,7 +1955,7 @@ def public_type_seed_index(draft: dict[str, Any], planning_ir: dict[str, Any] | 
                 )
         for target in derive_type_generation_targets(draft, module, planning_ir):
             target_kind = str(target.get("target_kind", ""))
-            if target_kind not in {"packet_enum", "payload_struct", "packet_container_struct", "owned_buffer", "callback_or_event_boundary"}:
+            if target_kind not in {"packet_enum", "view_struct", "payload_struct", "packet_container_struct", "owned_buffer", "callback_or_event_boundary"}:
                 continue
             name = str(target.get("suggested_name", "")).strip()
             if not name or _is_internal_connection_seed(name, str(target.get("reason", ""))):
@@ -2002,12 +2064,18 @@ def build_type_inventory_context(draft: dict[str, Any], module_artifact: dict[st
     }
 
 
-def build_function_inventory_context(draft: dict[str, Any], module_artifact: dict[str, Any]) -> dict[str, Any]:
+def build_function_inventory_context(
+    draft: dict[str, Any],
+    module_artifact: dict[str, Any],
+    planning_ir: dict[str, Any] | None = None,
+    profile: dict[str, Any] | None = None,
+    constraints: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     module_id = str(module_artifact.get("module_id", ""))
     provider_modules, consumers = _provider_consumer_modules(draft, module_artifact)
     from .inventory_planning_space import build_function_planning_space
 
-    function_planning_space = build_function_planning_space(draft, module_artifact)
+    function_planning_space = build_function_planning_space(draft, module_artifact, planning_ir, profile, constraints)
     context = {
         "schema_version": "function_annotation_context/v1",
         "function_planning_space": function_planning_space,
@@ -2172,6 +2240,7 @@ def build_calls_allowed_context(
             for item in cross_module_callers
         ],
         "callable_functions": provider_summaries,
+        "allowed_value_bindings": _call_value_binding_universe(draft, cross_module_callers, callable_functions),
         "required_call_update_caller_ids": sorted(scoped_ids),
         "required_call_update_skeleton": _call_update_skeleton(cross_module_callers),
         "expected_cross_module_service_requirements": expected_requirements,
@@ -2264,6 +2333,75 @@ def _layout_function_cluster(function: dict[str, Any]) -> dict[str, Any]:
         "service_requirements": service_requirements,
         "call_contract_count": len(call_contracts) if isinstance(call_contracts, list) else 0,
     }
+
+
+def _call_value_binding_universe(draft: dict[str, Any], scoped_functions: list[dict[str, Any]], callable_functions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    access_paths_by_function: dict[str, list[dict[str, str]]] = {}
+    for item in draft.get("access_path_table", []) if isinstance(draft.get("access_path_table"), list) else []:
+        if not isinstance(item, dict):
+            continue
+        function_id = str(item.get("function_id", "")).strip()
+        path = str(item.get("path", "")).strip()
+        if function_id and path:
+            access_paths_by_function.setdefault(function_id, []).append(
+                {
+                    "access_path_id": str(item.get("access_path_id", "")),
+                    "path": path,
+                    "field_id": str(item.get("field_id", "")),
+                    "c_type": str(item.get("c_type", "")),
+                }
+            )
+    function_symbols = sorted(
+        {
+            value
+            for function in [*scoped_functions, *callable_functions]
+            if isinstance(function, dict)
+            for value in (
+                str(function.get("function_id", "")).strip(),
+                str(function.get("name", "")).strip(),
+                str((function.get("signature", {}) if isinstance(function.get("signature"), dict) else {}).get("name", "")).strip(),
+            )
+            if value
+        }
+    )
+    state_refs = [
+        {"state_id": str(item.get("state_id", "")), "owner_module_id": str(item.get("owner_module_id", ""))}
+        for item in draft.get("state_design", []) if isinstance(item, dict) and str(item.get("state_id", "")).strip()
+    ]
+    resource_refs = [
+        {"resource_id": str(item.get("resource_id", "")), "owner_module_id": str(item.get("owner_module_id", ""))}
+        for item in draft.get("resource_lifecycle", []) if isinstance(item, dict) and str(item.get("resource_id", "")).strip()
+    ]
+    result: list[dict[str, Any]] = []
+    for function in scoped_functions:
+        if not isinstance(function, dict):
+            continue
+        signature = function.get("signature", {}) if isinstance(function.get("signature"), dict) else {}
+        params = [
+            {"name": str(param.get("name", "")), "type": str(param.get("type", "")), "type_ref": str(param.get("type_ref", ""))}
+            for param in signature.get("params", []) if isinstance(param, dict) and str(param.get("name", "")).strip()
+        ]
+        requirements = [
+            {
+                "service_requirement_id": str(requirement.get("service_requirement_id", "")),
+                "expected_inputs": [str(item) for item in requirement.get("expected_inputs", []) if str(item).strip()],
+            }
+            for requirement in function.get("service_requirements", [])
+            if isinstance(requirement, dict) and str(requirement.get("service_requirement_id", "")).strip()
+        ]
+        result.append(
+            {
+                "function_id": str(function.get("function_id", "")),
+                "signature_params": params,
+                "access_paths": access_paths_by_function.get(str(function.get("function_id", "")), []),
+                "state_refs": state_refs,
+                "resource_refs": resource_refs,
+                "service_requirement_inputs": requirements,
+                "callable_function_symbols": function_symbols,
+                "value_ref_rule": "param_bindings[].value_ref must be one signature param name, one access path, a declared state/resource/source object, a callable function symbol, or a concrete C expression derived from those; prose descriptions are invalid.",
+            }
+        )
+    return result
 
 
 def _file_layout_module_summaries(draft: dict[str, Any]) -> list[dict[str, Any]]:

@@ -12,7 +12,11 @@
 当前执行状态：
 
 ```text
-Step 4 completed：type inventory、public type obligations、function signatures、callback/function pointer closure、coder header ABI closure 已建立 fail-closed validation。
+Step 5 semantic actionability 修复继续推进；本轮专门修复 20260617 两次运行暴露的问题。
+20260617_172331_047723 的 5.3 string_view/buffer_view 未声明 type ref blocker 已通过 targeted resume。
+20260617_103648_329047 的 5.4e prose value_ref 已能在 stage validator 报 call_contract_unknown_value_ref。
+MQTT fresh planning run 仍未完成：architecture generation request 长时间无新输出，被中断，未产出 implementation_plan/spec_bundle。
+当前不能把 targeted resume 或 deterministic/unit 验证冒充为 fresh-run 完成。
 ```
 
 说明：
@@ -83,47 +87,47 @@ Step 4 completed：type inventory、public type obligations、function signature
 当前步骤：
 
 ```text
-Step 4：type inventory 与 function signature closure（已完成）
+Step 5：semantic actionability（本轮已实现；fresh-run 指标未完成）
 ```
 
 目标：
 
 ```text
-在 dependency/header readiness 与 file layout 稳定基础上，修复 5.3_type_data 与 5.4b_function_signatures 的 public ABI 质量。
-public types、callbacks、manager/session/router/network types 与 function signatures 必须可闭合、可渲染、可调用。
+在 closure/readiness 稳定后，提升 5.4a-5.4e 的语义质量。
+behavior、wire/access、call contracts、test vectors 必须绑定 declared functions/types/resources/fields/access paths，
+使 planning 输出更适合 coder 生成可编译、可 smoke 的实现。
 ```
 
 涉及模块候选：
 
 ```text
-agent/planning/stages/coder_spec_lowering.py
 agent/planning/stages/inventory_planning_space.py
 agent/planning/stages/inventory_reconciliation.py
+agent/planning/stages/implementation_plan_context.py
 agent/planning/stages/implementation_plan_merger.py
-agent/planning/orchestrator.py
 agent/planning/stages/specs_compiler.py
 agent/planning/validators/implementation_plan_stages.py
-agent/planning/validators/coder_semantics.py
-agent/coder/specs.py
-agent/coder/header_recipes.py
+agent/planning/prompts/templates.py
 相关 tests / fixtures
 ```
 
 本步骤任务清单：
 
 ```text
-[x] public type obligation report 生成并写入 5.3 sidecar。
-[x] 5.3 type inventory validator 覆盖 callback return/params、function pointer fields、alias、struct fields。
-[x] public ABI unknown/stale/private type refs fail-closed，不再 silent normalize 成 void*。
-[x] 5.4b function signature validator 检查 SIGNATURE.RAW / RETURN / PARAMS canonical 一致。
-[x] public signature non-system type refs 必须解析为 public/local/provider/system 类型。
-[x] final readiness 扫描 final plan 中 signature、access path、call contract、type fields/callbacks/aliases 的 stale/private refs。
-[x] coder spec loader 将 HEADER/SOURCE/FUNCTION_SPEC signature drift 升级为 blocking。
-[x] coder semantics 校验 provider header visibility、callback typedef、callback struct field、function pointer field closure。
-[x] function pointer struct field header rendering 可生成合法 C declaration。
-[x] Step 4 regression tests。
-[x] MQTT validate + deterministic MQTT spec bundle rendered header validation。
-[x] 当前状态文件更新
+[x] function_family_obligation_report/v1 接入 5.4a planning space / reconciliation / validator / orchestrator diagnostics。
+[x] 5.4c behavior action binding validator 接入 declared state/resource/type/error/source/callee/wire/access refs。
+[x] 5.4d wire/access closure validator 强化 required field、target path、skip/reject reason、type ref 检查。
+[x] 5.4e call precision validator 强化 unknown/stale callee、cross-module/private、param binding、failure policy 检查。
+[x] final readiness 增加 behavior/wire/call/test-vector 汇总检查。
+[x] coder loader 增加 stale CALL_CONTRACTS、CALL_CONTRACTS/RELY drift、WIRE_MAPPING missing TEST_VECTORS diagnostics。
+[x] 5.4c/5.4d/5.4e prompt rules 明确只能绑定 existing declared artifacts，不能输出 final dependency_graph。
+[x] 5.3 declared view type closure 接入：`mqtt_string_view_t` / `mqtt_buffer_view_t` 进入 type planning space / reconciliation / lowering。
+[x] 5.4e call binding context 增加 `allowed_value_bindings`，prose `value_ref` 在 candidate validator 阶段 blocking。
+[x] specs compiler 修复 exported public `type_inventory` type lowering，避免只按 canonical_types 解析 `exports_type_ids`。
+[x] Step 5 regression tests 通过。
+[x] deterministic MQTT Step 5 spec bundle 可通过 coder validate，behavior/call/wire 字段可解释到 declared artifacts。
+[ ] MQTT fresh planning output 可解释到 declared artifacts：本轮未完成，见失败检查。
+[x] 当前状态文件更新。
 ```
 
 ## 4. Step 1 / Step 2 / Step 3 完成指标
@@ -175,21 +179,177 @@ agent/coder/header_recipes.py
 [x] docs/CURRENT_TASK_STATUS.md 已更新。
 ```
 
+只有同时满足以下条件，才能标记 Step 5 完成：
+
+```text
+[x] function family obligation validator 接入。
+[x] behavior action binding validator 接入。
+[x] wire/access closure validator 接入。
+[x] call contract precision validator 接入。
+[~] MQTT planning output 的 behavior/call/wire 字段能解释到 declared artifacts：
+    deterministic Step 5 bundle 已验证通过；fresh planning run 本轮未完成。
+[x] docs/CURRENT_TASK_STATUS.md 已更新。
+```
+
 ## 5. 建议下一轮 Codex 会话入口
 
 下一轮会话建议执行：
 
 ```text
 请阅读 AGENT.md、PLANNING_STABILIZATION_TASKS.md 和 CURRENT_TASK_STATUS.md。
-Step 4 已完成。下一轮固定进入 Step 5：semantic actionability。
-建议优先使用 agent/planning/out/mqtt_step4_type_signature_closure_deterministic/spec_bundle 与 Step 4 diagnostics/tests 作为输入基线。
-不要提前进入 Step 6 多协议复现。
-不要回退 Step 1/2/3 strict validators，不要压缩 strict schema，不要关闭 rendered header validation。
+Step 5 代码与 deterministic/spec 验证已完成；fresh MQTT planning run 未完成。
+下一轮入口固定为 Step 6：MQTT/CoAP/SMTP 最小功能复现。
+进入 Step 6 前必须先重跑 MQTT fresh planning，确认 Step 5 fresh-run 指标补齐。
+不要回退 Step 1/2/3/4/5 strict validators，不要压缩 strict schema，不要关闭 rendered header validation。
 ```
 
 ## 6. 会话记录摘要
 
-本节只保留后续执行需要的 Step 1 压缩历史。早期 Session 000-009 的逐轮修复细节已合并，避免干扰后续 coder compile/smoke 与多协议复现。
+本节保留后续执行需要的压缩历史与最近一轮任务记录。早期 Session 000-009 的逐轮修复细节已合并，避免干扰后续 coder compile/smoke 与多协议复现。
+
+### Step 5 本轮记录
+
+时间：
+
+```text
+2026-06-17
+```
+
+本轮目标：
+
+```text
+继续优化 semantic actionability，并修复两次 20260617 MQTT run 暴露出的具体 blocker：
+1. 20260617_172331_047723：5.3 codec 中 string_view / buffer_view 泄漏为 undeclared type ref。
+2. 20260617_103648_329047：5.4e/final readiness 中 param_bindings[].value_ref 使用 prose。
+```
+
+修改文件：
+
+```text
+agent/planning/stages/inventory_planning_space.py
+agent/planning/stages/inventory_reconciliation.py
+agent/planning/stages/implementation_plan_context.py
+agent/planning/stages/implementation_plan_merger.py
+agent/planning/stages/specs_compiler.py
+agent/planning/prompts/templates.py
+agent/planning/validators/implementation_plan_stages.py
+agent/planning/tests/test_implementation_plan_stage_candidates.py
+agent/planning/tests/test_coder_schema_lowering.py
+docs/CURRENT_TASK_STATUS.md
+```
+
+新增/更新测试：
+
+```text
+1. required function family missing -> function_family_obligation_uncovered。
+2. required function family covered -> pass/report covered。
+3. behavior action unknown field/helper/source data -> blocking diagnostics。
+4. behavior action declared field/function/type refs -> pass。
+5. wire mapping target path unknown -> blocking。
+6. skip/reject missing reason -> blocking。
+7. forbidden cross-module call -> blocking。
+8. call failure policy mismatch -> blocking。
+9. missing smoke test vector anchor -> readiness diagnostic。
+10. coder loader stale CALL_CONTRACTS / CALL_CONTRACTS-RELY drift / missing WIRE_MAPPING TEST_VECTORS diagnostics。
+11. string_view / buffer_view without declared view type -> undeclared_view_type_alias。
+12. declared mqtt_string_view_t / mqtt_buffer_view_t lower to TYPE_SPEC and coder compatibility passes。
+13. 5.4e prose value_ref -> call_contract_unknown_value_ref。
+14. declared caller param binding such as message -> message passes。
+```
+
+实际运行命令：
+
+```text
+python3 -m compileall -q agent/planning agent/coder tools
+python3 -m unittest agent.planning.tests.test_implementation_plan_stage_candidates agent.planning.tests.test_coder_schema_lowering
+python3 -m unittest agent.planning.tests.test_implementation_plan_stage_candidates agent.planning.tests.test_coder_schema_lowering agent.planning.tests.test_validators
+python3 -m agent.planning plan --facts agent/facts/gold_facts/mqtt_min/protocol_facts.json --target-profile agent/planning/planning_target_profile_mqtt.json --output-dir agent/planning/out/mqtt_step5_semantic_actionability_fresh
+python3 -m agent.planning plan --facts agent/facts/gold_facts/mqtt_min/protocol_facts.json --target-profile agent/planning/planning_target_profile_mqtt.json --resume-source-dir agent/planning/out/mqtt/broker__c__linux_epoll__minimum_v1/20260617_172331_047723 --resume-from-stage implementation_plan_5_3 --stop-after-stage implementation_plan_5_3 --output-dir agent/planning/out/mqtt_step5_resume_172331_type_fix
+python3 -m agent.planning plan --facts agent/facts/gold_facts/mqtt_min/protocol_facts.json --target-profile agent/planning/planning_target_profile_mqtt.json --resume-source-dir agent/planning/out/mqtt/broker__c__linux_epoll__minimum_v1/20260617_103648_329047 --resume-from-stage implementation_plan_5_4e --stop-after-stage implementation_plan_5_7 --output-dir agent/planning/out/mqtt_step5_resume_103648_call_fix
+python3 -m agent.planning verify --output-dir agent/planning/out/mqtt_step5_semantic_actionability_fresh
+python3 -m agent.planning verify --output-dir agent/planning/out/mqtt_step5_resume_172331_type_fix
+python3 -m agent coder --spec-root agent/planning/out/mqtt_step5_semantic_actionability_fresh/spec_bundle validate
+python3 - <<'PY'
+... load 20260617_103648_329047 old 5.4e candidate and run validate_calls_allowed_candidate(...)
+PY
+```
+
+通过的检查：
+
+```text
+compileall 通过。
+指定 unittest 三件套 197 tests 通过：
+  agent.planning.tests.test_implementation_plan_stage_candidates
+  agent.planning.tests.test_coder_schema_lowering
+  agent.planning.tests.test_validators
+20260617_172331_047723 targeted resume from 5.3 passed/stopped：
+  codec final_inventory accepted；
+  5.3 all_modules validation passed；
+  mqtt_string_view_t / mqtt_buffer_view_t 出现在 codec planning space 与 final type inventory；
+  原 unknown/stale string_view/buffer_view blocker 不再出现。
+20260617_103648_329047 old 5.4e candidate 离线 validator：
+  5 个 prose value_ref 均报 call_contract_unknown_value_ref；
+  包括 client session、client ID、connection handle、decoded PUBLISH packet、client ID and topic filters。
+```
+
+失败的检查：
+
+```text
+MQTT fresh planning run：未完成。
+实际停止点：architecture generation_request=1/2/3 start 后长时间无新 stdout，未产出 architecture_candidates / implementation_plan / spec_bundle。
+fresh verify：失败，缺 architecture_candidates、implementation_plan、coder_manifest、spec_bundle 等 artifacts。
+fresh coder validate：失败，spec_bundle 下无 PROTOCOL_MODULE_SPEC。
+20260617_172331 targeted resume verify：失败是预期的 stopped output，缺 implementation_plan、dependency_validation_report、coder_manifest、spec_bundle。
+20260617_103648 targeted resume from 5.4e：失败并停在 5.4a，因为旧 artifact 在当前 function family gate 下报 function_family_obligation_uncovered。
+```
+
+新增 diagnostics：
+
+```text
+function_family_obligation_uncovered
+behavior_action_unknown_field
+behavior_action_unknown_helper
+behavior_action_unknown_state
+behavior_action_unknown_resource
+behavior_action_unknown_error
+behavior_action_unknown_access_path
+behavior_action_unknown_source_data
+behavior_action_unbound
+wire_mapping_target_path_unknown
+wire_mapping_skip_reject_missing_reason
+stale_type_ref
+forbidden_cross_module_call
+call_contract_failure_policy_mismatch
+readiness_call_contract_failure_policy_mismatch
+readiness_behavior_action_unbound
+readiness_core_message_fields_without_access
+coder_unknown_call_contract_callee
+coder_call_contract_rely_drift
+coder_missing_wire_mapping_test_vectors
+undeclared_view_type_alias
+missing_view_type
+view_type_field_mismatch
+call_contract_unknown_value_ref
+```
+
+新增风险：
+
+```text
+1. MQTT fresh-run Step 5 指标未补齐；下一轮进入 Step 6 前必须先重跑 fresh planning。
+2. function family obligations 现在基于 owned_capabilities / deterministic seeds / decomposition ownership 派生；CoAP/SMTP 可能需要按协议 minimum scope 调整映射。
+3. behavior explicit refs 依赖 field:/fn:/type:/state:/resource:/error:/access:/source_data: 约定，prompt 已强化，但 LLM 输出仍可能需要 repair。
+4. strict diagnostics 增加后，旧 resume artifacts 可能需要从 5.3/5.4a/5.4c 重新生成，不能直接从更晚 substage 继承。
+5. declared view type 改为 public C-facing view structs 后，下游 coder/source generation 需要使用 `.data` / `.len` 而不是裸 char* / uint8_t*。
+```
+
+Step 5 完成结论：
+
+```text
+代码接入、测试、deterministic/spec bundle 验证已完成。
+两个 20260617 run 暴露的具体 blocker 均已被 targeted 验证覆盖。
+fresh MQTT planning output 指标未完成，不能标记为完全 fresh-run complete。
+下一轮入口：Step 6 MQTT/CoAP/SMTP 最小功能复现；进入前必须先补跑 MQTT fresh planning。
+```
 
 ### Step 1 压缩记录
 

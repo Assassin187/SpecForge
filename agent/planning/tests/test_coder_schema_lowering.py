@@ -399,6 +399,65 @@ class CoderSchemaLoweringTests(unittest.TestCase):
                     if raw.get("WIRE_MAPPING"):
                         self.assertTrue(raw.get("TEST_VECTORS"))
 
+    def test_declared_view_types_lower_to_type_spec(self) -> None:
+        plan = _zap_plan()
+        plan["file_layout"]["files"][0]["exports_type_ids"].extend(["type:framing:mqtt_string_view_t", "type:framing:mqtt_buffer_view_t"])
+        plan["type_inventory"] = [
+            {
+                "type_id": "type:framing:mqtt_string_view_t",
+                "name": "mqtt_string_view_t",
+                "module_id": "framing",
+                "kind": "view_struct",
+                "visibility": "public",
+                "defined_in": "public_header",
+                "purpose": "Declared protocol string view",
+                "fields": [
+                    {"field_name": "data", "field_type": "const uint8_t*", "type_ref": "uint8_t", "required": True, "ownership": "BORROWED", "lifetime": "borrowed", "length_field": "len", "capacity_field": "", "validation_notes": ""},
+                    {"field_name": "len", "field_type": "size_t", "type_ref": "size_t", "required": True, "ownership": "BORROWED", "lifetime": "value", "length_field": "", "capacity_field": "", "validation_notes": ""},
+                ],
+                "enum_values": [],
+                "callback_signature": {"return_type": "", "params": []},
+                "ownership_lifetime": "",
+                "lifecycle": {"created_by": [], "initialized_by": [], "destroyed_by": [], "freed_by": []},
+                "related_functions": [],
+                "dependencies": [],
+                "trace_ref_keys": [],
+                "status": "inferred",
+            },
+            {
+                "type_id": "type:framing:mqtt_buffer_view_t",
+                "name": "mqtt_buffer_view_t",
+                "module_id": "framing",
+                "kind": "view_struct",
+                "visibility": "public",
+                "defined_in": "public_header",
+                "purpose": "Declared protocol buffer view",
+                "fields": [
+                    {"field_name": "data", "field_type": "const uint8_t*", "type_ref": "uint8_t", "required": True, "ownership": "BORROWED", "lifetime": "borrowed", "length_field": "len", "capacity_field": "", "validation_notes": ""},
+                    {"field_name": "len", "field_type": "size_t", "type_ref": "size_t", "required": True, "ownership": "BORROWED", "lifetime": "value", "length_field": "", "capacity_field": "", "validation_notes": ""},
+                ],
+                "enum_values": [],
+                "callback_signature": {"return_type": "", "params": []},
+                "ownership_lifetime": "",
+                "lifecycle": {"created_by": [], "initialized_by": [], "destroyed_by": [], "freed_by": []},
+                "related_functions": [],
+                "dependencies": [],
+                "trace_ref_keys": [],
+                "status": "inferred",
+            },
+        ]
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(plan, Path(raw_tmp))
+            self.assertFalse([diag.__dict__ for diag in validate_coder_compatibility(manifest["spec_root"]) if diag.level == "error"])
+            data_names = {
+                item.get("NAME")
+                for path in Path(manifest["spec_root"]).rglob("*_spec.json")
+                for item in json.loads(path.read_text(encoding="utf-8")).get("HEADER", {}).get("DATA", [])
+                if isinstance(item, dict)
+            }
+            self.assertIn("mqtt_string_view_t", data_names)
+            self.assertIn("mqtt_buffer_view_t", data_names)
+
     def test_non_mqtt_public_interfaces_artifacts_and_metadata_lowering(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:
             manifest, _ = compile_spec_bundle(_zap_plan(), Path(raw_tmp))
@@ -961,6 +1020,64 @@ class CoderSchemaLoweringTests(unittest.TestCase):
             framing_path.write_text(json.dumps(framing_spec, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
             diagnostics = validate_coder_compatibility(manifest["spec_root"])
             self.assertIn("coder_call_contract_signature_mismatch", {diag.code for diag in diagnostics if diag.level == "error"})
+
+    def test_coder_loader_reports_stale_call_contract_and_rely_drift(self) -> None:
+        plan = copy.deepcopy(_zap_plan())
+        plan["function_contracts"][0]["call_contracts"] = [
+            {
+                "callee_function_id": "func:framing:crc",
+                "call_kind": "utility",
+                "required": True,
+                "service_requirement_ids": [],
+                "call_reason": "update checksum",
+                "param_bindings": [],
+                "return_binding": {"policy": "assign", "target_ref": "crc", "cleanup_function_id": ""},
+                "failure_behavior": "return_error",
+            }
+        ]
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(plan, Path(raw_tmp))
+            function_path = next(path for path in Path(manifest["spec_root"]).rglob("*_spec.json") if path.name == "zapline_frame_encode_spec.json")
+            function_spec = json.loads(function_path.read_text(encoding="utf-8"))
+            function_spec["CALL_CONTRACTS"][0]["NAME"] = "zapline_missing_crc"
+            function_spec["RELY"]["FUNC"][0]["NAME"] = "zapline_missing_crc"
+            function_path.write_text(json.dumps(function_spec, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            diagnostics = validate_coder_compatibility(manifest["spec_root"])
+            self.assertIn("coder_unknown_call_contract_callee", {diag.code for diag in diagnostics if diag.level == "error"})
+
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(plan, Path(raw_tmp))
+            function_path = next(path for path in Path(manifest["spec_root"]).rglob("*_spec.json") if path.name == "zapline_frame_encode_spec.json")
+            function_spec = json.loads(function_path.read_text(encoding="utf-8"))
+            function_spec["RELY"]["FUNC"][0]["NAME"] = "zapline_drifted_crc"
+            function_path.write_text(json.dumps(function_spec, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            diagnostics = validate_coder_compatibility(manifest["spec_root"])
+            self.assertIn("coder_call_contract_rely_drift", {diag.code for diag in diagnostics if diag.level == "error"})
+
+    def test_coder_loader_reports_wire_mapping_without_test_vector_anchor(self) -> None:
+        plan = copy.deepcopy(_zap_plan())
+        plan["function_contracts"][0]["wire_mapping"] = [
+            {
+                "mapping_id": "wire:opcode",
+                "field_id": "field:opcode",
+                "message": "ZapFrame",
+                "field": "opcode",
+                "access_path_id": "",
+                "direction": "serialize",
+                "strategy": "store_in_field",
+                "target_path": "buffer",
+                "source_expr": "input[0]",
+                "rule": "opcode byte maps directly",
+            }
+        ]
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(plan, Path(raw_tmp))
+            function_path = next(path for path in Path(manifest["spec_root"]).rglob("*_spec.json") if path.name == "zapline_frame_encode_spec.json")
+            function_spec = json.loads(function_path.read_text(encoding="utf-8"))
+            function_spec.pop("TEST_VECTORS", None)
+            function_path.write_text(json.dumps(function_spec, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            diagnostics = validate_coder_compatibility(manifest["spec_root"])
+            self.assertIn("coder_missing_wire_mapping_test_vectors", {diag.code for diag in diagnostics if diag.level == "warning"})
 
     def test_pointer_return_signature_parser_and_canonical_spacing(self) -> None:
         parsed = parse_c_function_signature("mqtt_packet_t *mqtt_packet_new(const mqtt_connection_t *conn)")

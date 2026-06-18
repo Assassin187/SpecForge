@@ -52,6 +52,91 @@ PUBLIC_TYPE_OBLIGATION_CATEGORIES = (
     "error/result type",
 )
 
+FUNCTION_FAMILY_OBLIGATIONS = (
+    {
+        "family": "lifecycle",
+        "label": "init/create/destroy lifecycle",
+        "required_terms": ("lifecycle", "runtime", "resource", "session", "connection", "context", "broker", "server", "app", "timer", "buffer"),
+        "coverage_terms": ("init", "create", "destroy", "free", "cleanup", "release", "start", "run", "stop", "shutdown", "close", "lifecycle"),
+        "coverage_kinds": ("resource_lifecycle",),
+        "coverage_roles": ("runtime_create", "runtime_start", "runtime_run", "runtime_destroy"),
+        "coverage_caps": ("role_composition", "transport_io", "session_state", "timing"),
+    },
+    {
+        "family": "parse_decode",
+        "label": "parse/decode",
+        "required_terms": ("parse", "parser", "decode", "decoder", "framing", "wire", "packet", "field", "header", "remaining length"),
+        "coverage_terms": ("parse", "parser", "decode", "decoder", "read", "frame", "token", "field", "remaining"),
+        "coverage_kinds": ("parser",),
+        "coverage_caps": ("message_decode", "message_framing"),
+    },
+    {
+        "family": "serialize_encode",
+        "label": "serialize/encode",
+        "required_terms": ("serialize", "serializer", "encode", "encoder", "response", "reply", "writer", "output"),
+        "coverage_terms": ("serialize", "serializer", "encode", "encoder", "write", "response", "reply", "buffer"),
+        "coverage_kinds": ("serializer",),
+        "coverage_caps": ("message_encode",),
+    },
+    {
+        "family": "validate",
+        "label": "validate",
+        "required_terms": ("validate", "validation", "malformed", "invalid", "precondition", "bounds", "constraint"),
+        "coverage_terms": ("validate", "check", "malformed", "invalid", "reject", "precondition", "bounds"),
+        "coverage_kinds": ("validator", "state_machine"),
+        "coverage_caps": ("protocol_error_policy", "message_decode", "message_encode", "state_machine"),
+    },
+    {
+        "family": "handle_request_command",
+        "label": "handle/request/command",
+        "required_terms": ("handle", "handler", "request", "command", "dispatch", "route", "semantic", "event"),
+        "coverage_terms": ("handle", "handler", "request", "command", "dispatch", "route", "classify", "select"),
+        "coverage_kinds": ("handler",),
+        "coverage_caps": ("semantic_dispatch", "routing_index", "role_composition"),
+    },
+    {
+        "family": "state_transition",
+        "label": "state transition",
+        "required_terms": ("state", "session", "transaction", "transition", "login", "expiry"),
+        "coverage_terms": ("state", "session", "transition", "transaction", "update", "commit", "abort", "expire"),
+        "coverage_kinds": ("state_machine",),
+        "coverage_caps": ("state_machine", "session_state", "timing"),
+    },
+    {
+        "family": "transport_io",
+        "label": "send/receive transport",
+        "required_terms": ("transport", "network", "socket", "tcp", "udp", "epoll", "send", "receive", "read", "write", "accept"),
+        "coverage_terms": ("transport", "socket", "send", "receive", "read", "write", "accept", "flush", "poll", "epoll"),
+        "coverage_kinds": ("internal_helper", "public_api"),
+        "coverage_caps": ("transport_io",),
+    },
+    {
+        "family": "error_handling",
+        "label": "error handling",
+        "required_terms": ("error", "malformed", "invalid", "failure", "cleanup", "close_connection", "reject"),
+        "coverage_terms": ("error", "malformed", "invalid", "failure", "cleanup", "rollback", "reject", "close"),
+        "coverage_kinds": ("error_helper",),
+        "coverage_caps": ("protocol_error_policy",),
+    },
+    {
+        "family": "timer_timeout",
+        "label": "timer/timeout",
+        "required_terms": ("timer", "timeout", "keep_alive", "keepalive", "expiry", "expire", "retransmission"),
+        "coverage_terms": ("timer", "timeout", "keep_alive", "keepalive", "expire", "expiry", "retransmission"),
+        "coverage_kinds": ("resource_lifecycle", "state_machine"),
+        "coverage_caps": ("timing", "timer", "timeout"),
+    },
+    {
+        "family": "integration_entrypoint",
+        "label": "integration entrypoint",
+        "required_terms": ("role_composition", "broker", "server", "client", "app", "application", "runtime", "entrypoint", "main"),
+        "coverage_terms": ("main", "entrypoint", "run", "start", "serve", "broker", "server", "app", "runtime", "callback", "adapter"),
+        "coverage_kinds": ("public_api",),
+        "coverage_roles": ("runtime_start", "runtime_run"),
+        "coverage_caps": ("role_composition",),
+    },
+)
+
 EXAMPLE_FUNCTION_BASELINES = {
     "network": 28,
     "mqtt_codec": 16,
@@ -216,6 +301,174 @@ def build_public_type_obligation_report(space: dict[str, Any], types: list[dict[
     }
 
 
+def _function_family_source_text(space: dict[str, Any]) -> str:
+    source_context = space.get("source_context", {}) if isinstance(space.get("source_context"), dict) else {}
+    module_ownership = source_context.get("module_ownership", {}) if isinstance(source_context.get("module_ownership"), dict) else {}
+    decomposition = source_context.get("decomposition_context", {}) if isinstance(source_context.get("decomposition_context"), dict) else {}
+    profile = source_context.get("protocol_profile", {}) if isinstance(source_context.get("protocol_profile"), dict) else {}
+    return _obligation_text(
+        space.get("module_id", ""),
+        source_context.get("target_role", ""),
+        profile.get("minimum_scope", {}),
+        profile.get("implementation_boundary", {}),
+        module_ownership.get("role", ""),
+        module_ownership.get("artifacts", []),
+        module_ownership.get("owned_capabilities", []),
+        module_ownership.get("state_owned", []),
+        decomposition.get("selected_rule_ids", []),
+        decomposition.get("expected_function_families_by_rule", {}),
+        [slot.get("purpose", "") for group in ("mandatory_function_seeds", "obligation_function_seeds", "handler_function_seeds", "parser_serializer_function_seeds", "recommended_function_families") for slot in space.get(group, []) if isinstance(slot, dict)],
+        [slot.get("name", "") for group in ("mandatory_function_seeds", "obligation_function_seeds", "handler_function_seeds", "parser_serializer_function_seeds", "recommended_function_families") for slot in space.get(group, []) if isinstance(slot, dict)],
+    )
+
+
+def _family_required(obligation: dict[str, Any], source_text: str, space: dict[str, Any]) -> tuple[bool, str]:
+    source_context = space.get("source_context", {}) if isinstance(space.get("source_context"), dict) else {}
+    module_ownership = source_context.get("module_ownership", {}) if isinstance(source_context.get("module_ownership"), dict) else {}
+    decomposition = source_context.get("decomposition_context", {}) if isinstance(source_context.get("decomposition_context"), dict) else {}
+    owned_caps = {str(item) for item in module_ownership.get("owned_capabilities", []) if str(item).strip()}
+    selected_rules = {str(item) for item in decomposition.get("selected_rule_ids", []) if str(item).strip()}
+    seeds = [
+        item
+        for group in ("mandatory_function_seeds", "obligation_function_seeds", "handler_function_seeds", "parser_serializer_function_seeds")
+        for item in space.get(group, [])
+        if isinstance(item, dict)
+    ]
+    seed_kinds = {str(seed.get("function_kind", "")) for seed in seeds if str(seed.get("function_kind", "")).strip()}
+    seed_roles = {str(seed.get("public_api_role", "")) for seed in seeds if str(seed.get("public_api_role", "")).strip()}
+    has_profile_or_ir_evidence = bool(source_context.get("protocol_profile") or source_context.get("wire_field_count") or source_context.get("engineering_constraints"))
+    if not has_profile_or_ir_evidence and not owned_caps and not seeds:
+        return False, "no target profile, protocol IR, capability, or deterministic seed evidence requires this family"
+    terms = tuple(str(term) for term in obligation.get("required_terms", ()))
+    family = str(obligation.get("family", ""))
+    required = False
+    if family == "lifecycle":
+        required = bool(owned_caps & {"role_composition", "transport_io", "session_state", "timing"} or "resource_lifecycle" in seed_kinds or seed_roles & {"runtime_create", "runtime_start", "runtime_run", "runtime_destroy"})
+    elif family == "parse_decode":
+        required = bool(owned_caps & {"message_decode", "message_framing"} or "parser" in seed_kinds)
+    elif family == "serialize_encode":
+        required = bool("message_encode" in owned_caps or "serializer" in seed_kinds)
+    elif family == "validate":
+        required = bool(owned_caps & {"protocol_error_policy", "message_decode", "message_encode", "state_machine"} or "validator" in seed_kinds)
+    elif family == "handle_request_command":
+        required = bool(owned_caps & {"semantic_dispatch", "routing_index", "role_composition"} or "handler" in seed_kinds or space.get("handler_function_seeds"))
+    elif family == "state_transition":
+        required = bool(owned_caps & {"state_machine", "session_state", "timing"} or "state_machine" in seed_kinds or "session_transaction_state" in selected_rules)
+    elif family == "transport_io":
+        required = bool("transport_io" in owned_caps or "transport_runtime_io" in selected_rules)
+    elif family == "error_handling":
+        required = bool("protocol_error_policy" in owned_caps or "error_helper" in seed_kinds)
+    elif family == "timer_timeout":
+        required = bool(owned_caps & {"timing", "timer", "timeout"})
+    elif family == "integration_entrypoint":
+        required = bool("role_composition" in owned_caps or "application_orchestration_cleanup" in selected_rules or seed_roles & {"runtime_start", "runtime_run"})
+    else:
+        required = any(term and term in source_text for term in terms)
+    reason = "derived from target profile, module role/capability, minimum scope, or deterministic seeds" if required else "module role/capability/profile does not require this function family"
+    return required, reason
+
+
+def _function_family_matches(function: dict[str, Any], obligation: dict[str, Any]) -> bool:
+    family = str(obligation.get("family", ""))
+    kind = str(function.get("function_kind", ""))
+    role = str(function.get("public_api_role", ""))
+    caps = {str(item) for item in function.get("capability_ids", []) if str(item).strip()}
+    text = _obligation_text(
+        function.get("function_id", ""),
+        function.get("name", ""),
+        function.get("purpose", ""),
+        function.get("grouping_hint", ""),
+        function.get("family", ""),
+        function.get("covers_handler_ids", []),
+        function.get("covers_message_ids", []),
+        function.get("covers_field_ids", []),
+    )
+    if str(function.get("family", "")) == family or str(function.get("grouping_hint", "")) == family:
+        return True
+    if kind in set(obligation.get("coverage_kinds", ())):
+        if family not in {"transport_io", "timer_timeout"} or any(term in text for term in obligation.get("coverage_terms", ())):
+            return True
+    if role in set(obligation.get("coverage_roles", ())):
+        return True
+    if caps & set(obligation.get("coverage_caps", ())):
+        return True
+    return any(str(term) and str(term) in text for term in obligation.get("coverage_terms", ()))
+
+
+def build_function_family_obligation_report(
+    space: dict[str, Any],
+    functions: list[dict[str, Any]],
+    assumptions: list[dict[str, Any]] | None = None,
+    unresolved_questions: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    assumptions = assumptions or []
+    unresolved_questions = unresolved_questions or []
+    source_text = _function_family_source_text(space)
+    unresolved_targets = {
+        str(item.get("target_id", "")).strip()
+        for item in unresolved_questions
+        if isinstance(item, dict) and str(item.get("target_id", "")).strip()
+    }
+    assumption_targets = {
+        str(item.get("target_id", "")).strip()
+        for item in assumptions
+        if isinstance(item, dict) and str(item.get("target_id", "")).strip()
+    }
+    not_required_targets = {
+        str(item.get("target_id", "")).strip()
+        for item in assumptions
+        if isinstance(item, dict)
+        and str(item.get("target_id", "")).strip()
+        and ("not_required" in _obligation_text(item) or "not required" in _obligation_text(item))
+    }
+    obligations: list[dict[str, Any]] = []
+    for obligation in FUNCTION_FAMILY_OBLIGATIONS:
+        family = str(obligation["family"])
+        obligation_id = f"function_family:{space.get('module_id')}:{family}"
+        required, reason = _family_required(obligation, source_text, space)
+        matched = [
+            str(function.get("function_id", ""))
+            for function in functions
+            if isinstance(function, dict) and _function_family_matches(function, obligation)
+        ]
+        if matched:
+            status = "covered"
+            status_reason = "covered by declared function inventory"
+        elif required and ({obligation_id, family} & not_required_targets):
+            status = "not_required"
+            status_reason = "required family has explicit not-required reason"
+        elif required and ({obligation_id, family} & unresolved_targets):
+            status = "unresolved_assumption"
+            status_reason = "required family is explicitly unresolved"
+        elif required and ({obligation_id, family} & assumption_targets):
+            status = "unresolved_assumption"
+            status_reason = "required family is covered by explicit assumption"
+        elif required:
+            status = "uncovered"
+            status_reason = "required family has no declared function, explicit not-required reason, or unresolved assumption"
+        else:
+            status = "not_required"
+            status_reason = reason
+        obligations.append(
+            {
+                "obligation_id": obligation_id,
+                "family": family,
+                "label": obligation["label"],
+                "required": required,
+                "status": status,
+                "reason": status_reason,
+                "owner_module_id": str(space.get("module_id", "")),
+                "matched_function_ids": sorted(dict.fromkeys(item for item in matched if item)),
+                "evidence": reason,
+            }
+        )
+    return {
+        "schema_version": "function_family_obligation_report/v1",
+        "module_id": str(space.get("module_id", "")),
+        "obligations": obligations,
+    }
+
+
 def _decision_ref(kind: str, module_id: str, *parts: Any) -> str:
     tail = ":".join(_safe_id(str(part)) for part in parts if str(part).strip())
     return f"decision:{kind}:{module_id}:{tail or 'inferred'}"
@@ -247,6 +500,8 @@ def _type_artifact_kind(name: str, role: str) -> tuple[str, str, str]:
 def _type_kind_for_target(target_kind: str, suggested_name: str) -> tuple[str, str, str]:
     if target_kind == "packet_enum":
         return "enum", "public", "public_header"
+    if target_kind == "view_struct":
+        return "view_struct", "public", "public_header"
     if target_kind == "owned_buffer":
         return "owned_buffer", "public", "public_header"
     if target_kind == "callback_or_event_boundary":
@@ -1397,12 +1652,21 @@ def build_function_planning_space(
             "target_role": str((profile or {}).get("target_role", "")),
             "protocol_profile": profile or {},
             "engineering_constraints": constraints or {},
+            "module_ownership": {
+                "module_id": module_id,
+                "role": module_artifact.get("role", ""),
+                "artifacts": module_artifact.get("artifacts", []),
+                "owned_capabilities": owned_caps,
+                "state_owned": module_artifact.get("state_owned", []),
+                "dependencies": module_artifact.get("dependencies", []),
+            },
             "global_service_flow_hints": draft.get("service_flow_hints", []),
             "decomposition_context": decomposition,
             "wire_field_count": len(_wire_fields(planning_ir or {})),
         },
         "richness_diagnostics": [],
     }
+    space["function_family_obligations"] = build_function_family_obligation_report(space, [])
     space["richness_diagnostics"] = function_inventory_richness_diagnostics(space)
     return space
 

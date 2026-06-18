@@ -2083,7 +2083,7 @@ class PlanningAgent:
                     enable_thinking = self.config.llm_enable_thinking_for("implementation_plan_5_4a")
                     request_config = _llm_config_for_stage(self.config, "implementation_plan_5_4a")
                     planning_space = build_function_planning_space(inventory_draft, module, planning_ir, profile, constraints)
-                    context = build_function_inventory_context(inventory_draft, module)
+                    context = build_function_inventory_context(inventory_draft, module, planning_ir, profile, constraints)
                     context["function_planning_space"] = planning_space
 
                     def empty_function_annotation() -> dict[str, Any]:
@@ -2128,6 +2128,7 @@ class PlanningAgent:
                         result["coverage_report"] = {}
                         return result
                     result["coverage_report"] = function_inventory_decomposition_report(result["accepted"], inventory_draft.get("module_artifacts", []), inventory_draft)
+                    result["function_family_obligation_report"] = result.get("reconciliation", {}).get("function_family_obligation_report", {})
                     return result
 
                 inventory_results: list[dict[str, Any]] = []
@@ -2164,6 +2165,7 @@ class PlanningAgent:
                         continue
                     log_key = f"function_inventory_candidate_{safe_slug(module_id)}"
                     store.write_agent_log(f"{log_key}_decomposition_coverage_report", str(result.get("coverage_report", {})))
+                    store.write_agent_log(f"{log_key}_function_family_obligation_report", str(result.get("function_family_obligation_report", {})))
                     planning_space_path = store.write_agent_json(
                         _suffixed_step_filename(STEP_FILENAMES["function_planning_space"], module_id),
                         result.get("planning_space", {}),
@@ -2179,6 +2181,7 @@ class PlanningAgent:
                             "stage": stage_label,
                             "diagnostics": reconciliation.get("diagnostics", []),
                             "decomposition_coverage": result.get("coverage_report", {}),
+                            "function_family_obligations": result.get("function_family_obligation_report", {}),
                         },
                     )
                     candidate_path = store.write_agent_json(_suffixed_step_filename(STEP_FILENAMES["function_inventory_candidate"], module_id), inventory_candidate)
@@ -2187,7 +2190,11 @@ class PlanningAgent:
                         validation_report(
                             stage_label,
                             result["accepted_diags"],
-                            quality_diagnostics=[*reconciliation.get("diagnostics", []), result.get("coverage_report", {})],
+                            quality_diagnostics=[
+                                *reconciliation.get("diagnostics", []),
+                                result.get("coverage_report", {}),
+                                result.get("function_family_obligation_report", {}),
+                            ],
                             richness_summary=reconciliation.get("reconciliation_report", {}),
                         ),
                     )

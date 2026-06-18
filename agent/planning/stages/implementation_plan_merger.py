@@ -2057,12 +2057,27 @@ def _signature_params(function: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
+def _structured_call_value_ref(value: Any) -> bool:
+    text = str(value or "").strip()
+    if not text:
+        return True
+    if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", text):
+        return True
+    if text in {"NULL", "true", "false"} or re.fullmatch(r"-?\d+(?:u|U|l|L)*", text):
+        return True
+    if re.fullmatch(r'"(?:[^"\\]|\\.)*"', text) or re.fullmatch(r"'(?:[^'\\]|\\.)'", text):
+        return True
+    return bool(re.search(r"(->|\.|\+|-|\*|/|<<|>>|\||&|\(|\[)", text))
+
+
 def _valid_param_bindings(value: Any, callee: dict[str, Any] | None = None) -> list[dict[str, str]]:
     if not isinstance(value, list):
         return []
     result = []
     for item in value:
         if not isinstance(item, dict):
+            continue
+        if not _structured_call_value_ref(item.get("value_ref", "")):
             continue
         result.append(
             {

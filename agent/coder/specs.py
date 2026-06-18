@@ -487,6 +487,9 @@ def _validate_machine_constraints(bundle: SpecBundle) -> None:
             call_signatures[interface.name] = normalize_signature(interface.signature)
         for interface in file_spec.source_interfaces:
             call_signatures[interface.name] = normalize_signature(interface.signature)
+    for function_spec in bundle.function_specs_by_trace.values():
+        if function_spec.signature.name:
+            call_signatures[function_spec.signature.name] = normalize_signature(function_spec.signature.raw)
 
     for file_spec in bundle.file_specs_by_trace.values():
         for item in file_spec.raw.get("FORBIDDEN_SYMBOLS", []):
@@ -498,11 +501,38 @@ def _validate_machine_constraints(bundle: SpecBundle) -> None:
                 continue
             name = str(contract.get("NAME", "")).strip()
             signature = str(contract.get("SIGNATURE", "")).strip()
-            if name and signature and name in call_signatures and not _signatures_match(signature, call_signatures[name]):
+            if name and name not in call_signatures:
+                bundle.diagnostics.append(Diagnostic("error", "unknown_call_contract_callee", f"CALL_CONTRACTS callee '{name}' is not declared", str(file_spec.spec_path)))
+            elif name and signature and not _signatures_match(signature, call_signatures[name]):
                 bundle.diagnostics.append(Diagnostic("error", "call_contract_signature_mismatch", f"CALL_CONTRACTS signature for '{name}' differs from canonical spec", str(file_spec.spec_path)))
 
     protocol_codec_with_vectors: set[str] = set()
     for function_spec in bundle.function_specs_by_trace.values():
+        call_contract_names = {
+            str(contract.get("NAME", "")).strip()
+            for contract in function_spec.raw.get("CALL_CONTRACTS", [])
+            if isinstance(contract, dict) and str(contract.get("NAME", "")).strip()
+        }
+        rely_func_names = {
+            str(item.get("NAME", "")).strip()
+            for item in function_spec.rely.get("FUNC", [])
+            if isinstance(item, dict) and str(item.get("NAME", "")).strip()
+        }
+        for name in sorted(call_contract_names):
+            signature = next(
+                (
+                    str(contract.get("SIGNATURE", "")).strip()
+                    for contract in function_spec.raw.get("CALL_CONTRACTS", [])
+                    if isinstance(contract, dict) and str(contract.get("NAME", "")).strip() == name
+                ),
+                "",
+            )
+            if name not in call_signatures:
+                bundle.diagnostics.append(Diagnostic("error", "unknown_call_contract_callee", f"CALL_CONTRACTS callee '{name}' is not declared", str(function_spec.source_path)))
+            elif signature and not _signatures_match(signature, call_signatures[name]):
+                bundle.diagnostics.append(Diagnostic("error", "call_contract_signature_mismatch", f"CALL_CONTRACTS signature for '{name}' differs from canonical spec", str(function_spec.source_path)))
+        if call_contract_names != rely_func_names:
+            bundle.diagnostics.append(Diagnostic("error", "call_contract_rely_drift", "CALL_CONTRACTS and RELY.FUNC names differ", str(function_spec.source_path)))
         for mapping in function_spec.raw.get("WIRE_MAPPING", []):
             if not isinstance(mapping, dict):
                 continue
@@ -512,6 +542,8 @@ def _validate_machine_constraints(bundle: SpecBundle) -> None:
                 canonical = _canonical_access_path(target)
                 if canonical not in public_paths:
                     bundle.diagnostics.append(Diagnostic("error", "unknown_wire_mapping_target", f"WIRE_MAPPING target '{target}' does not match a public access path", str(function_spec.source_path)))
+        if function_spec.raw.get("WIRE_MAPPING") and not function_spec.raw.get("TEST_VECTORS"):
+            bundle.diagnostics.append(Diagnostic("warning", "missing_wire_mapping_test_vectors", f"Function '{function_spec.trace_id}' has WIRE_MAPPING but no TEST_VECTORS anchor", str(function_spec.source_path)))
         if function_spec.raw.get("TEST_VECTORS"):
             protocol_codec_with_vectors.add(_trace_parent(function_spec.trace_id))
 

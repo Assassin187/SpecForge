@@ -42,6 +42,7 @@ from ..stages.implementation_plan_context import (
     normalize_system_type_ref,
     provider_public_type_seeds_for_module,
 )
+from ..stages.inventory_planning_space import build_function_family_obligation_report, build_function_planning_space
 from .implementation_plan import validate_implementation_plan
 
 
@@ -639,6 +640,15 @@ def _field_type_matches_expected(actual: str, expected: str) -> bool:
     if actual == expected:
         return True
     return _protocol_alias_matches(normalize_type_key(actual), normalize_type_key(expected))
+
+
+def _abstract_view_type_alias(value: Any) -> str:
+    key = normalize_type_key(value)
+    if key in {"string_view", "utf8_string_view"}:
+        return "string_view"
+    if key in {"buffer_view", "bytes_view", "payload_view"}:
+        return "buffer_view"
+    return ""
 
 
 def _packet_container_score(item: dict[str, Any], suggested_key: str) -> int:
@@ -1394,6 +1404,16 @@ def validate_type_inventory_candidate(candidate: dict[str, Any], module_artifact
                 continue
             field_type = str(field.get("field_type", ""))
             type_ref = normalize_system_type_ref(field.get("type_ref", ""))
+            alias = _abstract_view_type_alias(type_ref) or _abstract_view_type_alias(field_type)
+            if alias:
+                diagnostics.append(
+                    PlanningDiagnostic(
+                        "error",
+                        "undeclared_view_type_alias",
+                        f"field '{type_item['type_id']}.{field.get('field_name')}' uses abstract alias '{alias}' instead of a declared view type",
+                        path,
+                    )
+                )
             target = _resolve_type_reference(type_ref, field_type, by_id, by_name, provider_by_id, provider_by_name)
             if type_ref and not _is_system_type_ref(type_ref) and target is None:
                 diagnostics.append(PlanningDiagnostic("error", "unknown_type_ref", f"field '{type_item['type_id']}.{field.get('field_name')}' references unknown type '{type_ref}'", path))
@@ -1441,6 +1461,9 @@ def validate_type_inventory_candidate(candidate: dict[str, Any], module_artifact
         )
         for cb_param in callback_signature.get("params", []):
             type_ref = normalize_system_type_ref(cb_param.get("type_ref", ""))
+            alias = _abstract_view_type_alias(type_ref) or _abstract_view_type_alias(cb_param.get("type", ""))
+            if alias:
+                diagnostics.append(PlanningDiagnostic("error", "undeclared_view_type_alias", f"callback type '{type_id}' uses abstract alias '{alias}' instead of a declared view type", path))
             target = _resolve_type_reference(type_ref, "", by_id, by_name, provider_by_id, provider_by_name)
             if type_ref and not _is_system_type_ref(type_ref) and target is None:
                 diagnostics.append(PlanningDiagnostic("error", "unknown_type_ref", f"callback type '{type_id}' references unknown type '{type_ref}'", path))
@@ -1504,6 +1527,12 @@ def validate_type_inventory_candidate(candidate: dict[str, Any], module_artifact
                 _packet_enum_covers_target(module_types, suggested_name, target)
             ):
                 diagnostics.append(PlanningDiagnostic("error", "missing_packet_enum_type", f"module '{module_id}' lacks protocol packet enum target '{target_id}'", path))
+            elif target_kind == "view_struct":
+                view_type = _find_payload_struct(module_types, suggested_name, target)
+                if view_type is None:
+                    diagnostics.append(PlanningDiagnostic("error", "missing_view_type", f"module '{module_id}' lacks protocol view type target '{target_id}'", path))
+                elif not _payload_fields_cover_target(view_type, target):
+                    diagnostics.append(PlanningDiagnostic("error", "view_type_field_mismatch", f"module '{module_id}' view type target '{target_id}' lacks required concrete fields", path))
             elif target_kind == "payload_struct":
                 payload_type = _find_payload_struct(module_types, suggested_name, target)
                 if payload_type is None:
@@ -1872,6 +1901,34 @@ def validate_function_inventory_candidate(candidate: dict[str, Any], module_arti
                 path,
             )
         )
+    for module_id in sorted(candidate_module_ids & module_ids):
+        module = modules_by_id.get(module_id, {})
+        module_functions = [
+            function
+            for function in candidate.get("functions", [])
+            if isinstance(function, dict) and str(function.get("module_id", "")) == module_id
+        ]
+        space = build_function_planning_space(core_design, module, planning_ir, profile, {})
+        obligation_report = build_function_family_obligation_report(
+            space,
+            module_functions,
+            assumptions=candidate.get("assumptions", []),
+            unresolved_questions=candidate.get("unresolved_questions", []),
+        )
+        for obligation in obligation_report.get("obligations", []):
+            if not isinstance(obligation, dict) or not obligation.get("required") or obligation.get("status") != "uncovered":
+                continue
+            diagnostics.append(
+                PlanningDiagnostic(
+                    "error",
+                    "function_family_obligation_uncovered",
+                    (
+                        f"module '{module_id}' requires function family '{obligation.get('family')}' "
+                        "but has no covering function, not-required reason, or unresolved assumption"
+                    ),
+                    path,
+                )
+            )
     return diagnostics
 
 
@@ -2079,10 +2136,51 @@ def validate_function_behavior_contract_patch(patch: dict[str, Any], draft: dict
     function_ids = set(functions)
     state_ids = _state_ids(draft)
     state_owner = {str(item.get("state_id", "")): str(item.get("owner_module_id", "")) for item in draft.get("state_design", []) if isinstance(item, dict)}
+    resource_ids = {str(item.get("resource_id", "")) for item in draft.get("resource_lifecycle", []) if isinstance(item, dict) and str(item.get("resource_id", "")).strip()}
     error_ids = _error_ids(draft)
+    type_symbols = {
+        str(item.get("name", "")).strip()
+        for key in ("canonical_types", "type_inventory")
+        for item in draft.get(key, [])
+        if isinstance(item, dict) and str(item.get("name", "")).strip()
+    }
+    type_ids = {
+        str(item.get("type_id", "")).strip()
+        for key in ("canonical_types", "type_inventory")
+        for item in draft.get(key, [])
+        if isinstance(item, dict) and str(item.get("type_id", "")).strip()
+    }
+    access_path_ids = {str(item.get("access_path_id", "")).strip() for item in draft.get("access_path_table", []) if isinstance(item, dict) and str(item.get("access_path_id", "")).strip()}
+    access_path_values = {str(item.get("path", "")).strip() for item in draft.get("access_path_table", []) if isinstance(item, dict) and str(item.get("path", "")).strip()}
+    field_ids = {
+        str(field_id).strip()
+        for function in functions.values()
+        for field_id in function.get("covers_field_ids", [])
+        if str(field_id).strip()
+    } | {
+        str(item.get("field_id", "")).strip()
+        for key in ("wire_mapping_table", "access_path_table")
+        for item in draft.get(key, [])
+        if isinstance(item, dict) and str(item.get("field_id", "")).strip()
+    }
     capability_ids = set(draft.get("traceability", {}).get("required_capabilities", []))
     target_ids = _batch_function_ids(patch, "function_behavior_updates")
     unresolved_targets = _unresolved_targets(patch)
+
+    def _matches_declared_ref(ref: str, value: str, universe: set[str]) -> bool:
+        clean_ref = ref.rstrip(".,;:")
+        clean_value = value.rstrip(".,;:")
+        return any(
+            candidate
+            and (
+                clean_ref == candidate
+                or clean_value == candidate
+                or clean_ref.startswith(f"{candidate}:")
+                or clean_value.startswith(f"{candidate}:")
+            )
+            for candidate in universe
+        )
+
     if expected_function_ids is not None and target_ids != expected_function_ids:
         diagnostics.append(PlanningDiagnostic("error", "behavior_batch_coverage_mismatch", "behavior patch must update exactly the current batch functions", path))
     seen: set[str] = set()
@@ -2104,6 +2202,41 @@ def validate_function_behavior_contract_patch(patch: dict[str, Any], draft: dict
                 diagnostics.append(PlanningDiagnostic("error", "public_function_incomplete_contract", f"public function '{function_id}' behavior contract is missing: {', '.join(missing_contract)}", path))
             if update["error_behavior"]["propagation"] == "unknown" or update["error_behavior"]["return_policy"] == "unknown":
                 diagnostics.append(PlanningDiagnostic("error", "public_function_unknown_error_channel", f"public function '{function_id}' has unknown error propagation or return policy", path))
+        contract = update.get("contract", {}) if isinstance(update.get("contract"), dict) else {}
+        action_text = str(contract.get("action", ""))
+        explicit_refs = re.findall(r"\b(?:field|fn|func|state|resource|error|access|type|source_data):[A-Za-z0-9_:\-./]+", action_text)
+        for ref in explicit_refs:
+            namespace = ref.split(":", 1)[0]
+            ref_value = ref.split(":", 1)[1]
+            if namespace == "field" and not _matches_declared_ref(ref, ref_value, field_ids):
+                diagnostics.append(PlanningDiagnostic("error", "behavior_action_unknown_field", f"function '{function_id}' action references unknown field '{ref}'", path))
+            elif namespace in {"fn", "func"} and not _matches_declared_ref(ref, ref_value, function_ids):
+                diagnostics.append(PlanningDiagnostic("error", "behavior_action_unknown_helper", f"function '{function_id}' action references unknown helper/function '{ref}'", path))
+            elif namespace == "state" and not _matches_declared_ref(ref, ref_value, state_ids):
+                diagnostics.append(PlanningDiagnostic("error", "behavior_action_unknown_state", f"function '{function_id}' action references unknown state '{ref}'", path))
+            elif namespace == "resource" and not _matches_declared_ref(ref, ref_value, resource_ids):
+                diagnostics.append(PlanningDiagnostic("error", "behavior_action_unknown_resource", f"function '{function_id}' action references unknown resource '{ref}'", path))
+            elif namespace == "error" and not _matches_declared_ref(ref, ref_value, error_ids):
+                diagnostics.append(PlanningDiagnostic("error", "behavior_action_unknown_error", f"function '{function_id}' action references unknown error/result '{ref}'", path))
+            elif namespace == "access" and not (_matches_declared_ref(ref, ref_value, access_path_ids) or _matches_declared_ref(ref, ref_value, access_path_values)):
+                diagnostics.append(PlanningDiagnostic("error", "behavior_action_unknown_access_path", f"function '{function_id}' action references unknown access path '{ref}'", path))
+            elif namespace == "type" and not (_matches_declared_ref(ref, ref_value, type_ids) or _matches_declared_ref(ref, ref_value, type_symbols)):
+                diagnostics.append(PlanningDiagnostic("error", "behavior_action_unknown_source_data", f"function '{function_id}' action references unknown source data/type '{ref}'", path))
+            elif namespace == "source_data" and not (_matches_declared_ref(ref, ref_value, type_symbols) or _matches_declared_ref(ref, ref_value, type_ids)):
+                diagnostics.append(PlanningDiagnostic("error", "behavior_action_unknown_source_data", f"function '{function_id}' action references unknown source data '{ref}'", path))
+        param_names = {str(param.get("name", "")).strip() for param in _signature_params(function) if str(param.get("name", "")).strip()}
+        known_binding = bool(
+            update.get("state_access")
+            or update.get("resource_access")
+            or update.get("internal_type_refs")
+            or update.get("service_requirements")
+            or update.get("error_behavior", {}).get("error_ids")
+            or (update.get("logic_kind") == "EVENT" and any(str(value).strip() for value in (update.get("event_contract", {}) or {}).values()))
+            or explicit_refs
+            or any(name and re.search(rf"\b{re.escape(name)}\b", action_text) for name in param_names)
+        )
+        if not known_binding and str(function.get("function_kind", "")) in {"handler", "parser", "serializer", "state_machine", "resource_lifecycle", "public_api"}:
+            diagnostics.append(PlanningDiagnostic("warning", "behavior_action_unbound", f"function '{function_id}' action is not bound to declared state/resource/source data/access/callee/error/wire objects", path))
         if update["logic_kind"] == "EVENT":
             event_contract = update.get("event_contract", {})
             missing = [
@@ -2126,6 +2259,14 @@ def validate_function_behavior_contract_patch(patch: dict[str, Any], draft: dict
         for error_id in update["error_behavior"]["error_ids"]:
             if error_id not in error_ids:
                 diagnostics.append(PlanningDiagnostic("error", "unknown_function_error_behavior", f"function '{function_id}' references unknown error '{error_id}'", path))
+        for resource in update["resource_access"]:
+            resource_id = str(resource.get("resource_id", ""))
+            if resource_id not in resource_ids:
+                diagnostics.append(PlanningDiagnostic("error", "unknown_function_resource_access", f"function '{function_id}' references unknown resource '{resource_id}'", path))
+        for type_ref in update["internal_type_refs"]:
+            symbol = str(type_ref.get("symbol_name", "")).strip()
+            if symbol and symbol not in type_symbols:
+                diagnostics.append(PlanningDiagnostic("error", "behavior_action_unknown_source_data", f"function '{function_id}' references unknown internal/source type '{symbol}'", path))
         for requirement in update["service_requirements"]:
             for cap in requirement["required_capability_ids"]:
                 if capability_ids and cap not in capability_ids:
@@ -2144,6 +2285,10 @@ def validate_wire_access_binding_patch(patch: dict[str, Any], draft: dict[str, A
     function_ids = set(functions)
     field_ids = _field_ids(planning_ir)
     message_ids = _message_ids(planning_ir)
+    known_types = _type_inventory_by_id(draft)
+    known_types_by_name = _type_inventory_name_index(list(known_types.values()))
+    canonical_types = _canonical_types_by_id(draft)
+    canonical_types_by_name = _canonical_type_name_index(canonical_types)
     wire_ids = {entry["wire_mapping_id"] for entry in patch["wire_mapping_entries"]}
     access_ids = {entry["access_path_id"] for entry in patch["access_path_entries"]}
     access_by_function_field = {
@@ -2174,6 +2319,10 @@ def validate_wire_access_binding_patch(patch: dict[str, Any], draft: dict[str, A
         access_path = str((access_entry or {}).get("path", "")).strip()
         if access_path and target_path and target_path != "buffer" and target_path != access_path:
             diagnostics.append(PlanningDiagnostic("error", "wire_mapping_target_path_not_canonical", f"wire mapping '{entry['wire_mapping_id']}' target_path must match access path '{access_path}'", path))
+        if entry.get("strategy") == "store_in_field" and target_path and target_path != "buffer" and not access_path:
+            diagnostics.append(PlanningDiagnostic("error", "wire_mapping_target_path_unknown", f"wire mapping '{entry['wire_mapping_id']}' target_path '{target_path}' has no matching ACCESS_PATH", path))
+        if entry.get("strategy") in {"parse_and_skip", "reject_if_present"} and not str(entry.get("rule", "")).strip():
+            diagnostics.append(PlanningDiagnostic("error", "wire_mapping_skip_reject_missing_reason", f"wire mapping '{entry['wire_mapping_id']}' must explain skip/reject reason", path))
     for entry in patch["access_path_entries"]:
         function = functions.get(entry["function_id"])
         if entry["function_id"] not in function_ids:
@@ -2185,6 +2334,17 @@ def validate_wire_access_binding_patch(patch: dict[str, Any], draft: dict[str, A
             diagnostics.append(PlanningDiagnostic("error", "incomplete_coder_access_path", f"access path '{entry['access_path_id']}' lacks path or c_type", path))
         if str(entry.get("c_type", "")).strip().lower() == "unknown":
             diagnostics.append(PlanningDiagnostic("error", "unknown_coder_access_path_type", f"access path '{entry['access_path_id']}' must not lower TYPE as unknown", path))
+        for ref in extract_c_signature_type_refs(entry.get("c_type", "")):
+            target, _canonical = _type_item_by_ref_or_name(
+                type_ref="",
+                raw_type=ref.get("raw", ""),
+                type_inventory=known_types,
+                type_inventory_by_name=known_types_by_name,
+                canonical_types=canonical_types,
+                canonical_types_by_name=canonical_types_by_name,
+            )
+            if target is None and normalize_system_type_ref(ref.get("raw", "")) not in SYSTEM_TYPE_IDS:
+                diagnostics.append(PlanningDiagnostic("error", "stale_type_ref", f"access path '{entry['access_path_id']}' references unknown type '{ref.get('raw')}'", path))
         if entry["access_kind"] in {"write", "read_write"} and function.get("function_kind") not in {"handler", "state_machine", "resource_lifecycle", "public_api"}:
             diagnostics.append(PlanningDiagnostic("error", "wire_access_kind_conflict", f"function '{entry['function_id']}' may not write state through access path", path))
     for update in patch["function_binding_updates"]:
@@ -2263,9 +2423,23 @@ def validate_calls_allowed_candidate(
     functions = _function_by_id(draft)
     module_ids = _module_ids_from_arch(selected_architecture or {"architecture": {"modules": draft.get("module_artifacts", [])}})
     target_ids = {str(update.get("caller_function_id", "")) for update in candidate["call_updates"]}
+    access_path_values = {str(item.get("path", "")).strip() for item in draft.get("access_path_table", []) if isinstance(item, dict) and str(item.get("path", "")).strip()}
+    function_symbols = set(functions)
+    for function in functions.values():
+        signature = function.get("signature", {}) if isinstance(function.get("signature"), dict) else {}
+        for value in (function.get("name"), signature.get("name"), canonical_function_symbol(function)):
+            text = str(value or "").strip()
+            if text:
+                function_symbols.add(text)
     if expected_caller_ids is not None and target_ids != expected_caller_ids:
         diagnostics.append(PlanningDiagnostic("error", "calls_allowed_batch_coverage_mismatch", "calls_allowed candidate must update exactly the current batch callers", path))
     service_requirement_ids = expected_service_requirement_ids if expected_service_requirement_ids is not None else _service_requirement_ids(functions, kinds={"cross_module_service"})
+    service_requirements_by_id = {
+        str(requirement.get("service_requirement_id", "")): requirement
+        for function in functions.values()
+        for requirement in function.get("service_requirements", [])
+        if isinstance(requirement, dict) and str(requirement.get("service_requirement_id", "")).strip()
+    }
     unresolved_service_ids = set(candidate.get("unresolved_service_requirements", []))
     resolved_service_ids: set[str] = set()
     edges: list[tuple[str, str]] = []
@@ -2296,15 +2470,43 @@ def validate_calls_allowed_candidate(
                 resolved_service_ids.add(requirement_id)
             if edge.get("service_requirement_ids") and caller_fn.get("module_id") == callee_fn.get("module_id"):
                 diagnostics.append(PlanningDiagnostic("error", "cross_module_service_bound_to_same_module_call", f"caller '{caller}' cannot resolve cross-module service through same-module callee '{callee}'", path))
+            if caller_fn.get("module_id") != callee_fn.get("module_id") and not edge.get("service_requirement_ids") and str(edge.get("call_kind", "")) not in {"service_requirement", "handler_dispatch"}:
+                diagnostics.append(PlanningDiagnostic("error", "forbidden_cross_module_call", f"caller '{caller}' may not make an unscoped cross-module call to '{callee}'", path))
             if caller_fn.get("module_id") not in module_ids or callee_fn.get("module_id") not in module_ids:
                 diagnostics.append(PlanningDiagnostic("error", "call_unknown_module", f"call edge '{caller}' -> '{callee}' references unknown module", path))
+            for requirement_id in edge.get("service_requirement_ids", []):
+                requirement = service_requirements_by_id.get(str(requirement_id))
+                failure_policy = str((requirement or {}).get("failure_policy", "")).strip()
+                failure_behavior = str(edge.get("failure_behavior", "")).strip()
+                if failure_policy and failure_policy != "unknown" and failure_behavior and failure_behavior != failure_policy:
+                    compatible = failure_policy == "cleanup_and_return" and failure_behavior in {"cleanup_and_return", "return_error"}
+                    if not compatible:
+                        diagnostics.append(PlanningDiagnostic("error", "call_contract_failure_policy_mismatch", f"caller '{caller}' failure behavior for '{callee}' is incompatible with service requirement '{requirement_id}'", path))
             bindings = edge.get("param_bindings", [])
             callee_params = _signature_params(callee_fn)
+            caller_param_names = {
+                str(param.get("name", "")).strip()
+                for param in _signature_params(caller_fn)
+                if str(param.get("name", "")).strip()
+            }
+            local_symbols = {
+                str(edge_item.get("return_binding", {}).get("target_ref", "")).strip()
+                for edge_item in update.get("calls_allowed", [])
+                if isinstance(edge_item, dict)
+                and isinstance(edge_item.get("return_binding"), dict)
+                and str(edge_item.get("return_binding", {}).get("target_ref", "")).strip()
+            }
             if isinstance(bindings, list) and bindings:
                 if len(bindings) != len(callee_params):
                     diagnostics.append(PlanningDiagnostic("error", "call_contract_param_count_mismatch", f"caller '{caller}' binds {len(bindings)} values for callee '{callee}' with {len(callee_params)} params", path))
                 elif not _binding_param_names_match(bindings, callee_params):
                     diagnostics.append(PlanningDiagnostic("error", "call_contract_param_name_mismatch", f"caller '{caller}' binds parameter names that do not match callee '{callee}' signature", path))
+                for binding in bindings:
+                    if not isinstance(binding, dict):
+                        continue
+                    value_ref = str(binding.get("value_ref", "")).strip()
+                    if not _allowed_call_value_ref(value_ref, caller_param_names, access_path_values, local_symbols, function_symbols):
+                        diagnostics.append(PlanningDiagnostic("error", "call_contract_unknown_value_ref", f"caller '{caller}' binds unknown value_ref '{value_ref}' for callee '{callee}'", path))
             edges.append((caller, callee))
     for requirement_id in sorted(service_requirement_ids - resolved_service_ids - unresolved_service_ids):
         diagnostics.append(PlanningDiagnostic("error", "unresolved_service_requirement_missing", f"service requirement '{requirement_id}' must be resolved to a call or listed as unresolved", path))
@@ -2739,6 +2941,36 @@ def validate_full_implementation_plan(plan: dict[str, Any], *, profile: dict[str
                 value_ref = str(binding.get("value_ref", "")).strip()
                 if not _allowed_call_value_ref(value_ref, caller_param_names, access_path_values, local_symbols, function_symbols):
                     diagnostics.append(PlanningDiagnostic("error", "readiness_call_contract_unknown_param_binding", f"call contract '{caller_id}' -> '{callee_id}' binds unknown value_ref '{value_ref}'", path))
+            for requirement_id in edge.get("service_requirement_ids", []) if isinstance(edge.get("service_requirement_ids", []), list) else []:
+                service_requirement = next(
+                    (
+                        requirement
+                        for requirement in caller.get("service_requirements", [])
+                        if isinstance(requirement, dict) and str(requirement.get("service_requirement_id", "")) == str(requirement_id)
+                    ),
+                    {},
+                )
+                failure_policy = str(service_requirement.get("failure_policy", "")).strip()
+                failure_behavior = str(edge.get("failure_behavior", "")).strip()
+                if failure_policy and failure_policy != "unknown" and failure_behavior and failure_behavior != failure_policy:
+                    compatible = failure_policy == "cleanup_and_return" and failure_behavior in {"cleanup_and_return", "return_error"}
+                    if not compatible:
+                        diagnostics.append(PlanningDiagnostic("error", "readiness_call_contract_failure_policy_mismatch", f"call contract '{caller_id}' -> '{callee_id}' failure behavior is incompatible with service requirement '{requirement_id}'", path))
+
+        contract = caller.get("behavior_contract", {}) if isinstance(caller.get("behavior_contract"), dict) else {}
+        action_text = str(contract.get("action", ""))
+        has_behavior_binding = bool(
+            caller.get("state_access")
+            or caller.get("resource_access")
+            or caller.get("internal_type_refs")
+            or caller.get("service_requirements")
+            or caller.get("wire_mapping")
+            or caller.get("access_paths")
+            or call_contracts
+            or re.search(r"\b(?:field|fn|func|state|resource|error|access|type|source_data):", action_text)
+        )
+        if not has_behavior_binding and str(caller.get("function_kind", "")) in {"handler", "parser", "serializer", "state_machine", "resource_lifecycle", "public_api"}:
+            diagnostics.append(PlanningDiagnostic("warning", "readiness_behavior_action_unbound", f"function '{caller_id}' behavior action is not bound to declared implementation artifacts", path))
 
     wire_facing = [
         function
@@ -2749,6 +2981,31 @@ def validate_full_implementation_plan(plan: dict[str, Any], *, profile: dict[str
     has_function_vectors = any(function.get("test_vectors") for function in wire_facing)
     if wire_facing and not (has_test_seed or has_function_vectors):
         diagnostics.append(PlanningDiagnostic("error", "readiness_missing_codec_test_vectors", "wire-facing parser/serializer functions require TEST_VECTORS or planning test_plan seeds", path))
+    global_access_fields = {
+        str(access.get("field_id", "")).strip()
+        for access in plan.get("access_path_table", [])
+        if isinstance(access, dict) and str(access.get("field_id", "")).strip()
+    }
+    global_wire_fields = {
+        str(mapping.get("field_id", "")).strip()
+        for mapping in plan.get("wire_mapping_table", [])
+        if isinstance(mapping, dict) and str(mapping.get("field_id", "")).strip()
+    }
+    for function in functions:
+        covered_fields = {str(item).strip() for item in function.get("covers_field_ids", []) if str(item).strip()}
+        access_fields = {
+            str(access.get("field_id", "")).strip()
+            for access_id in function.get("access_paths", [])
+            for access in plan.get("access_path_table", [])
+            if isinstance(access, dict) and str(access.get("access_path_id", "")) == str(access_id) and str(access.get("field_id", "")).strip()
+        }
+        wire_fields = {str(mapping.get("field_id", "")).strip() for mapping in function.get("wire_mapping", []) if isinstance(mapping, dict) and str(mapping.get("field_id", "")).strip()}
+        if (
+            covered_fields
+            and str(function.get("function_kind", "")) in {"parser", "serializer", "handler"}
+            and not (access_fields or wire_fields or (covered_fields & (global_access_fields | global_wire_fields)))
+        ):
+            diagnostics.append(PlanningDiagnostic("error", "readiness_core_message_fields_without_access", f"function '{function.get('function_id')}' covers message fields but has no wire/access binding", path))
     entrypoints = [
         function
         for function in functions
