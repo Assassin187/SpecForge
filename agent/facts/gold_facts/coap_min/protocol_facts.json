@@ -288,6 +288,58 @@
         ]
       },
       {
+        "name": "CoAP over UDP",
+        "kind": "transport_surface",
+        "direction": "bidirectional",
+        "summary": "CoAP messages are carried as individual UDP datagrams in this server subset.",
+        "evidence_refs": [
+          "readme_supported",
+          "udp_runtime",
+          "server_datagram_path"
+        ]
+      },
+      {
+        "name": "CON and NON requests",
+        "kind": "message_type_group",
+        "direction": "client_to_server",
+        "summary": "The server accepts CON and NON method requests and builds ACK or NON responses respectively.",
+        "evidence_refs": [
+          "readme_supported",
+          "server_response_envelope"
+        ]
+      },
+      {
+        "name": "CoAP header, token, options, and payload codec",
+        "kind": "codec_surface",
+        "direction": "bidirectional",
+        "summary": "Codec support covers header fields, token, options, payload marker, and payload bytes.",
+        "evidence_refs": [
+          "codec_decode",
+          "codec_encode",
+          "message_types"
+        ]
+      },
+      {
+        "name": "URI Path and URI Query",
+        "kind": "option_surface",
+        "direction": "client_to_server",
+        "summary": "Repeated URI Path and URI Query options are joined into normalized path and query strings.",
+        "evidence_refs": [
+          "server_request_view",
+          "message_helpers"
+        ]
+      },
+      {
+        "name": "Content-Format and Accept",
+        "kind": "option_surface",
+        "direction": "client_to_server",
+        "summary": "Unsigned Content-Format and Accept options are parsed for resource handlers.",
+        "evidence_refs": [
+          "server_request_view",
+          "message_helpers"
+        ]
+      },
+      {
         "name": "GET",
         "kind": "method",
         "direction": "client_to_server",
@@ -330,6 +382,67 @@
         "evidence_refs": [
           "message_types",
           "server_resources",
+          "kv_handler"
+        ]
+      },
+      {
+        "name": "/.well-known/core",
+        "kind": "resource",
+        "direction": "client_to_server",
+        "summary": "Discovery resource returning link-format metadata for discoverable routes.",
+        "evidence_refs": [
+          "readme_supported",
+          "discovery_handler",
+          "router_dispatch"
+        ]
+      },
+      {
+        "name": "/hello",
+        "kind": "resource",
+        "direction": "client_to_server",
+        "summary": "Text greeting resource.",
+        "evidence_refs": [
+          "readme_supported",
+          "hello_handler"
+        ]
+      },
+      {
+        "name": "/echo",
+        "kind": "resource",
+        "direction": "client_to_server",
+        "summary": "Payload echo resource for POST and PUT.",
+        "evidence_refs": [
+          "readme_supported",
+          "echo_handler"
+        ]
+      },
+      {
+        "name": "/kv",
+        "kind": "resource",
+        "direction": "client_to_server",
+        "summary": "Key-value collection resource that lists stored keys for GET and rejects non-key mutation paths with Bad Request.",
+        "evidence_refs": [
+          "readme_supported",
+          "kv_handler"
+        ]
+      },
+      {
+        "name": "/kv/<key>",
+        "kind": "resource",
+        "direction": "client_to_server",
+        "summary": "Key-value item resource supporting read, create/update, and delete operations.",
+        "evidence_refs": [
+          "readme_supported",
+          "kv_handler"
+        ]
+      },
+      {
+        "name": "/kv and /kv/<key>",
+        "kind": "resource_group",
+        "direction": "client_to_server",
+        "summary": "Combined key-value collection and item surface used by the minimum implementation scope.",
+        "evidence_refs": [
+          "readme_supported",
           "kv_handler"
         ]
       },
@@ -1623,6 +1736,12 @@
   "planning_inputs": {
     "protocol_summary": "Minimal CoAP server subset implemented in C over UDP + epoll. The planning target is a server that handles CON/NON method requests, decodes CoAP headers/options/payloads, dispatches URI resources, returns immediate ACK/NON responses, implements /.well-known/core, /hello, /echo, and an in-memory /kv store, and intentionally defers DTLS, Observe, Block-wise transfer, deduplication, and retransmission state.",
     "planning_checklist": [
+      "传输层与运行模型",
+      "报文模型与编解码范围",
+      "状态对象设计",
+      "路由/调度设计",
+      "安全与边界限制",
+      "存储或资源抽象",
       "传输层与 datagram 运行模型",
       "报文模型与 CoAP codec 范围",
       "请求视图与 URI option 处理",
