@@ -35,7 +35,7 @@ docs/CURRENT_TASK_STATUS.md 记录旧 planning stabilization 路线。
 | 轮次 | 名称 | 状态 | 当前结论 |
 |---|---|---|---|
 | 第 1 轮 | 高收益低耦合：type canonicalization + 5.3 fixtures | completed | 已完成 string/buffer/byte_buffer alias canonicalization 与 5.3 regression |
-| 第 2 轮 | calls_allowed 与 wire mapping | not_started | 等待统一 value_ref contract 与 wire coverage closure |
+| 第 2 轮 | calls_allowed 与 wire mapping | completed | 已完成 value_ref contract 统一与 wire coverage deterministic closure |
 | 第 3 轮 | runtime lifecycle + function name allocator | not_started | 等待前移 lifecycle obligations 并修复 symbol collision |
 | 第 4 轮 | C header surface closure | not_started | 等待修复 header cycle / public type owner split |
 | 第 5 轮 | 端到端 regression/golden | not_started | 等待集中固化 7 个历史失败 fixtures 与 MQTT golden |
@@ -116,7 +116,7 @@ completed
 状态：
 
 ```text
-not_started
+completed
 ```
 
 目标：
@@ -128,27 +128,48 @@ not_started
 任务清单：
 
 ```text
-[ ] 对齐 _structured_call_value_ref 与 _allowed_call_value_ref。
-[ ] allowed_value_bindings 成为主要 binding 来源。
-[ ] prose value_ref 在 5.4e blocking 或转 unresolved。
-[ ] 明确 ternary expression 支持或改写策略。
-[ ] 建立 planning_ir field coverage requirement。
-[ ] fixed-header-only patch 在 5.4d blocking。
-[ ] deterministic conservative mapping completion。
-[ ] unresolved question 不得与 stage pass 同时出现。
-[ ] 增加 prose value_ref 与 uncovered_wire_field replay tests。
-[ ] 运行相关 unittest。
+[x] 对齐 _structured_call_value_ref 与 _allowed_call_value_ref。
+[x] allowed_value_bindings 成为主要 binding 来源。
+[x] prose value_ref 在 5.4e blocking 或转 unresolved。
+[x] 明确 ternary expression 支持或改写策略。
+[x] 建立 planning_ir field coverage requirement。
+[x] fixed-header-only patch 在 5.4d blocking。
+[x] deterministic conservative mapping completion。
+[x] unresolved question 不得与 stage pass 同时出现。
+[x] 增加 prose value_ref 与 uncovered_wire_field replay tests。
+[x] 运行相关 unittest。
 ```
 
 完成标准：
 
 ```text
-[ ] client ID / decoded PUBLISH packet / connection handle 等 prose value_ref 在 5.4e blocking。
-[ ] caller param / access path / local return binding 可以通过。
-[ ] 5.4e normalizer 与 final readiness 对同一 value_ref 给出一致结果。
-[ ] fixed-header-only patch 在 5.4d blocking。
-[ ] CONNECT/SUBSCRIBE/PUBLISH payload fields 均有 mapping 或 unresolved。
-[ ] skip/reject mappings 必须包含 reason/rule。
+[x] client ID / decoded PUBLISH packet / connection handle 等 prose value_ref 在 5.4e blocking。
+[x] caller param / access path / local return binding 可以通过。
+[x] 5.4e normalizer 与 final readiness 对同一 value_ref 给出一致结果。
+[x] fixed-header-only patch 在 5.4d blocking。
+[x] CONNECT/SUBSCRIBE/PUBLISH payload fields 均有 mapping 或 unresolved。
+[x] skip/reject mappings 必须包含 reason/rule。
+```
+
+完成记录：
+
+```text
+2026-06-18：已完成第 2 轮。
+- 新增共享 value_ref contract，5.4e normalizer、stage validator、final readiness 统一使用同一规则。
+- 移除 normalizer 中的 prose value_ref silent drop；invalid binding 保留给 validator blocking，不误删有效 call edge。
+- wire coverage requirement 改为读取 planning_ir.protocol_facts.message_model.message_or_command_entries[].fields。
+- 20260617_103648_329047 replay 覆盖 client ID / decoded PUBLISH packet / connection handle 等 prose value_ref。
+- 20260610_093743_377786 replay 覆盖 fixed-header-only patch，5.4d 报 12 个 uncovered_wire_field。
+```
+
+验证：
+
+```text
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest agent.planning.tests.test_implementation_plan_stage_candidates
+结果：142 tests passed。
+
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest agent.planning.tests.test_implementation_plan_stage_candidates agent.planning.tests.test_coder_schema_lowering agent.planning.tests.test_validators
+结果：201 tests passed。
 ```
 
 本轮入口提示词：
@@ -459,7 +480,7 @@ File-level unittest: 185 tests passed.
 下一轮建议：
 
 ```text
-进入第 2 轮：统一 calls_allowed value_ref contract 与 wire mapping deterministic closure。
+进入第 3 轮：function/file/dependency identity closure。
 ```
 
 ### 2026-06-18：五轮计划重排

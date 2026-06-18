@@ -354,6 +354,18 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as raw_tmp:
             planning_ir, profile, _constraints, _selected, _draft, plan, _items = self._fixtures(Path(raw_tmp))
             caller = next(function for function in plan["function_contracts"] if function.get("signature", {}).get("params"))
+            caller["signature"] = {
+                "return_type": "int",
+                "name": caller["signature"].get("name") or caller["name"],
+                "params": [
+                    {"name": "payload", "type": "mqtt_publish_payload_t *"},
+                    {"name": "conn", "type": "mqtt_connection_t *"},
+                    {"name": "header", "type": "mqtt_fixed_header_t *"},
+                    {"name": "client_id", "type": "const char *"},
+                    {"name": "packet", "type": "mqtt_packet_t *"},
+                ],
+                "raw": "int test_caller(mqtt_publish_payload_t *payload, mqtt_connection_t *conn, mqtt_fixed_header_t *header, const char *client_id, mqtt_packet_t *packet)",
+            }
             callee = copy.deepcopy(caller)
             callee["function_id"] = "fn:test:callee"
             callee["name"] = "test_callee"
@@ -385,7 +397,6 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
                 "(mqtt_codec_decode_result_t*)packet",
                 "header->packet_type << 4 | encode_remaining_length_flags",
                 "strlen(client_id)",
-                "local_packet",
                 '"$SYS/broker/init"',
                 '(uint8_t*)"init"',
                 '(const uint8_t *)"init"',
@@ -394,7 +405,15 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
                 caller["call_contracts"][0]["param_bindings"][0]["value_ref"] = value_ref
                 diagnostics = validate_full_implementation_plan(plan, profile=profile, planning_ir=planning_ir)
                 self.assertFalse(_has(diagnostics, "readiness_call_contract_unknown_param_binding"), value_ref)
-            for value_ref in ('"unterminated', '(evil_t*)"init"'):
+            caller["call_contracts"][0]["param_bindings"][0]["value_ref"] = "local_packet"
+            caller["call_contracts"][0]["return_binding"]["target_ref"] = ""
+            diagnostics = validate_full_implementation_plan(plan, profile=profile, planning_ir=planning_ir)
+            self.assertTrue(_has(diagnostics, "readiness_call_contract_unknown_param_binding"), "local_packet without local binding")
+            caller["call_contracts"][0]["return_binding"]["target_ref"] = "local_packet"
+            diagnostics = validate_full_implementation_plan(plan, profile=profile, planning_ir=planning_ir)
+            self.assertFalse(_has(diagnostics, "readiness_call_contract_unknown_param_binding"), "local_packet")
+            caller["call_contracts"][0]["return_binding"]["target_ref"] = ""
+            for value_ref in ('"unterminated', '(evil_t*)"init"', "client ID", "decoded PUBLISH packet", "connection handle", "packet ? packet : NULL"):
                 caller["call_contracts"][0]["param_bindings"][0]["value_ref"] = value_ref
                 diagnostics = validate_full_implementation_plan(plan, profile=profile, planning_ir=planning_ir)
                 self.assertTrue(_has(diagnostics, "readiness_call_contract_unknown_param_binding"), value_ref)
@@ -5195,6 +5214,116 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
         candidate["call_updates"][0]["calls_allowed"][0]["param_bindings"][0]["value_ref"] = "message"
         self.assertFalse(_has(validate_calls_allowed_candidate(candidate, draft, selected), "call_contract_unknown_value_ref"))
 
+    def test_20260617_prose_value_ref_replay_is_blocking(self) -> None:
+        replay_root = ROOT / "agent" / "planning" / "out" / "mqtt" / "broker__c__linux_epoll__minimum_v1" / "20260617_103648_329047" / "_step_logs"
+        if replay_root.exists():
+            draft = json.loads((replay_root / "007_implementation_plan.json").read_text(encoding="utf-8"))
+            candidate = json.loads((replay_root / "007_5_4e_function_call_contracts_candidate.json").read_text(encoding="utf-8"))
+            selected = {"architecture": {"modules": draft["module_artifacts"]}}
+            diagnostics = validate_calls_allowed_candidate(candidate, draft, selected)
+            messages = "\n".join(diag.message for diag in diagnostics if diag.code == "call_contract_unknown_value_ref")
+            self.assertIn("client ID", messages)
+            self.assertIn("decoded PUBLISH packet", messages)
+            self.assertIn("connection handle", messages)
+            self.assertGreaterEqual(len([diag for diag in diagnostics if diag.code == "call_contract_unknown_value_ref"]), 5)
+            return
+
+        caller = _inventory_function("handle_disconnect", "broker", function_id="fn:broker:handle_disconnect", kind="handler")
+        caller["signature"] = {
+            "return_type": "int",
+            "name": "handle_disconnect",
+            "params": [{"name": "message", "type": "const void*"}],
+            "raw": "int handle_disconnect(const void* message)",
+        }
+        callee = _inventory_function("network_close", "network", function_id="fn:network:close", kind="public_api")
+        callee["signature"] = {
+            "return_type": "int",
+            "name": "network_close",
+            "params": [{"name": "self", "type": "mqtt_connection_t *"}],
+            "raw": "int network_close(mqtt_connection_t *self)",
+        }
+        candidate = {
+            "schema_version": "calls_allowed_candidate/v2",
+            "candidate_id": "candidate:test:20260617:value_ref",
+            "producer": {"stage": "5.4e_call_contracts", "prompt_name": "calls_allowed_candidate_prompt", "prompt_version": "test"},
+            "call_updates": [
+                {
+                    "caller_function_id": caller["function_id"],
+                    "calls_allowed": [
+                        {
+                            **_call_edge(callee["function_id"], ["srv:broker:close"]),
+                            "param_bindings": [{"param_name": "self", "value_ref": "connection handle", "ownership": "borrowed", "nullability": "non_null"}],
+                        }
+                    ],
+                }
+            ],
+            "unresolved_service_requirements": [],
+            "assumptions": [],
+            "unresolved_questions": [],
+        }
+        caller["service_requirements"] = [{"service_requirement_id": "srv:broker:close", "requirement_kind": "cross_module_service", "failure_policy": "return_error"}]
+        draft = {"module_artifacts": [{"module_id": "broker"}, {"module_id": "network"}], "function_contracts": [caller, callee]}
+        selected = {"architecture": {"modules": draft["module_artifacts"]}}
+        self.assertTrue(_has(validate_calls_allowed_candidate(candidate, draft, selected), "call_contract_unknown_value_ref"))
+
+    def test_calls_allowed_normalizer_preserves_edge_with_invalid_value_ref_for_validator(self) -> None:
+        caller = _inventory_function("handle_publish", "broker", function_id="fn:broker:handle_publish", kind="handler")
+        caller["signature"] = {
+            "return_type": "int",
+            "name": "handle_publish",
+            "params": [{"name": "message", "type": "const void*"}],
+            "raw": "int handle_publish(const void* message)",
+        }
+        caller["service_requirements"] = [{"service_requirement_id": "srv:broker:route_publish", "requirement_kind": "cross_module_service", "failure_policy": "return_error"}]
+        callee = _inventory_function("route_publish", "topic", function_id="fn:topic:route_publish", kind="public_api")
+        callee["signature"] = {
+            "return_type": "int",
+            "name": "route_publish",
+            "params": [{"name": "message", "type": "const void*"}],
+            "raw": "int route_publish(const void* message)",
+        }
+        edge = {
+            **_call_edge(callee["function_id"], ["srv:broker:route_publish"]),
+            "param_bindings": [{"param_name": "message", "value_ref": "decoded PUBLISH packet", "ownership": "borrowed", "nullability": "non_null"}],
+        }
+        candidate = {
+            "schema_version": "calls_allowed_candidate/v2",
+            "candidate_id": "candidate:test:preserve_invalid_binding",
+            "producer": {"stage": "5.4e_call_contracts", "prompt_name": "calls_allowed_candidate_prompt", "prompt_version": "test"},
+            "call_updates": [{"caller_function_id": caller["function_id"], "calls_allowed": [edge]}],
+            "unresolved_service_requirements": [],
+            "assumptions": [],
+            "unresolved_questions": [],
+        }
+        fallback = {
+            **candidate,
+            "candidate_id": "candidate:test:fallback",
+            "call_updates": [{"caller_function_id": caller["function_id"], "calls_allowed": []}],
+        }
+        draft = {"module_artifacts": [{"module_id": "broker"}, {"module_id": "topic"}], "function_contracts": [caller, callee]}
+        selected = {"architecture": {"modules": draft["module_artifacts"]}}
+        normalized, stats = normalize_calls_allowed_candidate(
+            candidate,
+            draft,
+            {caller["function_id"]},
+            {"srv:broker:route_publish"},
+            {callee["function_id"]},
+            fallback,
+        )
+        calls = normalized["call_updates"][0]["calls_allowed"]
+        self.assertEqual([item["callee_function_id"] for item in calls], [callee["function_id"]])
+        self.assertEqual(calls[0]["param_bindings"][0]["value_ref"], "decoded PUBLISH packet")
+        self.assertEqual(stats["invalid_call_value_refs_preserved"], 1)
+        diagnostics = validate_calls_allowed_candidate(
+            normalized,
+            draft,
+            selected,
+            expected_caller_ids={caller["function_id"]},
+            expected_service_requirement_ids={"srv:broker:route_publish"},
+            callable_function_ids={callee["function_id"]},
+        )
+        self.assertTrue(_has(diagnostics, "call_contract_unknown_value_ref"))
+
     def test_calls_allowed_aggregate_prefers_route_over_delivery_back_edge(self) -> None:
         session_process = _inventory_function(
             "mqtt_session_process_publish",
@@ -5399,6 +5528,43 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             broken["wire_mapping_entries"][0]["strategy"] = "parse_and_skip"
             broken["wire_mapping_entries"][0]["rule"] = ""
             self.assertTrue(_has(validate_wire_access_binding_patch(broken, draft, planning_ir), "wire_mapping_skip_reject_missing_reason"))
+
+    def test_20260610_fixed_header_only_wire_patch_replay_blocks_in_5_4d(self) -> None:
+        replay_root = ROOT / "agent" / "planning" / "out" / "mqtt" / "broker__c__linux_epoll__minimum_v1" / "20260610_093743_377786" / "_step_logs"
+        if replay_root.exists():
+            planning_ir = json.loads((replay_root / "003_planning_ir.json").read_text(encoding="utf-8"))
+            draft = json.loads((replay_root / "007_implementation_plan.json").read_text(encoding="utf-8"))
+            broken = json.loads((replay_root / "007_5_4d_function_wire_access_binding_patch.json").read_text(encoding="utf-8"))
+        else:
+            with tempfile.TemporaryDirectory() as raw_tmp:
+                planning_ir, _, _, _, draft, _, items = self._fixtures(Path(raw_tmp))
+                broken = copy.deepcopy(items["wire"])
+                fixed_fields = {
+                    entry["field_id"]
+                    for entry in broken["wire_mapping_entries"]
+                    if str(entry.get("packet_name", "")).lower() == "fixed_header"
+                }
+                broken["wire_mapping_entries"] = [entry for entry in broken["wire_mapping_entries"] if entry["field_id"] in fixed_fields]
+                kept_wire_ids = {entry["wire_mapping_id"] for entry in broken["wire_mapping_entries"]}
+                broken["access_path_entries"] = [entry for entry in broken["access_path_entries"] if entry["field_id"] in fixed_fields]
+                kept_access_ids = {entry["access_path_id"] for entry in broken["access_path_entries"]}
+                broken["function_binding_updates"] = [
+                    {
+                        **update,
+                        "wire_mapping_ids": [wire_id for wire_id in update["wire_mapping_ids"] if wire_id in kept_wire_ids],
+                        "access_path_ids": [access_id for access_id in update["access_path_ids"] if access_id in kept_access_ids],
+                    }
+                    for update in broken["function_binding_updates"]
+                    if any(wire_id in kept_wire_ids for wire_id in update["wire_mapping_ids"])
+                ]
+        mapped_fields = {entry["field_id"] for entry in broken["wire_mapping_entries"] if entry.get("direction") in {"parse", "serialize"}}
+        self.assertEqual(len(mapped_fields), 2)
+        diagnostics = validate_wire_access_binding_patch(broken, draft, planning_ir)
+        self.assertEqual(len([diag for diag in diagnostics if diag.code == "uncovered_wire_field"]), 12)
+        planning_ir_without_index = copy.deepcopy(planning_ir)
+        planning_ir_without_index["normalization_index"] = {}
+        diagnostics_without_index = validate_wire_access_binding_patch(broken, draft, planning_ir_without_index)
+        self.assertEqual(len([diag for diag in diagnostics_without_index if diag.code == "uncovered_wire_field"]), 12)
 
     def test_5_4d_rejects_blocking_unresolved_as_required_wire_coverage(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:

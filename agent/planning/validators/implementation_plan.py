@@ -4,6 +4,7 @@ from typing import Any
 
 from ..diagnostics import PlanningDiagnostic
 from ..schemas.implementation_plan import SCHEMA_VERSION
+from ..stages.implementation_plan import _required_wire_field_ids
 
 
 def _required_capabilities(profile: dict[str, Any] | None) -> set[str]:
@@ -14,18 +15,6 @@ def _required_capabilities(profile: dict[str, Any] | None) -> set[str]:
         for item in profile.get("required_capabilities", [])
         if isinstance(item, dict) and str(item.get("capability_id", "")).strip()
     }
-
-
-def _field_ids(planning_ir: dict[str, Any] | None) -> set[str]:
-    if not planning_ir:
-        return set()
-    fields = planning_ir.get("normalization_index", {}).get("field_id_by_message_and_name", {})
-    result: set[str] = set()
-    if isinstance(fields, dict):
-        for field_map in fields.values():
-            if isinstance(field_map, dict):
-                result.update(str(item) for item in field_map.values() if str(item).strip())
-    return result
 
 
 def _is_runtime_entrypoint_function(function: dict[str, Any]) -> bool:
@@ -133,7 +122,7 @@ def validate_implementation_plan(
         if surface and not any(surface in str(function.get("name", "")).lower() or surface in str(function.get("purpose", "")).lower() for function in handler_functions):
             diagnostics.append(PlanningDiagnostic("error", "uncovered_handler_surface", f"No handler function covers surface '{surface}'", path))
 
-    known_field_ids = _field_ids(planning_ir)
+    known_field_ids = _required_wire_field_ids(planning_ir)
     mapping_field_ids = {
         str(item.get("field_id", ""))
         for item in plan.get("wire_mapping_table", [])

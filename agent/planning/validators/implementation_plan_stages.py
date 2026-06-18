@@ -34,7 +34,7 @@ from ..stages.coder_spec_lowering import (
     parse_c_function_signature,
 )
 from ..stages.function_inventory_decomposition import DECOMPOSITION_RULES, select_top_decomposition_hints
-from ..stages.implementation_plan import _handler_surfaces, _safe_id, _surface_units, _wire_fields
+from ..stages.implementation_plan import _allowed_call_value_ref, _handler_surfaces, _required_wire_field_ids, _safe_id, _surface_units, _wire_fields
 from ..stages.implementation_plan_context import (
     SYSTEM_TYPE_IDS,
     derive_type_generation_targets,
@@ -376,7 +376,7 @@ def _function_ids(draft: dict[str, Any]) -> set[str]:
 
 
 def _field_ids(planning_ir: dict[str, Any]) -> set[str]:
-    return {str(item.get("field_id", "")) for item in _wire_fields(planning_ir) if str(item.get("field_id", "")).strip()}
+    return _required_wire_field_ids(planning_ir)
 
 
 def _message_ids(planning_ir: dict[str, Any]) -> set[str]:
@@ -448,42 +448,6 @@ def _binding_param_names_match(bindings: Any, callee_params: list[dict[str, Any]
         if name and expected and name != expected:
             return False
     return True
-
-
-def _is_c_string_literal(value: str) -> bool:
-    return bool(re.fullmatch(r'"(?:[^"\\]|\\.)*"', value))
-
-
-def _is_c_char_literal(value: str) -> bool:
-    return bool(re.fullmatch(r"'(?:[^'\\]|\\.)'", value))
-
-
-def _is_casted_c_literal(value: str) -> bool:
-    literal = r'(?:"(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)\')'
-    cast_type = r"(?:const\s+)?(?:uint8_t|char|void)\s*\*"
-    return bool(re.fullmatch(rf"\(\s*{cast_type}\s*\)\s*{literal}", value))
-
-
-def _allowed_call_value_ref(value_ref: str, caller_param_names: set[str], access_path_values: set[str], local_symbols: set[str], function_symbols: set[str] | None = None) -> bool:
-    if not value_ref:
-        return True
-    known_function_symbols = function_symbols or set()
-    if value_ref in caller_param_names or value_ref in access_path_values or value_ref in local_symbols or value_ref in known_function_symbols:
-        return True
-    if value_ref.startswith(("&", "*")):
-        return _allowed_call_value_ref(value_ref[1:].strip(), caller_param_names, access_path_values, local_symbols, known_function_symbols)
-    if _is_c_string_literal(value_ref) or _is_c_char_literal(value_ref) or _is_casted_c_literal(value_ref):
-        return True
-    if value_ref.startswith(("sizeof", "NULL", "true", "false")) or re.fullmatch(r"-?\d+(?:u|U|l|L)*", value_ref):
-        return True
-    if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", value_ref):
-        return True
-    c_expr = r"[A-Za-z_][A-Za-z0-9_]*(?:(?:->|\.)[A-Za-z_][A-Za-z0-9_]*|\[[A-Za-z0-9_+\-*/ ()]+\])*"
-    if re.fullmatch(c_expr, value_ref):
-        return True
-    if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*\([A-Za-z_][A-Za-z0-9_]*(?:(?:->|\.)[A-Za-z_][A-Za-z0-9_]*)*\)", value_ref):
-        return True
-    return bool(re.fullmatch(r"[A-Za-z0-9_>.<+\-*/|&() \[\]]+", value_ref) and re.search(r"(->|\.|\+|-|\*|/|<<|>>|\||&|\(|\[)", value_ref))
 
 
 def _function_text(function: dict[str, Any]) -> str:

@@ -5,9 +5,9 @@ from copy import deepcopy
 from typing import Any
 
 from ..schemas.implementation_plan import SCHEMA_VERSION
-from .coder_spec_lowering import lower_canonical_type_to_header_data, normalize_param_ownership_for_coder, normalize_type_key
+from .coder_spec_lowering import canonical_function_symbol, lower_canonical_type_to_header_data, normalize_param_ownership_for_coder, normalize_type_key
 from .dependencies import derive_dependency_graph
-from .implementation_plan import _capability_refs, _field_value, _function_signature, _handler_surfaces, _safe_id, _surface_units, _target_directives, _wire_fields
+from .implementation_plan import _allowed_call_value_ref, _capability_refs, _field_value, _function_signature, _handler_surfaces, _safe_id, _surface_units, _target_directives, _wire_fields
 from .implementation_plan_context import SYSTEM_TYPE_IDS, normalize_type_inventory_candidate
 
 
@@ -2057,32 +2057,34 @@ def _signature_params(function: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
-def _structured_call_value_ref(value: Any) -> bool:
-    text = str(value or "").strip()
-    if not text:
-        return True
-    if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", text):
-        return True
-    if text in {"NULL", "true", "false"} or re.fullmatch(r"-?\d+(?:u|U|l|L)*", text):
-        return True
-    if re.fullmatch(r'"(?:[^"\\]|\\.)*"', text) or re.fullmatch(r"'(?:[^'\\]|\\.)'", text):
-        return True
-    return bool(re.search(r"(->|\.|\+|-|\*|/|<<|>>|\||&|\(|\[)", text))
-
-
-def _valid_param_bindings(value: Any, callee: dict[str, Any] | None = None) -> list[dict[str, str]]:
+def _valid_param_bindings(
+    value: Any,
+    *,
+    caller: dict[str, Any] | None = None,
+    callee: dict[str, Any] | None = None,
+    access_path_values: set[str] | None = None,
+    local_symbols: set[str] | None = None,
+    function_symbols: set[str] | None = None,
+    stats: dict[str, int] | None = None,
+) -> list[dict[str, str]]:
     if not isinstance(value, list):
         return []
     result = []
+    caller_param_names = {
+        str(param.get("name", "")).strip()
+        for param in _signature_params(caller or {})
+        if str(param.get("name", "")).strip()
+    }
     for item in value:
         if not isinstance(item, dict):
             continue
-        if not _structured_call_value_ref(item.get("value_ref", "")):
-            continue
+        value_ref = str(item.get("value_ref", ""))
+        if not _allowed_call_value_ref(value_ref, caller_param_names, access_path_values or set(), local_symbols or set(), function_symbols or set()) and stats is not None:
+            stats["invalid_call_value_refs_preserved"] += 1
         result.append(
             {
                 "param_name": str(item.get("param_name", "")),
-                "value_ref": str(item.get("value_ref", "")),
+                "value_ref": value_ref,
                 "ownership": str(item.get("ownership", "")),
                 "nullability": str(item.get("nullability", "")),
             }
@@ -2114,6 +2116,7 @@ def normalize_calls_allowed_candidate(
         "call_kind_normalized": 0,
         "call_cleanup_binding_normalized": 0,
         "call_return_binding_normalized": 0,
+        "invalid_call_value_refs_preserved": 0,
         "service_requirements_closed": 0,
     }
     functions_by_id = {
@@ -2126,6 +2129,18 @@ def normalize_calls_allowed_candidate(
         for item in fallback.get("call_updates", [])
         if isinstance(item, dict)
     }
+    access_path_values = {
+        str(item.get("path", "")).strip()
+        for item in draft.get("access_path_table", [])
+        if isinstance(item, dict) and str(item.get("path", "")).strip()
+    }
+    function_symbols = set(functions_by_id)
+    for function in functions_by_id.values():
+        signature = function.get("signature", {}) if isinstance(function.get("signature"), dict) else {}
+        for value in (function.get("name"), signature.get("name"), canonical_function_symbol(function)):
+            text = str(value or "").strip()
+            if text:
+                function_symbols.add(text)
     incoming_updates = candidate.get("call_updates", []) if isinstance(candidate.get("call_updates"), list) else []
     grouped: dict[str, dict[str, Any]] = {}
     for update in incoming_updates:
@@ -2177,7 +2192,22 @@ def normalize_calls_allowed_candidate(
             if service_ids and not cross_module:
                 stats["invalid_call_edges_dropped"] += 1
                 continue
-            param_bindings = _valid_param_bindings(raw_edge.get("param_bindings", []), callee_fn)
+            local_symbols = {
+                str(edge_item.get("return_binding", {}).get("target_ref", "")).strip()
+                for edge_item in raw_edge_items
+                if isinstance(edge_item, dict)
+                and isinstance(edge_item.get("return_binding"), dict)
+                and str(edge_item.get("return_binding", {}).get("target_ref", "")).strip()
+            }
+            param_bindings = _valid_param_bindings(
+                raw_edge.get("param_bindings", []),
+                caller=caller_fn,
+                callee=callee_fn,
+                access_path_values=access_path_values,
+                local_symbols=local_symbols,
+                function_symbols=function_symbols,
+                stats=stats,
+            )
             raw_had_bindings = bool(raw_edge.get("param_bindings")) if isinstance(raw_edge.get("param_bindings", []), list) else False
             if cross_module and service_ids and (raw_had_bindings and not param_bindings or (_signature_params(callee_fn) and not param_bindings)):
                 stats["invalid_call_edges_dropped"] += 1

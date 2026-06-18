@@ -3,6 +3,22 @@ from __future__ import annotations
 import re
 from typing import Any
 
+
+_C_IDENTIFIERS = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+_C_VALUE_REF_CHARS = re.compile(r"^[A-Za-z0-9_>.<+\-*/|&!~() \[\],]+$")
+_C_EXPR_MARKERS = re.compile(r"(->|\.|\+|-|\*|/|<<|>>|\||&|!|~|\(|\[)")
+_C_KEYWORDS = {
+    "const",
+    "false",
+    "NULL",
+    "restrict",
+    "sizeof",
+    "static",
+    "true",
+    "volatile",
+}
+
+
 def _safe_id(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", str(text).lower()).strip("_") or "x"
 
@@ -130,6 +146,75 @@ def _wire_fields(ir: dict[str, Any]) -> list[dict[str, Any]]:
                 }
             )
     return result
+
+
+def _required_wire_field_ids(planning_ir: dict[str, Any] | None) -> set[str]:
+    return {
+        str(item.get("field_id", "")).strip()
+        for item in _wire_fields(planning_ir or {})
+        if str(item.get("field_id", "")).strip()
+    }
+
+
+def _is_c_string_literal(value: str) -> bool:
+    return bool(re.fullmatch(r'"(?:[^"\\]|\\.)*"', value))
+
+
+def _is_c_char_literal(value: str) -> bool:
+    return bool(re.fullmatch(r"'(?:[^'\\]|\\.)'", value))
+
+
+def _is_casted_c_literal(value: str) -> bool:
+    literal = r'(?:"(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)\')'
+    cast_type = r"(?:const\s+)?(?:uint8_t|char|void)\s*\*"
+    return bool(re.fullmatch(rf"\(\s*{cast_type}\s*\)\s*{literal}", value))
+
+
+def _value_ref_roots(values: set[str]) -> set[str]:
+    roots: set[str] = set()
+    for value in values:
+        text = str(value).strip()
+        if not text:
+            continue
+        roots.add(text)
+        match = _C_IDENTIFIERS.search(text)
+        if match:
+            roots.add(match.group(0))
+    return roots
+
+
+def _allowed_call_value_ref(
+    value_ref: Any,
+    caller_param_names: set[str],
+    access_path_values: set[str],
+    local_symbols: set[str],
+    function_symbols: set[str] | None = None,
+) -> bool:
+    text = str(value_ref or "").strip()
+    if not text:
+        return True
+    known_functions = {str(item).strip() for item in (function_symbols or set()) if str(item).strip()}
+    known_values = {
+        str(item).strip()
+        for item in (caller_param_names | access_path_values | local_symbols)
+        if str(item).strip()
+    }
+    if text in known_values or text in known_functions:
+        return True
+    if text.startswith(("&", "*")):
+        return _allowed_call_value_ref(text[1:].strip(), caller_param_names, access_path_values, local_symbols, known_functions)
+    if text in {"NULL", "true", "false"} or re.fullmatch(r"-?(?:0x[0-9A-Fa-f]+|\d+)(?:u|U|l|L)*", text):
+        return True
+    if _is_c_string_literal(text) or _is_c_char_literal(text) or _is_casted_c_literal(text):
+        return True
+    if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", text):
+        return False
+    if any(marker in text for marker in ("?", ":", ";", "{", "}", '"', "'")):
+        return False
+    if not _C_VALUE_REF_CHARS.fullmatch(text) or not _C_EXPR_MARKERS.search(text):
+        return False
+    identifiers = {item for item in _C_IDENTIFIERS.findall(text) if item not in _C_KEYWORDS}
+    return bool(identifiers & _value_ref_roots(known_values | known_functions))
 
 
 def _function_signature(return_type: str, name: str, params: list[dict[str, Any]]) -> dict[str, Any]:
