@@ -1240,6 +1240,113 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             self.assertEqual(fixed_fields["packet_type"], "mqtt_packet_type_t")
             self.assertEqual(fixed_fields["remaining_length"], "uint32_t")
 
+    def test_type_reconciler_canonicalizes_view_alias_fields_and_type_refs(self) -> None:
+        module = {
+            "module_id": "codec",
+            "name": "codec",
+            "role": "MQTT codec decoder encoder",
+            "dependencies": [],
+            "artifacts": [
+                {"name": "mqtt_connect_t", "kind": "TYPE", "role": "CONNECT packet"},
+                {"name": "mqtt_publish_t", "kind": "TYPE", "role": "PUBLISH packet"},
+            ],
+            "state_owned": [],
+            "owned_capabilities": ["message_decode", "message_encode"],
+            "files": [],
+            "doc_ref": [],
+        }
+        draft = {"protocol_name": "mqtt", "module_artifacts": [module], "canonical_types": [], "type_inventory": []}
+        planning_ir = {
+            "protocol_name": "mqtt",
+            "protocol_facts": {
+                "message_model": {
+                    "message_or_command_entries": [
+                        {
+                            "name": "CONNECT",
+                            "summary": "MQTT connect",
+                            "syntax_or_layout": "protocol name and client id are UTF-8 strings",
+                            "fields": [
+                                {"name": "protocol_name", "type": "string_view", "summary": "UTF-8 protocol name"},
+                                {"name": "client_id", "type": "utf8_string", "summary": "UTF-8 client id"},
+                            ],
+                        },
+                        {
+                            "name": "PUBLISH",
+                            "summary": "MQTT publish",
+                            "syntax_or_layout": "topic name UTF-8 string, binary payload remaining bytes",
+                            "fields": [
+                                {"name": "topic_name", "type": "string_view", "summary": "UTF-8 topic name"},
+                                {"name": "payload", "type": "buffer_view", "summary": "opaque payload"},
+                                {"name": "binary_payload", "type": "byte_buffer", "summary": "binary payload bytes"},
+                            ],
+                        },
+                    ]
+                }
+            },
+        }
+        targets = derive_type_generation_targets(draft, module, planning_ir)
+        self.assertTrue(any(target["suggested_name"] == "mqtt_string_view_t" and target["target_kind"] == "view_struct" for target in targets))
+        self.assertTrue(any(target["suggested_name"] == "mqtt_buffer_view_t" and target["target_kind"] == "view_struct" for target in targets))
+
+        space = build_type_planning_space(draft, module, planning_ir)
+        slots = {slot["name"]: slot for slot in space["mandatory_type_slots"]}
+        result = reconcile_type_filling_candidate(
+            space,
+            {
+                "schema_version": "type_filling_candidate/v1",
+                "candidate_id": "candidate:type_filling:codec_alias_regression",
+                "module_id": "codec",
+                "slot_fillings": [
+                    {
+                        "slot_id": slots["mqtt_connect_t"]["slot_id"],
+                        "fields": [
+                            {"field_name": "protocol_name", "field_type": "string_view", "type_ref": "string_view", "required": True, "ownership": "BORROWED", "lifetime": "packet", "length_field": "", "capacity_field": "", "validation_notes": ""},
+                            {"field_name": "client_id", "field_type": "utf8_string", "type_ref": "utf8_string", "required": True, "ownership": "BORROWED", "lifetime": "packet", "length_field": "", "capacity_field": "", "validation_notes": ""},
+                        ],
+                        "dependencies": [],
+                        "trace_ref_keys": ["20260617_172331_047723"],
+                        "status": "supported",
+                    },
+                    {
+                        "slot_id": slots["mqtt_publish_t"]["slot_id"],
+                        "fields": [
+                            {"field_name": "topic_name", "field_type": "string_view", "type_ref": "string_view", "required": True, "ownership": "BORROWED", "lifetime": "packet", "length_field": "", "capacity_field": "", "validation_notes": ""},
+                            {"field_name": "payload", "field_type": "buffer_view", "type_ref": "buffer_view", "required": True, "ownership": "BORROWED", "lifetime": "packet", "length_field": "", "capacity_field": "", "validation_notes": ""},
+                            {"field_name": "binary_payload", "field_type": "byte_buffer", "type_ref": "byte_buffer", "required": True, "ownership": "BORROWED", "lifetime": "packet", "length_field": "", "capacity_field": "", "validation_notes": ""},
+                        ],
+                        "dependencies": [],
+                        "trace_ref_keys": ["20260617_205742_685499"],
+                        "status": "supported",
+                    },
+                ],
+                "optional_type_proposals": [],
+                "assumptions": [],
+                "unresolved_questions": [],
+            },
+        )
+        by_name = {item["name"]: item for item in result["candidate"]["types"]}
+        connect_fields = {field["field_name"]: field for field in by_name["mqtt_connect_t"]["fields"]}
+        publish_fields = {field["field_name"]: field for field in by_name["mqtt_publish_t"]["fields"]}
+        self.assertEqual(connect_fields["protocol_name"]["field_type"], "mqtt_string_view_t")
+        self.assertEqual(connect_fields["protocol_name"]["type_ref"], "type:codec:mqtt_string_view_t")
+        self.assertEqual(connect_fields["client_id"]["field_type"], "mqtt_string_view_t")
+        self.assertEqual(connect_fields["client_id"]["type_ref"], "type:codec:mqtt_string_view_t")
+        for field_name in ("payload", "binary_payload"):
+            self.assertEqual(publish_fields[field_name]["field_type"], "mqtt_buffer_view_t")
+            self.assertEqual(publish_fields[field_name]["type_ref"], "type:codec:mqtt_buffer_view_t")
+        leaked_types = {
+            str(field.get(key))
+            for item in by_name.values()
+            for field in item.get("fields", [])
+            if isinstance(field, dict)
+            for key in ("field_type", "type_ref")
+        }
+        self.assertFalse({"string_view", "buffer_view", "byte_buffer"} & leaked_types)
+        diagnostics = validate_type_inventory_candidate(result["candidate"], [module], draft, planning_ir=planning_ir)
+        self.assertFalse(_has(diagnostics, "unknown_type_ref"))
+        self.assertFalse(_has(diagnostics, "undeclared_view_type_alias"))
+        self.assertFalse(_has_error(diagnostics), [diag.__dict__ for diag in diagnostics])
+
     def test_type_inventory_blocks_abstract_view_alias_and_accepts_declared_view(self) -> None:
         module = {"module_id": "codec", "name": "codec", "role": "MQTT codec", "dependencies": [], "artifacts": [], "state_owned": [], "owned_capabilities": [], "files": [], "doc_ref": []}
         payload_type = {

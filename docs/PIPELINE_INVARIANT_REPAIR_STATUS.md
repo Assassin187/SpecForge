@@ -13,7 +13,7 @@ PIPELINE_INVARIANT_REPAIR_PLAN.md
 当前阶段：
 
 ```text
-第 1 轮尚未执行。
+第 1 轮已完成；等待第 2 轮。
 ```
 
 当前目标：
@@ -34,7 +34,7 @@ docs/CURRENT_TASK_STATUS.md 记录旧 planning stabilization 路线。
 
 | 轮次 | 名称 | 状态 | 当前结论 |
 |---|---|---|---|
-| 第 1 轮 | 高收益低耦合：type canonicalization + 5.3 fixtures | not_started | 等待修复 string/buffer/byte_buffer alias closure |
+| 第 1 轮 | 高收益低耦合：type canonicalization + 5.3 fixtures | completed | 已完成 string/buffer/byte_buffer alias canonicalization 与 5.3 regression |
 | 第 2 轮 | calls_allowed 与 wire mapping | not_started | 等待统一 value_ref contract 与 wire coverage closure |
 | 第 3 轮 | runtime lifecycle + function name allocator | not_started | 等待前移 lifecycle obligations 并修复 symbol collision |
 | 第 4 轮 | C header surface closure | not_started | 等待修复 header cycle / public type owner split |
@@ -67,7 +67,7 @@ deferred
 状态：
 
 ```text
-not_started
+completed
 ```
 
 目标：
@@ -79,22 +79,22 @@ not_started
 任务清单：
 
 ```text
-[ ] 建立集中 alias registry。
-[ ] 修改 normalize_protocol_field_type。
-[ ] 修改 inventory reconciliation alias 处理。
-[ ] 确保 field_type 与 type_ref 同步 canonicalize。
-[ ] 确保 protocol-specific view_struct slots 稳定生成。
-[ ] 增加 string_view / buffer_view / byte_buffer regression tests。
-[ ] 运行相关 unittest。
+[x] 建立集中 alias registry。
+[x] 修改 normalize_protocol_field_type。
+[x] 修改 inventory reconciliation alias 处理。
+[x] 确保 field_type 与 type_ref 同步 canonicalize。
+[x] 确保 protocol-specific view_struct slots 稳定生成。
+[x] 增加 string_view / buffer_view / byte_buffer regression tests。
+[x] 运行相关 unittest。
 ```
 
 完成标准：
 
 ```text
-[ ] string_view / buffer_view / byte_buffer fixture 均生成 declared protocol view type。
-[ ] final type inventory 不含 raw string_view / buffer_view / byte_buffer public field type。
-[ ] unknown_type_ref 不再由 abstract view alias 触发。
-[ ] declared view structs 可 lower 到 coder header data。
+[x] string_view / buffer_view / byte_buffer fixture 均生成 declared protocol view type。
+[x] final type inventory 不含 raw string_view / buffer_view / byte_buffer public field type。
+[x] unknown_type_ref 不再由 abstract view alias 触发。
+[x] declared view structs 可 lower 到 coder header data。
 ```
 
 本轮入口提示词：
@@ -329,7 +329,28 @@ not_started
 记录 run directories、commands、diagnostics 和结论，更新 PIPELINE_INVARIANT_REPAIR_STATUS.md。
 ```
 
-## 9. 状态更新规则
+## 9. 执行约束：减负式修改
+
+每轮执行时必须遵守：
+
+```text
+1. 优先在现有代码上做逻辑优化、替换和删改。
+2. 不要为了兼容旧路径再新增一套 parallel logic。
+3. 删除 dead code、重复 fallback、stale compatibility branch 和无效 helper。
+4. 新增 registry / adapter / wrapper / configuration knob 前，必须说明它替代了哪些散落逻辑。
+5. 如果 patch 净增代码较多，必须在本状态文件记录原因，以及是否做过 pruning pass。
+```
+
+每轮状态记录必须写清：
+
+```text
+删掉了什么旧逻辑：
+替换了什么旧逻辑：
+新增代码为什么必要：
+是否完成 pruning pass：
+```
+
+## 10. 状态更新规则
 
 每轮执行后必须追加：
 
@@ -337,6 +358,8 @@ not_started
 执行日期：
 执行轮次：
 修改文件：
+删除/替换的旧逻辑：
+必要新增的逻辑：
 运行命令：
 通过结果：
 失败结果：
@@ -347,7 +370,97 @@ not_started
 
 不要把旧计划 `CURRENT_TASK_STATUS.md` 的 Step 1-6 历史复制到本文档。这里只记录 invariant repair 五轮新计划。
 
-## 10. 最近执行记录
+## 11. 最近执行记录
+
+### 2026-06-18：第 1 轮 type canonicalization
+
+执行日期：
+
+```text
+2026-06-18
+```
+
+执行轮次：
+
+```text
+第 1 轮：高收益低耦合。
+```
+
+修改文件：
+
+```text
+agent/planning/stages/implementation_plan_context.py
+agent/planning/stages/inventory_reconciliation.py
+agent/planning/validators/implementation_plan_stages.py
+agent/planning/tests/test_implementation_plan_stage_candidates.py
+docs/PIPELINE_INVARIANT_REPAIR_STATUS.md
+```
+
+删除/替换的旧逻辑：
+
+```text
+用共享 PROTOCOL_VIEW_TYPE_ALIASES / protocol_view_alias_kind 替换 inventory reconciliation 与 validator 中分散的 string_view / buffer_view 硬编码判断。
+收紧 normalize_protocol_field_type，避免 entry-level syntax 中的 string alias 污染 keep_alive 等标量字段。
+```
+
+必要新增的逻辑：
+
+```text
+新增集中 alias registry，覆盖 string_view、buffer_view、byte_buffer 等 abstract aliases。
+新增 5.3 regression fixture，覆盖 20260617_172331_047723 与 20260617_205742_685499 暴露的 field_type/type_ref alias 泄漏。
+测试 fixture 使 patch 净增超过 50 行；pruning pass 已完成，未新增 wrapper、adapter、fallback 或配置开关。
+```
+
+运行命令：
+
+```text
+python -m unittest agent.planning.tests.test_implementation_plan_stage_candidates.ImplementationPlanStageCandidateTests.test_type_inventory_context_exposes_protocol_type_generation_targets agent.planning.tests.test_implementation_plan_stage_candidates.ImplementationPlanStageCandidateTests.test_type_reconciler_canonicalizes_view_alias_fields_and_type_refs agent.planning.tests.test_implementation_plan_stage_candidates.ImplementationPlanStageCandidateTests.test_type_inventory_blocks_abstract_view_alias_and_accepts_declared_view agent.planning.tests.test_coder_schema_lowering.CoderSchemaLoweringTests.test_declared_view_types_lower_to_type_spec
+python -m unittest agent.planning.tests.test_implementation_plan_stage_candidates agent.planning.tests.test_coder_schema_lowering
+git diff --stat
+git diff
+```
+
+diff stat 摘要：
+
+```text
+agent/planning/stages/implementation_plan_context.py | 58
+agent/planning/stages/inventory_reconciliation.py | 24
+agent/planning/tests/test_implementation_plan_stage_candidates.py | 107
+agent/planning/validators/implementation_plan_stages.py | 8
+docs/PIPELINE_INVARIANT_REPAIR_STATUS.md updated for completion record
+docs/PIPELINE_INVARIANT_REPAIR_PLAN.md was already modified before this round; not further edited for implementation
+```
+
+通过结果：
+
+```text
+Focused unittest: 4 tests passed.
+File-level unittest: 185 tests passed.
+```
+
+失败结果：
+
+```text
+第一次 focused unittest 暴露 keep_alive 被 entry-level string syntax 误 canonicalize；已收紧 alias 判定后重跑通过。
+```
+
+新增 diagnostics：
+
+```text
+无新增 blocking diagnostics。
+```
+
+未解决风险：
+
+```text
+本轮未执行 fresh MQTT planning replay；第 5 轮集中 replay/golden 时需要覆盖完整历史 run。
+```
+
+下一轮建议：
+
+```text
+进入第 2 轮：统一 calls_allowed value_ref contract 与 wire mapping deterministic closure。
+```
 
 ### 2026-06-18：五轮计划重排
 
@@ -371,4 +484,3 @@ docs/PIPELINE_INVARIANT_REPAIR_STATUS.md
 ```text
 从第 1 轮：高收益低耦合开始。
 ```
-

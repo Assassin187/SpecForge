@@ -40,6 +40,7 @@ from ..stages.implementation_plan_context import (
     derive_type_generation_targets,
     derive_type_obligations,
     normalize_system_type_ref,
+    protocol_view_alias_kind,
     provider_public_type_seeds_for_module,
 )
 from ..stages.inventory_planning_space import build_function_family_obligation_report, build_function_planning_space
@@ -643,12 +644,7 @@ def _field_type_matches_expected(actual: str, expected: str) -> bool:
 
 
 def _abstract_view_type_alias(value: Any) -> str:
-    key = normalize_type_key(value)
-    if key in {"string_view", "utf8_string_view"}:
-        return "string_view"
-    if key in {"buffer_view", "bytes_view", "payload_view"}:
-        return "buffer_view"
-    return ""
+    return protocol_view_alias_kind(value)
 
 
 def _packet_container_score(item: dict[str, Any], suggested_key: str) -> int:

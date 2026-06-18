@@ -5,7 +5,7 @@ from typing import Any
 
 from .function_inventory_decomposition import DECOMPOSITION_RULES
 from .implementation_plan import _safe_id
-from .implementation_plan_context import SYSTEM_TYPE_IDS, normalize_system_type_ref
+from .implementation_plan_context import PROTOCOL_VIEW_TYPE_ALIASES, SYSTEM_TYPE_IDS, normalize_system_type_ref, protocol_view_alias_kind
 from .inventory_planning_space import build_function_family_obligation_report, build_public_type_obligation_report
 
 
@@ -92,12 +92,7 @@ def _system_type_ref(field_type: str) -> str:
 
 
 def _abstract_view_alias(value: Any) -> str:
-    key = _safe_id(str(value).replace("const", "").replace("*", "").strip())
-    if key in {"string_view", "utf8_string_view"}:
-        return "string_view"
-    if key in {"buffer_view", "bytes_view", "payload_view"}:
-        return "buffer_view"
-    return ""
+    return protocol_view_alias_kind(value)
 
 
 def _type_ref_for_field(field_type: str, allowed_refs: set[str], name_aliases: dict[str, str]) -> str:
@@ -105,6 +100,11 @@ def _type_ref_for_field(field_type: str, allowed_refs: set[str], name_aliases: d
     if raw:
         return raw
     clean = str(field_type).replace("const", "").replace("*", "").strip()
+    abstract_alias = _abstract_view_alias(clean)
+    if abstract_alias:
+        alias = name_aliases.get(abstract_alias)
+        if alias:
+            return alias
     alias = name_aliases.get(_safe_id(clean.removeprefix("struct ")))
     if alias:
         return alias
@@ -353,9 +353,9 @@ def _allowed_type_refs(space: dict[str, Any]) -> tuple[set[str], dict[str, str],
                 refs.add(name)
                 aliases[_safe_id(name.removeprefix("struct "))] = type_id or name
                 if name.endswith("_string_view_t"):
-                    aliases["string_view"] = type_id or name
+                    aliases.update({alias: type_id or name for alias, kind in PROTOCOL_VIEW_TYPE_ALIASES.items() if kind == "string_view"})
                 if name.endswith("_buffer_view_t"):
-                    aliases["buffer_view"] = type_id or name
+                    aliases.update({alias: type_id or name for alias, kind in PROTOCOL_VIEW_TYPE_ALIASES.items() if kind == "buffer_view"})
                 local_meta[name] = item
     return refs, aliases, local_meta
 
@@ -444,6 +444,12 @@ def _sanitize_type_refs(type_item: dict[str, Any], allowed_refs: set[str], name_
         if not isinstance(param, dict):
             continue
         normalized = normalize_surface_ref(param.get("type_ref", ""), param.get("type", ""), surface="callback parameter", owner_name=f"{item.get('type_id')}.{param.get('name')}", fallback_to_void=True)
+        alias = _abstract_view_alias(param.get("type_ref", "")) or _abstract_view_alias(param.get("type", ""))
+        if alias and normalized:
+            target = local_meta.get(normalized)
+            target_name = str((target or {}).get("name", "")).strip()
+            if target_name:
+                param["type"] = target_name
         if normalized == "void" and not _system_type_ref(str(param.get("type", ""))):
             param["type"] = "void*"
             param["type_ref"] = "void"

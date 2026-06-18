@@ -78,6 +78,52 @@ MQTT_PACKET_TYPE_VALUES = {
     "DISCONNECT": "14",
 }
 
+PROTOCOL_VIEW_TYPE_ALIASES = {
+    **{
+        _safe_id(alias): "string_view"
+        for alias in (
+            "string",
+            "string_view",
+            "utf8_string_view",
+            "utf8_string",
+            "UTF-8 string",
+            "topic name",
+            "topic filter",
+            "client id",
+            "protocol name",
+        )
+    },
+    **{
+        _safe_id(alias): "buffer_view"
+        for alias in (
+            "buffer",
+            "buffer_view",
+            "bytes_view",
+            "payload_view",
+            "byte_buffer",
+            "bytes",
+            "payload",
+            "binary payload",
+            "opaque payload",
+            "remaining bytes",
+        )
+    },
+}
+
+
+def protocol_view_alias_kind(value: Any, *context_values: Any) -> str:
+    cleaned = str(value or "").replace("const", "").replace("*", "").strip()
+    alias = PROTOCOL_VIEW_TYPE_ALIASES.get(_safe_id(cleaned.removeprefix("struct ")))
+    if alias:
+        return alias
+    text = " ".join(str(item or "") for item in (value, *context_values)).lower().replace("_", " ").replace("-", " ")
+    if any(marker in text for marker in ("utf 8 string", "utf8 string", "topic name", "topic filter", "client id", "protocol name")):
+        return "string_view"
+    if any(marker in text for marker in ("binary payload", "opaque payload", "remaining bytes")):
+        return "buffer_view"
+    return ""
+
+
 def normalize_system_type_ref(value: Any) -> str:
     text = str(value or "").strip()
     if text.startswith("system:"):
@@ -104,22 +150,22 @@ def system_headers_for_type_ref(value: Any) -> list[str]:
 
 
 def protocol_view_type_name(protocol: str, alias: str) -> str:
-    key = _safe_id(str(alias).removesuffix("_t"))
-    if key in {"string", "string_view"}:
+    alias_kind = protocol_view_alias_kind(alias)
+    if alias_kind == "string_view":
         return f"{_safe_id(protocol)}_string_view_t"
-    if key in {"buffer", "bytes", "payload", "buffer_view"}:
+    if alias_kind == "buffer_view":
         return f"{_safe_id(protocol)}_buffer_view_t"
     return str(alias)
 
 
 def normalize_protocol_field_type(protocol: str, field_type: Any, field_name: str = "", field_summary: str = "", syntax: str = "", entry_summary: str = "") -> str:
     raw = str(field_type or "").strip()
-    lowered = raw.lower().replace("-", "_").replace(" ", "_")
     name = str(field_name or "").lower().replace("-", "_")
     text = f"{name} {raw} {field_summary} {syntax} {entry_summary}".lower()
-    if lowered in {"string_view", "utf8_string_view"}:
+    alias_kind = protocol_view_alias_kind(raw) or protocol_view_alias_kind(name) or protocol_view_alias_kind("", field_summary)
+    if alias_kind == "string_view":
         return protocol_view_type_name(protocol, "string_view")
-    if lowered in {"buffer_view", "bytes_view", "payload_view"}:
+    if alias_kind == "buffer_view" or ("payload" in name and ("byte" in text or "opaque" in text or "remaining bytes" in text)):
         return protocol_view_type_name(protocol, "buffer_view")
     if raw:
         return raw

@@ -567,7 +567,24 @@ docs/PIPELINE_INVARIANT_REPAIR_STATUS.md
 9. 下一轮入口提示词。
 ```
 
-## 12. 不做事项
+## 12. 修改原则：减负式修复
+
+本计划的实现方式应优先选择“在现有代码上做逻辑优化、收敛和删改”，而不是为了兼容旧逻辑继续叠加新路径。
+
+具体要求：
+
+```text
+1. 优先替换 obsolete logic，而不是新增 parallel logic。
+2. 优先删除 dead code、重复 fallback、过期 compatibility branch、无效 helper。
+3. 优先合并分散的 validator / normalizer 规则，而不是再加一套 wrapper。
+4. 不新增 registry、adapter、configuration knob，除非它能替代多个散落的 ad hoc 分支。
+5. 不为了让旧 artifact 继续通过而保留错误行为；旧行为若违反 invariant，应 fail-closed 或迁移到新 canonical path。
+6. 每轮 patch 应先找最小文件集；如果净增代码明显变多，必须说明为什么不能通过删除/替换完成。
+```
+
+本计划的目标不是把 pipeline 变得更厚，而是把不变量前移、把重复逻辑收敛、把错误路径剪掉。
+
+## 13. 不做事项
 
 本计划期间避免：
 
@@ -577,5 +594,5 @@ docs/PIPELINE_INVARIANT_REPAIR_STATUS.md
 3. 关闭 strict validator、rendered header validation 或 coder compatibility gate。
 4. 把旧计划 CURRENT_TASK_STATUS.md 的 Step 1-6 与本五轮计划混写。
 5. 把 targeted resume 成功冒充为 fresh-run 成功。
+6. 为兼容旧逻辑新增大段 fallback / adapter / wrapper，而不删除或替换旧问题路径。
 ```
-
