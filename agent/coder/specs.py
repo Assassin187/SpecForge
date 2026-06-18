@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -559,20 +560,39 @@ def _validate_rendered_headers_compile(bundle: SpecBundle) -> None:
         return
     from .generation import render_header
 
+    check_root = Path(bundle.spec_root).parent / "_rendered_header_checks"
+    if check_root.exists():
+        shutil.rmtree(check_root)
+    rendered_root = check_root / "rendered_headers"
+    checks_root = check_root / "checks"
+    logs_root = check_root / "logs"
+    rendered_root.mkdir(parents=True, exist_ok=True)
+    checks_root.mkdir(parents=True, exist_ok=True)
+    logs_root.mkdir(parents=True, exist_ok=True)
+
     with tempfile.TemporaryDirectory() as raw_tmp:
         tmp = Path(raw_tmp)
+        rendered_paths_by_header: dict[str, Path] = {}
         for file_spec in bundle.file_specs_by_trace.values():
             if not file_spec.header_path:
                 continue
+            rendered = render_header(bundle, file_spec)
             target = tmp / file_spec.header_path
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(render_header(bundle, file_spec), encoding="utf-8")
+            target.write_text(rendered, encoding="utf-8")
+            rendered_snapshot = rendered_root / file_spec.header_path
+            rendered_snapshot.parent.mkdir(parents=True, exist_ok=True)
+            rendered_snapshot.write_text(rendered, encoding="utf-8")
+            rendered_paths_by_header[file_spec.header_path] = rendered_snapshot
 
         for file_spec in bundle.file_specs_by_trace.values():
             if not file_spec.header_path:
                 continue
             check_path = tmp / f"check_{file_spec.header_path.replace('/', '_')}.c"
-            check_path.write_text(f'#include "{file_spec.header_path}"\n', encoding="utf-8")
+            check_source = f'#include "{file_spec.header_path}"\n'
+            check_path.write_text(check_source, encoding="utf-8")
+            check_snapshot = checks_root / check_path.name
+            check_snapshot.write_text(check_source, encoding="utf-8")
             command = [
                     "cc",
                     "-std=c11",
@@ -593,14 +613,29 @@ def _validate_rendered_headers_compile(bundle: SpecBundle) -> None:
                 capture_output=True,
                 check=False,
             )
+            log_stem = file_spec.header_path.replace("/", "_")
+            stdout_path = logs_root / f"{log_stem}.stdout.txt"
+            stderr_path = logs_root / f"{log_stem}.stderr.txt"
+            stdout_path.write_text(result.stdout or "", encoding="utf-8")
+            stderr_path.write_text(result.stderr or "", encoding="utf-8")
             if result.returncode != 0:
-                detail = (result.stderr or result.stdout).strip().splitlines()
-                message = detail[0] if detail else "rendered header did not compile"
+                stderr = result.stderr or ""
+                stdout = result.stdout or ""
                 bundle.diagnostics.append(
                     Diagnostic(
                         "error",
                         "rendered_header_compile_error",
-                        f"{message}; command={' '.join(command)}; include_path={tmp}",
+                        (
+                            "rendered header did not compile"
+                            f"; command={' '.join(command)}"
+                            f"; include_path={tmp}"
+                            f"; check_source={check_snapshot}"
+                            f"; rendered_header={rendered_paths_by_header.get(file_spec.header_path, '')}"
+                            f"; stderr_path={stderr_path}"
+                            f"; stdout_path={stdout_path}"
+                            f"; stderr={stderr}"
+                            f"; stdout={stdout}"
+                        ),
                         file_spec.header_path,
                     )
                 )

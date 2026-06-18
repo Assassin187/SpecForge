@@ -209,6 +209,7 @@ def validate_coder_semantics(bundle: Any) -> list[PlanningDiagnostic]:
 
     public_type_keys_by_module: dict[str, set[str]] = {}
     public_type_keys_by_header: dict[str, set[str]] = {}
+    public_type_headers_by_key: dict[str, set[str]] = {}
     private_type_keys: set[str] = set()
     all_public_type_keys: set[str] = set()
     for module_name, data_keys in public_data_by_module.items():
@@ -231,30 +232,73 @@ def validate_coder_semantics(bundle: Any) -> list[PlanningDiagnostic]:
         }
         if file_spec.header_path:
             public_type_keys_by_header[file_spec.header_path] = file_type_keys
+            for key in file_type_keys:
+                public_type_headers_by_key.setdefault(key, set()).add(file_spec.header_path)
         for item in [*file_spec.header_data, *file_spec.source_data]:
             if isinstance(item, dict) and item.get("KIND") == "TYPE" and str(item.get("VISIBILITY", "")).upper() != "PUBLIC":
                 key = normalize_type_key(item.get("NAME", ""))
                 if key:
                     private_type_keys.add(key)
 
+    for key, headers in sorted(public_type_headers_by_key.items()):
+        if len(headers) <= 1:
+            continue
+        owners = sorted(headers)
+        owner_specs = [
+            str(bundle.file_specs_by_header_path[header].spec_path)
+            for header in owners
+            if header in bundle.file_specs_by_header_path
+        ]
+        diagnostics.append(
+            PlanningDiagnostic(
+                "error",
+                "coder_public_type_owner_split",
+                f"Public type key '{key}' is declared by multiple owner headers: {', '.join(owners)}; specs={', '.join(owner_specs)}",
+                owner_specs[0] if owner_specs else str(bundle.spec_root),
+            )
+        )
+
+    header_dependency_graph = {
+        file_spec.header_path: [
+            dependency
+            for dependency in file_spec.header_dependencies
+            if dependency in public_type_keys_by_header
+        ]
+        for file_spec in bundle.file_specs_by_trace.values()
+        if file_spec.header_path
+    }
+    visible_type_keys_by_header: dict[str, set[str]] = {}
+
+    def visible_dependency_type_keys(header_path: str, visiting: set[str] | None = None) -> set[str]:
+        if header_path in visible_type_keys_by_header:
+            return visible_type_keys_by_header[header_path]
+        visiting = set() if visiting is None else set(visiting)
+        if header_path in visiting:
+            return set()
+        visiting.add(header_path)
+        visible: set[str] = set()
+        for dependency in header_dependency_graph.get(header_path, []):
+            visible.update(public_type_keys_by_header.get(dependency, set()))
+            visible.update(visible_dependency_type_keys(dependency, visiting))
+        visible_type_keys_by_header[header_path] = visible
+        return visible
+
     def check_public_header_ref(file_spec: Any, ref: dict[str, Any], *, owner: str, surface: str) -> None:
         key = str(ref.get("key", "")).strip()
         if not key:
             return
         local_keys = public_type_keys_by_header.get(file_spec.header_path, set())
-        visible_dependency_keys = {
-            dep_key
-            for dependency in file_spec.header_dependencies
-            for dep_key in public_type_keys_by_header.get(dependency, set())
-        }
+        visible_dependency_keys = visible_dependency_type_keys(file_spec.header_path)
         if key in local_keys or key in visible_dependency_keys:
             return
         if key in all_public_type_keys:
+            providers = sorted(public_type_headers_by_key.get(key, set()))
+            provider_text = ", ".join(providers) if providers else "<no provider header>"
             diagnostics.append(
                 PlanningDiagnostic(
                     "error",
                     "coder_public_signature_missing_header_dependency",
-                    f"Public {surface} '{owner}' references public type '{ref.get('raw')}' but provider header is not visible from HEADER.DEPENDENCY",
+                    f"Public {surface} '{owner}' in header '{file_spec.header_path}' references public type '{ref.get('raw')}' (key '{key}') but provider header(s) {provider_text} are not visible through acyclic HEADER.DEPENDENCY",
                     str(file_spec.spec_path),
                 )
             )

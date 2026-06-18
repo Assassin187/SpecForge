@@ -219,6 +219,184 @@ def _add_payload_module(plan: dict, *, with_type: bool = True, with_function: bo
     plan["module_generation_order"] = ["payload", *[item for item in plan["module_generation_order"] if item != "payload"]]
 
 
+def _mqtt_header_surface_plan() -> dict:
+    return {
+        "schema_version": "implementation_plan/v1",
+        "protocol_name": "mqtt",
+        "protocol_metadata": {"name": "MQTT", "protocol_version": "3.1.1"},
+        "target_profile": {"target_role": "broker"},
+        "roles": ["broker"],
+        "canonical_types": [
+            {
+                "type_id": "type:protocol_codec:mqtt_packet_type_t",
+                "name": "mqtt_packet_type_t",
+                "kind": "enum",
+                "owner_module_id": "protocol_codec",
+                "fields": [],
+                "enum_values": [{"name": "MQTT_PACKET_CONNECT", "value": "1", "role": "CONNECT packet."}],
+            },
+            {
+                "type_id": "type:protocol_codec:mqtt_packet_t",
+                "name": "mqtt_packet_t",
+                "kind": "struct",
+                "owner_module_id": "protocol_codec",
+                "fields": [{"field_name": "type", "field_type": "mqtt_packet_type_t", "validation_notes": "Packet type."}],
+                "enum_values": [],
+            },
+            {
+                "type_id": "type:protocol_codec:mqtt_bytes_t",
+                "name": "mqtt_bytes_t",
+                "kind": "struct",
+                "owner_module_id": "protocol_codec",
+                "fields": [
+                    {"field_name": "data", "field_type": "uint8_t*", "validation_notes": "Owned byte buffer."},
+                    {"field_name": "len", "field_type": "size_t", "validation_notes": "Buffer length."},
+                ],
+                "enum_values": [],
+            },
+            {
+                "type_id": "type:protocol_codec:mqtt_decoder_state_t",
+                "name": "mqtt_decoder_state_t",
+                "kind": "opaque_handle",
+                "owner_module_id": "protocol_codec",
+                "fields": [],
+                "enum_values": [],
+            },
+        ],
+        "module_artifacts": [
+            {
+                "module_id": "protocol_codec",
+                "role": "MQTT packet parsing, serialization, and canonical type ownership.",
+                "dependencies": [],
+                "artifacts": [
+                    {"name": "mqtt_protocol_codec_t", "kind": "TYPE", "role": "Opaque codec context."},
+                    {"name": "mqtt_packet_type_t", "kind": "TYPE", "role": "Packet type enum."},
+                    {"name": "mqtt_packet_t", "kind": "TYPE", "role": "Packet container."},
+                    {"name": "mqtt_bytes_t", "kind": "TYPE", "role": "Encoded bytes."},
+                    {"name": "mqtt_decoder_state_t", "kind": "TYPE", "role": "Incremental decoder state."},
+                    {"name": "mqtt_decode_packet", "kind": "FUNC", "role": "Decode packet."},
+                    {"name": "mqtt_encode_connack", "kind": "FUNC", "role": "Encode CONNACK."},
+                    {"name": "mqtt_packet_free", "kind": "FUNC", "role": "Free packet."},
+                    {"name": "mqtt_bytes_free", "kind": "FUNC", "role": "Free bytes."},
+                ],
+            }
+        ],
+        "file_layout": {
+            "files": [
+                {
+                    "file_id": "file:src/protocol_codec/codec",
+                    "module_id": "protocol_codec",
+                    "source_path": "src/protocol_codec/codec.c",
+                    "header_path": "src/protocol_codec/codec.h",
+                    "responsibility": "Codec encode/decode API.",
+                    "exports": ["fn:protocol_codec:mqtt_decode_packet", "fn:protocol_codec:mqtt_encode_connack"],
+                    "exports_type_ids": [
+                        "type:protocol_codec:mqtt_packet_type_t",
+                        "type:protocol_codec:mqtt_packet_t",
+                        "type:protocol_codec:mqtt_bytes_t",
+                    ],
+                    "imports_allowed": ["file:src/protocol_codec/protocol_codec"],
+                },
+                {
+                    "file_id": "file:src/protocol_codec/protocol_codec",
+                    "module_id": "protocol_codec",
+                    "source_path": "src/protocol_codec/protocol_codec.c",
+                    "header_path": "src/protocol_codec/protocol_codec.h",
+                    "responsibility": "Protocol codec lifecycle API.",
+                    "exports": ["fn:protocol_codec:mqtt_packet_free", "fn:protocol_codec:mqtt_bytes_free"],
+                    "exports_type_ids": ["type:protocol_codec:mqtt_decoder_state_t"],
+                    "imports_allowed": ["file:src/protocol_codec/codec"],
+                },
+            ],
+        },
+        "function_contracts": [
+            {
+                "function_id": "fn:protocol_codec:mqtt_decode_packet",
+                "file_id": "file:src/protocol_codec/codec",
+                "module_id": "protocol_codec",
+                "name": "mqtt_decode_packet",
+                "function_kind": "public_api",
+                "visibility": "public",
+                "api_surface": "public",
+                "exported": True,
+                "purpose": "Decode one MQTT packet.",
+                "signature": {
+                    "raw": "int mqtt_decode_packet(mqtt_decoder_state_t* state, const uint8_t* buffer, size_t buffer_len, size_t* consumed, mqtt_packet_t* packet)",
+                    "name": "mqtt_decode_packet",
+                    "return_type": "int",
+                    "params": [
+                        {"type": "mqtt_decoder_state_t*", "name": "state", "ownership": "borrowed"},
+                        {"type": "const uint8_t*", "name": "buffer", "ownership": "borrowed"},
+                        {"type": "size_t", "name": "buffer_len", "ownership": "borrowed"},
+                        {"type": "size_t*", "name": "consumed", "ownership": "borrowed"},
+                        {"type": "mqtt_packet_t*", "name": "packet", "ownership": "borrowed"},
+                    ],
+                },
+                "behavior_contract": {"input": "bytes", "action": "decode", "output": "packet"},
+            },
+            {
+                "function_id": "fn:protocol_codec:mqtt_encode_connack",
+                "file_id": "file:src/protocol_codec/codec",
+                "module_id": "protocol_codec",
+                "name": "mqtt_encode_connack",
+                "function_kind": "public_api",
+                "visibility": "public",
+                "api_surface": "public",
+                "exported": True,
+                "purpose": "Encode CONNACK.",
+                "signature": {
+                    "raw": "mqtt_bytes_t mqtt_encode_connack(bool session_present, uint8_t return_code)",
+                    "name": "mqtt_encode_connack",
+                    "return_type": "mqtt_bytes_t",
+                    "params": [
+                        {"type": "bool", "name": "session_present", "ownership": "borrowed"},
+                        {"type": "uint8_t", "name": "return_code", "ownership": "borrowed"},
+                    ],
+                },
+                "behavior_contract": {"input": "flags", "action": "encode", "output": "bytes"},
+            },
+            {
+                "function_id": "fn:protocol_codec:mqtt_packet_free",
+                "file_id": "file:src/protocol_codec/protocol_codec",
+                "module_id": "protocol_codec",
+                "name": "mqtt_packet_free",
+                "function_kind": "public_api",
+                "visibility": "public",
+                "api_surface": "public",
+                "exported": True,
+                "purpose": "Free packet storage.",
+                "signature": {
+                    "raw": "void mqtt_packet_free(mqtt_packet_t* packet)",
+                    "name": "mqtt_packet_free",
+                    "return_type": "void",
+                    "params": [{"type": "mqtt_packet_t*", "name": "packet", "ownership": "borrowed"}],
+                },
+                "behavior_contract": {"input": "packet", "action": "free", "output": "none"},
+            },
+            {
+                "function_id": "fn:protocol_codec:mqtt_bytes_free",
+                "file_id": "file:src/protocol_codec/protocol_codec",
+                "module_id": "protocol_codec",
+                "name": "mqtt_bytes_free",
+                "function_kind": "public_api",
+                "visibility": "public",
+                "api_surface": "public",
+                "exported": True,
+                "purpose": "Free encoded bytes.",
+                "signature": {
+                    "raw": "void mqtt_bytes_free(mqtt_bytes_t* bytes)",
+                    "name": "mqtt_bytes_free",
+                    "return_type": "void",
+                    "params": [{"type": "mqtt_bytes_t*", "name": "bytes", "ownership": "borrowed"}],
+                },
+                "behavior_contract": {"input": "bytes", "action": "free", "output": "none"},
+            },
+        ],
+        "access_path_table": [],
+        "module_generation_order": ["protocol_codec"],
+    }
+
+
 def _add_runtime_entrypoint(plan: dict) -> None:
     plan["canonical_types"].append(
         {
@@ -692,7 +870,77 @@ class CoderSchemaLoweringTests(unittest.TestCase):
             spec_path.write_text(json.dumps(raw), encoding="utf-8")
 
             diagnostics = validate_coder_compatibility(manifest["spec_root"])
-            self.assertTrue(any(diag.code == "coder_rendered_header_compile_error" for diag in diagnostics), [diag.__dict__ for diag in diagnostics])
+            diagnostic = next((diag for diag in diagnostics if diag.code == "coder_rendered_header_compile_error"), None)
+            self.assertIsNotNone(diagnostic, [diag.__dict__ for diag in diagnostics])
+            self.assertIn("stderr=", diagnostic.message)
+            self.assertIn("stderr_path=", diagnostic.message)
+            self.assertIn("rendered_header=", diagnostic.message)
+            self.assertTrue((Path(manifest["spec_root"]).parent / "_rendered_header_checks").exists())
+
+    def test_mqtt_protocol_codec_public_types_lower_to_single_owner_header(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(_mqtt_header_surface_plan(), Path(raw_tmp))
+            codec_spec = _file_spec_json(manifest, "codec_spec.json")
+            owner_spec = _file_spec_json(manifest, "protocol_codec_spec.json")
+
+            self.assertEqual(owner_spec["HEADER"]["PATH"], "src/protocol_codec/protocol_codec.h")
+            self.assertEqual(codec_spec["HEADER"]["DEPENDENCY"], ["src/protocol_codec/protocol_codec.h"])
+            self.assertNotIn("src/protocol_codec/codec.h", owner_spec["HEADER"]["DEPENDENCY"])
+            codec_types = {item["NAME"] for item in codec_spec["HEADER"]["DATA"] if item.get("KIND") == "TYPE"}
+            owner_types = {item["NAME"] for item in owner_spec["HEADER"]["DATA"] if item.get("KIND") == "TYPE"}
+            self.assertEqual(codec_types, set())
+            self.assertTrue({"mqtt_protocol_codec_t", "mqtt_packet_type_t", "mqtt_packet_t", "mqtt_bytes_t", "mqtt_decoder_state_t"}.issubset(owner_types))
+
+            diagnostics = validate_coder_compatibility(manifest["spec_root"])
+            error_codes = {diag.code for diag in diagnostics if diag.level == "error"}
+            self.assertNotIn("coder_public_header_type_cycle", error_codes)
+            self.assertNotIn("coder_public_type_owner_split", error_codes)
+            self.assertNotIn("coder_rendered_header_compile_error", error_codes)
+            self.assertFalse([diag.__dict__ for diag in diagnostics if diag.level == "error"])
+
+    def test_coder_compatibility_rejects_codec_protocol_codec_header_cycle_fixture(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(_mqtt_header_surface_plan(), Path(raw_tmp))
+            spec_root = Path(manifest["spec_root"])
+            codec_path = next(path for path in spec_root.rglob("*_spec.json") if path.name == "codec_spec.json")
+            owner_path = next(path for path in spec_root.rglob("*_spec.json") if path.name == "protocol_codec_spec.json")
+            codec_spec = json.loads(codec_path.read_text(encoding="utf-8"))
+            owner_spec = json.loads(owner_path.read_text(encoding="utf-8"))
+            codec_spec["HEADER"]["DEPENDENCY"] = ["src/protocol_codec/protocol_codec.h"]
+            owner_spec["HEADER"]["DEPENDENCY"] = ["src/protocol_codec/codec.h"]
+            codec_path.write_text(json.dumps(codec_spec, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            owner_path.write_text(json.dumps(owner_spec, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+            diagnostics = validate_coder_compatibility(spec_root)
+            cycle = next((diag for diag in diagnostics if diag.code == "coder_public_header_type_cycle"), None)
+            self.assertIsNotNone(cycle, [diag.__dict__ for diag in diagnostics])
+            self.assertIn("src/protocol_codec/codec.h -> src/protocol_codec/protocol_codec.h -> src/protocol_codec/codec.h", cycle.message)
+
+    def test_coder_semantics_rejects_public_type_owner_split(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(_mqtt_header_surface_plan(), Path(raw_tmp))
+            spec_root = Path(manifest["spec_root"])
+            codec_path = next(path for path in spec_root.rglob("*_spec.json") if path.name == "codec_spec.json")
+            owner_spec = _file_spec_json(manifest, "protocol_codec_spec.json")
+            packet_type = next(item for item in owner_spec["HEADER"]["DATA"] if item.get("NAME") == "mqtt_packet_t")
+            codec_spec = json.loads(codec_path.read_text(encoding="utf-8"))
+            codec_spec["HEADER"]["DATA"].append(packet_type)
+            codec_path.write_text(json.dumps(codec_spec, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+            diagnostics = validate_coder_compatibility(spec_root)
+            self.assertIn("coder_public_type_owner_split", {diag.code for diag in diagnostics if diag.level == "error"})
+
+    def test_public_signature_requires_visible_single_owner_header(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(_mqtt_header_surface_plan(), Path(raw_tmp))
+            spec_root = Path(manifest["spec_root"])
+            codec_path = next(path for path in spec_root.rglob("*_spec.json") if path.name == "codec_spec.json")
+            codec_spec = json.loads(codec_path.read_text(encoding="utf-8"))
+            codec_spec["HEADER"]["DEPENDENCY"] = []
+            codec_path.write_text(json.dumps(codec_spec, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+            diagnostics = validate_coder_compatibility(spec_root)
+            self.assertIn("coder_public_signature_missing_header_dependency", {diag.code for diag in diagnostics if diag.level == "error"})
 
     def test_coder_compatibility_rejects_unknown_header_dependency(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:

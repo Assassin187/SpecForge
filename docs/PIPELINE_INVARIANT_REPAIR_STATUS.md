@@ -13,7 +13,7 @@ PIPELINE_INVARIANT_REPAIR_PLAN.md
 当前阶段：
 
 ```text
-第 1-3 轮已完成；等待第 4 轮。
+第 1-4 轮已完成；等待第 5 轮端到端 regression/golden。
 ```
 
 当前目标：
@@ -37,7 +37,7 @@ docs/CURRENT_TASK_STATUS.md 记录旧 planning stabilization 路线。
 | 第 1 轮 | 高收益低耦合：type canonicalization + 5.3 fixtures | completed | 已完成 string/buffer/byte_buffer alias canonicalization 与 5.3 regression |
 | 第 2 轮 | calls_allowed 与 wire mapping | completed | 已完成 value_ref contract 统一与 wire coverage deterministic closure |
 | 第 3 轮 | runtime lifecycle + function name allocator | completed | 已完成 deployable runtime lifecycle 前移与 global FunctionNameAllocator |
-| 第 4 轮 | C header surface closure | not_started | 等待修复 header cycle / public type owner split |
+| 第 4 轮 | C header surface closure | completed | 已完成 single owner header repair、header cycle blocking、public type owner split blocking、完整 rendered header stderr/snapshot |
 | 第 5 轮 | 端到端 regression/golden | not_started | 等待集中固化 7 个历史失败 fixtures 与 MQTT golden |
 
 状态枚举：
@@ -274,7 +274,7 @@ broker/server/client key flow module 必须在 5.4a 后拥有 create/start/run/d
 状态：
 
 ```text
-not_started
+completed
 ```
 
 目标：
@@ -286,23 +286,57 @@ not_started
 任务清单：
 
 ```text
-[ ] HEADER.DEPENDENCY graph cycle 检查。
-[ ] public signature type visibility 按预处理顺序检查。
-[ ] 设计 common types header 或 single owner header repair。
-[ ] circular include diagnostics 指出 cycle path。
-[ ] 保留 rendered header compile 完整 stderr。
-[ ] 增加 codec.h <-> protocol_codec.h regression fixture。
-[ ] 运行 coder schema lowering tests。
+[x] HEADER.DEPENDENCY graph cycle 检查。
+[x] public signature type visibility 按预处理顺序检查。
+[x] 设计并实现 single owner header repair。
+[x] circular include diagnostics 指出 cycle path。
+[x] 保留 rendered header compile 完整 stderr。
+[x] 增加 codec.h <-> protocol_codec.h regression fixture。
+[x] 运行 coder schema lowering tests。
 ```
 
 完成标准：
 
 ```text
-[ ] circular header fixture 在 planning/coder compatibility validator 阶段 blocking。
-[ ] rendered header compile failure 不再首次发现 header cycle。
-[ ] codec/protocol_codec public type split 可被 deterministic repair 消除，或以明确 blocking diagnostic 暴露。
-[ ] 每个 generated header 可单独 #include 编译。
-[ ] header compile diagnostic 保留完整 stderr。
+[x] circular header fixture 在 planning/coder compatibility validator 阶段 blocking。
+[x] rendered header compile failure 不再首次发现 header cycle。
+[x] codec/protocol_codec public type split 可被 deterministic repair 消除，或以明确 blocking diagnostic 暴露。
+[x] 每个 generated header 可单独 #include 编译。
+[x] header compile diagnostic 保留完整 stderr。
+```
+
+本轮实现记录：
+
+```text
+repair strategy: single owner header
+owner selection: single header 保持不变；多 header module 优先 basename == module_id，其次 exports_type_ids 数量，其次 file order
+compiler result: 同 module public canonical/type_inventory types 只 lower 到 owner header；非 owner public headers 单向 include owner header
+compat result: HEADER.DEPENDENCY cycle blocking；public type owner split blocking；public refs 通过 acyclic transitive dependency visibility 解释
+rendered header diagnostics: 写入 _rendered_header_checks/rendered_headers、checks、logs，并在 diagnostic 中保留完整 stderr/stdout 与路径
+```
+
+历史 run 复现：
+
+```text
+20260616_231307_313900/spec_bundle:
+- coder_public_header_type_cycle: src/protocol_codec/codec.h -> src/protocol_codec/protocol_codec.h -> src/protocol_codec/codec.h
+- coder_public_header_type_cycle: src/protocol_codec/protocol_codec.h -> src/protocol_codec/codec.h -> src/protocol_codec/protocol_codec.h
+- coder_public_type_owner_split: mqtt_fixed_header / mqtt_protocol_codec 等旧 public type owner split 被 compatibility 阶段暴露
+
+旧 014_planning_validation_report 只保留 rendered header stderr 第一行：
+In file included from src/protocol_codec/codec.h:3,...
+新逻辑保留完整 stderr/stdout、rendered header snapshot path、check source path。
+```
+
+测试记录：
+
+```text
+PASS: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest agent.planning.tests.test_coder_schema_lowering
+PASS: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest agent.planning.tests.test_validators
+INFO: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest agent.coder.tests.test_repair agent.planning.tests.test_validators
+      validators passed, but agent.coder.tests.test_repair.CoderRepairTests.test_source_only_main_uses_llm_generation failed with an llm.requests[0] expectation that appears unrelated to 第 4 轮 header surface closure.
+INFO: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest agent.coder.tests.test_repair
+      ran 12 tests; same single failure in test_source_only_main_uses_llm_generation.
 ```
 
 本轮入口提示词：

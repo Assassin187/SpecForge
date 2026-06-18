@@ -210,6 +210,120 @@ def _register_provider(provider_by_type_key: dict[str, str | None], key: str, he
     provider_by_type_key[key] = header_path
 
 
+def _module_public_type_owner_headers(files: list[dict[str, Any]]) -> dict[str, str]:
+    headers_by_module: dict[str, list[tuple[int, dict[str, Any]]]] = {}
+    for index, file_item in enumerate(files):
+        module_id = str(file_item.get("module_id", "")).strip()
+        header_path = str(file_item.get("header_path", "")).strip()
+        if module_id and header_path and not _is_source_only_entrypoint(file_item):
+            headers_by_module.setdefault(module_id, []).append((index, file_item))
+
+    result: dict[str, str] = {}
+    for module_id, indexed_files in headers_by_module.items():
+        if len(indexed_files) == 1:
+            result[module_id] = str(indexed_files[0][1].get("header_path", "")).strip()
+            continue
+
+        def score(item: tuple[int, dict[str, Any]]) -> tuple[int, int, int]:
+            index, file_item = item
+            header_path = str(file_item.get("header_path", "")).strip()
+            basename_match = int(Path(header_path).stem == module_id)
+            export_count = len(file_item.get("exports_type_ids", [])) if isinstance(file_item.get("exports_type_ids"), list) else 0
+            return basename_match, export_count, -index
+
+        result[module_id] = str(max(indexed_files, key=score)[1].get("header_path", "")).strip()
+    return result
+
+
+def _public_type_export_targets(
+    canonical_types: list[dict[str, Any]],
+    type_inventory: list[dict[str, Any]],
+) -> tuple[dict[str, tuple[str, str]], dict[str, set[str]]]:
+    by_key: dict[str, tuple[str, str]] = {}
+    by_module: dict[str, set[str]] = {}
+
+    def add(type_item: dict[str, Any], type_id: str, module_id: str) -> None:
+        if not type_id or not module_id:
+            return
+        by_module.setdefault(module_id, set()).add(type_id)
+        for key in _type_ref_keys(type_item) | {normalize_type_key(type_id)}:
+            if key:
+                by_key.setdefault(key, (type_id, module_id))
+
+    for type_item in canonical_types:
+        if not isinstance(type_item, dict) or lower_canonical_type_to_header_data(type_item) is None:
+            continue
+        add(
+            type_item,
+            str(type_item.get("type_id") or canonical_type_symbol(type_item)).strip(),
+            str(type_item.get("owner_module_id") or type_item.get("module_id") or "").strip(),
+        )
+    for type_item in type_inventory:
+        if not isinstance(type_item, dict):
+            continue
+        if str(type_item.get("visibility", "")).strip().lower() != "public":
+            continue
+        if str(type_item.get("defined_in", "")).strip().lower() != "public_header":
+            continue
+        add(
+            type_item,
+            str(type_item.get("type_id") or type_item.get("name") or "").strip(),
+            str(type_item.get("module_id") or type_item.get("owner_module_id") or "").strip(),
+        )
+    return by_key, by_module
+
+
+def _normalize_public_type_owner_files(
+    files: list[dict[str, Any]],
+    canonical_types: list[dict[str, Any]],
+    type_inventory: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    for file_item in files:
+        copied = dict(file_item)
+        if isinstance(file_item.get("exports_type_ids"), list):
+            copied["exports_type_ids"] = [str(item) for item in file_item.get("exports_type_ids", []) if str(item).strip()]
+        result.append(copied)
+
+    owner_header_by_module = _module_public_type_owner_headers(result)
+    header_counts: dict[str, int] = {}
+    for file_item in result:
+        module_id = str(file_item.get("module_id", "")).strip()
+        if module_id and str(file_item.get("header_path", "")).strip() and not _is_source_only_entrypoint(file_item):
+            header_counts[module_id] = header_counts.get(module_id, 0) + 1
+    multi_header_modules = {module_id for module_id, count in header_counts.items() if count > 1}
+    if not multi_header_modules:
+        return result
+
+    type_by_key, type_ids_by_module = _public_type_export_targets(canonical_types, type_inventory)
+    for file_item in result:
+        module_id = str(file_item.get("module_id", "")).strip()
+        if module_id not in multi_header_modules:
+            continue
+        kept: list[str] = []
+        for raw in file_item.get("exports_type_ids", []) if isinstance(file_item.get("exports_type_ids"), list) else []:
+            target = type_by_key.get(normalize_type_key(raw))
+            if target and target[1] == module_id:
+                continue
+            kept.append(str(raw))
+        file_item["exports_type_ids"] = kept
+
+    for module_id in sorted(multi_header_modules):
+        owner_header = owner_header_by_module.get(module_id, "")
+        owner = next((item for item in result if str(item.get("module_id", "")).strip() == module_id and str(item.get("header_path", "")).strip() == owner_header), None)
+        if owner is None:
+            continue
+        exports = [str(item) for item in owner.get("exports_type_ids", []) if str(item).strip()] if isinstance(owner.get("exports_type_ids"), list) else []
+        export_keys = {normalize_type_key(item) for item in exports}
+        for type_id in sorted(type_ids_by_module.get(module_id, set())):
+            key = normalize_type_key(type_id)
+            if key and key not in export_keys:
+                exports.append(type_id)
+                export_keys.add(key)
+        owner["exports_type_ids"] = exports
+    return result
+
+
 def _header_provider_index(
     files: list[dict[str, Any]],
     canonical_types: list[dict[str, Any]],
@@ -721,16 +835,21 @@ def _data_declarations(
     *,
     unresolved: list[dict[str, Any]],
     allow_unlisted_public_inventory: bool,
+    declare_public_header_types: bool,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     handle_type = default_handle_type(protocol, module_id)
-    header_data = [
-        {
-            "NAME": handle_type,
-            "KIND": "TYPE",
-            "VISIBILITY": "PUBLIC",
-            "ROLE": "Opaque module context handle.",
-        }
-    ]
+    header_data = (
+        [
+            {
+                "NAME": handle_type,
+                "KIND": "TYPE",
+                "VISIBILITY": "PUBLIC",
+                "ROLE": "Opaque module context handle.",
+            }
+        ]
+        if declare_public_header_types
+        else []
+    )
     source_data = [
         {
             "NAME": f"struct {handle_type[:-2]}",
@@ -740,9 +859,9 @@ def _data_declarations(
             "TYPE_SPEC": {"TYPE_KIND": "STRUCT", "FIELDS": []},
         }
     ]
-    seen_header = {handle_type}
-    seen_header_keys = {normalize_type_key(handle_type)}
-    header_type_specs_by_key: dict[str, dict[str, Any]] = {normalize_type_key(handle_type): {"TYPE_KIND": "OPAQUE"}}
+    seen_header = {handle_type} if declare_public_header_types else set()
+    seen_header_keys = {normalize_type_key(handle_type)} if declare_public_header_types else set()
+    header_type_specs_by_key: dict[str, dict[str, Any]] = {normalize_type_key(handle_type): {"TYPE_KIND": "OPAQUE"}} if declare_public_header_types else {}
     seen_source = {f"struct {handle_type[:-2]}"}
     exported_type_keys = {
         normalize_type_key(value)
@@ -755,6 +874,8 @@ def _data_declarations(
         if not name:
             return
         target_public = str(type_item.get("visibility", "")) == "public" and str(type_item.get("defined_in", "")) == "public_header"
+        if target_public and not declare_public_header_types:
+            return
         type_keys = _type_ref_keys(type_item)
         if target_public and not allow_unlisted_public_inventory and not (type_keys & exported_type_keys):
             return
@@ -844,7 +965,8 @@ def _data_declarations(
         return allow_unlisted_public_inventory or bool(_type_ref_keys(type_item) & exported_type_keys)
 
     expected_roles = []
-    expected_roles.extend(str(role) for role in file_item.get("exports_type_ids", []) if str(role).strip())
+    if declare_public_header_types:
+        expected_roles.extend(str(role) for role in file_item.get("exports_type_ids", []) if str(role).strip())
     for role in expected_roles:
         if normalize_type_key(role) in seen_header_keys:
             module_item.setdefault("resolved_public_type_roles", {})[role] = role
@@ -866,14 +988,16 @@ def _data_declarations(
             key = normalize_type_key(name)
             if not name or name in seen_header or key in seen_header_keys:
                 continue
-            seen_header.add(name)
-            seen_header_keys.add(key)
             declaration = {
                 "NAME": name,
                 "KIND": "TYPE",
                 "VISIBILITY": normalize_data_visibility_for_coder(item.get("visibility")),
                 "ROLE": str(item.get("reason", "")) or "Interface type declaration.",
             }
+            if declaration["VISIBILITY"] == "PUBLIC" and not declare_public_header_types:
+                continue
+            seen_header.add(name)
+            seen_header_keys.add(key)
             if declaration["VISIBILITY"] == "PUBLIC":
                 declaration["TYPE_SPEC"] = {"TYPE_KIND": "OPAQUE"}
                 header_type_specs_by_key[key] = declaration["TYPE_SPEC"]
@@ -942,11 +1066,11 @@ def compile_spec_bundle(implementation_plan: dict[str, Any], output_dir: str | P
     protocol_meta = lower_protocol_meta_for_coder(implementation_plan)
     protocol = str(protocol_meta["NAME"])
     modules = _plan_modules(implementation_plan)
-    files = _plan_files(implementation_plan)
     functions = _attach_canonical_symbols(_plan_functions(implementation_plan))
     access_path_table = [item for item in implementation_plan.get("access_path_table", []) if isinstance(item, dict)]
     canonical_types = [item for item in implementation_plan.get("canonical_types", []) if isinstance(item, dict)]
     type_inventory = [item for item in implementation_plan.get("type_inventory", []) if isinstance(item, dict)]
+    files = _normalize_public_type_owner_files(_plan_files(implementation_plan), canonical_types, type_inventory)
     canonical_type_index = _canonical_type_index(canonical_types)
     access_by_id = {str(item.get("access_path_id", "")): item for item in access_path_table if str(item.get("access_path_id", "")).strip()}
     access_by_field = {str(item.get("field_id", "")): item for item in access_path_table if str(item.get("field_id", "")).strip()}
@@ -955,6 +1079,7 @@ def compile_spec_bundle(implementation_plan: dict[str, Any], output_dir: str | P
     for item in files:
         if str(item.get("header_path", "")).strip() and not _is_source_only_entrypoint(item):
             module_header_counts[str(item.get("module_id", ""))] = module_header_counts.get(str(item.get("module_id", "")), 0) + 1
+    owner_header_by_module = _module_public_type_owner_headers(files)
     functions_by_file: dict[str, list[dict[str, Any]]] = {}
     for function in functions:
         functions_by_file.setdefault(str(function.get("file_id", "")), []).append(function)
@@ -976,6 +1101,9 @@ def compile_spec_bundle(implementation_plan: dict[str, Any], output_dir: str | P
         implemented_ids = _implemented_ids(file_item)
         file_functions = [function for function in functions_by_file.get(file_id, []) if not implemented_ids or str(function.get("function_id", "")) in implemented_ids]
         source_only = _is_source_only_entrypoint(file_item)
+        current_header = str(file_item.get("header_path", "")).strip()
+        owner_header = owner_header_by_module.get(module_id, current_header)
+        declare_public_header_types = not owner_header or current_header == owner_header
         if source_only:
             header_data, source_data = [], []
         else:
@@ -989,6 +1117,7 @@ def compile_spec_bundle(implementation_plan: dict[str, Any], output_dir: str | P
                 [item for item in type_inventory if str(item.get("module_id", "")) == module_id],
                 unresolved=unresolved_lowering,
                 allow_unlisted_public_inventory=module_header_counts.get(module_id, 0) <= 1,
+                declare_public_header_types=declare_public_header_types,
             )
         source_interfaces: list[dict[str, Any]] = []
         header_interfaces: list[dict[str, Any]] = []
@@ -1047,6 +1176,8 @@ def compile_spec_bundle(implementation_plan: dict[str, Any], output_dir: str | P
                 provider_by_type_key,
                 unresolved_lowering,
             )
+            if header_interfaces and owner_header and current_header and owner_header != current_header:
+                header_dependencies = sorted(set(header_dependencies) | {owner_header})
             file_spec["HEADER"] = {
                 "PATH": str(file_item.get("header_path", "")),
                 "DEPENDENCY": header_dependencies,
