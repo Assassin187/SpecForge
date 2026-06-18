@@ -3063,10 +3063,10 @@ def validate_full_implementation_plan(plan: dict[str, Any], *, profile: dict[str
             for item in plan.get("test_plan", [])
             if isinstance(item, dict) and str(item.get("level", "runtime")).strip().lower() == "runtime"
         ]
-        purposes = [str(item.get("purpose", "")).lower() for item in runtime_tests]
-        if not any(any(word in purpose for word in ("success", "valid", "interaction", "publish", "request")) for purpose in purposes):
+        test_texts = [f"{item.get('test_id', '')} {item.get('purpose', '')}".lower() for item in runtime_tests]
+        if not any(any(word in text for word in ("success", "valid", "interaction", "publish", "request")) for text in test_texts):
             diagnostics.append(PlanningDiagnostic("error", "readiness_missing_runtime_success_test", f"deployable target role '{target_role}' requires a successful runtime interaction test", path))
-        if not any(any(word in purpose for word in ("malformed", "invalid", "error", "unknown", "not found")) for purpose in purposes):
+        if not any(any(word in text for word in ("malformed", "invalid", "error", "unknown", "not found", "violation")) for text in test_texts):
             diagnostics.append(PlanningDiagnostic("error", "readiness_missing_runtime_error_test", f"deployable target role '{target_role}' requires a malformed/error runtime test", path))
     key_module_ids = {str(item.get("module_id", "")) for item in main_files if str(item.get("module_id", "")).strip()}
     if entrypoints:

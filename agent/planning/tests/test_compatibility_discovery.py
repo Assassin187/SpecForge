@@ -342,8 +342,8 @@ class PlanningCompatibilityDiscoveryTests(unittest.TestCase):
             self.assertEqual(manifest["status"], "stopped")
             self.assertEqual(manifest["stop"]["after_stage"], "architecture")
             self.assertEqual(thinking_by_prompt["protocol_profile_patch_prompt"], [False])
-            self.assertTrue(all(thinking_by_prompt["architecture_candidate_prompt"]))
-            self.assertEqual(thinking_by_prompt["architecture_ranking_prompt"], [True])
+            self.assertFalse(any(thinking_by_prompt["architecture_candidate_prompt"]))
+            self.assertEqual(thinking_by_prompt["architecture_ranking_prompt"], [False])
 
     def test_implementation_plan_thinking_can_be_set_per_substage(self) -> None:
         facts = ROOT / "agent" / "facts" / "gold_facts" / "mqtt_min" / "protocol_facts.json"

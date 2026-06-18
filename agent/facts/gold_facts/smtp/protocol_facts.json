@@ -1,0 +1,1934 @@
+{
+  "schema_version": "protocol_facts/v2alpha1",
+  "protocol_meta": {
+    "protocol_name": "smtp",
+    "source_documents": [
+      "/home/ljf/SpecForge/specs-example/smtp_specs/SUMMARY.md",
+      "/home/ljf/SpecForge/specs-example/smtp_specs/smtp_module_spec.json",
+      "/home/ljf/SpecForge/specs-example/smtp_specs/server_app/smtp_server/handle_command_spec.json",
+      "/home/ljf/SpecForge/specs-example/smtp_specs/server_app/smtp_server/handle_auth_spec.json",
+      "/home/ljf/SpecForge/specs-example/smtp_specs/server_app/smtp_server/handle_data_line_spec.json",
+      "/home/ljf/SpecForge/specs-example/smtp_specs/protocol_text/smtp_command/smtp_command_parse_spec.json",
+      "/home/ljf/SpecForge/specs-example/smtp_specs/protocol_text/smtp_response/smtp_response_format_ehlo_caps_spec.json",
+      "/home/ljf/SpecForge/specs-example/smtp_specs/network/connection/smtp_connection_pop_line_spec.json",
+      "/home/ljf/SpecForge/protocol-example/smtp/README.md",
+      "/home/ljf/SpecForge/protocol-example/smtp/main.c",
+      "/home/ljf/SpecForge/protocol-example/smtp/network/connection.c",
+      "/home/ljf/SpecForge/protocol-example/smtp/network/tcp_server.c",
+      "/home/ljf/SpecForge/protocol-example/smtp/protocol/smtp_command.h",
+      "/home/ljf/SpecForge/protocol-example/smtp/protocol/smtp_command.c",
+      "/home/ljf/SpecForge/protocol-example/smtp/protocol/smtp_response.c",
+      "/home/ljf/SpecForge/protocol-example/smtp/auth/smtp_auth.c",
+      "/home/ljf/SpecForge/protocol-example/smtp/storage/mail_store.c",
+      "/home/ljf/SpecForge/protocol-example/smtp/server/smtp_session.h",
+      "/home/ljf/SpecForge/protocol-example/smtp/server/smtp_session.c",
+      "/home/ljf/SpecForge/protocol-example/smtp/server/smtp_server.c"
+    ],
+    "document_count": 20,
+    "fact_source_type": "example_implementation_and_specs",
+    "target_scope": "SMTP RFC5321-style local-receive server subset for planning-agent debugging"
+  },
+  "transport": {
+    "network_stack": {
+      "value": "tcp",
+      "evidence_refs": [
+        "summary_scope",
+        "readme_features",
+        "tcp_server_runtime"
+      ]
+    },
+    "connection_model": {
+      "value": "connection_oriented",
+      "evidence_refs": [
+        "network_connection_lines",
+        "tcp_server_runtime"
+      ]
+    },
+    "channels": [
+      {
+        "name": "control_and_data",
+        "transport": "tcp",
+        "purpose": "每个 accepted TCP connection 同时承载 SMTP command line、response line、AUTH continuation line 和 DATA body line。",
+        "evidence_refs": [
+          "network_connection_lines",
+          "server_event_loop"
+        ]
+      }
+    ],
+    "runtime_implications": [
+      {
+        "summary": "server runtime 使用 nonblocking socket 与 epoll，向上层分发 accept、readable、writable 和 close 事件。",
+        "evidence_refs": [
+          "tcp_server_runtime",
+          "module_spec_network"
+        ]
+      },
+      {
+        "summary": "SMTP 输入按 LF 终止的文本行从 per-connection input buffer 弹出；返回给协议层的 line 不含 LF，也会去除可选 CR。",
+        "evidence_refs": [
+          "network_connection_lines",
+          "spec_pop_line"
+        ]
+      },
+      {
+        "summary": "Outbound response text 先进入 per-connection output queue，再通过 writable interest 和 smtp_connection_flush 发送。",
+        "evidence_refs": [
+          "network_connection_lines",
+          "server_event_loop"
+        ]
+      },
+      {
+        "summary": "network 层不解析 SMTP verb、AUTH payload 或 DATA 内容；语义解析由 protocol_text、auth 和 server_app 层完成。",
+        "evidence_refs": [
+          "module_consistency_rules",
+          "module_spec_network"
+        ]
+      }
+    ]
+  },
+  "interaction_model": {
+    "style": {
+      "value": "client_server_text_command_response",
+      "evidence_refs": [
+        "summary_scope",
+        "server_dispatch"
+      ]
+    },
+    "roles": [
+      {
+        "name": "client",
+        "summary": "外部 SMTP client 建立 TCP connection，接收 220 greeting，发送 HELO/EHLO、AUTH、MAIL FROM、RCPT TO、DATA、RSET、NOOP、VRFY 和 QUIT。",
+        "evidence_refs": [
+          "readme_features",
+          "server_dispatch"
+        ]
+      },
+      {
+        "name": "server",
+        "summary": "目标实现是 local-receive SMTP server：维护 per-connection session，验证固定账号，接收 envelope 和 DATA，并把邮件写入本地 .eml 文件。",
+        "evidence_refs": [
+          "summary_scope",
+          "readme_features",
+          "storage_write"
+        ]
+      }
+    ],
+    "interaction_units": [
+      {
+        "name": "smtp_line",
+        "summary": "传输层交给协议层的基本输入单位，是由 CRLF 或 LF 结束的一行文本。",
+        "evidence_refs": [
+          "network_connection_lines",
+          "spec_pop_line"
+        ]
+      },
+      {
+        "name": "smtp_command",
+        "summary": "普通 command mode 中，smtp_command_parse 把一行拆分为 verb kind、optional argument 和 has_arg。",
+        "evidence_refs": [
+          "command_parse",
+          "spec_command_parse"
+        ]
+      },
+      {
+        "name": "smtp_response",
+        "summary": "server responses 是 code + text + CRLF 的文本行；EHLO capabilities 使用 250- continuation lines 和最终 250 space line。",
+        "evidence_refs": [
+          "response_format",
+          "spec_ehlo_caps"
+        ]
+      },
+      {
+        "name": "mail_transaction",
+        "summary": "一次邮件事务由 MAIL FROM、一个或多个 RCPT TO、DATA command、DATA lines 和 '.' terminator 组成。",
+        "evidence_refs": [
+          "server_dispatch",
+          "server_data"
+        ]
+      }
+    ],
+    "core_flows": [
+      {
+        "name": "connection_greeting",
+        "summary": "accept 后 server 创建 smtp_session_t，加入 session list，并排队发送 220 '<hostname> ESMTP ready'。",
+        "surface_units": [
+          "220_GREETING"
+        ],
+        "evidence_refs": [
+          "server_accept",
+          "session_state"
+        ]
+      },
+      {
+        "name": "ehlo_greeting",
+        "summary": "client 发送 EHLO domain；server 标记 greeted=true、保存 helo_name、reset transaction/auth exchange，并返回 AUTH LOGIN PLAIN、SIZE 和 8BITMIME capabilities。",
+        "surface_units": [
+          "EHLO"
+        ],
+        "evidence_refs": [
+          "server_dispatch",
+          "response_format"
+        ]
+      },
+      {
+        "name": "helo_greeting",
+        "summary": "client 发送 HELO domain；server 标记 greeted=true、保存 helo_name、reset transaction/auth exchange，并返回 250 hostname。",
+        "surface_units": [
+          "HELO"
+        ],
+        "evidence_refs": [
+          "server_dispatch"
+        ]
+      },
+      {
+        "name": "auth_login",
+        "summary": "AUTH LOGIN 可不带 initial username，也可带 base64 username；server 依次请求 username/password challenge，验证 smtpuser/smtppass 后返回 235。",
+        "surface_units": [
+          "AUTH_LOGIN"
+        ],
+        "evidence_refs": [
+          "server_auth",
+          "auth_helpers"
+        ]
+      },
+      {
+        "name": "auth_plain",
+        "summary": "AUTH PLAIN 可带 initial base64 blob，也可进入 continuation；blob 解析出 user/pass 后通过固定测试凭据验证。",
+        "surface_units": [
+          "AUTH_PLAIN"
+        ],
+        "evidence_refs": [
+          "server_auth",
+          "auth_helpers"
+        ]
+      },
+      {
+        "name": "local_receive_delivery",
+        "summary": "authenticated client 依次发送 MAIL FROM、RCPT TO、DATA 和 DATA body；'.' terminator 后 server 写入本地 .eml 并返回 250 accepted。",
+        "surface_units": [
+          "MAIL",
+          "RCPT",
+          "DATA",
+          "DATA_BODY"
+        ],
+        "evidence_refs": [
+          "server_dispatch",
+          "server_data",
+          "storage_write"
+        ]
+      },
+      {
+        "name": "transaction_reset",
+        "summary": "RSET 清空 MAIL/RCPT/DATA transaction state 和 AUTH continuation state，然后返回 250 OK。",
+        "surface_units": [
+          "RSET"
+        ],
+        "evidence_refs": [
+          "server_dispatch",
+          "session_reset"
+        ]
+      },
+      {
+        "name": "graceful_quit",
+        "summary": "QUIT 触发 221 Bye，server 尝试立即 flush control response，然后关闭 TCP connection 并移除 session。",
+        "surface_units": [
+          "QUIT"
+        ],
+        "evidence_refs": [
+          "server_dispatch",
+          "server_event_loop"
+        ]
+      }
+    ]
+  },
+  "message_model": {
+    "framing": {
+      "value": "text_line",
+      "evidence_refs": [
+        "network_connection_lines",
+        "command_parse",
+        "response_format"
+      ]
+    },
+    "surface_catalog": [
+      {
+        "name": "220_GREETING",
+        "kind": "response",
+        "direction": "server_to_client",
+        "summary": "TCP accept 后 server 发送 220 '<hostname> ESMTP ready' greeting。",
+        "evidence_refs": [
+          "server_accept"
+        ]
+      },
+      {
+        "name": "HELO",
+        "kind": "command",
+        "direction": "client_to_server",
+        "summary": "建立 greeting state，参数必须存在；成功时保存 helo_name 并返回 250 hostname。",
+        "evidence_refs": [
+          "command_types",
+          "server_dispatch"
+        ]
+      },
+      {
+        "name": "EHLO",
+        "kind": "command",
+        "direction": "client_to_server",
+        "summary": "建立 greeting state 并返回 ESMTP capabilities：AUTH LOGIN PLAIN、SIZE、8BITMIME。",
+        "evidence_refs": [
+          "command_types",
+          "server_dispatch",
+          "response_format"
+        ]
+      },
+      {
+        "name": "AUTH",
+        "kind": "command",
+        "direction": "client_to_server",
+        "summary": "只支持 LOGIN 和 PLAIN mechanisms；需要先 HELO/EHLO，成功后 session->authenticated=true。",
+        "evidence_refs": [
+          "command_types",
+          "server_auth"
+        ]
+      },
+      {
+        "name": "AUTH_LOGIN",
+        "kind": "command",
+        "direction": "client_to_server",
+        "summary": "AUTH LOGIN flow 支持 optional initial username、base64 username/password continuation、235 success 和 535 failure。",
+        "evidence_refs": [
+          "command_types",
+          "server_auth",
+          "auth_helpers"
+        ]
+      },
+      {
+        "name": "AUTH_PLAIN",
+        "kind": "command",
+        "direction": "client_to_server",
+        "summary": "AUTH PLAIN flow 支持 initial base64 blob 或 continuation blob，并解析 user/password 后验证固定 credentials。",
+        "evidence_refs": [
+          "command_types",
+          "server_auth",
+          "auth_helpers"
+        ]
+      },
+      {
+        "name": "MAIL",
+        "kind": "command",
+        "direction": "client_to_server",
+        "summary": "MAIL FROM:<address> 设置 envelope sender；需要 greeted 和 authenticated。",
+        "evidence_refs": [
+          "command_types",
+          "server_dispatch"
+        ]
+      },
+      {
+        "name": "RCPT",
+        "kind": "command",
+        "direction": "client_to_server",
+        "summary": "RCPT TO:<address> 追加 envelope recipient；需要已设置 MAIL FROM，最多 SMTP_MAX_RECIPIENTS。",
+        "evidence_refs": [
+          "command_types",
+          "server_dispatch",
+          "session_state"
+        ]
+      },
+      {
+        "name": "DATA",
+        "kind": "command",
+        "direction": "client_to_server",
+        "summary": "在存在 sender 和至少一个 recipient 后进入 DATA mode，server 返回 354 并把后续行作为 message body 处理。",
+        "evidence_refs": [
+          "command_types",
+          "server_dispatch",
+          "server_data"
+        ]
+      },
+      {
+        "name": "DATA_BODY",
+        "kind": "data",
+        "direction": "client_to_server",
+        "summary": "DATA mode 中每个非终止 line 追加到 session->message_buf；单独 '.' line 终止 message。",
+        "evidence_refs": [
+          "server_data",
+          "spec_handle_data"
+        ]
+      },
+      {
+        "name": "RSET",
+        "kind": "command",
+        "direction": "client_to_server",
+        "summary": "清空当前 transaction 和 AUTH continuation，然后返回 250 OK。",
+        "evidence_refs": [
+          "command_types",
+          "server_dispatch",
+          "session_reset"
+        ]
+      },
+      {
+        "name": "NOOP",
+        "kind": "command",
+        "direction": "client_to_server",
+        "summary": "不改变 session state，返回 250 OK。",
+        "evidence_refs": [
+          "command_types",
+          "server_dispatch"
+        ]
+      },
+      {
+        "name": "VRFY",
+        "kind": "command",
+        "direction": "client_to_server",
+        "summary": "不实际验证用户，固定返回 252 Cannot VRFY user, but will accept message。",
+        "evidence_refs": [
+          "command_types",
+          "server_dispatch"
+        ]
+      },
+      {
+        "name": "QUIT",
+        "kind": "command",
+        "direction": "client_to_server",
+        "summary": "返回 221 Bye 并关闭 connection。",
+        "evidence_refs": [
+          "command_types",
+          "server_dispatch"
+        ]
+      },
+      {
+        "name": "UNKNOWN",
+        "kind": "command",
+        "direction": "client_to_server",
+        "summary": "未知或未支持 verb 进入 default branch，返回 500 Command unrecognized。",
+        "evidence_refs": [
+          "command_parse",
+          "server_dispatch"
+        ]
+      }
+    ],
+    "message_or_command_entries": [
+      {
+        "name": "smtp_line",
+        "surface_unit": "smtp_line",
+        "syntax_or_layout": "bytes ending with LF, optionally preceded by CR",
+        "summary": "输入缓冲中必须出现 LF 才产生完整 line；弹出时消费 LF，并去除末尾 CR。",
+        "evidence_refs": [
+          "network_connection_lines",
+          "spec_pop_line"
+        ],
+        "fields": [
+          {
+            "name": "line_text",
+            "summary": "返回给上层的 NUL-terminated string，不包含 CRLF。",
+            "evidence_refs": [
+              "network_connection_lines"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "smtp_command_line",
+        "surface_unit": "smtp_command",
+        "syntax_or_layout": "verb [SP/HTAB argument]",
+        "summary": "smtp_command_parse 跳过前导空白，把第一个 token 大写化后映射到 smtp_command_kind_t，剩余文本右裁剪后保存为 arg。",
+        "evidence_refs": [
+          "command_parse",
+          "spec_command_parse"
+        ],
+        "fields": [
+          {
+            "name": "verb",
+            "summary": "支持 HELO、EHLO、MAIL、RCPT、DATA、RSET、NOOP、QUIT、AUTH、VRFY；其他 token 映射为 SMTP_CMD_UNKNOWN。",
+            "evidence_refs": [
+              "command_types",
+              "command_parse"
+            ]
+          },
+          {
+            "name": "argument",
+            "summary": "verb 后剩余非空文本复制到 smtp_command_t.arg，最大目标缓冲为 char[1024]。",
+            "evidence_refs": [
+              "command_parse",
+              "spec_command_parse"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "smtp_response_line",
+        "surface_unit": "smtp_response",
+        "syntax_or_layout": "3-digit code SP text CRLF",
+        "summary": "smtp_response_format 使用 '%d %s\\r\\n' 格式化响应；调用方负责选择 code 和 text。",
+        "evidence_refs": [
+          "response_format"
+        ],
+        "fields": [
+          {
+            "name": "code",
+            "summary": "当前实现使用 220、221、235、250、252、334、354、451、452、500、501、503、504、530、535 和 552。",
+            "evidence_refs": [
+              "server_dispatch",
+              "server_auth",
+              "server_data"
+            ]
+          },
+          {
+            "name": "text",
+            "summary": "human-readable response text 由 server_app 分支提供。",
+            "evidence_refs": [
+              "server_dispatch"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "ehlo_capabilities_response",
+        "surface_unit": "EHLO",
+        "syntax_or_layout": "250-hostname CRLF 250-AUTH LOGIN PLAIN CRLF 250-SIZE max_size CRLF 250 8BITMIME CRLF",
+        "summary": "EHLO 成功后声明 AUTH LOGIN PLAIN、SIZE SMTP_MAX_MESSAGE_SIZE 和 8BITMIME。",
+        "evidence_refs": [
+          "response_format",
+          "spec_ehlo_caps"
+        ],
+        "fields": [
+          {
+            "name": "hostname",
+            "summary": "server 创建时固定设置为 localhost。",
+            "evidence_refs": [
+              "server_create"
+            ]
+          },
+          {
+            "name": "max_size",
+            "summary": "EHLO SIZE capability 使用 SMTP_MAX_MESSAGE_SIZE。",
+            "evidence_refs": [
+              "response_format",
+              "session_state"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "auth_plain_blob",
+        "surface_unit": "AUTH PLAIN",
+        "syntax_or_layout": "base64(authzid NUL user NUL password)",
+        "summary": "decoded blob 必须包含两个 NUL；实现把 first NUL 和 second NUL 之间的 bytes 作为 user，second NUL 后的 bytes 作为 password。",
+        "evidence_refs": [
+          "auth_helpers",
+          "spec_auth_plain"
+        ],
+        "fields": [
+          {
+            "name": "user",
+            "summary": "user 必须非空且适配输出缓冲，固定有效值为 smtpuser。",
+            "evidence_refs": [
+              "auth_helpers",
+              "readme_defaults"
+            ]
+          },
+          {
+            "name": "password",
+            "summary": "password 必须非空且适配输出缓冲，固定有效值为 smtppass。",
+            "evidence_refs": [
+              "auth_helpers",
+              "readme_defaults"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "mailbox_argument",
+        "surface_unit": "MAIL/RCPT",
+        "syntax_or_layout": "FROM:<address> or TO:<address>, with optional whitespace after key",
+        "summary": "parse_mailbox_arg 以 case-insensitive key 匹配 FROM: 或 TO:，支持 angle-bracket mailbox，也支持无 angle bracket 的第一个 non-space token。",
+        "evidence_refs": [
+          "server_dispatch"
+        ],
+        "fields": [
+          {
+            "name": "mail_from",
+            "summary": "MAIL FROM 成功后写入 session->mail_from 并设置 has_mail_from=true。",
+            "evidence_refs": [
+              "server_dispatch",
+              "session_state"
+            ]
+          },
+          {
+            "name": "rcpt_to",
+            "summary": "RCPT TO 成功后追加到 session->rcpt_to[rcpt_count] 并递增 rcpt_count。",
+            "evidence_refs": [
+              "server_dispatch",
+              "session_state"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "data_block",
+        "surface_unit": "DATA_BODY",
+        "syntax_or_layout": "zero or more DATA lines followed by a line exactly equal to '.'",
+        "summary": "DATA mode 期间普通 lines 累积到 message_buf 并追加 CRLF；'.' terminator 后落盘或返回错误。",
+        "evidence_refs": [
+          "server_data",
+          "spec_handle_data"
+        ],
+        "fields": [
+          {
+            "name": "message_data",
+            "summary": "DATA content 存储在 session->message_buf，长度由 session->message_len 跟踪。",
+            "evidence_refs": [
+              "server_data",
+              "session_state"
+            ]
+          },
+          {
+            "name": "terminator",
+            "summary": "line exactly '.' ends DATA mode and triggers storage write or error handling。",
+            "evidence_refs": [
+              "server_data",
+              "spec_handle_data"
+            ]
+          },
+          {
+            "name": "dot_stuffing",
+            "summary": "当前 C implementation 对任何非终止且以 '.' 开头的 DATA line 去掉一个 leading dot。",
+            "evidence_refs": [
+              "server_data"
+            ]
+          }
+        ]
+      }
+    ],
+    "field_constraints": [
+      {
+        "condition": "HELO or EHLO lacks an argument",
+        "required_action": "return 501 Missing HELO/EHLO domain and do not mark greeted",
+        "evidence_refs": [
+          "server_dispatch"
+        ]
+      },
+      {
+        "condition": "AUTH received before successful HELO/EHLO",
+        "required_action": "return 503 Send HELO/EHLO first",
+        "evidence_refs": [
+          "server_auth"
+        ]
+      },
+      {
+        "condition": "MAIL, RCPT, or DATA received before greeting",
+        "required_action": "return 503 Send HELO/EHLO first",
+        "evidence_refs": [
+          "server_dispatch"
+        ]
+      },
+      {
+        "condition": "MAIL, RCPT, or DATA received before authentication",
+        "required_action": "return 530 Authentication required",
+        "evidence_refs": [
+          "server_dispatch",
+          "module_consistency_rules"
+        ]
+      },
+      {
+        "condition": "MAIL argument is missing or is not FROM: mailbox syntax",
+        "required_action": "return 501 Syntax: MAIL FROM:<address>",
+        "evidence_refs": [
+          "server_dispatch"
+        ]
+      },
+      {
+        "condition": "RCPT received before MAIL FROM",
+        "required_action": "return 503 Need MAIL FROM before RCPT TO",
+        "evidence_refs": [
+          "server_dispatch"
+        ]
+      },
+      {
+        "condition": "recipient count reaches SMTP_MAX_RECIPIENTS",
+        "required_action": "return 452 Too many recipients",
+        "evidence_refs": [
+          "server_dispatch",
+          "session_state"
+        ]
+      },
+      {
+        "condition": "DATA received before sender or any recipient exists",
+        "required_action": "return 503 Need MAIL FROM and RCPT TO before DATA",
+        "evidence_refs": [
+          "server_dispatch"
+        ]
+      },
+      {
+        "condition": "DATA content exceeds SMTP_MAX_MESSAGE_SIZE",
+        "required_action": "mark message_too_large; on terminator return 552 and reset transaction",
+        "evidence_refs": [
+          "server_data",
+          "session_state"
+        ]
+      },
+      {
+        "condition": "line length after pop_line is greater than 2048 bytes",
+        "required_action": "return 500 Line too long and continue processing later lines",
+        "evidence_refs": [
+          "server_event_loop"
+        ]
+      }
+    ]
+  },
+  "state_model": {
+    "state_nodes": [
+      {
+        "name": "accepted_connection",
+        "summary": "TCP connection 已被接受，smtp_session_t 和 smtp_connection_t 已创建，server 已排队 220 greeting。",
+        "evidence_refs": [
+          "server_accept",
+          "session_state"
+        ]
+      },
+      {
+        "name": "greeted_session",
+        "summary": "HELO 或 EHLO 成功后 session->greeted=true，session->helo_name 保存 client domain。",
+        "evidence_refs": [
+          "server_dispatch",
+          "session_state"
+        ]
+      },
+      {
+        "name": "auth_continuation",
+        "summary": "AUTH LOGIN 或 AUTH PLAIN 需要更多 input line 时，session->auth_state 进入 LOGIN_WAIT_USER、LOGIN_WAIT_PASS 或 PLAIN_WAIT_BLOB。",
+        "evidence_refs": [
+          "server_auth",
+          "session_state"
+        ]
+      },
+      {
+        "name": "authenticated_session",
+        "summary": "smtp_auth_validate 接受固定 credentials 后 session->authenticated=true 且 auth_user 保存 username。",
+        "evidence_refs": [
+          "server_auth",
+          "auth_helpers",
+          "session_state"
+        ]
+      },
+      {
+        "name": "mail_transaction_started",
+        "summary": "MAIL FROM 成功后 has_mail_from=true、mail_from 已保存，rcpt_count 和 message state 被初始化。",
+        "evidence_refs": [
+          "server_dispatch",
+          "session_state"
+        ]
+      },
+      {
+        "name": "recipient_collection",
+        "summary": "至少一个 RCPT TO 已追加，rcpt_count > 0。",
+        "evidence_refs": [
+          "server_dispatch",
+          "session_state"
+        ]
+      },
+      {
+        "name": "data_mode",
+        "summary": "DATA command 接受后 in_data_mode=true，后续输入行不经 command parser，而由 handle_data_line 处理。",
+        "evidence_refs": [
+          "server_dispatch",
+          "server_event_loop",
+          "server_data"
+        ]
+      },
+      {
+        "name": "closed_connection",
+        "summary": "QUIT、network EOF/error 或 server close path 关闭 fd；on_close callback 移除并销毁 session。",
+        "evidence_refs": [
+          "server_dispatch",
+          "server_event_loop",
+          "tcp_server_runtime"
+        ]
+      }
+    ],
+    "transitions": [
+      {
+        "from_state": "accepted_connection",
+        "to_state": "greeted_session",
+        "trigger": "valid HELO or EHLO with argument",
+        "summary": "server stores helo_name, resets transaction and auth exchange, and replies 250。",
+        "evidence_refs": [
+          "server_dispatch"
+        ]
+      },
+      {
+        "from_state": "greeted_session",
+        "to_state": "auth_continuation",
+        "trigger": "AUTH LOGIN without password step or AUTH PLAIN without initial blob",
+        "summary": "server sets auth_state and emits 334 challenge。",
+        "evidence_refs": [
+          "server_auth"
+        ]
+      },
+      {
+        "from_state": "auth_continuation",
+        "to_state": "authenticated_session",
+        "trigger": "valid continuation credentials",
+        "summary": "server decodes base64, validates fixed credentials, sets authenticated=true, and resets auth exchange。",
+        "evidence_refs": [
+          "server_auth",
+          "auth_helpers"
+        ]
+      },
+      {
+        "from_state": "greeted_session",
+        "to_state": "authenticated_session",
+        "trigger": "AUTH PLAIN or AUTH LOGIN initial flow with valid credentials",
+        "summary": "server can authenticate without remaining in continuation after credentials are complete。",
+        "evidence_refs": [
+          "server_auth"
+        ]
+      },
+      {
+        "from_state": "authenticated_session",
+        "to_state": "mail_transaction_started",
+        "trigger": "valid MAIL FROM",
+        "summary": "server records sender and returns 250 Sender OK。",
+        "evidence_refs": [
+          "server_dispatch"
+        ]
+      },
+      {
+        "from_state": "mail_transaction_started",
+        "to_state": "recipient_collection",
+        "trigger": "valid RCPT TO",
+        "summary": "server appends recipient and returns 250 Recipient OK。",
+        "evidence_refs": [
+          "server_dispatch"
+        ]
+      },
+      {
+        "from_state": "recipient_collection",
+        "to_state": "data_mode",
+        "trigger": "DATA",
+        "summary": "server initializes message buffer, sets in_data_mode=true, and returns 354。",
+        "evidence_refs": [
+          "server_dispatch"
+        ]
+      },
+      {
+        "from_state": "data_mode",
+        "to_state": "authenticated_session",
+        "trigger": "DATA terminator '.' and successful local storage",
+        "summary": "server writes .eml, returns 250 Message accepted for delivery, and resets transaction。",
+        "evidence_refs": [
+          "server_data",
+          "storage_write",
+          "session_reset"
+        ]
+      },
+      {
+        "from_state": "data_mode",
+        "to_state": "authenticated_session",
+        "trigger": "DATA terminator with size overflow or storage failure",
+        "summary": "server returns 552 for size overflow or 451 for local processing error, then resets transaction。",
+        "evidence_refs": [
+          "server_data"
+        ]
+      },
+      {
+        "from_state": "any_open_state",
+        "to_state": "authenticated_session_or_greeted_session",
+        "trigger": "RSET",
+        "summary": "server resets transaction and auth continuation, but does not explicitly clear authenticated/greeted state。",
+        "evidence_refs": [
+          "server_dispatch",
+          "session_reset"
+        ]
+      },
+      {
+        "from_state": "any_open_state",
+        "to_state": "closed_connection",
+        "trigger": "QUIT or TCP close/error",
+        "summary": "server closes TCP connection and removes session resources。",
+        "evidence_refs": [
+          "server_dispatch",
+          "server_event_loop"
+        ]
+      }
+    ],
+    "timers_and_constants": [
+      {
+        "name": "SMTP_MAX_RECIPIENTS",
+        "scope": "session",
+        "value_or_rule": "32 recipients per transaction",
+        "evidence_refs": [
+          "session_state",
+          "readme_defaults"
+        ]
+      },
+      {
+        "name": "SMTP_MAX_MESSAGE_SIZE",
+        "scope": "session",
+        "value_or_rule": "1024 * 1024 bytes; also advertised through EHLO SIZE",
+        "evidence_refs": [
+          "session_state",
+          "response_format",
+          "readme_defaults"
+        ]
+      },
+      {
+        "name": "control_line_limit",
+        "scope": "connection",
+        "value_or_rule": "server_app rejects popped lines with strlen(line) > 2048",
+        "evidence_refs": [
+          "server_event_loop",
+          "readme_defaults"
+        ]
+      },
+      {
+        "name": "listen_backlog",
+        "scope": "tcp_server",
+        "value_or_rule": "listen backlog is 128",
+        "evidence_refs": [
+          "tcp_server_runtime"
+        ]
+      }
+    ],
+    "invariants": [
+      {
+        "summary": "MAIL, RCPT, and DATA require greeted=true and authenticated=true; otherwise server returns 503 or 530 without changing transaction state。",
+        "evidence_refs": [
+          "server_dispatch",
+          "module_consistency_rules"
+        ]
+      },
+      {
+        "summary": "When session->in_data_mode is true, input lines are DATA content or terminator, not SMTP commands。",
+        "evidence_refs": [
+          "server_event_loop",
+          "server_data"
+        ]
+      },
+      {
+        "summary": "When session->auth_state is not NONE, input lines are AUTH continuation data, not SMTP commands。",
+        "evidence_refs": [
+          "server_event_loop",
+          "server_auth"
+        ]
+      },
+      {
+        "summary": "Transaction reset clears sender, recipients, DATA mode, message buffer length and message_too_large flag。",
+        "evidence_refs": [
+          "session_reset"
+        ]
+      }
+    ]
+  },
+  "routing_model": {
+    "dispatch_keys": [
+      {
+        "name": "input_mode",
+        "summary": "server_event_loop first checks in_data_mode, then auth_state, and only then parses normal SMTP commands。",
+        "evidence_refs": [
+          "server_event_loop"
+        ]
+      },
+      {
+        "name": "smtp_command_kind_t",
+        "summary": "normal command dispatch uses smtp_command_t.kind in handle_command switch。",
+        "evidence_refs": [
+          "command_types",
+          "server_dispatch"
+        ]
+      },
+      {
+        "name": "auth_mechanism",
+        "summary": "AUTH dispatch uppercases mechanism token and supports LOGIN and PLAIN only。",
+        "evidence_refs": [
+          "server_auth"
+        ]
+      },
+      {
+        "name": "mail_root",
+        "summary": "completed DATA deliveries route to local file storage under server->mail_root。",
+        "evidence_refs": [
+          "server_create",
+          "storage_write"
+        ]
+      }
+    ],
+    "dispatch_targets": [
+      {
+        "name": "smtp_connection_pop_line",
+        "summary": "network connection layer yields complete input lines from buffered TCP bytes。",
+        "evidence_refs": [
+          "network_connection_lines"
+        ]
+      },
+      {
+        "name": "smtp_command_parse",
+        "summary": "protocol_text layer converts command lines into smtp_command_t。",
+        "evidence_refs": [
+          "command_parse",
+          "spec_command_parse"
+        ]
+      },
+      {
+        "name": "handle_command",
+        "summary": "server_app central command dispatcher implements HELO/EHLO/AUTH/MAIL/RCPT/DATA/RSET/NOOP/VRFY/QUIT and unknown-command behavior。",
+        "evidence_refs": [
+          "server_dispatch",
+          "spec_handle_command"
+        ]
+      },
+      {
+        "name": "handle_auth_continuation",
+        "summary": "server_app consumes base64 continuation lines for AUTH LOGIN and AUTH PLAIN。",
+        "evidence_refs": [
+          "server_auth"
+        ]
+      },
+      {
+        "name": "handle_data_line",
+        "summary": "server_app consumes DATA lines, detects terminator, writes mail, and resets transaction。",
+        "evidence_refs": [
+          "server_data",
+          "spec_handle_data"
+        ]
+      },
+      {
+        "name": "smtp_mail_store_write",
+        "summary": "storage layer writes envelope metadata and DATA content to a unique .eml path。",
+        "evidence_refs": [
+          "storage_write"
+        ]
+      }
+    ],
+    "matching_rules": [
+      {
+        "summary": "MAIL FROM and RCPT TO parse uses case-insensitive key matching for FROM: and TO:。",
+        "evidence_refs": [
+          "server_dispatch"
+        ]
+      },
+      {
+        "summary": "AUTH mechanism token is uppercased before comparison to LOGIN or PLAIN。",
+        "evidence_refs": [
+          "server_auth"
+        ]
+      },
+      {
+        "summary": "The implementation does not perform domain, mailbox existence, relay policy, DNS, MX, or remote recipient routing checks。",
+        "evidence_refs": [
+          "summary_scope",
+          "module_forbidden_symbols"
+        ]
+      }
+    ]
+  },
+  "resource_model": {
+    "resource_objects": [
+      {
+        "name": "smtp_connection",
+        "scope": "connection",
+        "summary": "Owns fd, input buffer, output buffer, output offset and dynamic capacities for nonblocking TCP IO。",
+        "evidence_refs": [
+          "network_connection_lines"
+        ]
+      },
+      {
+        "name": "smtp_session",
+        "scope": "connection",
+        "summary": "Stores control_fd, connection pointer, greeting/auth flags, auth continuation state, envelope sender/recipients, DATA mode and message buffer。",
+        "evidence_refs": [
+          "session_state"
+        ]
+      },
+      {
+        "name": "smtp_server",
+        "scope": "process",
+        "summary": "Stores listen port, hostname, mail_root, tcp server pointer and linked list of sessions。",
+        "evidence_refs": [
+          "server_create"
+        ]
+      },
+      {
+        "name": "smtp_mail",
+        "scope": "delivery",
+        "summary": "Borrowed view passed to storage with helo_name, auth_user, mail_from, rcpt_to list, DATA pointer and data length。",
+        "evidence_refs": [
+          "storage_write",
+          "server_data"
+        ]
+      },
+      {
+        "name": "eml_file",
+        "scope": "persistent_storage",
+        "summary": "Local output file named mail_<time>_<pid>_<counter>.eml containing X-SMTP envelope headers, blank line, and DATA bytes。",
+        "evidence_refs": [
+          "storage_write",
+          "readme_storage"
+        ]
+      }
+    ],
+    "lifecycle_rules": [
+      {
+        "summary": "smtp_session_t is created on accept and destroyed when on_close removes the session node。",
+        "evidence_refs": [
+          "server_accept",
+          "server_event_loop"
+        ]
+      },
+      {
+        "summary": "smtp_connection_t is created inside smtp_session_create and destroyed inside smtp_session_destroy。",
+        "evidence_refs": [
+          "session_reset",
+          "network_connection_lines"
+        ]
+      },
+      {
+        "summary": "mail_root is created during smtp_server_create via smtp_mail_store_init, and smtp_mail_store_write ensures it exists again before delivery。",
+        "evidence_refs": [
+          "server_create",
+          "storage_write"
+        ]
+      },
+      {
+        "summary": "A completed or failed DATA transaction calls smtp_session_reset_transaction after terminal handling。",
+        "evidence_refs": [
+          "server_data",
+          "session_reset"
+        ]
+      }
+    ],
+    "persistence_scope": [
+      {
+        "name": "local_eml_only",
+        "summary": "Persistent output is limited to local .eml files; no relay queue, retry queue, remote delivery, DNS/MX lookup, durable user database or mailbox index is implemented。",
+        "evidence_refs": [
+          "summary_scope",
+          "module_forbidden_symbols",
+          "storage_write"
+        ]
+      }
+    ]
+  },
+  "error_and_limits": {
+    "error_matrix": [
+      {
+        "condition": "invalid or empty line cannot be parsed as command",
+        "surface_unit": "smtp_command",
+        "required_action": "return 500 Bad command syntax",
+        "evidence_refs": [
+          "server_event_loop",
+          "command_parse"
+        ]
+      },
+      {
+        "condition": "recognized command has missing required argument",
+        "surface_unit": "HELO/EHLO/AUTH/MAIL/RCPT",
+        "required_action": "return command-specific 501 or 503/530 depending on precondition",
+        "evidence_refs": [
+          "server_dispatch",
+          "server_auth"
+        ]
+      },
+      {
+        "condition": "unsupported AUTH mechanism",
+        "surface_unit": "AUTH",
+        "required_action": "return 504 Unrecognized authentication type",
+        "evidence_refs": [
+          "server_auth",
+          "module_consistency_rules"
+        ]
+      },
+      {
+        "condition": "invalid AUTH base64 or invalid AUTH PLAIN blob",
+        "surface_unit": "AUTH continuation or AUTH command",
+        "required_action": "return 501 and reset auth exchange where continuation path does so",
+        "evidence_refs": [
+          "server_auth",
+          "auth_helpers"
+        ]
+      },
+      {
+        "condition": "credentials do not match smtpuser/smtppass",
+        "surface_unit": "AUTH",
+        "required_action": "return 535 Authentication credentials invalid, clear authenticated/auth_user, and reset auth exchange",
+        "evidence_refs": [
+          "server_auth",
+          "auth_helpers"
+        ]
+      },
+      {
+        "condition": "too many recipients",
+        "surface_unit": "RCPT",
+        "required_action": "return 452 Too many recipients",
+        "evidence_refs": [
+          "server_dispatch",
+          "session_state"
+        ]
+      },
+      {
+        "condition": "DATA too large",
+        "surface_unit": "DATA_BODY",
+        "required_action": "return 552 Message size exceeds fixed maximum message size and reset transaction",
+        "evidence_refs": [
+          "server_data",
+          "session_state"
+        ]
+      },
+      {
+        "condition": "local .eml storage write fails",
+        "surface_unit": "DATA terminator",
+        "required_action": "return 451 Requested action aborted: local error in processing and reset transaction",
+        "evidence_refs": [
+          "server_data",
+          "storage_write"
+        ]
+      },
+      {
+        "condition": "TCP read EOF or read/flush error",
+        "surface_unit": "connection",
+        "required_action": "close connection and remove session",
+        "evidence_refs": [
+          "server_event_loop",
+          "tcp_server_runtime"
+        ]
+      }
+    ],
+    "limits": {
+      "fixed_protocol_constants": [
+        {
+          "name": "SMTP_MAX_RECIPIENTS",
+          "value_or_rule": "32",
+          "evidence_refs": [
+            "session_state",
+            "readme_defaults"
+          ]
+        },
+        {
+          "name": "SMTP_MAX_MESSAGE_SIZE",
+          "value_or_rule": "1048576 bytes",
+          "evidence_refs": [
+            "session_state",
+            "readme_defaults"
+          ]
+        },
+        {
+          "name": "default_port",
+          "value_or_rule": "2525",
+          "evidence_refs": [
+            "summary_scope",
+            "main_runtime",
+            "readme_defaults"
+          ]
+        },
+        {
+          "name": "default_mail_root",
+          "value_or_rule": "/mail-test",
+          "evidence_refs": [
+            "main_runtime",
+            "readme_defaults"
+          ]
+        },
+        {
+          "name": "default_hostname",
+          "value_or_rule": "localhost",
+          "evidence_refs": [
+            "server_create"
+          ]
+        }
+      ],
+      "defaults": [
+        {
+          "name": "auth_user",
+          "value_or_rule": "smtpuser",
+          "evidence_refs": [
+            "auth_helpers",
+            "readme_defaults"
+          ]
+        },
+        {
+          "name": "auth_password",
+          "value_or_rule": "smtppass",
+          "evidence_refs": [
+            "auth_helpers",
+            "readme_defaults"
+          ]
+        },
+        {
+          "name": "ehlo_capabilities",
+          "value_or_rule": "AUTH LOGIN PLAIN, SIZE 1048576, 8BITMIME",
+          "evidence_refs": [
+            "response_format"
+          ]
+        }
+      ],
+      "recommended_values": [
+        {
+          "name": "validation_profile",
+          "value_or_rule": "Use swaks for AUTH LOGIN happy-path validation and nc for manual AUTH PLAIN / DATA flow checks.",
+          "evidence_refs": [
+            "readme_features",
+            "readme_defaults"
+          ]
+        }
+      ],
+      "hard_bounds": [
+        {
+          "name": "smtp_command_arg",
+          "value_or_rule": "smtp_command_t.arg is char[1024] and is NUL-terminated after strncpy",
+          "evidence_refs": [
+            "command_types",
+            "command_parse"
+          ]
+        },
+        {
+          "name": "helo_name",
+          "value_or_rule": "session->helo_name is char[256]",
+          "evidence_refs": [
+            "session_state"
+          ]
+        },
+        {
+          "name": "auth_user",
+          "value_or_rule": "session->auth_user and auth_login_user are char[256]",
+          "evidence_refs": [
+            "session_state"
+          ]
+        },
+        {
+          "name": "mailbox",
+          "value_or_rule": "mail_from and each rcpt_to entry are char[512]",
+          "evidence_refs": [
+            "session_state"
+          ]
+        },
+        {
+          "name": "input_read_chunk",
+          "value_or_rule": "smtp_connection_read reads up to 4096 bytes per recv loop iteration",
+          "evidence_refs": [
+            "network_connection_lines"
+          ]
+        }
+      ],
+      "configurable_bounds": [
+        {
+          "name": "listen_port",
+          "value_or_rule": "main accepts optional argv[1] port in range 1..65535",
+          "evidence_refs": [
+            "main_runtime"
+          ]
+        },
+        {
+          "name": "mail_root",
+          "value_or_rule": "main accepts optional argv[2] mail_root path",
+          "evidence_refs": [
+            "main_runtime"
+          ]
+        }
+      ]
+    },
+    "security": [
+      {
+        "name": "authentication",
+        "summary": "AUTH is required before MAIL/RCPT/DATA, but credentials are hard-coded to smtpuser/smtppass and no external user database exists。",
+        "evidence_refs": [
+          "server_dispatch",
+          "auth_helpers",
+          "module_forbidden_symbols"
+        ]
+      },
+      {
+        "name": "tls",
+        "summary": "STARTTLS/TLS is outside the implemented scope; transport is plain TCP。",
+        "evidence_refs": [
+          "module_forbidden_symbols",
+          "summary_scope"
+        ]
+      },
+      {
+        "name": "relay_policy",
+        "summary": "The server is local-receive only and does not implement relay authorization, DNS/MX lookup, queue retry, or outbound delivery。",
+        "evidence_refs": [
+          "summary_scope",
+          "module_forbidden_symbols"
+        ]
+      }
+    ]
+  },
+  "minimum_v1": {
+    "must_support_surface": [
+      {
+        "name": "220_GREETING",
+        "summary": "On accept, send 220 '<hostname> ESMTP ready'.",
+        "evidence_refs": [
+          "server_accept"
+        ]
+      },
+      {
+        "name": "HELO",
+        "summary": "Accept HELO with domain argument, set greeted state, and return 250 hostname.",
+        "evidence_refs": [
+          "server_dispatch"
+        ]
+      },
+      {
+        "name": "EHLO",
+        "summary": "Accept EHLO with domain argument and return capabilities for AUTH LOGIN PLAIN, SIZE, and 8BITMIME.",
+        "evidence_refs": [
+          "server_dispatch",
+          "response_format"
+        ]
+      },
+      {
+        "name": "AUTH_LOGIN",
+        "summary": "Support LOGIN with optional initial username, base64 continuation prompts, fixed credential validation, and 235/535 responses.",
+        "evidence_refs": [
+          "server_auth",
+          "auth_helpers"
+        ]
+      },
+      {
+        "name": "AUTH_PLAIN",
+        "summary": "Support PLAIN with optional initial blob or continuation, parse user/password from base64 blob, and validate fixed credentials.",
+        "evidence_refs": [
+          "server_auth",
+          "auth_helpers"
+        ]
+      },
+      {
+        "name": "MAIL",
+        "summary": "After greeting and authentication, parse FROM: mailbox and initialize a transaction.",
+        "evidence_refs": [
+          "server_dispatch"
+        ]
+      },
+      {
+        "name": "RCPT",
+        "summary": "After MAIL FROM, parse TO: mailbox and append up to 32 recipients.",
+        "evidence_refs": [
+          "server_dispatch",
+          "session_state"
+        ]
+      },
+      {
+        "name": "DATA",
+        "summary": "After sender and at least one recipient, enter DATA mode, accept body lines, terminate on '.', and write local .eml.",
+        "evidence_refs": [
+          "server_dispatch",
+          "server_data",
+          "storage_write"
+        ]
+      },
+      {
+        "name": "RSET",
+        "summary": "Support RSET transaction reset with 250 OK.",
+        "evidence_refs": [
+          "server_dispatch"
+        ]
+      },
+      {
+        "name": "NOOP",
+        "summary": "Support NOOP with 250 OK.",
+        "evidence_refs": [
+          "server_dispatch"
+        ]
+      },
+      {
+        "name": "VRFY",
+        "summary": "Support VRFY with the current fixed 252 response.",
+        "evidence_refs": [
+          "server_dispatch"
+        ]
+      },
+      {
+        "name": "QUIT",
+        "summary": "Support QUIT with 221 Bye and connection close.",
+        "evidence_refs": [
+          "server_dispatch"
+        ]
+      }
+    ],
+    "must_support_state_behaviors": [
+      {
+        "name": "per_connection_session",
+        "summary": "Maintain one smtp_session_t per accepted fd, with greeting, auth, transaction and DATA fields.",
+        "evidence_refs": [
+          "server_accept",
+          "session_state"
+        ]
+      },
+      {
+        "name": "auth_continuation_precedence",
+        "summary": "When auth_state is active, consume input lines as AUTH continuation before command parsing.",
+        "evidence_refs": [
+          "server_event_loop",
+          "server_auth"
+        ]
+      },
+      {
+        "name": "data_mode_precedence",
+        "summary": "When in_data_mode is true, consume input lines as DATA body before AUTH or command parsing.",
+        "evidence_refs": [
+          "server_event_loop",
+          "server_data"
+        ]
+      },
+      {
+        "name": "local_delivery_lifecycle",
+        "summary": "On DATA terminator, write local .eml and reset transaction regardless of delivery success or failure path.",
+        "evidence_refs": [
+          "server_data",
+          "storage_write"
+        ]
+      }
+    ],
+    "must_support_error_paths": [
+      {
+        "name": "pre_greeting_or_pre_auth_mail_flow",
+        "summary": "MAIL/RCPT/DATA before HELO/EHLO returns 503; before AUTH returns 530.",
+        "evidence_refs": [
+          "server_dispatch",
+          "module_consistency_rules"
+        ]
+      },
+      {
+        "name": "invalid_auth",
+        "summary": "Invalid base64 or PLAIN blob returns 501; wrong credentials return 535.",
+        "evidence_refs": [
+          "server_auth",
+          "auth_helpers"
+        ]
+      },
+      {
+        "name": "too_many_recipients",
+        "summary": "Recipient overflow returns 452.",
+        "evidence_refs": [
+          "server_dispatch",
+          "session_state"
+        ]
+      },
+      {
+        "name": "oversized_data",
+        "summary": "Message body larger than SMTP_MAX_MESSAGE_SIZE returns 552 on DATA terminator and resets transaction.",
+        "evidence_refs": [
+          "server_data",
+          "session_state"
+        ]
+      }
+    ],
+    "must_support_limits": [
+      {
+        "name": "line_buffering",
+        "summary": "Handle TCP stream fragmentation/coalescing by buffering bytes until LF-delimited lines are complete.",
+        "evidence_refs": [
+          "network_connection_lines"
+        ]
+      },
+      {
+        "name": "message_size",
+        "summary": "Enforce 1 MiB DATA message size and advertise the same value through EHLO SIZE.",
+        "evidence_refs": [
+          "session_state",
+          "response_format"
+        ]
+      },
+      {
+        "name": "recipient_count",
+        "summary": "Enforce 32 recipient maximum per transaction.",
+        "evidence_refs": [
+          "session_state",
+          "server_dispatch"
+        ]
+      }
+    ],
+    "may_defer_features": [
+      {
+        "name": "STARTTLS",
+        "summary": "TLS and STARTTLS are not implemented and should not appear in generated specs for this scope.",
+        "evidence_refs": [
+          "module_forbidden_symbols"
+        ]
+      },
+      {
+        "name": "relay_and_outbound_delivery",
+        "summary": "SMTP relay, DNS/MX lookup, queue retry and remote delivery are outside this local-receive example.",
+        "evidence_refs": [
+          "summary_scope",
+          "module_forbidden_symbols"
+        ]
+      },
+      {
+        "name": "external_user_database",
+        "summary": "Authentication uses hard-coded credentials only.",
+        "evidence_refs": [
+          "auth_helpers",
+          "module_forbidden_symbols"
+        ]
+      },
+      {
+        "name": "additional_sasl_mechanisms",
+        "summary": "CRAM-MD5 and other SASL mechanisms are outside scope.",
+        "evidence_refs": [
+          "module_forbidden_symbols",
+          "server_auth"
+        ]
+      },
+      {
+        "name": "full_rfc5321_validation",
+        "summary": "Domain syntax, address grammar, enhanced status codes, mailbox existence checks and relay policy are not implemented.",
+        "evidence_refs": [
+          "server_dispatch",
+          "summary_scope"
+        ]
+      }
+    ],
+    "implementation_assumptions": [
+      {
+        "name": "server_only_target",
+        "summary": "Downstream coder agent should generate server-side local-receive SMTP code; clients are external validation tools such as swaks or nc.",
+        "evidence_refs": [
+          "summary_scope",
+          "readme_features"
+        ]
+      },
+      {
+        "name": "text_protocol_not_packet_codec",
+        "summary": "Use line buffering plus command parsing and response formatting; do not introduce binary packet, decoder_feed, or encoder abstractions.",
+        "evidence_refs": [
+          "module_forbidden_symbols",
+          "module_consistency_rules"
+        ]
+      },
+      {
+        "name": "single_process_epoll_runtime",
+        "summary": "The example runtime is one process using epoll and linked-list session tracking.",
+        "evidence_refs": [
+          "tcp_server_runtime",
+          "server_create"
+        ]
+      }
+    ]
+  },
+  "planning_inputs": {
+    "protocol_summary": "SMTP RFC5321-style local-receive server subset implemented in C over plain TCP + epoll. The planning target is a server that accepts external clients, sends 220 greeting, supports HELO/EHLO, AUTH LOGIN/PLAIN with fixed credentials, MAIL FROM, RCPT TO, DATA local .eml storage, RSET, NOOP, VRFY and QUIT, while intentionally excluding STARTTLS, relay, DNS/MX lookup, queue retry and external user databases.",
+    "planning_checklist": [
+      "传输层与运行模型",
+      "报文模型与编解码范围",
+      "状态对象设计",
+      "路由/调度设计",
+      "安全与边界限制",
+      "存储或资源抽象",
+      "最小可运行功能集",
+      "测试与验证方式",
+      "传输层与 line buffering",
+      "文本命令解析与响应格式化",
+      "session state 与 transaction state",
+      "AUTH LOGIN/PLAIN continuation state",
+      "MAIL/RCPT/DATA local delivery flow",
+      "错误码与边界限制",
+      "storage .eml 持久化",
+      "禁止功能与最小可运行范围",
+      "测试与互操作验证方式"
+    ],
+    "required_codec_scope": [
+      "LF-delimited line extraction with optional CR stripping",
+      "smtp_command_parse for HELO/EHLO/MAIL/RCPT/DATA/RSET/NOOP/QUIT/AUTH/VRFY",
+      "smtp_response_format for single-line responses",
+      "smtp_response_format_ehlo_caps for EHLO multi-line capabilities",
+      "base64 decode for AUTH LOGIN and AUTH PLAIN",
+      "AUTH PLAIN blob parsing",
+      "DATA terminator and dot-stuffing behavior"
+    ],
+    "implementation_axes": [
+      "TCP epoll server",
+      "connection input/output buffers",
+      "protocol_text parser/formatter",
+      "auth helper",
+      "per-connection session object",
+      "server command dispatcher",
+      "mail_store local .eml writer",
+      "main runtime argument parsing"
+    ],
+    "critical_stateful_behaviors": [
+      "Session is created at accept and receives 220 greeting before client commands.",
+      "MAIL/RCPT/DATA require both greeting and authentication.",
+      "AUTH continuation lines take precedence over normal command parsing.",
+      "DATA mode lines take precedence over AUTH and command parsing.",
+      "DATA terminator triggers local storage and transaction reset."
+    ],
+    "error_handling_obligations": [
+      "Return 503 before greeting and 530 before authentication for mail transaction commands.",
+      "Return 501 for missing syntax or malformed AUTH payloads.",
+      "Return 504 for unsupported AUTH mechanisms.",
+      "Return 452 when recipient count exceeds SMTP_MAX_RECIPIENTS.",
+      "Return 552 when DATA exceeds SMTP_MAX_MESSAGE_SIZE.",
+      "Return 451 when local storage fails.",
+      "Close the connection after QUIT or TCP read/write failures."
+    ],
+    "persistence_and_lifecycle_obligations": [
+      "Ensure mail_root exists during server creation and before each write.",
+      "Write envelope metadata headers before raw DATA content.",
+      "Use unique .eml filenames based on time, pid and process-local counter.",
+      "Destroy smtp_session_t and smtp_connection_t on close."
+    ],
+    "coverage_gaps": [
+      "STARTTLS/TLS",
+      "SMTP relay and outbound delivery",
+      "DNS/MX lookup",
+      "queue retry and durable spool",
+      "external user database",
+      "SASL mechanisms beyond LOGIN and PLAIN",
+      "full RFC5321 mailbox/domain grammar validation",
+      "mailbox existence and authorization checks"
+    ],
+    "implementation_risks": [
+      "The C implementation removes one leading dot from any non-terminator DATA line beginning with '.', while the summary consistency rule describes only '..' dot-stuffed lines.",
+      "AUTH PLAIN failure with an invalid initial response returns 501 but does not explicitly reset auth_state in that branch.",
+      "HELO/EHLO reset transaction and auth continuation but do not explicitly clear an already authenticated flag.",
+      "Line length is checked after a complete line is allocated; very long unterminated input can grow the connection input buffer before rejection.",
+      "The mailbox parser accepts a bare non-space token in addition to angle-bracket mailbox syntax and performs no address grammar validation."
+    ],
+    "consistency_findings": [
+      "SUMMARY.md, smtp_module_spec.json, README.md and source code agree that this is a server-only local-receive SMTP subset.",
+      "Module consistency rules and source agree that SMTP is text line based and should not use smtp_packet_t, smtp_decoder_feed or smtp_encoder abstractions.",
+      "EHLO capability formatting and session constants agree on SIZE 1048576.",
+      "The only notable behavior mismatch is dot-stuffing wording: source removes a leading dot from any non-terminator dotted line, while summary says '..' lines."
+    ],
+    "planning_trigger_facts": {
+      "target_role": "server",
+      "transport_shape": "stream_text_lines",
+      "statefulness": "per_connection_session_and_mail_transaction",
+      "routing_intensity": "low",
+      "auth_required_for_mail_flow": true,
+      "persistence_scope": "local_eml_files",
+      "minimum_surface_count": 12
+    }
+  },
+  "open_questions": [
+    {
+      "category": "message_model",
+      "question_type": "implementation_policy_needed",
+      "question": "Should generated protocol specs preserve the current broad DATA dot de-stuffing behavior for any leading-dot non-terminator line, or narrow it to standard '..' dot-stuffed lines?",
+      "blocking_impact": "medium",
+      "suggested_followup": "For exact parity with protocol-example/smtp, preserve the source behavior; for RFC-style behavior, update both specs and code."
+    },
+    {
+      "category": "state_model",
+      "question_type": "scope_boundary",
+      "question": "Should HELO/EHLO after authentication keep authenticated=true as current code does, or should a new greeting reset authentication?",
+      "blocking_impact": "low",
+      "suggested_followup": "Keep current behavior in gold facts unless the stabilization task explicitly changes session semantics."
+    },
+    {
+      "category": "security",
+      "question_type": "scope_boundary",
+      "question": "Should AUTH remain mandatory for local mail submission in this example, even though minimal SMTP receive servers can accept unauthenticated local delivery?",
+      "blocking_impact": "low",
+      "suggested_followup": "Keep AUTH mandatory because SUMMARY.md consistency rule C3 and server code both require it for MAIL/RCPT/DATA."
+    }
+  ],
+  "evidence_index": [
+    {
+      "evidence_id": "summary_scope",
+      "doc_path": "/home/ljf/SpecForge/specs-example/smtp_specs/SUMMARY.md",
+      "section_hint": "协议元信息",
+      "chunk_id": "SUMMARY-scope",
+      "excerpt": "SUMMARY defines SMTP RFC5321-style example subset, SERVER role, default port 2525, and local-receive scope with HELO/EHLO, AUTH, MAIL, RCPT, DATA, RSET, NOOP, VRFY, QUIT and local .eml storage."
+    },
+    {
+      "evidence_id": "module_spec_network",
+      "doc_path": "/home/ljf/SpecForge/specs-example/smtp_specs/smtp_module_spec.json",
+      "section_hint": "MODULES.network",
+      "chunk_id": "module-network",
+      "excerpt": "The network module owns TCP/epoll listening, client fds, IO events, connection input/output buffers, and does not parse SMTP command semantics."
+    },
+    {
+      "evidence_id": "module_consistency_rules",
+      "doc_path": "/home/ljf/SpecForge/specs-example/smtp_specs/smtp_module_spec.json",
+      "section_hint": "CONSISTENCY_RULES",
+      "chunk_id": "module-consistency",
+      "excerpt": "Rules require smtp_command_parse for commands, response helpers for responses, greeting/auth before MAIL/RCPT/DATA, AUTH LOGIN/PLAIN only, DATA terminator handling, and local .eml only."
+    },
+    {
+      "evidence_id": "module_forbidden_symbols",
+      "doc_path": "/home/ljf/SpecForge/specs-example/smtp_specs/smtp_module_spec.json",
+      "section_hint": "FORBIDDEN_SYMBOLS",
+      "chunk_id": "module-forbidden",
+      "excerpt": "Forbidden symbols/features include smtp_packet_t, smtp_decoder_feed, smtp_encoder, STARTTLS, relay, DNS_MX_LOOKUP, external_user_database and AUTH_CRAM_MD5."
+    },
+    {
+      "evidence_id": "readme_features",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/smtp/README.md",
+      "section_hint": "已实现功能",
+      "chunk_id": "README-features",
+      "excerpt": "README lists HELO, EHLO, MAIL FROM, RCPT TO, DATA, RSET, NOOP, QUIT, AUTH LOGIN, AUTH PLAIN and local delivery to a configured directory."
+    },
+    {
+      "evidence_id": "readme_defaults",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/smtp/README.md",
+      "section_hint": "默认配置",
+      "chunk_id": "README-defaults",
+      "excerpt": "README documents default port 2525, mail directory /mail-test, test account smtpuser, password smtppass, max recipients 32, max mail size 1MB and control line length around 2048."
+    },
+    {
+      "evidence_id": "readme_storage",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/smtp/README.md",
+      "section_hint": "落盘格式",
+      "chunk_id": "README-storage",
+      "excerpt": "README states each message is written as a .eml file containing envelope metadata headers and raw DATA content."
+    },
+    {
+      "evidence_id": "main_runtime",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/smtp/main.c",
+      "section_hint": "main and parse_port",
+      "chunk_id": "main-runtime",
+      "excerpt": "main defaults to port 2525 and /mail-test, accepts optional port and mail_root arguments, creates and starts smtp_server, then runs it."
+    },
+    {
+      "evidence_id": "network_connection_lines",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/smtp/network/connection.c",
+      "section_hint": "connection buffers and line pop",
+      "chunk_id": "connection-lines",
+      "excerpt": "smtp_connection_read appends recv bytes to input buffer; smtp_connection_pop_line waits for LF, strips optional CR, consumes the line, and output helpers queue and flush bytes."
+    },
+    {
+      "evidence_id": "tcp_server_runtime",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/smtp/network/tcp_server.c",
+      "section_hint": "epoll server runtime",
+      "chunk_id": "tcp-runtime",
+      "excerpt": "TCP server sets sockets nonblocking, listens with backlog 128, accepts clients into epoll, dispatches readable/writable events, and invokes close callbacks."
+    },
+    {
+      "evidence_id": "command_types",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/smtp/protocol/smtp_command.h",
+      "section_hint": "smtp_command_kind_t",
+      "chunk_id": "command-types",
+      "excerpt": "smtp_command_kind_t enumerates HELO, EHLO, MAIL, RCPT, DATA, RSET, NOOP, QUIT, AUTH, VRFY and UNKNOWN; smtp_command_t stores kind, arg and has_arg."
+    },
+    {
+      "evidence_id": "command_parse",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/smtp/protocol/smtp_command.c",
+      "section_hint": "smtp_command_parse",
+      "chunk_id": "command-parse",
+      "excerpt": "smtp_command_parse skips leading spaces, uppercases the verb token, maps it to kind, trims trailing argument whitespace, and stores arg if present."
+    },
+    {
+      "evidence_id": "response_format",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/smtp/protocol/smtp_response.c",
+      "section_hint": "response helpers",
+      "chunk_id": "response-format",
+      "excerpt": "smtp_response_format emits code, space, text, CRLF; smtp_response_format_ehlo_caps emits hostname, AUTH LOGIN PLAIN, SIZE max_size and 8BITMIME lines."
+    },
+    {
+      "evidence_id": "auth_helpers",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/smtp/auth/smtp_auth.c",
+      "section_hint": "auth validation and base64/plain parsing",
+      "chunk_id": "auth-helpers",
+      "excerpt": "Auth helpers validate smtpuser/smtppass, decode base64 input while skipping whitespace, and parse AUTH PLAIN blobs using two NUL separators."
+    },
+    {
+      "evidence_id": "storage_write",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/smtp/storage/mail_store.c",
+      "section_hint": "smtp_mail_store_write",
+      "chunk_id": "storage-write",
+      "excerpt": "Storage recursively ensures root_dir, creates unique mail_<time>_<pid>_<counter>.eml files, writes X-SMTP envelope headers, a blank line, and DATA bytes."
+    },
+    {
+      "evidence_id": "session_state",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/smtp/server/smtp_session.h",
+      "section_hint": "smtp_session_t",
+      "chunk_id": "session-state",
+      "excerpt": "smtp_session_t stores control fd, connection pointer, greeted/authenticated flags, helo/auth fields, auth_state, MAIL FROM, RCPT list, DATA mode and message buffer."
+    },
+    {
+      "evidence_id": "session_reset",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/smtp/server/smtp_session.c",
+      "section_hint": "reset helpers",
+      "chunk_id": "session-reset",
+      "excerpt": "smtp_session_reset_transaction clears MAIL, RCPT, DATA and message flags; smtp_session_reset_auth_exchange clears auth_state and auth_login_user."
+    },
+    {
+      "evidence_id": "server_create",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/smtp/server/smtp_server.c",
+      "section_hint": "smtp_server_create",
+      "chunk_id": "server-create",
+      "excerpt": "smtp_server_create validates mail_root, sets hostname localhost, initializes mail storage, installs TCP callbacks and creates the TCP server."
+    },
+    {
+      "evidence_id": "server_accept",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/smtp/server/smtp_server.c",
+      "section_hint": "on_accept_cb",
+      "chunk_id": "server-accept",
+      "excerpt": "On accept, server creates a session, adds it to the session list, and queues a 220 ESMTP ready greeting."
+    },
+    {
+      "evidence_id": "server_event_loop",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/smtp/server/smtp_server.c",
+      "section_hint": "on_event_cb",
+      "chunk_id": "server-event",
+      "excerpt": "on_event flushes writable output, reads input, rejects lines longer than 2048, then dispatches DATA mode, AUTH continuation or parsed commands in that order."
+    },
+    {
+      "evidence_id": "server_dispatch",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/smtp/server/smtp_server.c",
+      "section_hint": "handle_command and parse_mailbox_arg",
+      "chunk_id": "server-dispatch",
+      "excerpt": "handle_command implements HELO, EHLO, AUTH, MAIL, RCPT, DATA, RSET, NOOP, VRFY, QUIT and default unknown-command responses while maintaining session state."
+    },
+    {
+      "evidence_id": "server_auth",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/smtp/server/smtp_server.c",
+      "section_hint": "handle_auth and handle_auth_continuation",
+      "chunk_id": "server-auth",
+      "excerpt": "AUTH handling requires greeting, rejects duplicate auth, supports LOGIN and PLAIN with initial responses or continuations, and uses fixed credential validation."
+    },
+    {
+      "evidence_id": "server_data",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/smtp/server/smtp_server.c",
+      "section_hint": "append_message_line and handle_data_line",
+      "chunk_id": "server-data",
+      "excerpt": "DATA handling appends non-terminator lines with CRLF, removes one leading dot from non-empty dotted lines, terminates on '.', writes mail, returns 250/451/552, and resets transaction."
+    },
+    {
+      "evidence_id": "spec_handle_command",
+      "doc_path": "/home/ljf/SpecForge/specs-example/smtp_specs/server_app/smtp_server/handle_command_spec.json",
+      "section_hint": "WIRE_MAPPING",
+      "chunk_id": "spec-handle-command",
+      "excerpt": "Function spec maps HELO/EHLO, MAIL FROM, RCPT TO and DATA behavior to session fields and command preconditions."
+    },
+    {
+      "evidence_id": "spec_handle_data",
+      "doc_path": "/home/ljf/SpecForge/specs-example/smtp_specs/server_app/smtp_server/handle_data_line_spec.json",
+      "section_hint": "WIRE_MAPPING",
+      "chunk_id": "spec-handle-data",
+      "excerpt": "Function spec maps DATA terminator '.' and message_data accumulation to handle_data_line and session->message_buf."
+    },
+    {
+      "evidence_id": "spec_command_parse",
+      "doc_path": "/home/ljf/SpecForge/specs-example/smtp_specs/protocol_text/smtp_command/smtp_command_parse_spec.json",
+      "section_hint": "WIRE_MAPPING",
+      "chunk_id": "spec-command-parse",
+      "excerpt": "Function spec states verb is the first whitespace-separated token, uppercased into kind, and argument is trimmed and copied to smtp_command_t.arg."
+    },
+    {
+      "evidence_id": "spec_ehlo_caps",
+      "doc_path": "/home/ljf/SpecForge/specs-example/smtp_specs/protocol_text/smtp_response/smtp_response_format_ehlo_caps_spec.json",
+      "section_hint": "WIRE_MAPPING",
+      "chunk_id": "spec-ehlo-caps",
+      "excerpt": "Function spec states EHLO capabilities use 250- continuation lines and final 250 space line."
+    },
+    {
+      "evidence_id": "spec_auth_plain",
+      "doc_path": "/home/ljf/SpecForge/specs-example/smtp_specs/auth/smtp_auth/smtp_auth_parse_plain_blob_spec.json",
+      "section_hint": "WIRE_MAPPING",
+      "chunk_id": "spec-auth-plain",
+      "excerpt": "Function spec states AUTH PLAIN blob must contain NUL, user, NUL and pass, with non-empty user/pass fitting output buffers."
+    },
+    {
+      "evidence_id": "spec_pop_line",
+      "doc_path": "/home/ljf/SpecForge/specs-example/smtp_specs/network/connection/smtp_connection_pop_line_spec.json",
+      "section_hint": "WIRE_MAPPING",
+      "chunk_id": "spec-pop-line",
+      "excerpt": "Function spec states SMTP_LINE requires LF before a complete line is returned and the returned value excludes CRLF."
+    }
+  ]
+}

@@ -704,6 +704,71 @@ def _sanitize_function_refs(function: dict[str, Any], legal: dict[str, set[str]]
     return item
 
 
+def _obligation_function_kind(family: str) -> str:
+    return {
+        "lifecycle": "resource_lifecycle",
+        "parse_decode": "parser",
+        "serialize_encode": "serializer",
+        "validate": "validator",
+        "handle_request_command": "handler",
+        "state_transition": "state_machine",
+        "error_handling": "error_helper",
+        "timer_timeout": "state_machine",
+    }.get(family, "internal_helper")
+
+
+def _add_missing_family_functions(
+    space: dict[str, Any],
+    functions: list[dict[str, Any]],
+    legal: dict[str, set[str]],
+    seen_ids: set[str],
+    seen_names: set[str],
+) -> list[dict[str, Any]]:
+    added: list[dict[str, Any]] = []
+    report = build_function_family_obligation_report(space, functions)
+    module_id = str(space.get("module_id", ""))
+    for obligation in report.get("obligations", []):
+        if not isinstance(obligation, dict) or not obligation.get("required") or obligation.get("status") != "uncovered":
+            continue
+        family = str(obligation.get("family", "")).strip()
+        if not family:
+            continue
+        base_name = f"{module_id}_{family}_helper"
+        name = base_name
+        suffix = 2
+        while f"fn:{module_id}:{_safe_id(name)}" in seen_ids or name in seen_names:
+            name = f"{base_name}_{suffix}"
+            suffix += 1
+        function = _sanitize_function_refs(
+            {
+                "function_id": f"fn:{module_id}:{_safe_id(name)}",
+                "name": name,
+                "module_id": module_id,
+                "function_kind": _obligation_function_kind(family),
+                "coder_function_type": "ALGORITHM",
+                "visibility": "internal",
+                "api_surface": "module_internal",
+                "exported": False,
+                "export_reason": "",
+                "public_api_role": "",
+                "grouping_hint": family,
+                "purpose": f"Cover required {obligation.get('label', family)} function family for {module_id}.",
+                "capability_ids": [],
+                "covers_handler_ids": [],
+                "covers_message_ids": [],
+                "covers_field_ids": [],
+                "trace_ref_keys": [str(obligation.get("obligation_id", ""))],
+                "status": "inferred",
+            },
+            legal,
+        )
+        functions.append(function)
+        seen_ids.add(str(function["function_id"]))
+        seen_names.add(str(function["name"]))
+        added.append({"function_id": function["function_id"], "name": function["name"], "family": family})
+    return added
+
+
 def reconcile_function_annotation_candidate(space: dict[str, Any], annotation_candidate: dict[str, Any] | None) -> dict[str, Any]:
     annotation_candidate = annotation_candidate or {}
     annotations = {
@@ -803,6 +868,7 @@ def reconcile_function_annotation_candidate(space: dict[str, Any], annotation_ca
         seen_ids.add(function_id)
         seen_names.add(name)
         accepted_optional.append({"proposal_key": proposal.get("proposal_key", ""), "function_id": function_id, "name": name, "family": family})
+    deterministic_family_functions = _add_missing_family_functions(space, functions, legal, seen_ids, seen_names)
     candidate = {
         "schema_version": "function_inventory_candidate/v2",
         "candidate_id": f"candidate:function_inventory:{space.get('module_id')}",
@@ -827,6 +893,7 @@ def reconcile_function_annotation_candidate(space: dict[str, Any], annotation_ca
             "recommended_seed_count": len(space.get("recommended_function_families", [])),
             "accepted_optional_functions": accepted_optional,
             "rejected_optional_functions": rejected_optional,
+            "deterministic_family_functions": deterministic_family_functions,
             "function_family_obligation_report": function_family_obligation_report,
             "diagnostic_count": len(diagnostics),
         },

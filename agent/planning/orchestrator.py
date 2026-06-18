@@ -1534,6 +1534,11 @@ class PlanningAgent:
                                 "enable_thinking": enable_thinking,
                                 "failed": True,
                             }
+                        store.log_event(
+                            f"stage=architecture generation_request={request['request_counter']} "
+                            f"prompt=architecture_candidate_prompt event=response_received "
+                            f"json={'valid' if llm_candidates is not None else 'invalid'} {_llm_token_event(meta)}"
+                        )
                         round_results.append((request, llm_candidates, llm_diags, meta))
                 for request, llm_candidates, llm_diags, meta in sorted(round_results, key=lambda item: item[0]["request_counter"]):
                     request_id = request["request_id"]
@@ -1580,6 +1585,9 @@ class PlanningAgent:
             ranking_messages = architecture_ranking_messages(architecture_context, architecture_candidates)
             ranking_config = _llm_config_for_stage(self.config, "architecture_ranking")
             ranking_thinking = self.config.llm_enable_thinking_for("architecture_ranking")
+            store.log_event(
+                f"stage=architecture llm_attempt=ranking prompt=architecture_ranking_prompt thinking={str(ranking_thinking).lower()} start"
+            )
             ranking_candidate, ranking_llm_diags, ranking_meta = request_json_candidate(
                 prompt_name="architecture_ranking_prompt",
                 messages=ranking_messages,

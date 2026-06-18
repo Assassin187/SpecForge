@@ -90,6 +90,26 @@ smoke logs
 run summary
 ```
 
+### 2.4 Pipeline invariant repair 收敛记录
+
+2026-06-18 已完成独立的五轮 pipeline invariant repair 整合，结论如下：
+
+```text
+已解决：
+- 7 个历史有效失败已固化到 agent/planning/tests/test_pipeline_invariant_regression_golden.py。
+- regression 覆盖 type alias canonicalization、byte_buffer public type closure、prose value_ref blocking、wire mapping coverage、runtime lifecycle API、duplicate function symbol allocation、C header owner/cycle closure。
+- MQTT fresh planning run 20260618_171930_310767 已通过 specs_compile、planning verify 与 coder validate。
+
+仍阻塞：
+- MQTT coder generate 在 3 轮 repair 后 compile 失败，分类为 coder generation gap。
+- 具体问题是 generated codec C source 访问 mqtt_packet_t 不存在的 v/connect/publish/subscribe 成员。
+- 未生成 mqtt_broker binary，因此 minimum smoke 未运行。
+- CoAP/SMTP minimum compatibility 因 MQTT compile 未通过而未扩展。
+
+后续入口：
+- 回到本任务书 Step 6/Step 7，优先处理 coder source/header shape mismatch，再继续 MQTT smoke 与 CoAP/SMTP minimum 复现。
+```
+
 ## 3. 任务分步计划
 
 ---

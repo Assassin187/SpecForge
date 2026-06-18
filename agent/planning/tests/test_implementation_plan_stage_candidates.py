@@ -913,6 +913,27 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
         parse_obligation = next(item for item in report["obligations"] if item["family"] == "parse_decode")
         self.assertEqual(parse_obligation["status"], "covered")
 
+    def test_function_inventory_reconciliation_adds_missing_required_family_helper(self) -> None:
+        module = {
+            "module_id": "broker_app",
+            "name": "broker_app",
+            "role": "broker application coordinates session state transitions",
+            "dependencies": [],
+            "artifacts": [],
+            "owned_capabilities": ["state_machine"],
+            "state_owned": [],
+            "files": [],
+            "doc_ref": [],
+        }
+        draft = {"module_artifacts": [module], "function_contracts": [], "type_inventory": []}
+        space = build_function_planning_space(draft, module, {}, {}, {})
+        result = reconcile_function_annotation_candidate(space, {"seed_annotations": [], "optional_function_proposals": []})
+        report = result["function_family_obligation_report"]
+        state_obligation = next(item for item in report["obligations"] if item["family"] == "state_transition")
+        self.assertEqual(state_obligation["status"], "covered")
+        self.assertTrue(state_obligation["matched_function_ids"])
+        self.assertFalse(_has(validate_function_inventory_candidate(result["candidate"], [module], draft, {}, {}), "function_family_obligation_uncovered"))
+
     def test_module_artifact_role_classification_ignores_cross_module_responsibility_text(self) -> None:
         selected = {
             "architecture": {
@@ -1179,6 +1200,17 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             main_file["imports_allowed"] = []
             diagnostics = validate_full_implementation_plan(missing_import, profile=profile, planning_ir=planning_ir)
             self.assertTrue(_has(diagnostics, "runtime_entrypoint_missing_source_dependency"))
+
+    def test_full_readiness_accepts_malformed_runtime_test_id_and_violation_purpose(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            planning_ir, profile, _constraints, _selected, _draft, plan, _items = self._fixtures(Path(raw_tmp))
+            plan["test_plan"] = [
+                {"test_id": "route_publish_basic", "purpose": "Ensure PUBLISH messages are routed to matching subscribers", "status": "inferred"},
+                {"test_id": "close_on_malformed", "purpose": "Confirm connection closure on protocol format violations", "status": "inferred"},
+            ]
+            diagnostics = validate_full_implementation_plan(plan, profile=profile, planning_ir=planning_ir)
+            self.assertFalse(_has(diagnostics, "readiness_missing_runtime_success_test"))
+            self.assertFalse(_has(diagnostics, "readiness_missing_runtime_error_test"))
 
     def test_layout_runtime_mapping_report_explains_merged_roles(self) -> None:
         modules = [

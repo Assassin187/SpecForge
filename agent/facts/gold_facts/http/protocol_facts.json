@@ -1,0 +1,1680 @@
+{
+  "schema_version": "protocol_facts/v2alpha1",
+  "protocol_meta": {
+    "protocol_name": "http",
+    "source_documents": [
+      "/home/ljf/SpecForge/specs-example/http_specs/SUMMARY.md",
+      "/home/ljf/SpecForge/specs-example/http_specs/http_module_spec.json",
+      "/home/ljf/SpecForge/specs-example/http_specs/protocol/http_request/http_request_parse_spec.json",
+      "/home/ljf/SpecForge/specs-example/http_specs/protocol/http_response/http_response_send_spec.json",
+      "/home/ljf/SpecForge/specs-example/http_specs/resource/file_ops/http_resolve_path_spec.json",
+      "/home/ljf/SpecForge/specs-example/http_specs/server/http_server/serve_file_spec.json",
+      "/home/ljf/SpecForge/specs-example/http_specs/server/http_server/handle_post_spec.json",
+      "/home/ljf/SpecForge/specs-example/http_specs/server/http_server/dispatch_spec.json",
+      "/home/ljf/SpecForge/specs-example/http_specs/server/http_server/on_event_cb_spec.json",
+      "/home/ljf/SpecForge/protocol-example/http/README.md",
+      "/home/ljf/SpecForge/protocol-example/http/main.c",
+      "/home/ljf/SpecForge/protocol-example/http/network/connection.c",
+      "/home/ljf/SpecForge/protocol-example/http/network/tcp_server.c",
+      "/home/ljf/SpecForge/protocol-example/http/protocol/http_request.h",
+      "/home/ljf/SpecForge/protocol-example/http/protocol/http_request.c",
+      "/home/ljf/SpecForge/protocol-example/http/protocol/http_response.c",
+      "/home/ljf/SpecForge/protocol-example/http/resource/file_ops.c",
+      "/home/ljf/SpecForge/protocol-example/http/server/http_session.h",
+      "/home/ljf/SpecForge/protocol-example/http/server/http_session.c",
+      "/home/ljf/SpecForge/protocol-example/http/server/http_server.c"
+    ],
+    "document_count": 20,
+    "fact_source_type": "example_implementation_and_specs",
+    "target_scope": "HTTP/1.1 server subset for planning-agent debugging"
+  },
+  "transport": {
+    "network_stack": {
+      "value": "tcp",
+      "evidence_refs": [
+        "summary_scope",
+        "readme_features",
+        "tcp_runtime"
+      ]
+    },
+    "connection_model": {
+      "value": "connection_oriented_close_after_response",
+      "evidence_refs": [
+        "module_consistency",
+        "response_send",
+        "server_event"
+      ]
+    },
+    "channels": [
+      {
+        "name": "main",
+        "transport": "tcp",
+        "purpose": "每个 accepted TCP connection 承载 HTTP request bytes 和 HTTP response bytes；当前实现每个响应后关闭连接。",
+        "evidence_refs": [
+          "connection_buffers",
+          "server_event",
+          "response_send"
+        ]
+      }
+    ],
+    "runtime_implications": [
+      {
+        "summary": "network 层使用 nonblocking socket 与 epoll，只负责 accept、read/write buffering、flush 和 close callback，不解析 HTTP 方法、header 或 status code。",
+        "evidence_refs": [
+          "module_consistency",
+          "tcp_runtime",
+          "connection_buffers"
+        ]
+      },
+      {
+        "summary": "request parser 通过 http_connection_pop_line 读取 request line 与 headers，并通过 http_connection_pop_bytes 读取 Content-Length 指定的 body。",
+        "evidence_refs": [
+          "connection_buffers",
+          "request_parse",
+          "spec_request_parse"
+        ]
+      },
+      {
+        "summary": "response bytes 先排入 connection output buffer；如果发送未完成，则通过 EPOLLOUT interest 继续 flush。",
+        "evidence_refs": [
+          "connection_buffers",
+          "response_send",
+          "server_event"
+        ]
+      },
+      {
+        "summary": "所有 response 都带 Connection: close，server 在 pending output 清空后关闭 client fd 并移除 session。",
+        "evidence_refs": [
+          "module_consistency",
+          "response_send",
+          "server_event"
+        ]
+      }
+    ]
+  },
+  "interaction_model": {
+    "style": {
+      "value": "request_response_server_subset",
+      "evidence_refs": [
+        "summary_scope",
+        "readme_features",
+        "server_dispatch"
+      ]
+    },
+    "roles": [
+      {
+        "name": "client",
+        "summary": "外部 HTTP client 建立 TCP connection，发送 HTTP/1.1 request，接收一个 response 后连接关闭。",
+        "evidence_refs": [
+          "readme_features",
+          "server_event",
+          "response_send"
+        ]
+      },
+      {
+        "name": "server",
+        "summary": "目标实现是 HTTP/1.1 static file server subset，支持 GET、HEAD、POST、目录 index/listing、path sandbox 和固定错误响应。",
+        "evidence_refs": [
+          "summary_scope",
+          "readme_features",
+          "server_serve_file",
+          "server_post"
+        ]
+      }
+    ],
+    "interaction_units": [
+      {
+        "name": "http_request",
+        "summary": "由 request line、headers、空行和可选 Content-Length body 组成，解析为 http_request_t。",
+        "evidence_refs": [
+          "request_header",
+          "request_parse",
+          "spec_request_parse"
+        ]
+      },
+      {
+        "name": "http_response",
+        "summary": "由 status line、Date、Server、Content-Length、Connection: close、extra headers、空行和可选 body 组成。",
+        "evidence_refs": [
+          "response_send",
+          "spec_response_send"
+        ]
+      },
+      {
+        "name": "filesystem_resource",
+        "summary": "GET/HEAD/POST 的 URI 映射到 root sandbox 下的文件或目录。",
+        "evidence_refs": [
+          "resource_ops",
+          "spec_resolve_path",
+          "server_serve_file"
+        ]
+      }
+    ],
+    "core_flows": [
+      {
+        "name": "connection_accept",
+        "summary": "TCP server accept client fd，server_app 创建 http_session_t 并把 fd 加入 session list。",
+        "surface_units": [
+          "CONNECTION"
+        ],
+        "evidence_refs": [
+          "tcp_runtime",
+          "server_event",
+          "session_state"
+        ]
+      },
+      {
+        "name": "request_parse",
+        "summary": "readable event 读取 bytes，http_request_parse 解析完整 request；不完整返回 1 并等待更多数据。",
+        "surface_units": [
+          "HTTP_REQUEST"
+        ],
+        "evidence_refs": [
+          "server_event",
+          "request_parse",
+          "spec_request_parse"
+        ]
+      },
+      {
+        "name": "get_file_or_directory",
+        "summary": "GET request 经 dispatch 进入 handle_get/serve_file，安全解析 URI，服务普通文件、目录 index.html 或目录列表。",
+        "surface_units": [
+          "GET",
+          "HTTP_RESPONSE",
+          "DIRECTORY_INDEX",
+          "DIRECTORY_LISTING"
+        ],
+        "evidence_refs": [
+          "server_dispatch",
+          "server_serve_file",
+          "resource_ops"
+        ]
+      },
+      {
+        "name": "head_file_or_directory",
+        "summary": "HEAD 与 GET 共享 serve_file，但 response body 为 NULL，Content-Length 保持目标资源长度。",
+        "surface_units": [
+          "HEAD",
+          "HTTP_RESPONSE"
+        ],
+        "evidence_refs": [
+          "server_dispatch",
+          "server_serve_file"
+        ]
+      },
+      {
+        "name": "post_create_file",
+        "summary": "POST request 必须携带 body；server 在 root sandbox 下以 wb 写入目标文件，成功返回 201 Created。",
+        "surface_units": [
+          "POST",
+          "HTTP_RESPONSE"
+        ],
+        "evidence_refs": [
+          "server_post",
+          "spec_post"
+        ]
+      },
+      {
+        "name": "error_response",
+        "summary": "parse error、unsupported method、path traversal、missing resource、POST directory 等失败路径生成 HTML error response。",
+        "surface_units": [
+          "ERROR_RESPONSE",
+          "UNKNOWN_METHOD"
+        ],
+        "evidence_refs": [
+          "server_event",
+          "server_dispatch",
+          "server_serve_file",
+          "server_post"
+        ]
+      }
+    ]
+  },
+  "message_model": {
+    "framing": {
+      "value": "http1_text_headers_optional_body",
+      "evidence_refs": [
+        "request_parse",
+        "response_send"
+      ]
+    },
+    "surface_catalog": [
+      {
+        "name": "CONNECTION",
+        "kind": "transport_event",
+        "direction": "bidirectional",
+        "summary": "Accepted TCP connection with one http_session_t and one http_connection_t.",
+        "evidence_refs": [
+          "tcp_runtime",
+          "session_state"
+        ]
+      },
+      {
+        "name": "HTTP_REQUEST",
+        "kind": "request",
+        "direction": "client_to_server",
+        "summary": "HTTP/1.1 request parsed from request line, headers and optional Content-Length body.",
+        "evidence_refs": [
+          "request_header",
+          "request_parse"
+        ]
+      },
+      {
+        "name": "GET",
+        "kind": "method",
+        "direction": "client_to_server",
+        "summary": "Serves a regular file, directory index.html, or generated directory listing with a body.",
+        "evidence_refs": [
+          "request_header",
+          "server_dispatch",
+          "server_serve_file"
+        ]
+      },
+      {
+        "name": "HEAD",
+        "kind": "method",
+        "direction": "client_to_server",
+        "summary": "Uses the GET file-serving path but omits the response body while preserving Content-Length.",
+        "evidence_refs": [
+          "request_header",
+          "server_dispatch",
+          "server_serve_file"
+        ]
+      },
+      {
+        "name": "POST",
+        "kind": "method",
+        "direction": "client_to_server",
+        "summary": "Writes the request body to the requested sandboxed file path and returns 201 on success.",
+        "evidence_refs": [
+          "request_header",
+          "server_dispatch",
+          "server_post"
+        ]
+      },
+      {
+        "name": "UNKNOWN_METHOD",
+        "kind": "method",
+        "direction": "client_to_server",
+        "summary": "Any method other than GET, HEAD or POST maps to HTTP_UNKNOWN and returns 501.",
+        "evidence_refs": [
+          "request_parse",
+          "server_dispatch",
+          "module_consistency"
+        ]
+      },
+      {
+        "name": "HTTP_RESPONSE",
+        "kind": "response",
+        "direction": "server_to_client",
+        "summary": "Normal success response built by http_response_send with status line, standard headers, optional extra headers and optional body.",
+        "evidence_refs": [
+          "response_send",
+          "spec_response_send"
+        ]
+      },
+      {
+        "name": "ERROR_RESPONSE",
+        "kind": "response",
+        "direction": "server_to_client",
+        "summary": "HTML error response generated by send_error for supported error status codes.",
+        "evidence_refs": [
+          "server_event",
+          "server_serve_file",
+          "server_post"
+        ]
+      },
+      {
+        "name": "DIRECTORY_INDEX",
+        "kind": "resource_resolution",
+        "direction": "server_internal",
+        "summary": "Directory request first tries index.html before generating a listing.",
+        "evidence_refs": [
+          "server_serve_file",
+          "module_consistency"
+        ]
+      },
+      {
+        "name": "DIRECTORY_LISTING",
+        "kind": "resource_response",
+        "direction": "server_to_client",
+        "summary": "When no index.html exists, server generates an HTML directory listing.",
+        "evidence_refs": [
+          "server_serve_file",
+          "resource_ops",
+          "readme_tests"
+        ]
+      }
+    ],
+    "message_or_command_entries": [
+      {
+        "name": "request_line",
+        "surface_unit": "HTTP_REQUEST",
+        "syntax_or_layout": "METHOD SP URI SP VERSION CRLF",
+        "summary": "Parser reads one line and requires sscanf to extract method, uri and version tokens.",
+        "evidence_refs": [
+          "request_parse",
+          "spec_request_parse"
+        ],
+        "fields": [
+          {
+            "name": "method",
+            "summary": "GET, HEAD and POST map to public enum values HTTP_GET, HTTP_HEAD and HTTP_POST; all others map to HTTP_UNKNOWN.",
+            "evidence_refs": [
+              "request_header",
+              "request_parse",
+              "module_forbidden"
+            ]
+          },
+          {
+            "name": "uri",
+            "summary": "URI is copied into http_request_t.uri with HTTP_MAX_URI bound.",
+            "evidence_refs": [
+              "request_header",
+              "request_parse"
+            ]
+          },
+          {
+            "name": "version",
+            "summary": "Version token is parsed for request-line shape, but current implementation does not validate that it equals HTTP/1.1.",
+            "evidence_refs": [
+              "request_parse"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "headers",
+        "surface_unit": "HTTP_REQUEST",
+        "syntax_or_layout": "repeated Name ':' OWS Value CRLF, terminated by empty line",
+        "summary": "Parser splits each header on the first colon, trims leading spaces/tabs from value, stores up to HTTP_MAX_HEADERS headers and skips malformed header lines without colon.",
+        "evidence_refs": [
+          "request_parse",
+          "spec_request_parse"
+        ],
+        "fields": [
+          {
+            "name": "header_name",
+            "summary": "Stored in char[HTTP_MAX_HEADER_NAME].",
+            "evidence_refs": [
+              "request_header",
+              "request_parse"
+            ]
+          },
+          {
+            "name": "header_value",
+            "summary": "Stored in char[HTTP_MAX_HEADER_VALUE] after leading OWS is skipped.",
+            "evidence_refs": [
+              "request_header",
+              "request_parse"
+            ]
+          },
+          {
+            "name": "Content-Length",
+            "summary": "Looked up case-insensitively and parsed with strtoul to decide body length.",
+            "evidence_refs": [
+              "request_parse"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "request_body",
+        "surface_unit": "HTTP_REQUEST",
+        "syntax_or_layout": "Content-Length bytes after header terminator",
+        "summary": "If Content-Length is present and positive, parser waits until that many bytes are buffered, pops a heap copy, and stores body/body_len.",
+        "evidence_refs": [
+          "request_parse",
+          "connection_buffers"
+        ],
+        "fields": [
+          {
+            "name": "body",
+            "summary": "Heap-allocated body pointer owned by http_request_t and released by http_request_free.",
+            "evidence_refs": [
+              "request_header",
+              "request_parse"
+            ]
+          },
+          {
+            "name": "body_len",
+            "summary": "Equals parsed Content-Length when body is present.",
+            "evidence_refs": [
+              "request_header",
+              "request_parse"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "response",
+        "surface_unit": "HTTP_RESPONSE",
+        "syntax_or_layout": "HTTP/1.1 status reason CRLF headers CRLF optional body",
+        "summary": "http_response_send emits status line, Date, Server, Content-Length, Connection: close, extra headers, blank line and optional body.",
+        "evidence_refs": [
+          "response_send",
+          "spec_response_send"
+        ],
+        "fields": [
+          {
+            "name": "status",
+            "summary": "Mapped by http_status_text for 200, 201, 400, 403, 404, 405, 413, 500 and 501.",
+            "evidence_refs": [
+              "response_send",
+              "readme_features"
+            ]
+          },
+          {
+            "name": "Content-Length",
+            "summary": "Always emitted from the body_len argument, including HEAD where body is NULL but body_len is the resource length.",
+            "evidence_refs": [
+              "response_send",
+              "server_serve_file"
+            ]
+          },
+          {
+            "name": "Connection",
+            "summary": "Always emitted as close.",
+            "evidence_refs": [
+              "response_send",
+              "module_consistency"
+            ]
+          },
+          {
+            "name": "Content-Type",
+            "summary": "Provided through extra_headers for file, directory listing and HTML error responses.",
+            "evidence_refs": [
+              "server_serve_file",
+              "server_event",
+              "resource_ops"
+            ]
+          }
+        ]
+      }
+    ],
+    "field_constraints": [
+      {
+        "condition": "request line cannot parse into method, URI and version",
+        "required_action": "http_request_parse returns -1; server returns 400 and closes the connection.",
+        "evidence_refs": [
+          "request_parse",
+          "server_event"
+        ]
+      },
+      {
+        "condition": "request headers are incomplete",
+        "required_action": "http_request_parse returns 1 and server waits for more bytes.",
+        "evidence_refs": [
+          "request_parse",
+          "server_event"
+        ]
+      },
+      {
+        "condition": "Content-Length exceeds HTTP_MAX_BODY",
+        "required_action": "http_request_parse returns -1; server sends 400 in current source even though specs/README describe 413 as the intended POST size error.",
+        "evidence_refs": [
+          "request_parse",
+          "server_event",
+          "module_consistency",
+          "readme_features"
+        ]
+      },
+      {
+        "condition": "method is not GET, HEAD or POST",
+        "required_action": "dispatch sends 501 Not Implemented.",
+        "evidence_refs": [
+          "server_dispatch",
+          "module_consistency"
+        ]
+      },
+      {
+        "condition": "resolved path escapes root sandbox",
+        "required_action": "resource resolver fails with errno=EACCES; file-serving path sends 403.",
+        "evidence_refs": [
+          "resource_ops",
+          "spec_resolve_path",
+          "server_serve_file"
+        ]
+      }
+    ]
+  },
+  "state_model": {
+    "state_nodes": [
+      {
+        "name": "accepted_connection",
+        "summary": "TCP fd is accepted, http_session_t exists, and http_connection_t owns input/output buffers.",
+        "evidence_refs": [
+          "tcp_runtime",
+          "session_state",
+          "server_event"
+        ]
+      },
+      {
+        "name": "buffering_request",
+        "summary": "Input bytes are buffered until request line, headers and any Content-Length body are complete.",
+        "evidence_refs": [
+          "connection_buffers",
+          "request_parse",
+          "server_event"
+        ]
+      },
+      {
+        "name": "parsed_request",
+        "summary": "http_request_parse returned 0 and request fields are ready for method dispatch.",
+        "evidence_refs": [
+          "request_parse",
+          "server_dispatch"
+        ]
+      },
+      {
+        "name": "response_queued",
+        "summary": "Handler queued response bytes and registered writable interest if needed.",
+        "evidence_refs": [
+          "response_send",
+          "server_serve_file",
+          "server_post",
+          "server_event"
+        ]
+      },
+      {
+        "name": "closed_connection",
+        "summary": "Client fd is closed, removed from epoll and session list, and http_session_t is destroyed.",
+        "evidence_refs": [
+          "tcp_runtime",
+          "server_event",
+          "session_state"
+        ]
+      }
+    ],
+    "transitions": [
+      {
+        "from_state": "accepted_connection",
+        "to_state": "buffering_request",
+        "trigger": "HTTP_IO_READABLE",
+        "summary": "Readable event causes http_connection_read to append bytes to the connection buffer.",
+        "evidence_refs": [
+          "connection_buffers",
+          "server_event"
+        ]
+      },
+      {
+        "from_state": "buffering_request",
+        "to_state": "parsed_request",
+        "trigger": "http_request_parse returns 0",
+        "summary": "A complete request is parsed and dispatched by method.",
+        "evidence_refs": [
+          "request_parse",
+          "server_event",
+          "server_dispatch"
+        ]
+      },
+      {
+        "from_state": "buffering_request",
+        "to_state": "buffering_request",
+        "trigger": "http_request_parse returns 1",
+        "summary": "Incomplete request remains buffered until more TCP bytes arrive.",
+        "evidence_refs": [
+          "request_parse",
+          "server_event"
+        ]
+      },
+      {
+        "from_state": "parsed_request",
+        "to_state": "response_queued",
+        "trigger": "GET, HEAD, POST or UNKNOWN dispatch",
+        "summary": "Handler queues success or error response and updates writable interest.",
+        "evidence_refs": [
+          "server_dispatch",
+          "server_serve_file",
+          "server_post",
+          "response_send"
+        ]
+      },
+      {
+        "from_state": "response_queued",
+        "to_state": "closed_connection",
+        "trigger": "pending output fully flushed",
+        "summary": "Because responses use Connection: close, server closes the fd after response bytes are flushed.",
+        "evidence_refs": [
+          "response_send",
+          "server_event"
+        ]
+      },
+      {
+        "from_state": "any_open_state",
+        "to_state": "closed_connection",
+        "trigger": "TCP EOF, read error, flush error, parse error after 400 response",
+        "summary": "Server closes the connection on EOF/error; parse errors send 400 then close.",
+        "evidence_refs": [
+          "server_event",
+          "tcp_runtime"
+        ]
+      }
+    ],
+    "timers_and_constants": [
+      {
+        "name": "HTTP_MAX_HEADERS",
+        "scope": "request",
+        "value_or_rule": "64 headers",
+        "evidence_refs": [
+          "request_header"
+        ]
+      },
+      {
+        "name": "HTTP_MAX_URI",
+        "scope": "request",
+        "value_or_rule": "2048 bytes",
+        "evidence_refs": [
+          "request_header"
+        ]
+      },
+      {
+        "name": "HTTP_MAX_HEADER_NAME",
+        "scope": "request",
+        "value_or_rule": "256 bytes",
+        "evidence_refs": [
+          "request_header"
+        ]
+      },
+      {
+        "name": "HTTP_MAX_HEADER_VALUE",
+        "scope": "request",
+        "value_or_rule": "4096 bytes",
+        "evidence_refs": [
+          "request_header"
+        ]
+      },
+      {
+        "name": "HTTP_MAX_BODY",
+        "scope": "request",
+        "value_or_rule": "16 MiB",
+        "evidence_refs": [
+          "request_header",
+          "readme_limits"
+        ]
+      }
+    ],
+    "invariants": [
+      {
+        "summary": "server_app must use http_request_parse and http_response_send instead of ad hoc HTTP parsing or response formatting.",
+        "evidence_refs": [
+          "module_consistency",
+          "server_event",
+          "response_send"
+        ]
+      },
+      {
+        "summary": "server_app must call http_resolve_path before serving or writing filesystem resources.",
+        "evidence_refs": [
+          "module_consistency",
+          "server_serve_file",
+          "server_post"
+        ]
+      },
+      {
+        "summary": "The runtime does not implement keep-alive, request pipelining reuse, or chunked Transfer-Encoding.",
+        "evidence_refs": [
+          "module_consistency",
+          "readme_limits",
+          "response_send"
+        ]
+      }
+    ]
+  },
+  "routing_model": {
+    "dispatch_keys": [
+      {
+        "name": "http_method_t",
+        "summary": "dispatch switches on req->method and routes HTTP_GET, HTTP_HEAD, HTTP_POST and HTTP_UNKNOWN.",
+        "evidence_refs": [
+          "server_dispatch",
+          "spec_dispatch"
+        ]
+      },
+      {
+        "name": "uri_path",
+        "summary": "GET/HEAD/POST use req->uri as the resource path passed through http_resolve_path.",
+        "evidence_refs": [
+          "server_serve_file",
+          "server_post",
+          "resource_ops"
+        ]
+      },
+      {
+        "name": "Content-Length",
+        "summary": "POST body availability and size are determined by parsed Content-Length and buffered body bytes.",
+        "evidence_refs": [
+          "request_parse",
+          "server_post"
+        ]
+      },
+      {
+        "name": "filesystem_type",
+        "summary": "http_stat_path returns 0 regular file, 1 directory, or -1 error to drive file, directory or 404 behavior.",
+        "evidence_refs": [
+          "resource_ops",
+          "server_serve_file",
+          "spec_serve_file"
+        ]
+      }
+    ],
+    "dispatch_targets": [
+      {
+        "name": "http_request_parse",
+        "summary": "Protocol parser converts buffered bytes to http_request_t.",
+        "evidence_refs": [
+          "request_parse",
+          "spec_request_parse"
+        ]
+      },
+      {
+        "name": "dispatch",
+        "summary": "Server method dispatcher routes GET, HEAD, POST and UNKNOWN.",
+        "evidence_refs": [
+          "server_dispatch",
+          "spec_dispatch"
+        ]
+      },
+      {
+        "name": "serve_file",
+        "summary": "Shared GET/HEAD resource serving path.",
+        "evidence_refs": [
+          "server_serve_file",
+          "spec_serve_file"
+        ]
+      },
+      {
+        "name": "handle_post",
+        "summary": "POST body-to-file writer.",
+        "evidence_refs": [
+          "server_post",
+          "spec_post"
+        ]
+      },
+      {
+        "name": "http_response_send",
+        "summary": "Protocol response encoder queues final HTTP/1.1 response bytes.",
+        "evidence_refs": [
+          "response_send",
+          "spec_response_send"
+        ]
+      }
+    ],
+    "matching_rules": [
+      {
+        "summary": "Directory resources first try index.html; only when it is absent does the server generate a directory listing.",
+        "evidence_refs": [
+          "server_serve_file",
+          "module_consistency"
+        ]
+      },
+      {
+        "summary": "MIME type is selected from the resolved file extension and defaults to application/octet-stream.",
+        "evidence_refs": [
+          "resource_ops",
+          "server_serve_file"
+        ]
+      },
+      {
+        "summary": "Header lookup is case-insensitive through http_request_header.",
+        "evidence_refs": [
+          "request_parse"
+        ]
+      }
+    ]
+  },
+  "resource_model": {
+    "resource_objects": [
+      {
+        "name": "http_connection",
+        "scope": "connection",
+        "summary": "Owns socket fd, input buffer, output buffer, output offset and dynamic capacities.",
+        "evidence_refs": [
+          "connection_buffers"
+        ]
+      },
+      {
+        "name": "http_session",
+        "scope": "connection",
+        "summary": "Associates an fd with its http_connection_t; created on accept and destroyed on close.",
+        "evidence_refs": [
+          "session_state",
+          "server_event"
+        ]
+      },
+      {
+        "name": "http_request",
+        "scope": "request",
+        "summary": "Stores method, URI, headers, header_count, heap body pointer and body_len.",
+        "evidence_refs": [
+          "request_header"
+        ]
+      },
+      {
+        "name": "server_root",
+        "scope": "process",
+        "summary": "Canonical root directory stored in http_server_t and used as the filesystem sandbox root.",
+        "evidence_refs": [
+          "server_create",
+          "resource_ops"
+        ]
+      },
+      {
+        "name": "static_file",
+        "scope": "filesystem",
+        "summary": "Regular file read fully into a heap buffer and sent with MIME Content-Type.",
+        "evidence_refs": [
+          "resource_ops",
+          "server_serve_file"
+        ]
+      },
+      {
+        "name": "directory_listing",
+        "scope": "filesystem",
+        "summary": "Generated HTML page for directory entries when no index.html exists.",
+        "evidence_refs": [
+          "resource_ops",
+          "server_serve_file"
+        ]
+      }
+    ],
+    "lifecycle_rules": [
+      {
+        "summary": "A session is allocated when a client fd is accepted and added to the server session list.",
+        "evidence_refs": [
+          "server_event",
+          "session_state"
+        ]
+      },
+      {
+        "summary": "http_request_free releases any heap body after dispatch or parse failure.",
+        "evidence_refs": [
+          "request_parse",
+          "server_event"
+        ]
+      },
+      {
+        "summary": "File and directory-listing heap buffers are freed after response bytes are queued.",
+        "evidence_refs": [
+          "server_serve_file",
+          "resource_ops"
+        ]
+      },
+      {
+        "summary": "POST write failures unlink the partially written target file before returning 500.",
+        "evidence_refs": [
+          "server_post"
+        ]
+      },
+      {
+        "summary": "Closing a client fd removes it from epoll and triggers session destruction through on_close.",
+        "evidence_refs": [
+          "tcp_runtime",
+          "server_event",
+          "session_state"
+        ]
+      }
+    ],
+    "persistence_scope": [
+      {
+        "name": "root_directory_files",
+        "summary": "Persistent state is limited to files under the configured root directory; POST may create or overwrite a file at the requested sandboxed path.",
+        "evidence_refs": [
+          "server_post",
+          "readme_features"
+        ]
+      },
+      {
+        "name": "no_application_database",
+        "summary": "The example has no database, authentication store, CGI runtime, virtual host table or TLS state.",
+        "evidence_refs": [
+          "readme_limits"
+        ]
+      }
+    ]
+  },
+  "error_and_limits": {
+    "error_matrix": [
+      {
+        "condition": "malformed request line or parser error",
+        "surface_unit": "HTTP_REQUEST",
+        "required_action": "send 400 Bad Request, flush/update output, then close connection.",
+        "evidence_refs": [
+          "request_parse",
+          "server_event"
+        ]
+      },
+      {
+        "condition": "unsupported method",
+        "surface_unit": "UNKNOWN_METHOD",
+        "required_action": "send 501 Not Implemented.",
+        "evidence_refs": [
+          "server_dispatch",
+          "module_consistency"
+        ]
+      },
+      {
+        "condition": "path traversal or resource path outside root sandbox",
+        "surface_unit": "GET/HEAD/POST",
+        "required_action": "send 403 Forbidden.",
+        "evidence_refs": [
+          "resource_ops",
+          "server_serve_file",
+          "server_post"
+        ]
+      },
+      {
+        "condition": "GET or HEAD target does not exist or is unsupported file type",
+        "surface_unit": "GET/HEAD",
+        "required_action": "send 404 Not Found.",
+        "evidence_refs": [
+          "server_serve_file",
+          "resource_ops"
+        ]
+      },
+      {
+        "condition": "POST request has no body",
+        "surface_unit": "POST",
+        "required_action": "send 400 Bad Request.",
+        "evidence_refs": [
+          "server_post"
+        ]
+      },
+      {
+        "condition": "POST target is an existing directory",
+        "surface_unit": "POST",
+        "required_action": "send 405 Method Not Allowed.",
+        "evidence_refs": [
+          "server_post",
+          "module_consistency"
+        ]
+      },
+      {
+        "condition": "POST body is larger than HTTP_MAX_BODY",
+        "surface_unit": "POST",
+        "required_action": "intended rule is 413 Payload Too Large, but current parser returns -1 and server_event maps parse errors to 400.",
+        "evidence_refs": [
+          "request_parse",
+          "server_event",
+          "module_consistency"
+        ]
+      },
+      {
+        "condition": "file read, directory listing, POST write, response formatting or allocation fails",
+        "surface_unit": "HTTP_RESPONSE",
+        "required_action": "send 500 Internal Server Error where handler can recover.",
+        "evidence_refs": [
+          "server_serve_file",
+          "server_post",
+          "response_send"
+        ]
+      }
+    ],
+    "limits": {
+      "fixed_protocol_constants": [
+        {
+          "name": "HTTP_MAX_HEADERS",
+          "value_or_rule": "64",
+          "evidence_refs": [
+            "request_header"
+          ]
+        },
+        {
+          "name": "HTTP_MAX_URI",
+          "value_or_rule": "2048 bytes",
+          "evidence_refs": [
+            "request_header"
+          ]
+        },
+        {
+          "name": "HTTP_MAX_HEADER_NAME",
+          "value_or_rule": "256 bytes",
+          "evidence_refs": [
+            "request_header"
+          ]
+        },
+        {
+          "name": "HTTP_MAX_HEADER_VALUE",
+          "value_or_rule": "4096 bytes",
+          "evidence_refs": [
+            "request_header"
+          ]
+        },
+        {
+          "name": "HTTP_MAX_BODY",
+          "value_or_rule": "16 MiB",
+          "evidence_refs": [
+            "request_header",
+            "readme_limits"
+          ]
+        }
+      ],
+      "defaults": [
+        {
+          "name": "default_port",
+          "value_or_rule": "8080",
+          "evidence_refs": [
+            "summary_scope",
+            "main_runtime"
+          ]
+        },
+        {
+          "name": "default_root",
+          "value_or_rule": "current directory '.'",
+          "evidence_refs": [
+            "main_runtime",
+            "readme_features"
+          ]
+        },
+        {
+          "name": "server_header",
+          "value_or_rule": "Server: httpd/1.0",
+          "evidence_refs": [
+            "response_send"
+          ]
+        }
+      ],
+      "recommended_values": [
+        {
+          "name": "validation_profile",
+          "value_or_rule": "Use curl to exercise GET, HEAD, POST create, directory listing, traversal rejection, POST directory rejection and unsupported method.",
+          "evidence_refs": [
+            "readme_tests",
+            "summary_scope"
+          ]
+        }
+      ],
+      "hard_bounds": [
+        {
+          "name": "read_chunk",
+          "value_or_rule": "http_connection_read uses 4096-byte recv chunks and grows input buffer dynamically.",
+          "evidence_refs": [
+            "connection_buffers"
+          ]
+        },
+        {
+          "name": "response_format_buffer",
+          "value_or_rule": "queuefv formats individual header lines into a 4096-byte stack buffer.",
+          "evidence_refs": [
+            "response_send"
+          ]
+        },
+        {
+          "name": "directory_segment_count",
+          "value_or_rule": "http_resolve_path stores up to 256 path segments while normalizing URI paths.",
+          "evidence_refs": [
+            "resource_ops"
+          ]
+        }
+      ],
+      "configurable_bounds": [
+        {
+          "name": "listen_port",
+          "value_or_rule": "main accepts argv[1] port in range 1..65535.",
+          "evidence_refs": [
+            "main_runtime"
+          ]
+        },
+        {
+          "name": "root_directory",
+          "value_or_rule": "main accepts argv[2] root; http_server_create requires realpath(root) to exist and be a directory.",
+          "evidence_refs": [
+            "main_runtime",
+            "server_create"
+          ]
+        }
+      ]
+    },
+    "security": [
+      {
+        "name": "path_sandbox",
+        "summary": "All resource paths must pass http_resolve_path root-prefix validation before file service or POST write.",
+        "evidence_refs": [
+          "module_consistency",
+          "resource_ops",
+          "server_serve_file",
+          "server_post"
+        ]
+      },
+      {
+        "name": "tls",
+        "summary": "TLS/HTTPS is outside current scope; transport is plain TCP.",
+        "evidence_refs": [
+          "readme_limits"
+        ]
+      },
+      {
+        "name": "authentication",
+        "summary": "Authentication and authorization are outside current scope.",
+        "evidence_refs": [
+          "readme_limits"
+        ]
+      }
+    ]
+  },
+  "minimum_v1": {
+    "must_support_surface": [
+      {
+        "name": "CONNECTION",
+        "summary": "Accept TCP clients through epoll runtime and create one session per fd.",
+        "evidence_refs": [
+          "tcp_runtime",
+          "session_state"
+        ]
+      },
+      {
+        "name": "HTTP_REQUEST",
+        "summary": "Parse request line, headers and optional Content-Length body from connection buffer.",
+        "evidence_refs": [
+          "request_parse",
+          "spec_request_parse"
+        ]
+      },
+      {
+        "name": "GET",
+        "summary": "Serve static files, index.html for directories, or generated directory listings.",
+        "evidence_refs": [
+          "server_serve_file",
+          "readme_features"
+        ]
+      },
+      {
+        "name": "HEAD",
+        "summary": "Serve GET-equivalent headers and Content-Length without response body.",
+        "evidence_refs": [
+          "server_serve_file",
+          "readme_tests"
+        ]
+      },
+      {
+        "name": "POST",
+        "summary": "Write non-empty request body to a sandboxed filesystem path and return 201 Created.",
+        "evidence_refs": [
+          "server_post",
+          "readme_features"
+        ]
+      },
+      {
+        "name": "HTTP_RESPONSE",
+        "summary": "Encode HTTP/1.1 responses with Content-Length and Connection: close.",
+        "evidence_refs": [
+          "response_send",
+          "spec_response_send"
+        ]
+      },
+      {
+        "name": "ERROR_RESPONSE",
+        "summary": "Return expected error responses for malformed request, traversal, not found, method not allowed, unsupported method and internal failures.",
+        "evidence_refs": [
+          "server_event",
+          "server_serve_file",
+          "server_post",
+          "server_dispatch"
+        ]
+      },
+      {
+        "name": "DIRECTORY_LISTING",
+        "summary": "Generate HTML directory listing when index.html is absent.",
+        "evidence_refs": [
+          "server_serve_file",
+          "resource_ops"
+        ]
+      },
+      {
+        "name": "UNKNOWN_METHOD",
+        "summary": "Return 501 for methods outside GET, HEAD and POST.",
+        "evidence_refs": [
+          "server_dispatch",
+          "module_consistency"
+        ]
+      }
+    ],
+    "must_support_state_behaviors": [
+      {
+        "name": "session_lifecycle",
+        "summary": "Create http_session_t on accept and destroy it on close callback.",
+        "evidence_refs": [
+          "server_event",
+          "session_state"
+        ]
+      },
+      {
+        "name": "incremental_request_buffering",
+        "summary": "Return to event loop when request is incomplete and preserve buffered bytes.",
+        "evidence_refs": [
+          "request_parse",
+          "server_event"
+        ]
+      },
+      {
+        "name": "close_after_response",
+        "summary": "Close connection after response data has been fully flushed.",
+        "evidence_refs": [
+          "response_send",
+          "server_event"
+        ]
+      },
+      {
+        "name": "resource_sandbox_before_io",
+        "summary": "Resolve and validate URI under root before read, listing or write.",
+        "evidence_refs": [
+          "resource_ops",
+          "server_serve_file",
+          "server_post"
+        ]
+      }
+    ],
+    "must_support_error_paths": [
+      {
+        "name": "bad_request",
+        "summary": "Parser errors produce 400 and close.",
+        "evidence_refs": [
+          "server_event"
+        ]
+      },
+      {
+        "name": "forbidden_path",
+        "summary": "Sandbox failures produce 403.",
+        "evidence_refs": [
+          "resource_ops",
+          "server_serve_file"
+        ]
+      },
+      {
+        "name": "not_found",
+        "summary": "Missing GET/HEAD target produces 404.",
+        "evidence_refs": [
+          "server_serve_file"
+        ]
+      },
+      {
+        "name": "post_directory",
+        "summary": "POST to an existing directory produces 405.",
+        "evidence_refs": [
+          "server_post"
+        ]
+      },
+      {
+        "name": "unknown_method",
+        "summary": "Unsupported methods produce 501.",
+        "evidence_refs": [
+          "server_dispatch"
+        ]
+      }
+    ],
+    "must_support_limits": [
+      {
+        "name": "request_size_bounds",
+        "summary": "Honor HTTP_MAX_HEADERS, URI/header buffer sizes and HTTP_MAX_BODY.",
+        "evidence_refs": [
+          "request_header",
+          "request_parse"
+        ]
+      },
+      {
+        "name": "root_sandbox",
+        "summary": "Reject filesystem paths that escape the configured root directory.",
+        "evidence_refs": [
+          "resource_ops",
+          "spec_resolve_path"
+        ]
+      },
+      {
+        "name": "method_subset",
+        "summary": "Only GET, HEAD and POST are in scope.",
+        "evidence_refs": [
+          "module_consistency",
+          "request_parse"
+        ]
+      }
+    ],
+    "may_defer_features": [
+      {
+        "name": "keep_alive_and_pipelining",
+        "summary": "Persistent connections and pipelining are not supported.",
+        "evidence_refs": [
+          "readme_limits",
+          "module_consistency"
+        ]
+      },
+      {
+        "name": "chunked_transfer_encoding",
+        "summary": "Chunked request or response transfer encoding is outside scope.",
+        "evidence_refs": [
+          "readme_limits"
+        ]
+      },
+      {
+        "name": "range_and_conditional_requests",
+        "summary": "Range, If-Modified-Since, ETag and related conditional request behavior are outside scope.",
+        "evidence_refs": [
+          "readme_limits"
+        ]
+      },
+      {
+        "name": "tls_virtual_hosts_authentication_cgi",
+        "summary": "TLS/HTTPS, virtual hosts, authentication and CGI/server-side scripting are outside scope.",
+        "evidence_refs": [
+          "readme_limits"
+        ]
+      }
+    ],
+    "implementation_assumptions": [
+      {
+        "name": "server_only_target",
+        "summary": "Downstream coder agent should generate server-side HTTP code; clients are external curl-like tools.",
+        "evidence_refs": [
+          "summary_scope",
+          "readme_tests"
+        ]
+      },
+      {
+        "name": "module_boundaries",
+        "summary": "Keep HTTP parsing/response encoding in protocol, path and file logic in resource, and socket IO in network.",
+        "evidence_refs": [
+          "module_consistency"
+        ]
+      },
+      {
+        "name": "plain_tcp_static_file_server",
+        "summary": "The runtime is a single-process epoll static file server over plain TCP.",
+        "evidence_refs": [
+          "readme_features",
+          "tcp_runtime"
+        ]
+      }
+    ]
+  },
+  "planning_inputs": {
+    "protocol_summary": "HTTP/1.1 server subset implemented in C over plain TCP + epoll. The planning target is a static file server that parses request line/headers/Content-Length body, supports GET, HEAD and POST, serves files or directory listings under a root sandbox, writes POST bodies to files, sends Content-Length responses with Connection: close, and intentionally defers keep-alive, pipelining, chunked transfer, range/conditional requests, TLS, virtual hosts, CGI and authentication.",
+    "planning_checklist": [
+      "传输层与运行模型",
+      "报文模型与编解码范围",
+      "状态对象设计",
+      "路由/调度设计",
+      "安全与边界限制",
+      "存储或资源抽象",
+      "最小可运行功能集",
+      "测试与验证方式",
+      "HTTP request parser",
+      "HTTP response encoder",
+      "resource sandbox",
+      "GET/HEAD/POST handling",
+      "Connection: close lifecycle"
+    ],
+    "required_codec_scope": [
+      "request-line parsing",
+      "header parsing and case-insensitive lookup",
+      "Content-Length body extraction",
+      "status text mapping",
+      "HTTP/1.1 response generation with Date, Server, Content-Length and Connection: close",
+      "HTML error response helper"
+    ],
+    "implementation_axes": [
+      "TCP epoll server",
+      "connection read/write buffers",
+      "HTTP request parser",
+      "HTTP response encoder",
+      "root path resolver",
+      "file reader and MIME mapper",
+      "directory listing generator",
+      "request dispatcher",
+      "POST file writer"
+    ],
+    "critical_stateful_behaviors": [
+      "One session is tied to one accepted fd.",
+      "Incomplete requests remain buffered until enough bytes arrive.",
+      "Dispatch occurs only after http_request_parse returns a complete request.",
+      "Response output is flushed before the connection is closed.",
+      "URI paths must be resolved inside root before filesystem IO."
+    ],
+    "error_handling_obligations": [
+      "Return 400 for parser failures.",
+      "Return 403 for sandbox rejection.",
+      "Return 404 for missing GET/HEAD targets.",
+      "Return 405 for POST to existing directories.",
+      "Return 500 for local read/write/listing/internal failures.",
+      "Return 501 for unsupported methods.",
+      "Record the 413-vs-400 oversized-body mismatch as an implementation risk."
+    ],
+    "persistence_and_lifecycle_obligations": [
+      "Canonicalize and validate root at server creation.",
+      "Free request bodies after dispatch.",
+      "Free file/listing buffers after queuing responses.",
+      "Close and remove sessions after response flush.",
+      "POST writes persist under root directory."
+    ],
+    "coverage_gaps": [
+      "keep-alive and pipelining",
+      "chunked Transfer-Encoding",
+      "range requests",
+      "conditional requests",
+      "CGI/server-side scripting",
+      "TLS/HTTPS",
+      "virtual hosts",
+      "authentication and authorization",
+      "full HTTP version validation"
+    ],
+    "implementation_risks": [
+      "Spec rule C7 says oversized POST body should return 413, but current parser returns -1 and on_event_cb maps parse errors to 400.",
+      "Request version is parsed but not validated, so non-HTTP/1.1 versions may still be accepted.",
+      "Malformed header lines without ':' are skipped instead of causing 400.",
+      "POST opens the target with wb, so it can overwrite an existing regular file despite the summary wording that POST creates files.",
+      "The event loop attempts to process all complete requests in the buffer, but Connection: close means downstream specs should not advertise pipelining support."
+    ],
+    "consistency_findings": [
+      "README, SUMMARY and module spec agree on GET/HEAD/POST, default port 8080, static file serving, directory listing, POST write and Connection: close.",
+      "Forbidden symbols match the public API names in headers: HTTP_GET/HTTP_POST, http_response_send, http_mime_by_ext, and explicit pop_line/pop_bytes functions.",
+      "Module boundaries are explicit: network handles bytes/events, protocol handles HTTP parse/encode, resource handles filesystem sandbox and file operations."
+    ],
+    "planning_trigger_facts": {
+      "target_role": "server",
+      "transport_shape": "stream_http1_close",
+      "statefulness": "per_connection_request_response",
+      "routing_intensity": "medium",
+      "filesystem_sandbox_required": true,
+      "persistence_scope": "root_directory_files",
+      "minimum_surface_count": 9
+    }
+  },
+  "open_questions": [
+    {
+      "category": "error_and_limits",
+      "question_type": "implementation_policy_needed",
+      "question": "Should oversized Content-Length preserve current source behavior as 400 parse error, or should the implementation/specs be repaired to return 413 Payload Too Large as documented by C7 and README?",
+      "blocking_impact": "medium",
+      "suggested_followup": "For exact parity with protocol-example/http, keep 400; for spec consistency, update parser/server to distinguish oversized body from generic parse error."
+    },
+    {
+      "category": "message_model",
+      "question_type": "scope_boundary",
+      "question": "Should request version be validated as HTTP/1.1, or remain parsed-but-ignored as in current source?",
+      "blocking_impact": "low",
+      "suggested_followup": "Keep parsed-only in gold facts unless stabilization explicitly adds version validation."
+    },
+    {
+      "category": "resource_model",
+      "question_type": "implementation_policy_needed",
+      "question": "Should POST be create-only and reject existing regular files, or preserve current wb overwrite behavior?",
+      "blocking_impact": "medium",
+      "suggested_followup": "Decide whether C7's create-only wording should drive a code/spec repair, because current source only rejects existing directories."
+    }
+  ],
+  "evidence_index": [
+    {
+      "evidence_id": "summary_scope",
+      "doc_path": "/home/ljf/SpecForge/specs-example/http_specs/SUMMARY.md",
+      "section_hint": "协议元信息",
+      "chunk_id": "SUMMARY-scope",
+      "excerpt": "SUMMARY defines HTTP/1.1 server subset, SERVER role, default port 8080, and GET/HEAD/POST validation by external clients."
+    },
+    {
+      "evidence_id": "module_consistency",
+      "doc_path": "/home/ljf/SpecForge/specs-example/http_specs/http_module_spec.json",
+      "section_hint": "CONSISTENCY_RULES",
+      "chunk_id": "module-consistency",
+      "excerpt": "Rules separate network/protocol/resource/server_app responsibilities, require Connection: close, limit methods to GET/HEAD/POST, require directory index priority and define POST bounds."
+    },
+    {
+      "evidence_id": "module_forbidden",
+      "doc_path": "/home/ljf/SpecForge/specs-example/http_specs/http_module_spec.json",
+      "section_hint": "FORBIDDEN_SYMBOLS",
+      "chunk_id": "module-forbidden",
+      "excerpt": "Forbidden symbols call out incorrect enum/function names such as HTTP_METHOD_GET, http_send_response, http_get_mime and generic http_connection_pop."
+    },
+    {
+      "evidence_id": "readme_features",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/http/README.md",
+      "section_hint": "Features",
+      "chunk_id": "README-features",
+      "excerpt": "README lists epoll TCP server, GET/HEAD/POST, static file serving, directory listing, index.html, POST writes, root sandbox, status codes and Connection: close."
+    },
+    {
+      "evidence_id": "readme_limits",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/http/README.md",
+      "section_hint": "Scope and Limitations",
+      "chunk_id": "README-limits",
+      "excerpt": "README excludes persistent connections, chunked transfer encoding, range requests, conditional requests, CGI, TLS, virtual hosts and authentication."
+    },
+    {
+      "evidence_id": "readme_tests",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/http/README.md",
+      "section_hint": "Verification Checklist",
+      "chunk_id": "README-tests",
+      "excerpt": "README validation uses curl for GET root, GET file, HEAD no body, 404, POST create, POST verify, directory listing, path traversal, POST directory and unknown method."
+    },
+    {
+      "evidence_id": "main_runtime",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/http/main.c",
+      "section_hint": "main and parse_port",
+      "chunk_id": "main-runtime",
+      "excerpt": "main defaults to port 8080 and root '.', accepts optional port/root arguments, creates, starts and runs http_server."
+    },
+    {
+      "evidence_id": "connection_buffers",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/http/network/connection.c",
+      "section_hint": "connection buffers",
+      "chunk_id": "connection-buffers",
+      "excerpt": "Connection code reads recv chunks into input buffer, pops LF-delimited lines, pops exact byte counts, queues output bytes and flushes with send."
+    },
+    {
+      "evidence_id": "tcp_runtime",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/http/network/tcp_server.c",
+      "section_hint": "epoll runtime",
+      "chunk_id": "tcp-runtime",
+      "excerpt": "TCP server creates nonblocking listener, accepts clients into epoll, dispatches readable/writable app events and closes clients through callbacks."
+    },
+    {
+      "evidence_id": "request_header",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/http/protocol/http_request.h",
+      "section_hint": "types and constants",
+      "chunk_id": "request-header",
+      "excerpt": "Header defines HTTP_GET, HTTP_HEAD, HTTP_POST, HTTP_UNKNOWN, HTTP_MAX_HEADERS, HTTP_MAX_URI, HTTP_MAX_HEADER_NAME, HTTP_MAX_HEADER_VALUE, HTTP_MAX_BODY and http_request_t."
+    },
+    {
+      "evidence_id": "request_parse",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/http/protocol/http_request.c",
+      "section_hint": "http_request_parse",
+      "chunk_id": "request-parse",
+      "excerpt": "Parser reads request line, maps method, stores URI, parses headers, looks up Content-Length, enforces HTTP_MAX_BODY and pops body bytes when available."
+    },
+    {
+      "evidence_id": "response_send",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/http/protocol/http_response.c",
+      "section_hint": "http_response_send and http_status_text",
+      "chunk_id": "response-send",
+      "excerpt": "Response encoder maps status text, queues HTTP/1.1 status line, Date, Server, Content-Length, Connection: close, extra headers, blank line and body."
+    },
+    {
+      "evidence_id": "resource_ops",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/http/resource/file_ops.c",
+      "section_hint": "path, MIME, file and directory helpers",
+      "chunk_id": "resource-ops",
+      "excerpt": "Resource helpers map MIME by extension, resolve URI paths under root, stat regular files/directories, read files and generate HTML directory listings."
+    },
+    {
+      "evidence_id": "session_state",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/http/server/http_session.h",
+      "section_hint": "http_session_t",
+      "chunk_id": "session-state",
+      "excerpt": "http_session_t stores fd and http_connection_t pointer; session create/destroy allocate and free the connection object."
+    },
+    {
+      "evidence_id": "server_create",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/http/server/http_server.c",
+      "section_hint": "http_server_create",
+      "chunk_id": "server-create",
+      "excerpt": "http_server_create realpath-validates root_dir, requires it to be a directory, stores canonical root and installs TCP callbacks."
+    },
+    {
+      "evidence_id": "server_event",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/http/server/http_server.c",
+      "section_hint": "on_event_cb and callbacks",
+      "chunk_id": "server-event",
+      "excerpt": "Event callback flushes writable output, reads input, loops over complete requests, handles incomplete/parse-error returns, dispatches requests and closes after response flush."
+    },
+    {
+      "evidence_id": "server_dispatch",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/http/server/http_server.c",
+      "section_hint": "dispatch",
+      "chunk_id": "server-dispatch",
+      "excerpt": "dispatch routes HTTP_GET to handle_get, HTTP_HEAD to handle_head, HTTP_POST to handle_post, and HTTP_UNKNOWN/default to 501."
+    },
+    {
+      "evidence_id": "server_serve_file",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/http/server/http_server.c",
+      "section_hint": "serve_file",
+      "chunk_id": "server-serve-file",
+      "excerpt": "serve_file resolves URI, returns 403 on resolve failure, 404 on stat failure, serves index.html for directories, otherwise directory listing or regular file."
+    },
+    {
+      "evidence_id": "server_post",
+      "doc_path": "/home/ljf/SpecForge/protocol-example/http/server/http_server.c",
+      "section_hint": "handle_post",
+      "chunk_id": "server-post",
+      "excerpt": "handle_post requires non-empty body, resolves path, rejects existing directories with 405, writes body with fopen wb/fwrite, unlinks partial write and returns 201 on success."
+    },
+    {
+      "evidence_id": "spec_request_parse",
+      "doc_path": "/home/ljf/SpecForge/specs-example/http_specs/protocol/http_request/http_request_parse_spec.json",
+      "section_hint": "LOGIC",
+      "chunk_id": "spec-request-parse",
+      "excerpt": "Function spec states http_request_parse returns 0 on success, 1 for incomplete request and -1 for parsing/protocol error."
+    },
+    {
+      "evidence_id": "spec_response_send",
+      "doc_path": "/home/ljf/SpecForge/specs-example/http_specs/protocol/http_response/http_response_send_spec.json",
+      "section_hint": "LOGIC",
+      "chunk_id": "spec-response-send",
+      "excerpt": "Function spec states response generation queues status line, Date, Server, Content-Length, Connection: close, extra headers, blank line and optional body."
+    },
+    {
+      "evidence_id": "spec_resolve_path",
+      "doc_path": "/home/ljf/SpecForge/specs-example/http_specs/resource/file_ops/http_resolve_path_spec.json",
+      "section_hint": "LOGIC",
+      "chunk_id": "spec-resolve-path",
+      "excerpt": "Function spec states http_resolve_path normalizes dot segments, realpath-validates under root and sets errno=EACCES for traversal."
+    },
+    {
+      "evidence_id": "spec_serve_file",
+      "doc_path": "/home/ljf/SpecForge/specs-example/http_specs/server/http_server/serve_file_spec.json",
+      "section_hint": "LOGIC",
+      "chunk_id": "spec-serve-file",
+      "excerpt": "Function spec describes resolve_path, stat, regular file read/send, directory index.html priority and directory listing generation."
+    },
+    {
+      "evidence_id": "spec_post",
+      "doc_path": "/home/ljf/SpecForge/specs-example/http_specs/server/http_server/handle_post_spec.json",
+      "section_hint": "LOGIC",
+      "chunk_id": "spec-post",
+      "excerpt": "Function spec describes POST resolving target path, rejecting directories with 405, writing body using fopen wb/fwrite and sending 201 Created."
+    },
+    {
+      "evidence_id": "spec_dispatch",
+      "doc_path": "/home/ljf/SpecForge/specs-example/http_specs/server/http_server/dispatch_spec.json",
+      "section_hint": "LOGIC",
+      "chunk_id": "spec-dispatch",
+      "excerpt": "Function spec states dispatch routes GET to handle_get, HEAD to handle_head, POST to handle_post and UNKNOWN to 501."
+    }
+  ]
+}
