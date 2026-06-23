@@ -19,7 +19,7 @@ env/
 
 # Output
 **/out/
-
+**/agent/eval_out/
 # Local compile outputs
 *.o
 *.obj

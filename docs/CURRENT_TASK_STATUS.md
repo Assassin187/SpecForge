@@ -1,5 +1,138 @@
 # SpecForge Planning 稳定化当前任务状态
 
+## 0. 最新状态：Step 6 三协议 minimum matrix
+
+更新时间：2026-06-18
+
+当前步骤：
+
+```text
+Step 6：MQTT / CoAP / SMTP minimum 功能复现与矩阵化归档
+```
+
+本轮新增统一入口：
+
+```text
+tools/eval/run_minimum_matrix.py
+docs/minimum_protocol_reproduction.md
+```
+
+本轮 facts 输入策略：
+
+```text
+不新增 gold_facts，不自行生成 facts。
+MQTT 使用 agent/facts/gold_facts/mqtt_min/protocol_facts.json。
+CoAP 使用 agent/facts/gold_facts/coap_min/protocol_facts.json。
+SMTP 使用当前工作树已有 agent/facts/gold_facts/smtp_min/protocol_facts.json。
+```
+
+注意：
+
+```text
+当前工作树中 agent/facts/gold_facts/smtp_min/protocol_facts.json 是已有未跟踪输入，
+且旧 agent/facts/gold_facts/smtp/protocol_facts.json 在 git status 中显示 deleted。
+本轮仅引用当前已有 facts，不修改 facts 内容。
+SMTP smtp_min facts 包含 AUTH LOGIN/PLAIN，且 MAIL/RCPT/DATA 依赖 authenticated；
+因此 SMTP smoke 仍按现有 facts 保留 AUTH 流程，不把 no-AUTH 行为伪装成 protocol fact。
+```
+
+新增 target profile：
+
+```text
+agent/planning/planning_target_profile_coap.json
+agent/planning/planning_target_profile_smtp_min.json
+```
+
+### Step 6 运行结果摘要
+
+MQTT：
+
+```text
+facts_path: agent/facts/gold_facts/mqtt_min/protocol_facts.json
+target_profile_path: agent/planning/planning_target_profile_mqtt.json
+matrix_run: agent/eval_out/minimum_matrix/20260618_214348
+planning_run_dir: agent/eval_out/minimum_matrix/20260618_214348/mqtt/planning_run
+source_planning_run: agent/planning/out/mqtt/broker__c__linux_epoll__minimum_v1/20260618_171930_310767
+spec_bundle: agent/eval_out/minimum_matrix/20260618_214348/mqtt/planning_run/spec_bundle
+planning_status: passed_existing
+readiness_status: passed
+schema/load/rendered header/dummy TU status: passed via coder validate
+coder_output_dir: agent/eval_out/minimum_matrix/20260618_214348/mqtt/coder_out
+compile_status: failed
+repair_iterations: 0 in this dry/run
+smoke_status: not_run because compile failed
+failure_stage: coder_generate
+failure_categories: source_compile_failure
+main_diagnostic: generated source compile failed; logs include missing ntohs/malloc/free declarations and mqtt_packet_t has no member v.
+artifact_archived: partial:copied
+```
+
+CoAP：
+
+```text
+facts_path: agent/facts/gold_facts/coap_min/protocol_facts.json
+target_profile_path: agent/planning/planning_target_profile_coap.json
+full_matrix_run: agent/eval_out/minimum_matrix/20260618_214741
+diagnostic_replay_run: agent/eval_out/minimum_matrix/20260618_222523
+planning_run_dir: agent/eval_out/minimum_matrix/20260618_214741/coap/planning_run
+spec_bundle: not produced
+planning_status: failed
+readiness_status: failed / not reached in original plan command
+schema/load/rendered header/dummy TU status: not_run
+coder_output_dir: agent/eval_out/minimum_matrix/20260618_214741/coap/coder_out
+compile_status: not_run
+repair_iterations: not_run
+smoke_status: not_run
+failure_stage: planning_plan / planning_verify replay
+failure_categories: planning_stage_failure
+main_diagnostic: readiness_missing_protocol_version; final implementation_plan lacks protocol version/spec_version metadata.
+secondary_diagnostic: blocking_unresolved_questions; final implementation_plan still contains blocking unresolved questions.
+observed_candidate_semantic_errors: uncovered_target_surface, wire_mapping_target_path_unknown/not_canonical, call_contract_unknown_value_ref.
+artifact_archived: partial
+```
+
+SMTP：
+
+```text
+facts_path: agent/facts/gold_facts/smtp_min/protocol_facts.json
+target_profile_path: agent/planning/planning_target_profile_smtp_min.json
+input_validation_dir: agent/eval_out/minimum_matrix_input_check/smtp
+planning_status: input validated only
+readiness_status: not_run
+schema/load/rendered header/dummy TU status: not_run
+coder_output_dir: not_run
+compile_status: not_run
+repair_iterations: not_run
+smoke_status: not_run
+failure_stage: not_run in full closure this turn
+failure_categories: execution_not_completed_this_turn
+main_diagnostic: full SMTP planning/coder/smoke was not started after the long CoAP full run; reusable runner entry exists.
+artifact_archived: input preflight manifest only
+```
+
+### Step 6 完成指标判定
+
+```text
+[x] 统一 matrix runner 已建立。
+[x] 固定 summary JSON/MD 输出已建立。
+[x] MQTT 得到 readiness/coder validate/compile/smoke 状态记录。
+[x] CoAP 得到 full planning failure taxonomy 和 artifacts。
+[x] SMTP facts/profile preflight 通过，且 smoke/facts 的 AUTH 边界已明确。
+[x] 不存在 false planning success：CoAP planning failure 没有被标记为 pass。
+[x] 不存在通过关闭 validator 或跳过 smoke 制造 success。
+[x] readiness passed 的 MQTT bundle 没有在 coder loader/header 阶段失败，而是在 source compile 阶段失败。
+[ ] 三协议均得到完整 compile/smoke 状态记录：SMTP full closure 未跑完。
+[ ] 至少一个协议完成 compile + smoke：本轮未达到。
+[ ] Step 6 完全完成：未达到，当前为 runner + MQTT dry/run + CoAP full planning failure + SMTP input validation。
+```
+
+下一轮入口：
+
+```text
+Step 7：稳定性回归与论文实验准备。
+在进入 Step 7 前，建议先用同一 runner 继续执行 SMTP full closure，并修复 CoAP readiness_missing_protocol_version / blocking_unresolved_questions。
+```
+
 ## 1. 当前总体阶段
 
 当前目标：
