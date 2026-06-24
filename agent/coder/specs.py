@@ -532,7 +532,7 @@ def _validate_machine_constraints(bundle: SpecBundle) -> None:
                 bundle.diagnostics.append(Diagnostic("error", "unknown_call_contract_callee", f"CALL_CONTRACTS callee '{name}' is not declared", str(function_spec.source_path)))
             elif signature and not _signatures_match(signature, call_signatures[name]):
                 bundle.diagnostics.append(Diagnostic("error", "call_contract_signature_mismatch", f"CALL_CONTRACTS signature for '{name}' differs from canonical spec", str(function_spec.source_path)))
-        if call_contract_names != rely_func_names:
+        if "CALL_CONTRACTS" in function_spec.raw and call_contract_names != rely_func_names:
             bundle.diagnostics.append(Diagnostic("error", "call_contract_rely_drift", "CALL_CONTRACTS and RELY.FUNC names differ", str(function_spec.source_path)))
         for mapping in function_spec.raw.get("WIRE_MAPPING", []):
             if not isinstance(mapping, dict):

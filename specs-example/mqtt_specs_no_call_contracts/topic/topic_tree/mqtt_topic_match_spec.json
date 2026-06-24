@@ -1,0 +1,45 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "mqtt/topic/topic_tree/mqtt_topic_match",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "按 MQTT 通配符规则匹配过滤器与主题",
+  "SIGNATURE": {
+    "RAW": "bool mqtt_topic_match(const char* filter, const char* topic)",
+    "NAME": "mqtt_topic_match",
+    "RETURN": "bool",
+    "PARAMS": [
+      {
+        "TYPE": "const char*",
+        "NAME": "filter",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "const char*",
+        "NAME": "topic",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [],
+    "FUNC": [
+      {
+        "NAME": "next_level",
+        "KIND": "CALL",
+        "ROLE": "按层级切分并比较 filter/topic"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入为过滤器 filter 与主题 topic",
+    "ACTION": "逐层解析 filter/topic；支持 + 匹配单层，# 匹配剩余所有层且必须位于末尾；普通层级执行精确匹配；最终依据双方是否同时结束返回结果",
+    "OUTPUT": "返回 true 表示匹配成功，false 表示不匹配或参数非法",
+    "INVARIANTS_USED": [
+      "# 仅在最后一层合法",
+      "匹配过程不修改输入字符串"
+    ]
+  }
+}

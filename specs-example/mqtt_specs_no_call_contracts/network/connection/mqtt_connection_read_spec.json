@@ -1,0 +1,50 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "mqtt/network/connection/mqtt_connection_read",
+  "FUNCTION_TYPE": "EVENT",
+  "ROLE": "非阻塞读取 socket 数据并追加到输入缓冲",
+  "SIGNATURE": {
+    "RAW": "bool mqtt_connection_read(mqtt_connection_t* c, bool* peer_closed)",
+    "NAME": "mqtt_connection_read",
+    "RETURN": "bool",
+    "PARAMS": [
+      {
+        "TYPE": "mqtt_connection_t*",
+        "NAME": "c",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "bool*",
+        "NAME": "peer_closed",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct mqtt_connection",
+        "ROLE": "连接私有状态结构体"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "ensure_in_cap",
+        "KIND": "CALL",
+        "ROLE": "扩容输入缓冲以追加新字节"
+      }
+    ],
+    "VAR": []
+  },
+  "EVENT": {
+    "TRIGGER": "epoll 产生 EPOLLIN 时由事件循环触发",
+    "PRECONDITION": "c 有效且未关闭；peer_closed 可为空",
+    "INPUT": "输入为连接 c 与 peer_closed 输出标志",
+    "ACTION": "循环 recv：读到数据则扩容并追加；EAGAIN/EWOULDBLOCK 返回 true；EINTR 重试；n=0 仅标记 peer_closed=true 后返回 true，不丢弃本次及此前已追加的数据；其他错误返回 false",
+    "STATE_CHANGE": "输入缓冲 in_data/in_len 可能增长；peer_closed 可能被置位；peer_closed=true 与 in_len>0 可以同时成立",
+    "RESPONSE": "返回 true 表示读取阶段可继续处理，调用者必须先处理所有 buffered input，再根据 peer_closed 关闭连接；false 表示致命错误需关闭连接",
+    "EVENT_TYPE": "RUNTIME_EVENT"
+  }
+}

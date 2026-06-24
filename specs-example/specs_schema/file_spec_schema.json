@@ -204,50 +204,6 @@
         }
       }
     },
-    "text_item": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "TEXT"
-      ],
-      "properties": {
-        "TEXT": {
-          "type": "string",
-          "minLength": 1
-        }
-      }
-    },
-    "contract": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "PRECONDITION",
-        "POSTCONDITION",
-        "IDEMPOTENT",
-        "THREAD_SAFETY"
-      ],
-      "properties": {
-        "PRECONDITION": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/text_item"
-          }
-        },
-        "POSTCONDITION": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/text_item"
-          }
-        },
-        "IDEMPOTENT": {
-          "type": "boolean"
-        },
-        "THREAD_SAFETY": {
-          "type": "string",
-          "minLength": 1
-        }
-      }
-    },
     "file_meta": {
       "type": "object",
       "additionalProperties": false,
@@ -518,7 +474,6 @@
         "NAME",
         "KIND",
         "ROLE",
-        "CONTRACT",
         "VISIBILITY"
       ],
       "properties": {
@@ -551,9 +506,6 @@
         "ROLE": {
           "type": "string",
           "minLength": 1
-        },
-        "CONTRACT": {
-          "$ref": "#/$defs/contract"
         },
         "VISIBILITY": {
           "type": "string",
