@@ -90,40 +90,6 @@
       "ROLE": "本 router 只应收到 broker 已筛选的 QoS0 publish"
     }
   ],
-  "CALL_CONTRACTS": [
-    {
-      "NAME": "mqtt_topic_tree_match_subscribers",
-      "SIGNATURE": "bool mqtt_topic_tree_match_subscribers(const mqtt_topic_tree_t* t, const char* topic, int** out_sids, size_t* out_count)",
-      "PARAMS": [
-        "r->topics borrowed",
-        "publish->topic_name borrowed",
-        "out_sids is an output pointer; on success receives malloc/realloc-owned int array or NULL for zero matches",
-        "out_count receives element count"
-      ],
-      "RETURN": "true means matching completed, false means invalid args or allocation failure",
-      "OWNERSHIP": "caller must free(*out_sids) after successful non-NULL output"
-    },
-    {
-      "NAME": "mqtt_session_manager_get",
-      "SIGNATURE": "mqtt_session_t* mqtt_session_manager_get(mqtt_session_manager_t* m, int session_id)",
-      "PARAMS": [
-        "r->sessions borrowed",
-        "matched sid value"
-      ],
-      "RETURN": "borrowed session pointer or NULL"
-    },
-    {
-      "NAME": "mqtt_encode_publish_qos0",
-      "SIGNATURE": "mqtt_bytes_t mqtt_encode_publish_qos0(const char* topic_name, const uint8_t* payload, size_t payload_len, bool retain)",
-      "PARAMS": [
-        "publish->topic_name borrowed",
-        "publish->payload borrowed",
-        "publish->payload_len value",
-        "publish->retain value"
-      ],
-      "RETURN": "mqtt_bytes_t owning encoded data; release with mqtt_bytes_free"
-    }
-  ],
   "LOGIC": {
     "INPUT": "输入为路由器 r、发布源 from_session_id、发布载荷 publish",
     "ACTION": "忽略 from_session_id；校验 r/publish/topic_name；调用 topic_tree_match_subscribers 获取订阅者；逐个查 session、编码 QoS0 PUBLISH 并发送；最后释放 subs 数组",

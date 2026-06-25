@@ -154,40 +154,6 @@
       "ROLE": "minimal broker 只转发 QoS0"
     }
   ],
-  "CALL_CONTRACTS": [
-    {
-      "NAME": "mqtt_session_mark_connected",
-      "SIGNATURE": "void mqtt_session_mark_connected(mqtt_session_t* s, const char* client_id, bool clean_session, uint16_t keep_alive)",
-      "PARAMS": [
-        "sess borrowed",
-        "pkt->v.connect.client_id borrowed during callback",
-        "pkt->v.connect.clean_session value",
-        "pkt->v.connect.keep_alive value"
-      ],
-      "RETURN": "void",
-      "FAILURE": "No direct failure return; session implementation owns any copied client_id"
-    },
-    {
-      "NAME": "mqtt_message_router_subscribe",
-      "SIGNATURE": "void mqtt_message_router_subscribe(mqtt_message_router_t* r, int session_id, const char* filter)",
-      "PARAMS": [
-        "b->router borrowed",
-        "mqtt_session_id(sess)",
-        "pkt->v.subscribe.topics[i].filter borrowed"
-      ],
-      "RETURN": "void"
-    },
-    {
-      "NAME": "mqtt_message_router_publish",
-      "SIGNATURE": "void mqtt_message_router_publish(mqtt_message_router_t* r, int from_session_id, const mqtt_publish_payload_t* publish)",
-      "PARAMS": [
-        "b->router borrowed",
-        "mqtt_session_id(sess)",
-        "&pkt->v.publish borrowed"
-      ],
-      "RETURN": "void"
-    }
-  ],
   "FORBIDDEN_SYMBOLS": [
     {
       "NAME": "pkt->data",

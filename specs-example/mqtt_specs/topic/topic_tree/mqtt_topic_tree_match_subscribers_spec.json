@@ -54,20 +54,6 @@
     ],
     "VAR": []
   },
-  "CALL_CONTRACTS": [
-    {
-      "NAME": "mqtt_topic_tree_match_subscribers",
-      "SIGNATURE": "bool mqtt_topic_tree_match_subscribers(const mqtt_topic_tree_t* t, const char* topic, int** out_sids, size_t* out_count)",
-      "PARAMS": [
-        "t may be NULL only as invalid input",
-        "topic must be a non-NULL concrete publish topic, not a filter",
-        "out_sids must be non-NULL and is initialized to NULL before traversal",
-        "out_count must be non-NULL and is initialized to 0 before traversal"
-      ],
-      "RETURN": "true for completed matching including zero matches; false for invalid args or allocation failure",
-      "OWNERSHIP": "on true with matches, *out_sids is heap-owned by caller and must be freed by caller"
-    }
-  ],
   "LOGIC": {
     "INPUT": "输入为主题树 t、主题 topic、输出数组 out_sids 与数量 out_count",
     "ACTION": "先将输出置空；参数非法返回 false；遍历所有 filter，调用 mqtt_topic_match 判定命中；聚合 sid 并去重，按需扩容 uniq 数组；成功后写回输出",
