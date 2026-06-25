@@ -31,11 +31,11 @@
     "VAR": []
   },
   "LOGIC": {
-    "INPUT": "输入来自函数参数：router。",
-    "ACTION": "释放每个 entry 的 path/attributes、entry 数组与 router",
-    "OUTPUT": "无直接返回值；结果通过对象状态或副作用体现。",
+    "INPUT": "router 是可能为空的 resource router。",
+    "ACTION": "若 router 为空直接返回。否则遍历 entries[0..count)，释放每个 entry 的 path 和 attributes；随后释放 entries 数组与 router 本身。",
+    "OUTPUT": "无返回值；非空 router 及其拥有的 entry 字符串被释放。",
     "INVARIANTS_USED": [
-      "不得引入超出当前 minimum_v1 代码行为的协议语义"
+      "handler 和 user 是借用引用，不在 destroy 中释放。"
     ]
   }
 }

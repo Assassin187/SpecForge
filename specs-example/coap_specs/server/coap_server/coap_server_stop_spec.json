@@ -33,11 +33,11 @@
     "VAR": []
   },
   "LOGIC": {
-    "INPUT": "输入来自函数参数：s。",
-    "ACTION": "停止底层 UDP runtime；空指针安全返回",
-    "OUTPUT": "无直接返回值；结果通过对象状态或副作用体现。",
+    "INPUT": "s 是可能为空的 server。",
+    "ACTION": "若 s 为空或 s->udp 为空直接返回。否则调用 coap_udp_server_stop(s->udp)。",
+    "OUTPUT": "无返回值；存在底层 UDP runtime 时会停止 runtime 并关闭其 fd/epoll fd。",
     "INVARIANTS_USED": [
-      "不得引入超出当前 minimum_v1 代码行为的协议语义"
+      "本函数不释放 server 或 udp 对象，只停止 runtime。"
     ]
   }
 }

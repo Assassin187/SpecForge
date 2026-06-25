@@ -39,11 +39,12 @@
     "VAR": []
   },
   "LOGIC": {
-    "INPUT": "输入来自函数参数：msg、token、token_len。",
-    "ACTION": "校验 token_len<=8，记录长度并在 token 非空时复制 bytes",
-    "OUTPUT": "返回 true 表示条件成立或操作成功；返回 false 表示条件不成立、参数无效或操作失败，具体含义由 ROLE 限定。",
+    "INPUT": "msg 是目标 message；token/token_len 是待保存 token bytes。",
+    "ACTION": "若 msg 为空或 token_len > COAP_MAX_TOKEN_LEN，返回 false。否则先设置 msg->token_len = token_len。仅当 token_len > 0 且 token 非空时复制 token bytes 到 msg->token；token_len > 0 但 token 为空时源码仍返回 true，只是不复制 token 内容。",
+    "OUTPUT": "参数非法返回 false；否则返回 true 并更新 token_len，必要时复制 token bytes。",
     "INVARIANTS_USED": [
-      "token_len 不得超过 COAP_MAX_TOKEN_LEN"
+      "token 最大长度为 COAP_MAX_TOKEN_LEN。",
+      "函数不清零未被覆盖的 token buffer bytes。"
     ]
   }
 }

@@ -22,11 +22,11 @@
     "VAR": []
   },
   "LOGIC": {
-    "INPUT": "输入来自函数参数：fd。",
-    "ACTION": "为 socket fd 追加 O_NONBLOCK flag",
-    "OUTPUT": "返回 true 表示条件成立或操作成功；返回 false 表示条件不成立、参数无效或操作失败，具体含义由 ROLE 限定。",
+    "INPUT": "fd 是调用方提供的 open file descriptor。",
+    "ACTION": "先调用 fcntl(fd, F_GETFL, 0) 读取现有 flags；读取失败时立即返回 false。读取成功后调用 fcntl(fd, F_SETFL, flags | O_NONBLOCK)，只追加 O_NONBLOCK，不清除其他 flag。",
+    "OUTPUT": "F_GETFL 失败或 F_SETFL 返回非 0 时返回 false；F_SETFL 返回 0 时返回 true。",
     "INVARIANTS_USED": [
-      "不得引入超出当前 minimum_v1 代码行为的协议语义"
+      "函数不关闭 fd，也不修改除 O_NONBLOCK 以外的既有 flags。"
     ]
   }
 }

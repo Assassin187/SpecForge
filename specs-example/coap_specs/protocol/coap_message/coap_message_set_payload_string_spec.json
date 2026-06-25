@@ -39,11 +39,11 @@
     "VAR": []
   },
   "LOGIC": {
-    "INPUT": "输入来自函数参数：msg、s。",
-    "ACTION": "将字符串内容作为不含 NUL 的 payload；NULL 表示空 payload",
-    "OUTPUT": "返回 true 表示条件成立或操作成功；返回 false 表示条件不成立、参数无效或操作失败，具体含义由 ROLE 限定。",
+    "INPUT": "msg 是目标 message；s 是可空 NUL-terminated string。",
+    "ACTION": "若 s 为空，调用 coap_message_set_payload(msg, NULL, 0) 清空 payload。否则以 strlen(s) 作为长度，将字符串 bytes 作为 payload，不包含 NUL terminator。",
+    "OUTPUT": "返回 coap_message_set_payload 的布尔结果。",
     "INVARIANTS_USED": [
-      "不得引入超出当前 minimum_v1 代码行为的协议语义"
+      "字符串 payload 不包含结尾 NUL。"
     ]
   }
 }

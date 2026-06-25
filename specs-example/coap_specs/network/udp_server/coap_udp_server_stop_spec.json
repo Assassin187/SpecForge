@@ -27,11 +27,12 @@
     "VAR": []
   },
   "LOGIC": {
-    "INPUT": "输入来自函数参数：s。",
-    "ACTION": "置 running=false，关闭 epoll fd 与 UDP fd，并将它们复位为 -1",
-    "OUTPUT": "无直接返回值；结果通过对象状态或副作用体现。",
+    "INPUT": "s 是可能为空、可能部分启动的 UDP server。",
+    "ACTION": "若 s 为空直接返回。否则先设置 running=false；若 epoll_fd >= 0 则 close(epoll_fd) 并复位为 -1；若 fd >= 0 则 close(fd) 并复位为 -1。",
+    "OUTPUT": "无返回值；完成后非空 server 的 running 为 false，已打开的 epoll fd 与 UDP fd 均被关闭并复位。",
     "INVARIANTS_USED": [
-      "不得引入超出当前 minimum_v1 代码行为的协议语义"
+      "stop 可重复调用；-1 fd 不会被 close。",
+      "先关闭 epoll fd，再关闭 UDP fd。"
     ]
   }
 }

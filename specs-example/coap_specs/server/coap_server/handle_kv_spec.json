@@ -82,12 +82,12 @@
     "VAR": []
   },
   "EVENT": {
-    "TRIGGER": "resource router 匹配 /kv 或 /kv/<key> 后触发",
-    "PRECONDITION": "callback 参数与所属 server/router 生命周期有效",
-    "INPUT": "输入来自运行时事件参数与当前 server/resource 状态",
-    "ACTION": "按 method 与 key suffix 执行 list/create/update/read/delete",
-    "STATE_CHANGE": "可能创建、更新或删除内存 kv_entry",
-    "RESPONSE": "返回对应 2.xx、4.xx 或 5.00 code",
+    "TRIGGER": "resource router 匹配 /kv 或 /kv/<key> 后调用。",
+    "PRECONDITION": "user 必须是 coap_server_t*，req/resp 非空；源码若任一为空返回 false。req->path 由 build_request_view 规范化并以 /kv 开头。",
+    "INPUT": "输入包括 req->method、/kv 后的 suffix、请求 payload、Content-Format metadata，以及 server 当前 kv_entries。",
+    "ACTION": "先令 suffix = req->path + 3，并跳过连续 /。若 method 为 GET 且 suffix 为空，构造 JSON array 字符串列出所有 key；分配失败时设置 5.00 并返回 true，成功时用 response_set_text 返回 2.05 application/json 并释放临时 json。若 suffix 为空但不是 collection GET，设置 4.00 并返回 true。否则查找 key。GET key 未命中时设置 4.04；命中时用 response_set_bytes 返回 2.05，format 为 entry content_format 或默认 COAP_FORMAT_OCTET_STREAM。PUT/POST 调用 kv_put；失败设置 5.00；成功时 created 为 true 返回 2.01，否则返回 2.04。DELETE 未命中返回 4.04；命中时调用 kv_delete，设置 2.02。其他 method 设置 4.05。",
+    "STATE_CHANGE": "GET 不改变 KV store；PUT/POST 可能创建或更新 entry；DELETE 命中时删除 entry 并压紧数组；所有路径都写 resp->code 或完整 response。",
+    "RESPONSE": "参数无效返回 false；已处理请求返回 true，响应 code 按源码分支为 2.01、2.02、2.04、2.05、4.00、4.04、4.05 或 5.00。",
     "EVENT_TYPE": "RUNTIME_EVENT"
   }
 }

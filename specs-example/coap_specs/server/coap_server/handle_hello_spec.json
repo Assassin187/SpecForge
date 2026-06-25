@@ -54,12 +54,12 @@
     "VAR": []
   },
   "EVENT": {
-    "TRIGGER": "resource router 匹配 GET /hello 后触发",
-    "PRECONDITION": "callback 参数与所属 server/router 生命周期有效",
-    "INPUT": "输入来自运行时事件参数与当前 server/resource 状态",
-    "ACTION": "根据是否存在 URI Query 生成 text/plain greeting",
-    "STATE_CHANGE": "不修改持久资源状态",
-    "RESPONSE": "无 URI Query 时返回 2.05 text/plain，payload 必须精确为 'hello from CoAP server'；存在 URI Query 时返回 query-received 文本",
+    "TRIGGER": "resource router 匹配 /hello 且 method 允许后调用。",
+    "PRECONDITION": "req/resp 由 router 传入；源码忽略 user，不显式检查 req/resp 为空。",
+    "INPUT": "输入为 req->query 是否存在且非空。",
+    "ACTION": "默认 text 为 \"hello from CoAP server\"；若 req->query 非空字符串，则改为 \"hello from CoAP server (query received)\"。调用 response_set_text(resp, coap_make_code(2, 5), COAP_FORMAT_TEXT_PLAIN, text)。",
+    "STATE_CHANGE": "不修改 server 状态；只写 response code、Content-Format 与 text payload。",
+    "RESPONSE": "返回 response_set_text 的结果；成功时响应为 2.05 text/plain。",
     "EVENT_TYPE": "RUNTIME_EVENT"
   }
 }

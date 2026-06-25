@@ -47,11 +47,12 @@
     "VAR": []
   },
   "LOGIC": {
-    "INPUT": "输入来自函数参数：s。",
-    "ACTION": "停止 server，销毁 UDP/router，释放全部 KV entries 与 server",
-    "OUTPUT": "无直接返回值；结果通过对象状态或副作用体现。",
+    "INPUT": "s 是可能为空的 server。",
+    "ACTION": "若 s 为空直接返回。否则先 coap_server_stop(s)，再销毁 s->udp 与 s->router。随后遍历 kv_entries，释放每个 key 和 value；释放 kv_entries 数组；最后释放 server 本身。",
+    "OUTPUT": "无返回值；非空 server 拥有的 UDP runtime、router、KV entries 和 server 对象均被释放。",
     "INVARIANTS_USED": [
-      "不得引入超出当前 minimum_v1 代码行为的协议语义"
+      "destroy 前先 stop，以停止底层 UDP runtime。",
+      "KV content_format metadata 不需要单独释放。"
     ]
   }
 }

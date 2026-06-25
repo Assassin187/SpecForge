@@ -33,11 +33,11 @@
     "VAR": []
   },
   "LOGIC": {
-    "INPUT": "输入来自函数参数：e、path。",
-    "ACTION": "执行 exact match 或 segment-boundary prefix match",
-    "OUTPUT": "返回 true 表示条件成立或操作成功；返回 false 表示条件不成立、参数无效或操作失败，具体含义由 ROLE 限定。",
+    "INPUT": "e 是 resource entry；path 是 normalized request path。",
+    "ACTION": "若 e 或 path 为空返回 false。若 e->prefix_match 为 false，只在 strcmp(e->path, path) == 0 时返回 true。若 prefix_match 为 true，先要求 path 前 strlen(e->path) bytes 与 e->path 相同；再要求 path 在该位置结束或下一个字符为 /，从而保证 segment boundary。",
+    "OUTPUT": "exact match 或 segment-boundary prefix match 成功返回 true；空参数、前缀不匹配或边界不满足返回 false。",
     "INVARIANTS_USED": [
-      "不得引入超出当前 minimum_v1 代码行为的协议语义"
+      "prefix route /kv 能匹配 /kv 和 /kv/<suffix>，但不能匹配 /kvx。"
     ]
   }
 }

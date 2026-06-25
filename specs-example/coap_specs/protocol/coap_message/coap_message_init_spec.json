@@ -27,11 +27,11 @@
     "VAR": []
   },
   "LOGIC": {
-    "INPUT": "输入来自函数参数：msg。",
-    "ACTION": "将 message 清零并设置 version=1；空指针安全返回",
-    "OUTPUT": "无直接返回值；结果通过对象状态或副作用体现。",
+    "INPUT": "msg 是可能为空的 message 对象指针。",
+    "ACTION": "若 msg 为空直接返回。否则 memset 整个对象为 0，并将 version 设置为 1。",
+    "OUTPUT": "无返回值；非空 msg 变为 version=1 的空 message，所有 pointer/count/length 字段为 0。",
     "INVARIANTS_USED": [
-      "不得引入超出当前 minimum_v1 代码行为的协议语义"
+      "初始化不会释放 msg 之前可能持有的动态内存；调用者必须先 reset/free 旧内容。"
     ]
   }
 }

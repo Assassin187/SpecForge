@@ -55,11 +55,12 @@
     "VAR": []
   },
   "LOGIC": {
-    "INPUT": "输入来自函数参数：msg、number、value、len。",
-    "ACTION": "扩展 option 数组并复制 option value，成功后递增 option_count",
-    "OUTPUT": "返回 true 表示条件成立或操作成功；返回 false 表示条件不成立、参数无效或操作失败，具体含义由 ROLE 限定。",
+    "INPUT": "msg 是目标 message；number 是 option number；value/len 是要复制的 option value。",
+    "ACTION": "若 msg 为空或 len > UINT16_MAX，返回 false。用 xrealloc 将 options 数组扩展到 option_count + 1；失败返回 false。扩展成功后在当前尾部清零新 option，写入 number 和 length。若 len > 0，malloc(len) 存放 value；分配失败返回 false 且 option_count 不递增；分配成功后复制 value bytes。最后 option_count 加 1。源码假定 len > 0 时 value 可读。",
+    "OUTPUT": "成功添加 option 返回 true；参数非法、数组扩展失败或 value 分配失败返回 false。",
     "INVARIANTS_USED": [
-      "len 必须可由 uint16_t 表达"
+      "成功路径复制 value，调用方仍拥有原始 value。",
+      "value 分配失败时 options 数组可能已扩展，但新 entry 不计入 option_count。"
     ]
   }
 }

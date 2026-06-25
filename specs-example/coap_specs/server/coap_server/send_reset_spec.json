@@ -63,11 +63,11 @@
     "VAR": []
   },
   "LOGIC": {
-    "INPUT": "输入来自函数参数：s、peer、message_id。",
-    "ACTION": "构造空 RST message 并发送到 peer",
-    "OUTPUT": "无直接返回值；结果通过对象状态或副作用体现。",
+    "INPUT": "s/peer 指定发送目标；message_id 是要放入 RST 的 Message ID。",
+    "ACTION": "创建局部 coap_message_t rst，调用 coap_message_init(&rst)，设置 rst.type = COAP_TYPE_RST、rst.code = 0、rst.message_id = message_id。调用 send_response(s, peer, &rst)，随后 coap_message_free(&rst)。",
+    "OUTPUT": "无返回值；成功编码时发送一个空 RST message，发送失败不向上传递。",
     "INVARIANTS_USED": [
-      "不得引入超出当前 minimum_v1 代码行为的协议语义"
+      "RST 不设置 token 或 payload。"
     ]
   }
 }

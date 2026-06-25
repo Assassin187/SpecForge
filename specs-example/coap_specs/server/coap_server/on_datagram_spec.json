@@ -123,12 +123,12 @@
     "VAR": []
   },
   "EVENT": {
-    "TRIGGER": "UDP runtime 从 peer 收到一个非空 datagram 后触发",
-    "PRECONDITION": "callback 参数与所属 server/router 生命周期有效",
-    "INPUT": "输入来自运行时事件参数与当前 server/resource 状态",
-    "ACTION": "解码请求，执行错误路径或资源 dispatch，并发送响应后释放 datagram 级对象",
-    "STATE_CHANGE": "可能修改 /kv 内存状态；datagram 级临时对象在返回前释放",
-    "RESPONSE": "向原 peer 发送 ACK/NON/RST，或按既定策略静默忽略",
+    "TRIGGER": "UDP runtime 收到一个 datagram 后通过 coap_udp_callbacks_t.on_datagram 调用。",
+    "PRECONDITION": "user 必须是 coap_server_t*；peer/data 非空且 len > 0。源码若 s、peer、data 为空或 len 为 0，立即返回。",
+    "INPUT": "输入是单个 UDP datagram bytes、peer endpoint 和 server/router/KV 当前状态。",
+    "ACTION": "调用 coap_decode_message(data, len, &req)。若 decode 失败且 len >= 4，则从 raw bytes 提取 message_id 与 type；只有 raw type 为 COAP_TYPE_CON 时调用 send_reset(s, peer, message_id)，然后返回。decode 成功后打印 peer/type/code/mid。若 req.code 不是 method，释放 req 并返回。否则 setup_response_envelope(&req, &resp)。build_request_view 失败时设置 resp.code=5.00，发送响应，释放 resp 和 req 后返回。dispatch 返回 false 时设置 resp.code=4.04。最后发送 resp，释放 resp，free_request_view(&view)，释放 req。",
+    "STATE_CHANGE": "可能发送 RST、5.00、4.04 或 handler 生成的响应；成功解析的 req/resp/view 在所有完成路径上被释放。",
+    "RESPONSE": "无返回值；非法 datagram 不产生普通 response，CON malformed datagram 可能产生 RST。",
     "EVENT_TYPE": "RUNTIME_EVENT"
   }
 }

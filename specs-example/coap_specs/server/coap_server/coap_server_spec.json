@@ -94,20 +94,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "分配并复制 NUL-terminated 字符串；NULL 返回 NULL",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "分配并复制 NUL-terminated 字符串；NULL 返回 NULL"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "private"
       },
       {
@@ -117,20 +103,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "设置 response code、Content-Format option 与字符串 payload",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "设置 response code、Content-Format option 与字符串 payload"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "private"
       },
       {
@@ -140,20 +112,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "设置 response code、Content-Format option 与字节 payload",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "设置 response code、Content-Format option 与字节 payload"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "private"
       },
       {
@@ -163,20 +121,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "按 key 线性查找内存 KV entry；未命中返回 NULL",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "按 key 线性查找内存 KV entry；未命中返回 NULL"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "private"
       },
       {
@@ -186,20 +130,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "创建或更新 KV entry，复制 payload 与 Content-Format，并通过 created 报告是否新建",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "创建或更新 KV entry，复制 payload 与 Content-Format，并通过 created 报告是否新建"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "private"
       },
       {
@@ -209,20 +139,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "删除匹配 KV entry，释放字段并压紧数组；未命中返回 false",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "删除匹配 KV entry，释放字段并压紧数组；未命中返回 false"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "private"
       },
       {
@@ -232,20 +148,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "EVENT",
         "ROLE": "处理 /.well-known/core discovery；Accept 存在且不是 COAP_FORMAT_LINK_FORMAT 时返回 4.06",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "处理 /.well-known/core discovery；Accept 存在且不是 COAP_FORMAT_LINK_FORMAT 时返回 4.06"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "private"
       },
       {
@@ -255,20 +157,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "EVENT",
         "ROLE": "返回 hello greeting，并在 query 非空时使用 query-received 文本",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "返回 hello greeting，并在 query 非空时使用 query-received 文本"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "private"
       },
       {
@@ -278,20 +166,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "EVENT",
         "ROLE": "以 2.04 echo 请求 payload，保留 Content-Format 或默认 text/plain",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "以 2.04 echo 请求 payload，保留 Content-Format 或默认 text/plain"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "private"
       },
       {
@@ -301,20 +175,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "EVENT",
         "ROLE": "实现 /kv collection 与 /kv/<key> 的 list/create/update/read/delete 行为",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "实现 /kv collection 与 /kv/<key> 的 list/create/update/read/delete 行为"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "private"
       },
       {
@@ -324,20 +184,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "初始化 response，CON 映射为 ACK、其他有效请求映射为 NON，并复制 Message ID 与 Token",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "初始化 response，CON 映射为 ACK、其他有效请求映射为 NON，并复制 Message ID 与 Token"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "private"
       },
       {
@@ -347,20 +193,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "从 method message 构造 normalized path、joined query 与 Content-Format/Accept 视图",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "从 method message 构造 normalized path、joined query 与 Content-Format/Accept 视图"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "private"
       },
       {
@@ -370,20 +202,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "释放 request view 的 path/query 并将指针复位",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "释放 request view 的 path/query 并将指针复位"
-            }
-          ],
-          "IDEMPOTENT": true,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "private"
       },
       {
@@ -393,20 +211,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "编码 response 并通过 UDP sendto 发往原 peer，随后释放编码缓冲",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "编码 response 并通过 UDP sendto 发往原 peer，随后释放编码缓冲"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "private"
       },
       {
@@ -416,20 +220,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "构造空 RST message 并发送到 peer",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "构造空 RST message 并发送到 peer"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "private"
       },
       {
@@ -439,20 +229,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "EVENT",
         "ROLE": "处理一个 UDP datagram：解码、malformed CON RST、non-method 静默忽略、资源 dispatch、回包与清理",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "处理一个 UDP datagram：解码、malformed CON RST、non-method 静默忽略、资源 dispatch、回包与清理"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "private"
       },
       {
@@ -462,20 +238,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "创建 server、router 与 UDP runtime，并用 1u << COAP_METHOD_* bitset 注册 discovery/hello/echo/kv routes",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "创建 server、router 与 UDP runtime，并用 1u << COAP_METHOD_* bitset 注册 discovery/hello/echo/kv routes"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -485,20 +247,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "停止 server，销毁 UDP/router，释放全部 KV entries 与 server",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "停止 server，销毁 UDP/router，释放全部 KV entries 与 server"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -508,20 +256,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "启动底层 UDP runtime",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "启动底层 UDP runtime"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -531,20 +265,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "EVENT",
         "ROLE": "进入底层 UDP runtime 事件循环",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "进入底层 UDP runtime 事件循环"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -554,20 +274,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "停止底层 UDP runtime；空指针安全返回",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "停止底层 UDP runtime；空指针安全返回"
-            }
-          ],
-          "IDEMPOTENT": true,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "public"
       }
     ]
@@ -607,14 +313,6 @@
       "KIND": "FUNC",
       "SIGNATURE": "void coap_server_stop(coap_server_t* s)",
       "ROLE": "停止底层 UDP runtime；空指针安全返回"
-    }
-  ],
-  "CALL_CONTRACTS": [
-    {
-      "NAME": "coap_server_create",
-      "SIGNATURE": "coap_server_t* coap_server_create(uint16_t port)",
-      "OWNERSHIP": "成功返回的动态对象或缓冲由调用方按对应 destroy/free 契约释放",
-      "FAILURE": "分配、编码或初始化失败时返回 NULL/false，不转移所有权"
     }
   ]
 }

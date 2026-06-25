@@ -37,11 +37,12 @@
     "VAR": []
   },
   "LOGIC": {
-    "INPUT": "输入来自函数参数：s、key。",
-    "ACTION": "删除匹配 KV entry，释放字段并压紧数组；未命中返回 false",
-    "OUTPUT": "返回 true 表示条件成立或操作成功；返回 false 表示条件不成立、参数无效或操作失败，具体含义由 ROLE 限定。",
+    "INPUT": "s 是 server；key 是待删除 key。",
+    "ACTION": "若 s 或 key 为空返回 false。线性扫描 kv_entries；不匹配则继续。命中时释放 entry.key 和 entry.value；若后面还有元素，用 memmove 将尾部压紧；kv_count 减 1；若 kv_count 变为 0，释放 kv_entries 并置 NULL。",
+    "OUTPUT": "删除成功返回 true；参数为空或未命中返回 false。",
     "INVARIANTS_USED": [
-      "不得引入超出当前 minimum_v1 代码行为的协议语义"
+      "删除保持剩余 entries 的相对顺序。",
+      "最后一个 entry 删除后数组指针被复位为 NULL。"
     ]
   }
 }

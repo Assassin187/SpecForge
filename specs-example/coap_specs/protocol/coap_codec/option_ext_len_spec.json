@@ -22,11 +22,11 @@
     "VAR": []
   },
   "LOGIC": {
-    "INPUT": "输入来自函数参数：value。",
-    "ACTION": "计算 option delta/length 使用的 extended byte 数",
-    "OUTPUT": "返回计算得到的 size_t 值。",
+    "INPUT": "value 是 option delta 或 option length 的 unsigned integer 值。",
+    "ACTION": "按 CoAP option nibble 扩展规则计算额外字节数：value < 13 不需要扩展字节；13 <= value < 269 需要 1 byte；value >= 269 需要 2 bytes。",
+    "OUTPUT": "返回 0、1 或 2。",
     "INVARIANTS_USED": [
-      "不得引入超出当前 minimum_v1 代码行为的协议语义"
+      "该 helper 只计算长度，不写入缓冲区。"
     ]
   }
 }

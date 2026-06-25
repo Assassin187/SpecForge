@@ -69,14 +69,14 @@
     "VAR": []
   },
   "LOGIC": {
-    "INPUT": "输入来自函数参数：data、len、out。",
-    "ACTION": "按单个 datagram 解码 4-byte header、token、ordered options、payload marker 与 payload；失败时释放 out。解析 option extended delta/length 时必须调用 decode_ext(data, len, &offset, nibble, &value)，data 与 len 保持完整 datagram 不变，offset 始终是 absolute offset；不得传入 data+offset 或 len-offset 后继续使用 absolute offset。",
-    "OUTPUT": "返回 COAP_DECODE_OK、COAP_DECODE_INVALID 或 COAP_DECODE_TRUNCATED。",
+    "INPUT": "data/len 是单个 UDP datagram；out 是调用方提供的 coap_message_t 输出对象。",
+    "ACTION": "若 data 为空、len < 4 或 out 为空，返回 COAP_DECODE_TRUNCATED。先 coap_message_init(out)，再从 header 解析 version、type、token_len、code、message_id。version 不为 1 或 token_len > COAP_MAX_TOKEN_LEN 时释放 out 并返回 COAP_DECODE_INVALID。若 datagram 不足以包含 token，释放 out 并返回 COAP_DECODE_TRUNCATED。复制 token 后从 absolute offset 4 + token_len 开始解析 options：0xff 表示 payload marker 并退出 option loop；每个 option byte 拆为 delta/length nibble，任何 nibble 15 都是 invalid；decode_ext 失败视为 truncated；累加 option number，若 option value 越界返回 truncated；coap_message_add_option 失败返回 invalid。option loop 后若 off < len，将剩余 bytes 设置为 payload；payload 分配失败返回 invalid。",
+    "OUTPUT": "成功返回 COAP_DECODE_OK；格式非法或内存添加失败返回 COAP_DECODE_INVALID；长度不足或扩展字段越界返回 COAP_DECODE_TRUNCATED。失败路径会调用 coap_message_free(out) 清理已写入字段。",
     "INVARIANTS_USED": [
-      "version 必须为 1",
-      "token_len 不得超过 8",
-      "option nibble 15 非法",
-      "输入不跨 datagram 累积"
+      "offset 始终相对完整 datagram。",
+      "option number 通过 delta 累加得到。",
+      "payload marker 0xff 本身不进入 payload。",
+      "输入不跨 datagram 累积。"
     ]
   },
   "WIRE_MAPPING": [

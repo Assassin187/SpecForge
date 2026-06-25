@@ -27,11 +27,11 @@
     "VAR": []
   },
   "LOGIC": {
-    "INPUT": "输入来自函数参数：req。",
-    "ACTION": "释放 request view 的 path/query 并将指针复位",
-    "OUTPUT": "无直接返回值；结果通过对象状态或副作用体现。",
+    "INPUT": "req 是可能为空的 request view。",
+    "ACTION": "若 req 为空直接返回。否则释放 req->path 和 req->query，并将二者置 NULL。",
+    "OUTPUT": "无返回值；非空 view 的动态 path/query 被释放并复位。",
     "INVARIANTS_USED": [
-      "不得引入超出当前 minimum_v1 代码行为的协议语义"
+      "不释放 req->message，因为它是借用指针。"
     ]
   }
 }

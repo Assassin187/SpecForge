@@ -31,12 +31,12 @@
     "VAR": []
   },
   "EVENT": {
-    "TRIGGER": "应用在 UDP server 启动成功后调用以进入事件循环",
-    "PRECONDITION": "callback 参数与所属 server/router 生命周期有效",
-    "INPUT": "输入来自运行时事件参数与当前 server/resource 状态",
-    "ACTION": "持续轮询 epoll，批量读取 datagram，并触发 on_datagram callback",
-    "STATE_CHANGE": "推进 running 状态下的网络事件处理",
-    "RESPONSE": "无直接返回值；收到的 datagram 通过 callback 上交",
+    "TRIGGER": "应用在 coap_udp_server_start 成功后调用，进入 UDP datagram event loop。",
+    "PRECONDITION": "s 非空且 s->running 为 true；否则函数立即返回。",
+    "INPUT": "事件输入来自 epoll_wait 返回的 EPOLLIN 事件和 recvfrom 读取的单个 UDP datagram。",
+    "ACTION": "打印监听端口后，以 1000ms timeout 循环 epoll_wait。epoll_wait 被 EINTR 中断时继续外层循环；其他 epoll 错误打印并退出 loop。忽略非 EPOLLIN 或 fd 不等于 server fd 的事件。对有效事件进入 recvfrom 内层循环：每次清零 peer、设置 peer.addr_len，r > 0 时若 cb.on_datagram 存在则调用 cb.on_datagram(user, &peer, buf, r) 并继续读取；r == 0、EAGAIN 或 EWOULDBLOCK 退出内层循环；EINTR 重试 recvfrom；其他 recvfrom 错误打印并退出内层循环。",
+    "STATE_CHANGE": "函数不直接修改协议状态；收到 datagram 时通过 callback 把 peer 与 bytes 上交。stop 设置 running=false 后外层循环结束。",
+    "RESPONSE": "无返回值；loop 结束于 running=false 或非 EINTR epoll 错误。",
     "EVENT_TYPE": "RUNTIME_EVENT"
   }
 }

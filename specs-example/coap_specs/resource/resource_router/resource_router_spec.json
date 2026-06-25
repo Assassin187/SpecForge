@@ -153,20 +153,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "分配并复制 NUL-terminated 字符串；NULL 返回 NULL",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "分配并复制 NUL-terminated 字符串；NULL 返回 NULL"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "private"
       },
       {
@@ -176,20 +162,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "执行 exact match 或 segment-boundary prefix match",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "执行 exact match 或 segment-boundary prefix match"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "private"
       },
       {
@@ -199,20 +171,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "分配空 resource router",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "分配空 resource router"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -222,20 +180,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "释放每个 entry 的 path/attributes、entry 数组与 router",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "释放每个 entry 的 path/attributes、entry 数组与 router"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -245,20 +189,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "扩展 entry 数组并复制 path/attributes，保存匹配策略、method mask、handler 与 user",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "扩展 entry 数组并复制 path/attributes，保存匹配策略、method mask、handler 与 user"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -268,20 +198,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "按注册顺序查找首个 path match；用 1u << req->method 检查 methods_mask，method 不允许时写 4.05，否则调用 handler；无 route 返回 false",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "按注册顺序查找首个 path match；用 1u << req->method 检查 methods_mask，method 不允许时写 4.05，否则调用 handler；无 route 返回 false"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -291,20 +207,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "按注册顺序为 discoverable entries 构造逗号分隔 link-format 字符串；调用方负责 free",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "按注册顺序为 discoverable entries 构造逗号分隔 link-format 字符串；调用方负责 free"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "public"
       }
     ]
@@ -396,20 +298,6 @@
       "PATH": "coap_request_t.has_accept",
       "TYPE": "bool",
       "ROLE": "Accept 是否存在"
-    }
-  ],
-  "CALL_CONTRACTS": [
-    {
-      "NAME": "coap_resource_router_create",
-      "SIGNATURE": "coap_resource_router_t* coap_resource_router_create(void)",
-      "OWNERSHIP": "成功返回的动态对象或缓冲由调用方按对应 destroy/free 契约释放",
-      "FAILURE": "分配、编码或初始化失败时返回 NULL/false，不转移所有权"
-    },
-    {
-      "NAME": "coap_resource_router_build_core_links",
-      "SIGNATURE": "char* coap_resource_router_build_core_links(const coap_resource_router_t* router)",
-      "OWNERSHIP": "成功返回的动态对象或缓冲由调用方按对应 destroy/free 契约释放",
-      "FAILURE": "分配、编码或初始化失败时返回 NULL/false，不转移所有权"
     }
   ]
 }

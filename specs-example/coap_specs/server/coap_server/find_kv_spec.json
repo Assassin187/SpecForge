@@ -37,11 +37,11 @@
     "VAR": []
   },
   "LOGIC": {
-    "INPUT": "输入来自函数参数：s、key。",
-    "ACTION": "按 key 线性查找内存 KV entry；未命中返回 NULL",
-    "OUTPUT": "返回结果、已借用对象或新分配对象的指针；无结果或失败时返回 NULL，所有权由 ROLE/CALL_CONTRACTS 限定。",
+    "INPUT": "s 是 server；key 是待查找 key。",
+    "ACTION": "若 s 或 key 为空返回 NULL。否则从 i=0 到 kv_count-1 线性扫描 kv_entries，用 strcmp(entry.key, key) 判断命中。",
+    "OUTPUT": "命中时返回 entry 指针；未命中或参数为空返回 NULL。返回指针借用 server 内部数组，不能由调用方释放。",
     "INVARIANTS_USED": [
-      "不得引入超出当前 minimum_v1 代码行为的协议语义"
+      "只返回第一个 key 完全相等的 entry。"
     ]
   }
 }

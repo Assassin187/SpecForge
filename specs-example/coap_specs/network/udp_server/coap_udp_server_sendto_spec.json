@@ -49,11 +49,12 @@
     "VAR": []
   },
   "LOGIC": {
-    "INPUT": "输入来自函数参数：s、peer、data、len。",
-    "ACTION": "通过 server socket 向 peer 发送完整 datagram；EINTR 重试，EAGAIN/部分发送返回 false",
-    "OUTPUT": "返回 true 表示条件成立或操作成功；返回 false 表示条件不成立、参数无效或操作失败，具体含义由 ROLE 限定。",
+    "INPUT": "s/peer/data 指向已启动 server、目标 endpoint 与待发送 datagram；len 是 datagram 长度。",
+    "ACTION": "若 s、peer、data 为空，len 为 0，或 s->fd < 0，直接返回 false。否则循环调用 sendto(s->fd, data, len, 0, peer->addr, peer->addr_len)。sendto 成功时只接受完整 datagram 发送；errno 为 EINTR 时重试；errno 为 EAGAIN 或 EWOULDBLOCK 时返回 false；其他错误返回 false。",
+    "OUTPUT": "完整发送 len 字节返回 true；部分发送、不可写、参数无效或其他错误返回 false。",
     "INVARIANTS_USED": [
-      "不得引入超出当前 minimum_v1 代码行为的协议语义"
+      "函数不缓存未发送数据。",
+      "EINTR 是唯一会触发重试的错误。"
     ]
   }
 }

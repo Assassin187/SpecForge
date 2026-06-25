@@ -67,11 +67,12 @@
     "VAR": []
   },
   "LOGIC": {
-    "INPUT": "输入来自函数参数：s、peer、resp。",
-    "ACTION": "编码 response 并通过 UDP sendto 发往原 peer，随后释放编码缓冲",
-    "OUTPUT": "无直接返回值；结果通过对象状态或副作用体现。",
+    "INPUT": "s 是 server；peer 是目标 endpoint；resp 是待发送 response message。",
+    "ACTION": "创建局部 coap_bytes_t bytes={0}。调用 coap_encode_message(resp, &bytes)；编码失败直接返回。编码成功后调用 coap_udp_server_sendto(s->udp, peer, bytes.data, bytes.len)，忽略发送结果。最后调用 coap_bytes_free(&bytes) 释放编码缓冲。",
+    "OUTPUT": "无返回值；编码成功时尝试发送并总是释放 encoded bytes。编码失败时不发送。",
     "INVARIANTS_USED": [
-      "不得引入超出当前 minimum_v1 代码行为的协议语义"
+      "UDP sendto 的失败不会反馈给调用方。",
+      "encoded bytes 的所有权只在本函数内部存在。"
     ]
   }
 }

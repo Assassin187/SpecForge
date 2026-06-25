@@ -57,13 +57,13 @@
     "VAR": []
   },
   "LOGIC": {
-    "INPUT": "输入来自函数参数：msg、out。",
-    "ACTION": "计算完整 datagram 大小，编码 header/token/ordered options，并仅在 payload 非空时写入 0xff marker",
-    "OUTPUT": "返回 true 表示条件成立或操作成功；返回 false 表示条件不成立、参数无效或操作失败，具体含义由 ROLE 限定。",
+    "INPUT": "msg 是已构造的 CoAP message；out 是编码结果接收对象。",
+    "ACTION": "若 msg/out 为空、msg->version != 1 或 token_len > COAP_MAX_TOKEN_LEN，返回 false。先计算总长度：4-byte header + token，逐个 option 要求 option number 非递减，否则返回 false；每个 option 贡献 1 byte header、delta/length 扩展字节和 value bytes；payload_len > 0 时额外加入 0xff marker 与 payload。分配总长度缓冲失败返回 false。随后写 header、code、message_id big-endian、token，再按顺序写每个 option 的 delta/length nibble、扩展字节和 value。任何 encode_ext 失败都会 free(data) 并返回 false。payload 非空时写 0xff marker 后复制 payload。",
+    "OUTPUT": "成功时设置 out->data 为新分配 datagram，out->len 为实际写入长度并返回 true；失败返回 false，encode_ext 失败时释放临时 data。",
     "INVARIANTS_USED": [
-      "version 必须为 1",
-      "token_len 不得超过 8",
-      "options 必须按 number 非递减排列"
+      "options 必须按 nondecreasing number 排列。",
+      "只有 payload_len > 0 时写 payload marker。",
+      "调用方负责用 coap_bytes_free 释放成功返回的 out->data。"
     ]
   },
   "WIRE_MAPPING": [

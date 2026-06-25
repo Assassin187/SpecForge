@@ -44,11 +44,12 @@
     "VAR": []
   },
   "LOGIC": {
-    "INPUT": "输入来自函数参数：req、resp。",
-    "ACTION": "初始化 response，CON 映射为 ACK、其他有效请求映射为 NON，并复制 Message ID 与 Token",
-    "OUTPUT": "无直接返回值；结果通过对象状态或副作用体现。",
+    "INPUT": "req 是已解码请求 message；resp 是待初始化响应 message。",
+    "ACTION": "调用 coap_message_init(resp)，再设置 resp->version=1。若 req->type == COAP_TYPE_CON，则 resp->type = COAP_TYPE_ACK；否则 resp->type = COAP_TYPE_NON。复制 req->message_id 到 resp。调用 coap_message_set_token(resp, req->token, req->token_len)，但忽略返回值。",
+    "OUTPUT": "无返回值；resp 获得响应 envelope：version、type、message_id 和 token。",
     "INVARIANTS_USED": [
-      "response Message ID 与 Token 必须复制自 request"
+      "CON 请求映射为 ACK，其他请求类型映射为 NON。",
+      "token 复制失败不会被本函数上报。"
     ]
   }
 }

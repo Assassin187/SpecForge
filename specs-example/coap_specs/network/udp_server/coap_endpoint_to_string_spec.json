@@ -39,11 +39,12 @@
     "VAR": []
   },
   "LOGIC": {
-    "INPUT": "输入来自函数参数：peer、buf、buf_sz。",
-    "ACTION": "将 IPv4/IPv6 peer endpoint 格式化为 host:port；非法参数返回空字符串",
-    "OUTPUT": "返回结果、已借用对象或新分配对象的指针；无结果或失败时返回 NULL，所有权由 ROLE/CALL_CONTRACTS 限定。",
+    "INPUT": "peer 指向待格式化 endpoint；buf/buf_sz 提供调用方拥有的输出缓冲区。",
+    "ACTION": "若 peer、buf 为空或 buf_sz 为 0，直接返回空字符串常量。AF_INET 时用 inet_ntop(AF_INET) 和 ntohs(sin_port) 得到 host/port；AF_INET6 时用 inet_ntop(AF_INET6) 和 ntohs(sin6_port)。未知 address family 时把 \"<unknown>\" 写入 buf 并返回 buf。IPv4/IPv6 正常路径把 \"host:port\" 写入 buf。",
+    "OUTPUT": "非法参数返回 \"\"；未知 family 或成功格式化时返回 buf。",
     "INVARIANTS_USED": [
-      "不得引入超出当前 minimum_v1 代码行为的协议语义"
+      "输出写入调用方提供的 buf；函数不分配内存。",
+      "host 缓冲区大小为 INET6_ADDRSTRLEN。"
     ]
   }
 }

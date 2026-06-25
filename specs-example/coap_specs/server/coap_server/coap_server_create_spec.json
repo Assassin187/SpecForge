@@ -56,11 +56,14 @@
     "VAR": []
   },
   "LOGIC": {
-    "INPUT": "输入来自函数参数：port。",
-    "ACTION": "创建 server、router 与 UDP runtime；构造 get_mask = 1u << COAP_METHOD_GET、echo_mask = (1u << COAP_METHOD_POST) | (1u << COAP_METHOD_PUT)、read_write_mask 覆盖 GET/POST/PUT/DELETE，并用这些 bitset 注册 discovery/hello/echo/kv routes",
-    "OUTPUT": "返回结果、已借用对象或新分配对象的指针；无结果或失败时返回 NULL，所有权由 ROLE/CALL_CONTRACTS 限定。",
+    "INPUT": "port 是 UDP 监听端口。",
+    "ACTION": "calloc 分配 coap_server_t；失败返回 NULL。保存 port。创建 resource router；失败时释放 server 并返回 NULL。构造 zeroed callbacks，设置 cb.on_datagram = on_datagram。创建 UDP server；失败时销毁 router、释放 server 并返回 NULL。计算 get_mask、read_write_mask(GET|POST|PUT|DELETE) 和 echo_mask(POST|PUT)。按顺序注册 /.well-known/core、/hello、/echo、/kv 四条 route；任一 coap_resource_router_add 失败时调用 coap_server_destroy(s) 并返回 NULL。全部成功返回 server。",
+    "OUTPUT": "成功返回拥有 router、udp runtime 和四条 route 的 server；任一分配或注册失败返回 NULL，并释放已经创建的资源。",
     "INVARIANTS_USED": [
-      "methods_mask 的 bit 编码必须与 resource_router dispatch 一致：1u << COAP_METHOD_*"
+      "/.well-known/core 只允许 GET 且不 discoverable。",
+      "/hello 只允许 GET 且 discoverable attributes 为 ct=0;title=\"hello\"。",
+      "/echo 允许 POST/PUT。",
+      "/kv 使用 prefix match 并允许 GET/POST/PUT/DELETE。"
     ]
   }
 }

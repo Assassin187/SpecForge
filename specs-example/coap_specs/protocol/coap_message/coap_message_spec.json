@@ -396,20 +396,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "调用 realloc 调整内部动态数组容量",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "调用 realloc 调整内部动态数组容量"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "private"
       },
       {
@@ -419,20 +405,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "将 message 清零并设置 version=1；空指针安全返回",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "将 message 清零并设置 version=1；空指针安全返回"
-            }
-          ],
-          "IDEMPOTENT": true,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -442,20 +414,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "释放所有 option value、option 数组和 payload，再恢复 version=1 的空 message",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "释放所有 option value、option 数组和 payload，再恢复 version=1 的空 message"
-            }
-          ],
-          "IDEMPOTENT": true,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -465,20 +423,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "通过 reset 释放 message 所有动态字段并恢复可复用空状态",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "通过 reset 释放 message 所有动态字段并恢复可复用空状态"
-            }
-          ],
-          "IDEMPOTENT": true,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -488,20 +432,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "校验 token_len<=8，记录长度并在 token 非空时复制 bytes",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "校验 token_len<=8，记录长度并在 token 非空时复制 bytes"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -511,20 +441,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "释放旧 payload；空数据清空 payload，否则分配并复制新 bytes",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "释放旧 payload；空数据清空 payload，否则分配并复制新 bytes"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -534,20 +450,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "将字符串内容作为不含 NUL 的 payload；NULL 表示空 payload",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "将字符串内容作为不含 NUL 的 payload；NULL 表示空 payload"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -557,20 +459,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "扩展 option 数组并复制 option value，成功后递增 option_count",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "扩展 option 数组并复制 option value，成功后递增 option_count"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -580,20 +468,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "以字符串 bytes 添加 option；NULL 表示零长度 option",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "以字符串 bytes 添加 option；NULL 表示零长度 option"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -603,20 +477,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "使用最短 big-endian unsigned integer encoding 添加 option；0 编码为零长度",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "使用最短 big-endian unsigned integer encoding 添加 option；0 编码为零长度"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -626,20 +486,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "查找首个匹配 option，并将最长 4-byte big-endian value 解码为 uint32_t",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "查找首个匹配 option，并将最长 4-byte big-endian value 解码为 uint32_t"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -649,20 +495,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "按出现顺序连接匹配 option；无匹配返回新分配空字符串，调用方负责 free",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "按出现顺序连接匹配 option；无匹配返回新分配空字符串，调用方负责 free"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -672,20 +504,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "将 3-bit class 与 5-bit detail 合成为 CoAP code",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "将 3-bit class 与 5-bit detail 合成为 CoAP code"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -695,20 +513,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "提取 CoAP code 的 3-bit class",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "提取 CoAP code 的 3-bit class"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -718,20 +522,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "提取 CoAP code 的 5-bit detail",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "提取 CoAP code 的 5-bit detail"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -741,20 +531,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "判断 code 是否是 class 0 且 detail 为 GET/POST/PUT/DELETE",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "判断 code 是否是 class 0 且 detail 为 GET/POST/PUT/DELETE"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -764,20 +540,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "释放编码结果 data，并将 data/len 复位",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "释放编码结果 data，并将 data/len 复位"
-            }
-          ],
-          "IDEMPOTENT": true,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "public"
       }
     ]
@@ -995,14 +757,6 @@
       "PATH": "coap_bytes_t.len",
       "TYPE": "size_t",
       "ROLE": "bytes 长度"
-    }
-  ],
-  "CALL_CONTRACTS": [
-    {
-      "NAME": "coap_message_join_options",
-      "SIGNATURE": "char* coap_message_join_options(const coap_message_t* msg, uint16_t number, char sep)",
-      "OWNERSHIP": "成功返回的动态对象或缓冲由调用方按对应 destroy/free 契约释放",
-      "FAILURE": "分配、编码或初始化失败时返回 NULL/false，不转移所有权"
     }
   ]
 }

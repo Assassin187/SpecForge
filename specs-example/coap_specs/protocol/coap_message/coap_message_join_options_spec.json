@@ -43,11 +43,12 @@
     "VAR": []
   },
   "LOGIC": {
-    "INPUT": "输入来自函数参数：msg、number、sep。",
-    "ACTION": "按出现顺序连接匹配 option；无匹配返回新分配空字符串，调用方负责 free",
-    "OUTPUT": "返回结果、已借用对象或新分配对象的指针；无结果或失败时返回 NULL，所有权由 ROLE/CALL_CONTRACTS 限定。",
+    "INPUT": "msg 是待查询 message；number 是目标 option number；sep 是多个 option value 之间的分隔字符。",
+    "ACTION": "若 msg 为空返回 NULL。第一遍统计匹配 option 的总 value 长度和数量，每个非首个匹配项额外计入 1 byte separator。没有匹配项时 calloc(1,1) 返回新分配空字符串。存在匹配项时 malloc(total+1)；失败返回 NULL。第二遍按原出现顺序复制每个匹配 option value，匹配项之间写入 sep，最后写入 NUL terminator。",
+    "OUTPUT": "返回新分配的 NUL-terminated string；msg 为空或分配失败返回 NULL。调用方负责 free 返回值。",
     "INVARIANTS_USED": [
-      "不得引入超出当前 minimum_v1 代码行为的协议语义"
+      "保留 option 出现顺序。",
+      "匹配 option 的 value bytes 按原样复制，函数不做 UTF-8 或路径规范化。"
     ]
   }
 }

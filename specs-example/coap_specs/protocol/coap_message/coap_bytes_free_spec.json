@@ -27,11 +27,11 @@
     "VAR": []
   },
   "LOGIC": {
-    "INPUT": "输入来自函数参数：bytes。",
-    "ACTION": "释放编码结果 data，并将 data/len 复位",
-    "OUTPUT": "无直接返回值；结果通过对象状态或副作用体现。",
+    "INPUT": "bytes 是可能为空的 encoded bytes 对象。",
+    "ACTION": "若 bytes 为空直接返回。否则 free(bytes->data)，再将 data 置 NULL、len 置 0。",
+    "OUTPUT": "无返回值；非空 bytes 被复位为空缓冲状态。",
     "INVARIANTS_USED": [
-      "不得引入超出当前 minimum_v1 代码行为的协议语义"
+      "只释放 data，不释放 coap_bytes_t 对象本身。"
     ]
   }
 }

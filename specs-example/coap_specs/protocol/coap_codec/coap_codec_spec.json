@@ -72,20 +72,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "计算 option delta/length 使用的 extended byte 数",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "计算 option delta/length 使用的 extended byte 数"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "private"
       },
       {
@@ -95,20 +81,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "按 nibble 13/14 编码 extended value；nibble 15 返回 false",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "按 nibble 13/14 编码 extended value；nibble 15 返回 false"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "private"
       },
       {
@@ -118,20 +90,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "将 option delta/length 映射为直接值、13 或 14 nibble",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "将 option delta/length 映射为直接值、13 或 14 nibble"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "private"
       },
       {
@@ -141,20 +99,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "从 datagram 解码 nibble 与 extended bytes，并推进 offset；nibble 15 或截断失败",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "从 datagram 解码 nibble 与 extended bytes，并推进 offset；nibble 15 或截断失败"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "private"
       },
       {
@@ -164,20 +108,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "按单个 datagram 解码 4-byte header、token、ordered options、payload marker 与 payload；失败时释放 out",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "按单个 datagram 解码 4-byte header、token、ordered options、payload marker 与 payload；失败时释放 out"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -187,20 +117,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "计算完整 datagram 大小，编码 header/token/ordered options，并仅在 payload 非空时写入 0xff marker",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "计算完整 datagram 大小，编码 header/token/ordered options，并仅在 payload 非空时写入 0xff marker"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "public"
       }
     ]
@@ -222,14 +138,6 @@
       "KIND": "FUNC",
       "SIGNATURE": "bool coap_encode_message(const coap_message_t* msg, coap_bytes_t* out)",
       "ROLE": "计算完整 datagram 大小，编码 header/token/ordered options，并仅在 payload 非空时写入 0xff marker"
-    }
-  ],
-  "CALL_CONTRACTS": [
-    {
-      "NAME": "coap_encode_message",
-      "SIGNATURE": "bool coap_encode_message(const coap_message_t* msg, coap_bytes_t* out)",
-      "OWNERSHIP": "成功返回的动态对象或缓冲由调用方按对应 destroy/free 契约释放",
-      "FAILURE": "分配、编码或初始化失败时返回 NULL/false，不转移所有权"
     }
   ]
 }

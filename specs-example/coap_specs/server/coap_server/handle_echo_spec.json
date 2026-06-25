@@ -54,12 +54,12 @@
     "VAR": []
   },
   "EVENT": {
-    "TRIGGER": "resource router 匹配 POST/PUT /echo 后触发",
-    "PRECONDITION": "callback 参数与所属 server/router 生命周期有效",
-    "INPUT": "输入来自运行时事件参数与当前 server/resource 状态",
-    "ACTION": "复制请求 payload，并保留请求 Content-Format 或使用 text/plain",
-    "STATE_CHANGE": "不修改持久资源状态",
-    "RESPONSE": "返回 2.04 与 echo payload",
+    "TRIGGER": "resource router 匹配 /echo 且 method 为 POST 或 PUT 后调用。",
+    "PRECONDITION": "req/resp 由 router 传入；源码忽略 user，不显式检查 req/resp 为空。",
+    "INPUT": "输入为请求 payload、payload_len、has_content_format 与 content_format。",
+    "ACTION": "默认 response format 为 COAP_FORMAT_TEXT_PLAIN；若 req->has_content_format 为 true，则使用 req->content_format。调用 response_set_bytes(resp, coap_make_code(2, 4), format, req->message->payload, req->message->payload_len)，复制请求 payload 到响应。",
+    "STATE_CHANGE": "不修改 server 状态；只写 response message。",
+    "RESPONSE": "返回 response_set_bytes 的结果；成功时响应为 2.04，payload 等于请求 payload。",
     "EVENT_TYPE": "RUNTIME_EVENT"
   }
 }

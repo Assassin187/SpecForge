@@ -56,11 +56,12 @@
     "VAR": []
   },
   "LOGIC": {
-    "INPUT": "输入来自函数参数：resp、code、format、text。",
-    "ACTION": "设置 response code、Content-Format option 与字符串 payload",
-    "OUTPUT": "返回 true 表示条件成立或操作成功；返回 false 表示条件不成立、参数无效或操作失败，具体含义由 ROLE 限定。",
+    "INPUT": "resp 是要写入的 response message；code/format/text 是响应 code、Content-Format 与字符串 payload。",
+    "ACTION": "先设置 resp->code = code。调用 coap_message_add_option_uint(resp, COAP_OPT_CONTENT_FORMAT, format) 添加 Content-Format；失败时返回 false。成功后调用 coap_message_set_payload_string(resp, text) 设置字符串 payload。",
+    "OUTPUT": "Content-Format option 添加失败返回 false；否则返回 payload 设置结果。即使后续失败，resp->code 已经被写入。",
     "INVARIANTS_USED": [
-      "不得引入超出当前 minimum_v1 代码行为的协议语义"
+      "text 为 NULL 时 payload 被清空。",
+      "payload 不包含字符串 NUL terminator。"
     ]
   }
 }

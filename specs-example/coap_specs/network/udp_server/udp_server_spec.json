@@ -162,20 +162,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "为 socket fd 追加 O_NONBLOCK flag",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "为 socket fd 追加 O_NONBLOCK flag"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "private"
       },
       {
@@ -185,20 +171,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "将 IPv4/IPv6 peer endpoint 格式化为 host:port；非法参数返回空字符串",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "将 IPv4/IPv6 peer endpoint 格式化为 host:port；非法参数返回空字符串"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -208,20 +180,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "分配 UDP server，保存 port/callback/user，并初始化 fd 为 -1",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "分配 UDP server，保存 port/callback/user，并初始化 fd 为 -1"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -231,20 +189,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "停止并释放 UDP server；空指针安全返回",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "停止并释放 UDP server；空指针安全返回"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -254,20 +198,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "创建非阻塞 IPv4 UDP socket，bind 端口，注册 EPOLLIN 并置 running=true",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "创建非阻塞 IPv4 UDP socket，bind 端口，注册 EPOLLIN 并置 running=true"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -277,20 +207,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "置 running=false，关闭 epoll fd 与 UDP fd，并将它们复位为 -1",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "置 running=false，关闭 epoll fd 与 UDP fd，并将它们复位为 -1"
-            }
-          ],
-          "IDEMPOTENT": true,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -300,20 +216,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "通过 server socket 向 peer 发送完整 datagram；EINTR 重试，EAGAIN/部分发送返回 false",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "通过 server socket 向 peer 发送完整 datagram；EINTR 重试，EAGAIN/部分发送返回 false"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -323,20 +225,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "EVENT",
         "ROLE": "运行非阻塞 UDP epoll 事件循环，每个成功 recvfrom 的 datagram 立即回调上层",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "参数满足函数签名约束；可空参数按函数逻辑安全处理"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "运行非阻塞 UDP epoll 事件循环，每个成功 recvfrom 的 datagram 立即回调上层"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_EVENT_LOOP_OR_CALLER_SYNCHRONIZED"
-        },
         "VISIBILITY": "public"
       }
     ]
@@ -420,14 +308,6 @@
       "PATH": "coap_udp_callbacks_t.on_datagram",
       "TYPE": "coap_udp_on_datagram_fn",
       "ROLE": "完整 datagram callback"
-    }
-  ],
-  "CALL_CONTRACTS": [
-    {
-      "NAME": "coap_udp_server_create",
-      "SIGNATURE": "coap_udp_server_t* coap_udp_server_create(uint16_t port, coap_udp_callbacks_t cb, void* user)",
-      "OWNERSHIP": "成功返回的动态对象或缓冲由调用方按对应 destroy/free 契约释放",
-      "FAILURE": "分配、编码或初始化失败时返回 NULL/false，不转移所有权"
     }
   ]
 }

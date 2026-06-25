@@ -33,12 +33,13 @@
     "VAR": []
   },
   "LOGIC": {
-    "INPUT": "输入来自函数参数：s。",
-    "ACTION": "创建非阻塞 IPv4 UDP socket，bind 端口，注册 EPOLLIN 并置 running=true",
-    "OUTPUT": "返回 true 表示条件成立或操作成功；返回 false 表示条件不成立、参数无效或操作失败，具体含义由 ROLE 限定。",
+    "INPUT": "s 必须是已创建但尚未成功启动的 UDP server。",
+    "ACTION": "若 s 为空返回 false。创建 AF_INET/SOCK_DGRAM socket；失败时打印 socket 错误并返回 false。对 socket 设置 SO_REUSEADDR，忽略 setsockopt 结果。调用 set_nonblocking；失败时打印错误并返回 false。构造绑定到 INADDR_ANY:s->port 的 sockaddr_in；bind 失败时打印错误并返回 false。创建 epoll fd；失败时打印错误并返回 false。注册 server fd 的 EPOLLIN；失败时打印错误并返回 false。所有步骤成功后设置 running=true。",
+    "OUTPUT": "任一失败路径返回 false；全部成功返回 true。源码失败路径不会主动关闭此前已经打开的 fd。",
     "INVARIANTS_USED": [
-      "runtime listener 固定使用 AF_INET/SOCK_DGRAM",
-      "失败不会宣告 running=true"
+      "监听只绑定 IPv4 INADDR_ANY。",
+      "epoll interest 只注册 EPOLLIN。",
+      "running 仅在 socket、nonblocking、bind、epoll_create1、epoll_ctl 全部成功后设为 true。"
     ]
   }
 }

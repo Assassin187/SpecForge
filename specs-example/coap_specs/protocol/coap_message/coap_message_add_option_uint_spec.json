@@ -45,11 +45,12 @@
     "VAR": []
   },
   "LOGIC": {
-    "INPUT": "输入来自函数参数：msg、number、value。",
-    "ACTION": "使用最短 big-endian unsigned integer encoding 添加 option；0 编码为零长度",
-    "OUTPUT": "返回 true 表示条件成立或操作成功；返回 false 表示条件不成立、参数无效或操作失败，具体含义由 ROLE 限定。",
+    "INPUT": "msg/number 指定目标 option；value 是要编码的 unsigned integer。",
+    "ACTION": "若 value 为 0，调用 coap_message_add_option(msg, number, NULL, 0) 添加零长度 integer option。非 0 时先把 value 写入 4-byte big-endian 临时缓冲，然后跳过前导 0 bytes，只把最短非零 big-endian suffix 作为 option value 添加。",
+    "OUTPUT": "返回 coap_message_add_option 的布尔结果。",
     "INVARIANTS_USED": [
-      "不得引入超出当前 minimum_v1 代码行为的协议语义"
+      "整数 0 编码为零长度 option。",
+      "非零整数使用最短 big-endian 表示，最多 4 bytes。"
     ]
   }
 }

@@ -33,11 +33,12 @@
     "VAR": []
   },
   "LOGIC": {
-    "INPUT": "输入来自函数参数：msg。",
-    "ACTION": "释放所有 option value、option 数组和 payload，再恢复 version=1 的空 message",
-    "OUTPUT": "无直接返回值；结果通过对象状态或副作用体现。",
+    "INPUT": "msg 是可能为空、可能持有 options 和 payload 的 message。",
+    "ACTION": "若 msg 为空直接返回。否则遍历 option_count，释放每个 options[i].value；释放 options 数组；释放 payload；最后调用 coap_message_init(msg) 恢复空 message 状态。",
+    "OUTPUT": "无返回值；非空 msg 的动态字段被释放，version 重新设为 1，计数和指针清零。",
     "INVARIANTS_USED": [
-      "不得引入超出当前 minimum_v1 代码行为的协议语义"
+      "每个 option value 在释放 options 数组前释放。",
+      "reset 后 msg 可被复用。"
     ]
   }
 }

@@ -84,7 +84,7 @@
       "ARTIFACTS": [
         {
           "NAME": "COAP_MAX_TOKEN_LEN",
-          "KIND": "CONST",
+          "KIND": "MACRO",
           "ROLE": "CoAP token 最大长度 8 bytes"
         },
         {

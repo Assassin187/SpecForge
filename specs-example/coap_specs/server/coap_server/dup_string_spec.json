@@ -22,11 +22,11 @@
     "VAR": []
   },
   "LOGIC": {
-    "INPUT": "输入来自函数参数：s。",
-    "ACTION": "分配并复制 NUL-terminated 字符串；NULL 返回 NULL",
-    "OUTPUT": "返回结果、已借用对象或新分配对象的指针；无结果或失败时返回 NULL，所有权由 ROLE/CALL_CONTRACTS 限定。",
+    "INPUT": "s 是可空 NUL-terminated string。",
+    "ACTION": "若 s 为空返回 NULL。否则分配 strlen(s) + 1 bytes，并复制包含 NUL terminator 的完整字符串。",
+    "OUTPUT": "成功返回新分配字符串；输入为空或分配失败返回 NULL。调用方负责 free。",
     "INVARIANTS_USED": [
-      "不得引入超出当前 minimum_v1 代码行为的协议语义"
+      "复制内容包含结尾 NUL。"
     ]
   }
 }

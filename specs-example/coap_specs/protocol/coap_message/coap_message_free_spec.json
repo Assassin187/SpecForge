@@ -33,11 +33,11 @@
     "VAR": []
   },
   "LOGIC": {
-    "INPUT": "输入来自函数参数：msg。",
-    "ACTION": "通过 reset 释放 message 所有动态字段并恢复可复用空状态",
-    "OUTPUT": "无直接返回值；结果通过对象状态或副作用体现。",
+    "INPUT": "msg 是可能为空的 message 对象。",
+    "ACTION": "直接调用 coap_message_reset(msg)。空指针由 reset 安全处理。",
+    "OUTPUT": "无返回值；非空 msg 的动态内容被释放并恢复为空 message，但 msg 对象本身不被 free。",
     "INVARIANTS_USED": [
-      "不得引入超出当前 minimum_v1 代码行为的协议语义"
+      "该函数释放 message 内部字段，不释放 coap_message_t 存储本身。"
     ]
   }
 }

@@ -62,11 +62,12 @@
     "VAR": []
   },
   "LOGIC": {
-    "INPUT": "输入来自函数参数：router、req、resp。",
-    "ACTION": "按注册顺序查找首个 path match；计算 method_bit = 1u << req->method 并检查 entry->methods_mask；method 不允许时用 coap_make_code(4, 5) 写 4.05，否则调用 handler；无 route 返回 false",
-    "OUTPUT": "返回 true 表示条件成立或操作成功；返回 false 表示条件不成立、参数无效或操作失败，具体含义由 ROLE 限定。",
+    "INPUT": "router 是注册表；req 包含 method/path；resp 是 handler 或 router 写入 response code 的输出 message。",
+    "ACTION": "若 router、req、resp 或 req->path 为空返回 false。计算 method_bit = 1u << req->method。按注册顺序遍历 entries，跳过 path_matches 为 false 的 entry。首个 path match 若 methods_mask 不含 method_bit，则设置 resp->code = coap_make_code(4, 5) 并返回 true。若 method 允许，则调用 entry handler(user, req, resp) 并原样返回 handler 结果。遍历结束仍无 path match 时返回 false。",
+    "OUTPUT": "返回 true 表示已由 router/handler 处理并可能写入 resp；返回 false 表示参数无效或没有匹配 route。method 不允许时返回 true 且 response code 为 4.05。",
     "INVARIANTS_USED": [
-      "methods_mask 的 bit 编码必须与 coap_server_create 的 route 注册一致：1u << COAP_METHOD_*"
+      "只使用第一个 path match。",
+      "无 route 时不写 resp->code，由调用方决定 4.04。"
     ]
   }
 }

@@ -33,12 +33,12 @@
     "VAR": []
   },
   "EVENT": {
-    "TRIGGER": "main 在 server 启动成功后调用",
-    "PRECONDITION": "callback 参数与所属 server/router 生命周期有效",
-    "INPUT": "输入来自运行时事件参数与当前 server/resource 状态",
-    "ACTION": "委托 coap_udp_server_run 进入 UDP 事件循环",
-    "STATE_CHANGE": "推进 server 运行期事件处理",
-    "RESPONSE": "无直接返回值",
+    "TRIGGER": "应用在 coap_server_start 成功后调用。",
+    "PRECONDITION": "s 和 s->udp 非空；否则立即返回。",
+    "INPUT": "输入是底层 UDP runtime 产生的 datagram events。",
+    "ACTION": "若 s 或 s->udp 为空直接返回；否则调用 coap_udp_server_run(s->udp)，由 UDP runtime 通过 on_datagram callback 驱动 server handler。",
+    "STATE_CHANGE": "本函数自身不修改 server 状态；运行期间状态变化来自 UDP runtime callback 触发的 handlers。",
+    "RESPONSE": "无返回值；coap_udp_server_run 返回后本函数返回。",
     "EVENT_TYPE": "RUNTIME_EVENT"
   }
 }

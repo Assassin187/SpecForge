@@ -40,11 +40,11 @@
     "VAR": []
   },
   "LOGIC": {
-    "INPUT": "输入来自函数参数：value、nibble、out、out_len。",
-    "ACTION": "按 nibble 13/14 编码 extended value；nibble 15 返回 false",
-    "OUTPUT": "返回 true 表示条件成立或操作成功；返回 false 表示条件不成立、参数无效或操作失败，具体含义由 ROLE 限定。",
+    "INPUT": "value 是原始 delta/length，nibble 是 encode_nibble 的结果，out 指向调用方提供的 2-byte scratch buffer，out_len 用于返回写入长度。",
+    "ACTION": "若 out_len 为空返回 false。否则先将 *out_len 置 0。nibble < 13 时无需写扩展字节并返回 true；nibble == 13 时写 out[0] = value - 13，*out_len = 1；nibble == 14 时计算 value - 269 并按 big-endian 写入 out[0..1]，*out_len = 2；其他 nibble 返回 false。",
+    "OUTPUT": "nibble 13/14 成功写入扩展字节并返回 true；nibble < 13 返回 true 且 out_len 为 0；nibble 15 或 out_len 为空返回 false。",
     "INVARIANTS_USED": [
-      "不得引入超出当前 minimum_v1 代码行为的协议语义"
+      "源码假定当 nibble 为 13 或 14 时 out 非空且 value 与 nibble 匹配。"
     ]
   }
 }
