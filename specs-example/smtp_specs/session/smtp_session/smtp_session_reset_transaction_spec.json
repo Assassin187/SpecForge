@@ -28,17 +28,19 @@
   },
   "LOGIC": {
     "INPUT": "输入参数：session(smtp_session_t*，可为 NULL，BORROWED)。",
-    "ACTION": "清空 MAIL/RCPT/DATA transaction 状态，不影响 greeting/authenticated。",
-    "OUTPUT": "无返回值；副作用为清空 MAIL/RCPT/DATA transaction 状态，不影响 greeting/authenticated。",
+    "ACTION": "session 为 NULL 时直接返回；否则把 mail_from 首字节置 NUL、has_mail_from 置 false、rcpt_count 置 0、in_data_mode 置 false、message_len 置 0、message_too_large 置 false。不得修改 greeted、authenticated、helo_name 或 auth_user。",
+    "OUTPUT": "无返回值；非 NULL session 的 sender、recipient 和 DATA transaction 状态全部清空，greeting 与 authentication 状态保持不变。",
     "INVARIANTS_USED": [
       "仅面向单线程事件循环或单线程调用路径；跨线程访问必须由上层同步。",
       "函数可能分配资源、消费缓冲、修改链表、写文件或更新网络状态，不承诺幂等。",
       "调用方必须遵守 SIGNATURE.PARAMS 中的 NULLABLE 与 OWNERSHIP 约束。",
       "维护 session->mail_from：清空 sender",
+      "维护 session->has_mail_from：置 false",
       "维护 session->rcpt_count：置 0",
       "维护 session->in_data_mode：置 false",
       "维护 session->message_len：置 0",
-      "维护 session->message_too_large：置 false"
+      "维护 session->message_too_large：置 false",
+      "开始新的 MAIL transaction 时必须先调用本函数再写入新 sender，或由调用方只清理旧 recipient/DATA 字段；禁止先写入新 mail_from 再调用本函数"
     ]
   },
   "ACCESS_PATHS": [
@@ -46,6 +48,11 @@
       "PATH": "session->mail_from",
       "TYPE": "char[512]",
       "ROLE": "清空 sender"
+    },
+    {
+      "PATH": "session->has_mail_from",
+      "TYPE": "bool",
+      "ROLE": "置 false"
     },
     {
       "PATH": "session->rcpt_count",

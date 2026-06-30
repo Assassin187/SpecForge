@@ -69,8 +69,8 @@
   },
   "LOGIC": {
     "INPUT": "输入参数：server(smtp_server_t*，可为 NULL，BORROWED)；session(smtp_session_t*，可为 NULL，BORROWED)；line(const char*，可为 NULL，BORROWED)。",
-    "ACTION": "处理 DATA mode 中的行：非终止行追加，'.' 终止并尝试落盘。",
-    "OUTPUT": "无返回值；副作用为处理 DATA mode 中的行：非终止行追加，'.' 终止并尝试落盘。",
+    "ACTION": "line 不是单独的 '.' 时只调用 append_message_line(session, line) 并返回。终止行首先把 session->in_data_mode 置 false；若 message_too_large 为 true，则发送 552、reset transaction 并返回。否则构造局部 const char* rcpt_ptrs[SMTP_MAX_RECIPIENTS]，对 [0, session->rcpt_count) 逐项执行 rcpt_ptrs[i] = session->rcpt_to[i]，完整初始化 smtp_mail_t 的 helo_name、auth_user、mail_from、rcpt_to=rcpt_ptrs、rcpt_count、data 和 data_len 后，同步调用 smtp_mail_store_write。禁止把 session->rcpt_to 二维字符数组强转为 const char** 或 const char* const*。落盘成功发送 250，失败发送 451，随后均 reset transaction。",
+    "OUTPUT": "无返回值；普通 DATA 行只追加到消息缓冲。终止行在 oversized 时产生 552，在落盘成功时产生 250，在落盘失败时产生 451；三种终止结果均退出 DATA mode 并清空当前 transaction。局部 rcpt_ptrs 的生命周期必须覆盖同步 smtp_mail_store_write 调用。",
     "INVARIANTS_USED": [
       "仅面向单线程事件循环或单线程调用路径；跨线程访问必须由上层同步。",
       "函数可能分配资源、消费缓冲、修改链表、写文件或更新网络状态，不承诺幂等。",
@@ -79,7 +79,10 @@
       "维护 session->message_too_large：决定是否返回 552",
       "维护 session->message_buf：落盘 DATA 内容",
       "遵循 SMTP_DATA.terminator 映射规则：单独一行 '.' 结束 DATA",
-      "遵循 SMTP_DATA.message_data 映射规则：终止前所有行累积到 session->message_buf"
+      "遵循 SMTP_DATA.message_data 映射规则：终止前所有行累积到 session->message_buf",
+      "session->rcpt_to 是连续的二维字符数组，smtp_mail_t.rcpt_to 是 pointer array；两者只能通过局部 rcpt_ptrs 逐项桥接",
+      "smtp_mail_t.data_len 必须等于 session->message_len，落盘不得依赖 message_buf 的 NUL 终止",
+      "smtp_mail_store_write 同步返回前 rcpt_ptrs 保持有效，函数返回后 storage 不得保留该局部数组"
     ]
   },
   "ACCESS_PATHS": [
@@ -97,6 +100,36 @@
       "PATH": "session->message_buf",
       "TYPE": "char*",
       "ROLE": "落盘 DATA 内容"
+    },
+    {
+      "PATH": "session->helo_name",
+      "TYPE": "char[256]",
+      "ROLE": "构造 smtp_mail_t 的 HELO/EHLO metadata"
+    },
+    {
+      "PATH": "session->auth_user",
+      "TYPE": "char[256]",
+      "ROLE": "构造 smtp_mail_t 的认证用户 metadata"
+    },
+    {
+      "PATH": "session->mail_from",
+      "TYPE": "char[512]",
+      "ROLE": "构造 smtp_mail_t 的 envelope sender"
+    },
+    {
+      "PATH": "session->rcpt_to[i]",
+      "TYPE": "char[512]",
+      "ROLE": "逐项构造局部 recipient pointer array"
+    },
+    {
+      "PATH": "session->rcpt_count",
+      "TYPE": "size_t",
+      "ROLE": "限定 recipient pointer array 的有效元素数"
+    },
+    {
+      "PATH": "session->message_len",
+      "TYPE": "size_t",
+      "ROLE": "构造 smtp_mail_t 的 DATA 长度"
     }
   ],
   "WIRE_MAPPING": [
@@ -110,8 +143,15 @@
       "PACKET": "SMTP_DATA",
       "WIRE_FIELD": "message_data",
       "STRATEGY": "store_in_field",
-      "RULE": "终止前所有行累积到 session->message_buf",
+      "RULE": "终止前所有行按 append_message_line 规则累积到 session->message_buf，落盘时严格使用 session->message_len 作为字节长度。",
       "TARGET": "session->message_buf"
+    },
+    {
+      "PACKET": "SMTP_MAIL_FILE",
+      "WIRE_FIELD": "recipients",
+      "STRATEGY": "store_in_field",
+      "RULE": "对每个有效 session->rcpt_to[i] 构造一个局部 const char* 引用，再把该 pointer array 交给同步 storage 调用；禁止把二维字符数组直接强转为 const char**。",
+      "TARGET": "session->rcpt_to[i]"
     }
   ]
 }

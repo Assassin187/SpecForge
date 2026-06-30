@@ -47,13 +47,16 @@
   },
   "LOGIC": {
     "INPUT": "输入参数：input(const char*，可为 NULL，BORROWED)；out(unsigned char*，可为 NULL，BORROWED)；out_cap(size_t，不可为 NULL，BORROWED)；out_len(size_t*，可为 NULL，BORROWED)。",
-    "ACTION": "忽略空白并解码 base64 文本到 out 缓冲。",
-    "OUTPUT": "成功返回 0 并写入 out/out_len；输入、输出指针无效、非法字符或 out_cap 不足时返回 -1。",
+    "ACTION": "input、out 或 out_len 为 NULL 时返回 -1。扫描 input 时忽略 ASCII whitespace，并用独立的有效字符计数器把非空白字符严格分成四字符 quartet；不得使用 input 指针地址、pointer cast 或包含 whitespace 的原始字符串索引决定 quartet 边界。无 padding 的 quartet 输出 3 字节；单个 '=' 只能位于最后一个 quartet 的第 4 位并输出 2 字节；'==' 只能位于最后一个 quartet 的第 3、4 位并输出 1 字节。padding 后除 ASCII whitespace 外不得再出现字符；有效字符总数必须组成完整 quartet。每次写出前检查 out_cap，任一非法字符、非法长度、非法 padding 或容量不足均返回 -1。",
+    "OUTPUT": "成功返回 0，把解码后的准确字节数写入 out_len，并仅写入该长度范围内的 out；输入/输出指针无效、有效字符不能组成完整 quartet、padding 位置非法、padding 后存在非空白字符、Base64 字符非法或 out_cap 不足时返回 -1。",
     "INVARIANTS_USED": [
       "仅面向单线程事件循环或单线程调用路径；跨线程访问必须由上层同步。",
       "重复调用不得破坏内部一致性；无匹配对象、空输入或已完成状态按当前实现安全处理。",
       "调用方必须遵守 SIGNATURE.PARAMS 中的 NULLABLE 与 OWNERSHIP 约束。",
-      "遵循 AUTH.base64_payload 映射规则：非法字符返回 -1，padding '=' 终止解码，输出长度写入 out_len"
+      "遵循 AUTH.base64_payload 映射规则：非法字符返回 -1，padding '=' 终止解码，输出长度写入 out_len",
+      "quartet 位置只由已接受的非 whitespace 字符数量决定，与 input 的内存地址和原始索引无关",
+      "一个 '=' 产生两个输出字节，两个 '==' 产生一个输出字节，padding 只能出现在最后一个完整 quartet",
+      "任何输出写入前都必须证明剩余 out_cap 足够"
     ]
   },
   "WIRE_MAPPING": [
@@ -61,7 +64,7 @@
       "PACKET": "AUTH",
       "WIRE_FIELD": "base64_payload",
       "STRATEGY": "parse_and_skip",
-      "RULE": "非法字符返回 -1，padding '=' 终止解码，输出长度写入 out_len"
+      "RULE": "忽略 ASCII whitespace 后按四个有效字符组成 quartet；无 padding 输出 3 字节，末尾一个 '=' 输出 2 字节，末尾 '==' 输出 1 字节；padding 之后只允许 whitespace。非法字符、非完整 quartet、非法 padding 或容量不足返回 -1，成功时把准确输出长度写入 out_len；禁止使用 input 地址或原始索引确定 quartet 边界。"
     }
   ],
   "TEST_VECTORS": [

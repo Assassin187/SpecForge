@@ -54,12 +54,14 @@
   },
   "LOGIC": {
     "INPUT": "输入参数：server(smtp_server_t*，可为 NULL，BORROWED)；session(smtp_session_t*，可为 NULL，BORROWED)。",
-    "ACTION": "立即 flush session 输出队列并根据 pending 状态更新写兴趣。",
-    "OUTPUT": "返回值表达立即 flush session 输出队列并根据 pending 状态更新写兴趣的结果；成功、失败和特殊分支按当前 C 实现的返回码区分。",
+    "ACTION": "server 或 session 无效时返回 -1。调用 smtp_connection_flush(session->conn)；返回值小于 0 时直接返回 -1，本函数不得关闭连接、调用 close_control 或销毁 session。flush 返回 0 或 1 后，调用 smtp_connection_has_pending 获取真实 pending 状态，并把该 bool 传给 smtp_tcp_server_update_interest：pending 为 true 时保留 EPOLLOUT，全部发送后取消 EPOLLOUT。",
+    "OUTPUT": "flush 失败返回 -1；flush 未报错时返回 smtp_tcp_server_update_interest 的结果。返回 0 表示写兴趣已与真实 pending 状态一致，返回 -1 表示更新失败。无论返回值如何，本函数都不结束 session 生命周期。",
     "INVARIANTS_USED": [
       "仅面向单线程事件循环或单线程调用路径；跨线程访问必须由上层同步。",
       "函数可能分配资源、消费缓冲、修改链表、写文件或更新网络状态，不承诺幂等。",
-      "调用方必须遵守 SIGNATURE.PARAMS 中的 NULLABLE 与 OWNERSHIP 约束。"
+      "调用方必须遵守 SIGNATURE.PARAMS 中的 NULLABLE 与 OWNERSHIP 约束。",
+      "smtp_connection_flush 返回 1 表示仍有 pending 数据，不是 fatal error，必须保持 EPOLLOUT",
+      "只有 close_control 或 tcp server close callback 可以结束 session 生命周期，本函数不得隐式关闭"
     ]
   }
 }

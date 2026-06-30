@@ -8,7 +8,7 @@ from pathlib import Path
 from .generation import ProjectGenerator, _bundle_binary_name
 from .llm_client import FixedQwenClient
 from .protocol_behavior_val import _RUNNERS, verify_protocol_behavior
-from .specs import load_spec_bundle, load_spec_bundle_from_root
+from .specs import load_spec_bundle, load_spec_bundle_from_root, validate_rendered_headers_compile
 from .verifier import ProjectVerifier
 
 
@@ -54,11 +54,16 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _load_bundle(args: argparse.Namespace):
+def _load_bundle(args: argparse.Namespace, *, validate_rendered_headers: bool = True):
     spec_root = _path(args.spec_root)
     if args.module_spec:
-        return load_spec_bundle(_path(args.module_spec), spec_root)
-    return load_spec_bundle_from_root(spec_root)
+        return load_spec_bundle(_path(args.module_spec), spec_root, validate_rendered_headers=validate_rendered_headers)
+    return load_spec_bundle_from_root(spec_root, validate_rendered_headers=validate_rendered_headers)
+
+
+def _rendered_header_check_root(args: argparse.Namespace, bundle) -> Path:
+    output_dir = _path(args.output_dir) if args.output_dir else default_output_dir(bundle)
+    return output_dir / "_agent_logs" / "rendered_header_checks"
 
 
 def _print_diagnostics(bundle) -> None:
@@ -73,10 +78,11 @@ def _print_diagnostics(bundle) -> None:
 
 def cmd_validate(args: argparse.Namespace) -> int:
     try:
-        bundle = _load_bundle(args)
+        bundle = _load_bundle(args, validate_rendered_headers=False)
     except Exception as exc:  # noqa: BLE001
         print(f"ERROR spec_discovery: {exc}")
         return 1
+    validate_rendered_headers_compile(bundle, _rendered_header_check_root(args, bundle))
     llm = FixedQwenClient(args.api_key_env)
     _print_diagnostics(bundle)
     try:
@@ -90,7 +96,7 @@ def cmd_validate(args: argparse.Namespace) -> int:
 
 def cmd_generate(args: argparse.Namespace) -> int:
     try:
-        bundle = _load_bundle(args)
+        bundle = _load_bundle(args, validate_rendered_headers=False)
     except Exception as exc:  # noqa: BLE001
         print(f"ERROR spec_discovery: {exc}")
         return 1
@@ -112,6 +118,8 @@ def cmd_generate(args: argparse.Namespace) -> int:
     if result.success:
         print("Generation succeeded: final compile passed.")
     else:
+        if bundle.has_errors():
+            _print_diagnostics(bundle)
         print(f"Repair stop reason: {result.repair_stop_reason}")
         if result.repair_blocking_files:
             print("Repair blocking files:")
@@ -122,10 +130,11 @@ def cmd_generate(args: argparse.Namespace) -> int:
 
 def cmd_verify(args: argparse.Namespace) -> int:
     try:
-        bundle = _load_bundle(args)
+        bundle = _load_bundle(args, validate_rendered_headers=False)
     except Exception as exc:  # noqa: BLE001
         print(f"ERROR spec_discovery: {exc}")
         return 1
+    validate_rendered_headers_compile(bundle, _rendered_header_check_root(args, bundle))
     _print_diagnostics(bundle)
     verifier = ProjectVerifier(bundle, _path(args.output_dir) if args.output_dir else default_output_dir(bundle))
     result = verifier.verify()

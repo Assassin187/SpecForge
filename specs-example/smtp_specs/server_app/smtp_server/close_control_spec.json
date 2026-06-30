@@ -2,7 +2,7 @@
   "KIND": "FUNCTION_SPEC",
   "TRACE_ID": "smtp/server_app/smtp_server/close_control",
   "FUNCTION_TYPE": "ALGORITHM",
-  "ROLE": "委托 TCP server 关闭 session 控制连接",
+  "ROLE": "委托 TCP server 关闭控制连接并同步触发 session 销毁；返回后原 session 指针失效",
   "SIGNATURE": {
     "RAW": "static void close_control(smtp_server_t* server, smtp_session_t* session)",
     "NAME": "close_control",
@@ -44,12 +44,15 @@
   },
   "LOGIC": {
     "INPUT": "输入参数：server(smtp_server_t*，可为 NULL，BORROWED)；session(smtp_session_t*，可为 NULL，BORROWED)。",
-    "ACTION": "委托 TCP server 关闭 session 控制连接。",
-    "OUTPUT": "无返回值；副作用为委托 TCP server 关闭 session 控制连接。",
+    "ACTION": "server 或 session 为 NULL 时直接返回；否则只调用 smtp_tcp_server_close_client(server->tcp, session->control_fd)。close_client 会在返回前同步触发 on_close，on_close 从 server 链表移除并销毁该 session。本函数不负责 queue、发送或 flush SMTP response。",
+    "OUTPUT": "无返回值；成功关闭时 fd 从 tcp server 与 server session 链表移除，传入的 session 指针在本函数返回后立即失效。调用方必须立即 return，或使用保存的 fd 重新调用 find_session 后才能继续处理。",
     "INVARIANTS_USED": [
       "仅面向单线程事件循环或单线程调用路径；跨线程访问必须由上层同步。",
       "函数可能分配资源、消费缓冲、修改链表、写文件或更新网络状态，不承诺幂等。",
-      "调用方必须遵守 SIGNATURE.PARAMS 中的 NULLABLE 与 OWNERSHIP 约束。"
+      "调用方必须遵守 SIGNATURE.PARAMS 中的 NULLABLE 与 OWNERSHIP 约束。",
+      "smtp_tcp_server_close_client 同步调用 on_close，on_close 可以在 close_control 返回前释放 session",
+      "close_control 返回后禁止读取 session->control_fd、session->conn 或任何其他 session 字段",
+      "需要发送最终响应的调用方必须在 close_control 之前完成 queue 和 flush"
     ]
   }
 }

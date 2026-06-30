@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -875,7 +876,10 @@ class CoderSchemaLoweringTests(unittest.TestCase):
             self.assertIn("stderr=", diagnostic.message)
             self.assertIn("stderr_path=", diagnostic.message)
             self.assertIn("rendered_header=", diagnostic.message)
-            self.assertTrue((Path(manifest["spec_root"]).parent / "_rendered_header_checks").exists())
+            stderr_match = re.search(r"stderr_path=([^;]+)", diagnostic.message)
+            self.assertIsNotNone(stderr_match, diagnostic.message)
+            self.assertTrue(Path(stderr_match.group(1)).exists())
+            self.assertFalse((Path(manifest["spec_root"]).parent / "_rendered_header_checks").exists())
 
     def test_mqtt_protocol_codec_public_types_lower_to_single_owner_header(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:

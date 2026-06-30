@@ -269,6 +269,36 @@
       "ID": "C6",
       "RULE": "本示例只做本地 .eml 落盘，不做 SMTP relay、DNS/MX lookup、队列重试或远端投递。",
       "DOC_REF": []
+    },
+    {
+      "ID": "C7",
+      "RULE": "accept loop 每轮调用 accept 前必须把 peer_len 重新初始化为 sizeof(peer)；EINTR 重试，EAGAIN/EWOULDBLOCK 仅结束当前 accept loop，不得停止 listener 或 event loop。",
+      "DOC_REF": []
+    },
+    {
+      "ID": "C8",
+      "RULE": "QUIT 必须严格按 queue 221、flush、close 的顺序处理；close_control 返回后对应 session 已失效，调用方必须立即返回或通过 find_session 重新获取，禁止继续解引用旧指针。",
+      "DOC_REF": []
+    },
+    {
+      "ID": "C9",
+      "RULE": "session 的 char rcpt_to[SMTP_MAX_RECIPIENTS][512] 不得强转为 const char**；传给 smtp_mail_t.rcpt_to 前必须构造本地 const char* pointer array 并逐项引用 session->rcpt_to[i]。",
+      "DOC_REF": []
+    },
+    {
+      "ID": "C10",
+      "RULE": "AUTH Base64 解码必须按去除 ASCII whitespace 后的有效字符 quartet 计数，padding 只能出现在最后一个 quartet，禁止使用 input 地址、pointer cast 或包含 whitespace 的原始索引决定 quartet 边界。",
+      "DOC_REF": []
+    },
+    {
+      "ID": "C11",
+      "RULE": "MAIL FROM 成功保存新 sender 后不得调用会清空 mail_from 的完整 transaction reset；开始新 transaction 时应先 reset 再写 sender，或仅清理旧 recipients 与 DATA 状态。",
+      "DOC_REF": []
+    },
+    {
+      "ID": "C12",
+      "RULE": "mail store 必须使用 O_CREAT|O_EXCL 直接创建唯一的最终 .eml 文件；禁止通过丢失原始路径或对同一已改写字符串执行 rename 的方式添加后缀。",
+      "DOC_REF": []
     }
   ],
   "PUBLIC_SYMBOLS": [

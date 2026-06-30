@@ -16,6 +16,7 @@ from .specs import (
     canonical_signature_for_header,
     function_specs_for_file,
     normalize_repo_path,
+    validate_rendered_headers_compile,
 )
 
 MAX_REPAIR_DIAGNOSTIC_BYTES = 64 * 1024
@@ -450,6 +451,45 @@ class ProjectGenerator:
     def generate(self) -> GenerationResult:
         self.llm_client.ensure_ready()
         self.prepare_output_dir()
+        validate_rendered_headers_compile(self.bundle, self.logs.root / "rendered_header_checks")
+        if self.bundle.has_errors():
+            manifest = {
+                "model": "qwen3-max-2026-01-23",
+                "llm_client": "agent.coder.llm_client.chat_with_llm",
+                "output_dir": str(self.output_dir),
+                "project_dir": str(self.project_dir),
+                "log_dir": str(self.logs.root),
+                "binary_name": _bundle_binary_name(self.bundle),
+                "max_repair_rounds": self.max_repair_rounds,
+                "generation_order": self.bundle.generation_order,
+                "modules": [module.name for module in self.bundle.modules_in_order],
+                "repaired_files": [],
+                "generation_success": False,
+                "compile_success": False,
+                "verification_run": False,
+                "verification_success": None,
+                "verification": {"scenarios": [], "diagnostics": []},
+                "repair": {
+                    "stop_reason": "spec_validation_failed",
+                    "rounds_attempted": 0,
+                    "blocking_files": [],
+                    "rejected_candidates": [],
+                },
+                "llm_call_usage": [],
+                "stage_token_usage": {},
+                "workflow_token_usage": _usage_to_dict(LLMUsage(0, 0, 0)),
+                "diagnostics": [diag.__dict__ for diag in self.bundle.diagnostics],
+            }
+            manifest_path = self.logs.write_named("run_manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2) + "\n")
+            return GenerationResult(
+                success=False,
+                manifest_path=manifest_path,
+                compile_stdout="",
+                compile_stderr="",
+                repaired_files=[],
+                repair_stop_reason="spec_validation_failed",
+                repair_blocking_files=[],
+            )
 
         generated_headers: dict[str, str] = {}
         for module in self.bundle.modules_in_order:

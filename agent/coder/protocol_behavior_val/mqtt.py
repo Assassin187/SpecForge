@@ -293,17 +293,17 @@ def run(project_dir: Path, binary_name: str, scenarios: list[dict[str, str]]) ->
                     "status": "passed",
                     "detail": "mosquitto_sub received mosquitto_pub payload",
                 })
+            else:
+                scenarios.append({
+                    "name": "mqtt_mosquitto_interop",
+                    "status": "skipped",
+                    "detail": "mosquitto clients unavailable",
+                })
         except Exception as _e:
             scenarios.append({
                 "name": "mqtt_mosquitto_interop",
                 "status": "failed",
                 "detail": str(_e),
-            })
-        else:
-            scenarios.append({
-                "name": "mqtt_mosquitto_interop",
-                "status": "skipped",
-                "detail": "mosquitto clients unavailable",
             })
 
     finally:

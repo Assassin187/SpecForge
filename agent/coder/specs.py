@@ -555,12 +555,15 @@ def _validate_machine_constraints(bundle: SpecBundle) -> None:
             bundle.diagnostics.append(Diagnostic("warning", "missing_test_vectors", f"Protocol codec '{file_spec.trace_id}' should define TEST_VECTORS", str(file_spec.spec_path)))
 
 
-def _validate_rendered_headers_compile(bundle: SpecBundle) -> None:
+def validate_rendered_headers_compile(bundle: SpecBundle, check_root: str | Path | None = None) -> None:
     if bundle.has_errors():
         return
     from .generation import render_header
 
-    check_root = Path(bundle.spec_root).parent / "_rendered_header_checks"
+    if check_root is None:
+        check_root = Path(tempfile.mkdtemp(prefix="rendered_header_checks_"))
+    else:
+        check_root = Path(check_root)
     if check_root.exists():
         shutil.rmtree(check_root)
     rendered_root = check_root / "rendered_headers"
@@ -639,6 +642,8 @@ def _validate_rendered_headers_compile(bundle: SpecBundle) -> None:
                         file_spec.header_path,
                     )
                 )
+    if not any(diag.code == "rendered_header_compile_error" for diag in bundle.diagnostics):
+        shutil.rmtree(check_root, ignore_errors=True)
 
 
 def _validate_uniqueness(bundle: SpecBundle) -> None:
@@ -745,7 +750,7 @@ def load_spec_bundle(module_spec_path: str | Path, spec_root: str | Path, *, val
     _validate_function_specs(bundle)
     _validate_machine_constraints(bundle)
     if validate_rendered_headers:
-        _validate_rendered_headers_compile(bundle)
+        validate_rendered_headers_compile(bundle)
     return bundle
 
 

@@ -108,12 +108,12 @@
     "VAR": []
   },
   "EVENT": {
-    "TRIGGER": "当 SMTP_IO_WRITABLE 置位时 flush 输出；当 SMTP_IO_READABLE 置位时读取 socket 并循环弹出完整行，超长行返回 500，DATA mode 优先交给 handle_data_line，AUTH continuation 交给 handle_auth_continuation，否则解析命令并调用 handle_command。",
+    "TRIGGER": "收到客户端 fd 的 SMTP_IO_WRITABLE 和/或 SMTP_IO_READABLE 事件；处理过程中任一 close callback 都可能同步移除并销毁当前 session。",
     "PRECONDITION": "输入参数：user(void*，可为 NULL，BORROWED)；fd(int，不可为 NULL，BORROWED)；events(uint32_t，不可为 NULL，BORROWED)；遵守单线程事件循环调用约束。",
     "INPUT": "输入参数：user(void*，可为 NULL，BORROWED)；fd(int，不可为 NULL，BORROWED)；events(uint32_t，不可为 NULL，BORROWED)。",
-    "ACTION": "当 SMTP_IO_WRITABLE 置位时 flush 输出；当 SMTP_IO_READABLE 置位时读取 socket 并循环弹出完整行，超长行返回 500，DATA mode 优先交给 handle_data_line，AUTH continuation 交给 handle_auth_continuation，否则解析命令并调用 handle_command。",
-    "STATE_CHANGE": "可能消费输入缓冲、追加输出队列、更新写兴趣、推进协议会话状态或关闭连接；重复触发不得破坏状态一致性。",
-    "RESPONSE": "无直接返回值；根据读写事件刷新输出、读取输入、解析协议消息、分发业务处理或关闭连接。",
+    "ACTION": "先通过 find_session(server, fd) 获取 session，找不到时立即返回。SMTP_IO_WRITABLE 置位时调用 flush_control_now；flush 失败则 close_control 并立即 return，成功后才处理其他 event bits。SMTP_IO_READABLE 置位时调用 smtp_connection_read：返回 0 或 -1 表示关闭/致命错误，必须 close_control 并立即 return；返回 -2 仅表示当前无更多字节，仍必须处理输入缓冲中已经存在的完整行。循环 pop_line 时，超长行排队 500 后不得销毁 session，DATA mode 优先调用 handle_data_line，AUTH continuation 调用 handle_auth_continuation，否则解析命令并调用 handle_command。每次 handler 返回且 line 已释放后，都必须重新执行 session = find_session(server, fd)；若返回 NULL 则立即 return，只有重新确认有效后才能继续 pop_line 或最终 flush。handle_command、超长行策略以及任何可能调用 close_control 的路径都必须视为 session-invalidating call。",
+    "STATE_CHANGE": "可能消费输入缓冲、追加或刷新输出队列、更新写兴趣、推进协议状态或同步关闭连接。close_control/on_close 可在当前调用栈中销毁 session；每个可能失效点之后都必须重新查找，禁止继续使用旧指针。",
+    "RESPONSE": "无直接返回值；有效 session 上完成可写 flush 和已缓冲行的协议分发。关闭连接后立即终止本次事件处理，不再访问旧 session->conn，也不执行最终 flush。",
     "EVENT_TYPE": "RUNTIME_EVENT"
   }
 }
