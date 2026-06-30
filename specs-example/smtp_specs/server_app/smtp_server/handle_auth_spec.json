@@ -2,7 +2,7 @@
   "KIND": "FUNCTION_SPEC",
   "TRACE_ID": "smtp/server_app/smtp_server/handle_auth",
   "FUNCTION_TYPE": "ALGORITHM",
-  "ROLE": "处理 AUTH 命令，支持 LOGIN 和 PLAIN，可带 initial response 或进入 continuation",
+  "ROLE": "从 smtp_command_t.arg 中解析 AUTH mechanism token 和可选 initial response，支持 LOGIN/PLAIN",
   "SIGNATURE": {
     "RAW": "static void handle_auth(smtp_server_t* server, smtp_session_t* session, const smtp_command_t* cmd)",
     "NAME": "handle_auth",
@@ -69,23 +69,32 @@
         "NAME": "queue_code",
         "KIND": "CALL",
         "ROLE": "被该函数调用以完成子步骤"
+      },
+      {
+        "NAME": "smtp_session_reset_auth_exchange",
+        "KIND": "CALL",
+        "ROLE": "AUTH 参数或 Base64/blob 格式错误后清理 continuation 状态"
       }
     ],
     "VAR": []
   },
   "LOGIC": {
     "INPUT": "输入参数：server(smtp_server_t*，可为 NULL，BORROWED)；session(smtp_session_t*，可为 NULL，BORROWED)；cmd(const smtp_command_t*，可为 NULL，BORROWED)。",
-    "ACTION": "处理 AUTH 命令，支持 LOGIN 和 PLAIN，可带 initial response 或进入 continuation。",
-    "OUTPUT": "无返回值；副作用为处理 AUTH 命令，支持 LOGIN 和 PLAIN，可带 initial response 或进入 continuation。",
+    "ACTION": "server、session 或 cmd 无效时直接返回。若 session->authenticated 已为 true，则排队 503 并保持认证状态不变。若 cmd->has_arg 为 false，或 cmd->arg 去除首尾 ASCII whitespace 后为空，则排队 501，不进入 continuation。否则从 cmd->arg 起始处读取第一个非空白 token 作为 mechanism，并大小写无关比较；只有该 mechanism token 后的剩余非空白文本才是 optional initial_response。禁止把 LOGIN 或 PLAIN mechanism token 本身传给 smtp_auth_decode_base64 或 decode_b64_to_text。AUTH LOGIN 无 initial_response 时调用 begin_login_auth，进入 SMTP_AUTH_STATE_LOGIN_WAIT_USER 并发送 334 VXNlcm5hbWU6。AUTH LOGIN <initial_response> 时只把 <initial_response> 作为 base64 username 解码；成功后保存 session->auth_login_user、设置 SMTP_AUTH_STATE_LOGIN_WAIT_PASS 并发送 334 UGFzc3dvcmQ6，解码失败时排队 501 并调用 smtp_session_reset_auth_exchange。AUTH PLAIN 无 initial_response 时设置 SMTP_AUTH_STATE_PLAIN_WAIT_BLOB 并发送空 334 challenge。AUTH PLAIN <initial_response> 时只把 <initial_response> 作为 base64 PLAIN blob 解码并调用 smtp_auth_parse_plain_blob；Base64 或 blob 格式错误排队 501，成功则调用 finish_auth_if_valid，凭据不匹配由 finish_auth_if_valid 返回 535。其他 mechanism 排队 504，且不得进入 continuation。",
+    "OUTPUT": "无返回值；成功的 AUTH LOGIN 无 initial response 产生 username challenge，成功的 AUTH LOGIN initial response 产生 password challenge，成功的 AUTH PLAIN 由 finish_auth_if_valid 产生 235 或 535。语法/Base64/blob 格式错误返回 501；unsupported mechanism 返回 504；重复 AUTH 返回 503。",
     "INVARIANTS_USED": [
       "仅面向单线程事件循环或单线程调用路径；跨线程访问必须由上层同步。",
       "函数可能分配资源、消费缓冲、修改链表、写文件或更新网络状态，不承诺幂等。",
       "调用方必须遵守 SIGNATURE.PARAMS 中的 NULLABLE 与 OWNERSHIP 约束。",
       "维护 session->auth_state：设置 LOGIN/PLAIN continuation",
+      "维护 session->auth_login_user：LOGIN initial response 或 username continuation 成功后保存 username",
       "维护 session->authenticated：已认证则拒绝重复 AUTH",
-      "遵循 AUTH.mechanism 映射规则：机制名大小写规整为 LOGIN 或 PLAIN；其他机制返回 504",
-      "遵循 AUTH_LOGIN.initial_response 映射规则：可选 initial username base64，随后等待 password",
-      "遵循 AUTH_PLAIN.initial_response 映射规则：可选 PLAIN blob，缺省则发送空 334 challenge"
+      "遵循 AUTH.mechanism 映射规则：cmd->arg 的第一个非空白 token 是 mechanism，大小写无关规整为 LOGIN 或 PLAIN；其他机制返回 504",
+      "遵循 AUTH_LOGIN.initial_response 映射规则：LOGIN token 后的剩余非空白文本才是可选 initial username base64，随后等待 password",
+      "遵循 AUTH_PLAIN.initial_response 映射规则：PLAIN token 后的剩余非空白文本才是可选 PLAIN blob，缺省则发送空 334 challenge",
+      "cmd->has_arg=true 只表示存在 AUTH 参数，不表示存在 initial_response",
+      "LOGIN 和 PLAIN mechanism token 不得被当作 base64 payload 解码",
+      "initial_response 只存在于 mechanism token 后面的剩余文本"
     ]
   },
   "ACCESS_PATHS": [
@@ -93,6 +102,11 @@
       "PATH": "session->auth_state",
       "TYPE": "smtp_auth_state_t",
       "ROLE": "设置 LOGIN/PLAIN continuation"
+    },
+    {
+      "PATH": "session->auth_login_user",
+      "TYPE": "char[256]",
+      "ROLE": "LOGIN username 暂存"
     },
     {
       "PATH": "session->authenticated",
@@ -105,19 +119,19 @@
       "PACKET": "AUTH",
       "WIRE_FIELD": "mechanism",
       "STRATEGY": "parse_and_skip",
-      "RULE": "机制名大小写规整为 LOGIN 或 PLAIN；其他机制返回 504"
+      "RULE": "cmd->arg 的第一个非空白 token 是 mechanism，大小写无关比较 LOGIN/PLAIN；其他机制返回 504。不得把 mechanism token 当作 base64 initial response。"
     },
     {
       "PACKET": "AUTH_LOGIN",
       "WIRE_FIELD": "initial_response",
       "STRATEGY": "parse_and_skip",
-      "RULE": "可选 initial username base64，随后等待 password"
+      "RULE": "只有 LOGIN token 后的剩余非空白文本才是 initial username base64；AUTH LOGIN 无剩余文本时必须发送 334 VXNlcm5hbWU6 并等待 username；AUTH LOGIN <initial> 解码 <initial> 后发送 334 UGFzc3dvcmQ6。"
     },
     {
       "PACKET": "AUTH_PLAIN",
       "WIRE_FIELD": "initial_response",
       "STRATEGY": "parse_and_skip",
-      "RULE": "可选 PLAIN blob，缺省则发送空 334 challenge"
+      "RULE": "只有 PLAIN token 后的剩余非空白文本才是 initial PLAIN blob；AUTH PLAIN 无剩余文本时发送空 334 challenge；AUTH PLAIN <initial> 解码并解析 blob 后调用 finish_auth_if_valid。"
     }
   ]
 }

@@ -299,6 +299,26 @@
       "ID": "C12",
       "RULE": "mail store 必须使用 O_CREAT|O_EXCL 直接创建唯一的最终 .eml 文件；禁止通过丢失原始路径或对同一已改写字符串执行 rename 的方式添加后缀。",
       "DOC_REF": []
+    },
+    {
+      "ID": "C13",
+      "RULE": "SMTP command parser 对 AUTH 命令只保存 AUTH verb 后完整 argument 到 smtp_command_t.arg；不得拆分 LOGIN/PLAIN mechanism 或 initial response。",
+      "DOC_REF": []
+    },
+    {
+      "ID": "C14",
+      "RULE": "handle_auth 必须先从 cmd->arg 读取第一个非空白 token 作为 mechanism，再把该 token 后的剩余非空白文本作为 optional initial response；cmd->has_arg=true 不表示存在 initial response。",
+      "DOC_REF": []
+    },
+    {
+      "ID": "C15",
+      "RULE": "AUTH LOGIN 无 initial response 时必须发送 334 VXNlcm5hbWU6 并等待 username continuation；禁止把 LOGIN 或 PLAIN mechanism token 当作 Base64 payload 解码。",
+      "DOC_REF": []
+    },
+    {
+      "ID": "C16",
+      "RULE": "AUTH Base64 padding quartet 处理后必须进入 terminal 状态且清零 quartet_pos；后续只允许 whitespace，循环结束后不得再次处理已消费 quartet 或解码残余 2/3 个字符。",
+      "DOC_REF": []
     }
   ],
   "PUBLIC_SYMBOLS": [

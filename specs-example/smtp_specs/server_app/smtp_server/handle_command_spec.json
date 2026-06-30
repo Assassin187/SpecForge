@@ -99,7 +99,7 @@
   },
   "LOGIC": {
     "INPUT": "输入参数：server(smtp_server_t*，可为 NULL，BORROWED)；session(smtp_session_t*，可为 NULL，BORROWED)；cmd(const smtp_command_t*，可为 NULL，BORROWED)。",
-    "ACTION": "server、session 或 cmd 无效时直接返回。HELO/EHLO 需要非空 arg，成功后保存 helo_name、设置 greeted=true，并清理旧 transaction 与 AUTH continuation；HELO 排队 250，EHLO 排队 capabilities。AUTH 委托 handle_auth。MAIL 先通过 ensure_ready_for_mail 验证 greeting/auth，再把合法 FROM: 地址解析到 session->mail_from；解析成功后设置 has_mail_from=true，并只清空旧 rcpt_count、in_data_mode、message_len 和 message_too_large，不得在保存新 sender 后调用 smtp_session_reset_transaction，也不得把 session->mail_from 自复制给自身。RCPT 要求已存在 MAIL FROM，把合法 TO: 地址追加到 session->rcpt_to[rcpt_count] 并递增 rcpt_count。DATA 要求 sender 和至少一个 recipient，成功后进入 DATA mode、清空 message length/size flag 并排队 354。RSET 清理 transaction 与 AUTH continuation后排队 250；NOOP 排队 250；VRFY 排队 252；UNKNOWN 排队 500 且保持连接可继续处理。QUIT 必须严格依次 queue_code(221)、flush_control_now、close_control，然后立即 return；close_control 后禁止访问 session、检查 pending 或继续执行 switch。",
+    "ACTION": "server、session 或 cmd 无效时直接返回。HELO/EHLO 需要非空 arg，成功后保存 helo_name、设置 greeted=true，并清理旧 transaction 与 AUTH continuation；HELO 排队 250，EHLO 排队 capabilities。AUTH 分支只识别 SMTP_CMD_AUTH 并原样调用 handle_auth(server, session, cmd)；不得在 handle_command 内预先拆分、改写、解码或丢弃 cmd->arg。MAIL 先通过 ensure_ready_for_mail 验证 greeting/auth，再把合法 FROM: 地址解析到 session->mail_from；解析成功后设置 has_mail_from=true，并只清空旧 rcpt_count、in_data_mode、message_len 和 message_too_large，不得在保存新 sender 后调用 smtp_session_reset_transaction，也不得把 session->mail_from 自复制给自身。RCPT 要求已存在 MAIL FROM，把合法 TO: 地址追加到 session->rcpt_to[rcpt_count] 并递增 rcpt_count。DATA 要求 sender 和至少一个 recipient，成功后进入 DATA mode、清空 message length/size flag 并排队 354。RSET 清理 transaction 与 AUTH continuation后排队 250；NOOP 排队 250；VRFY 排队 252；UNKNOWN 排队 500 且保持连接可继续处理。QUIT 必须严格依次 queue_code(221)、flush_control_now、close_control，然后立即 return；close_control 后禁止访问 session、检查 pending 或继续执行 switch。",
     "OUTPUT": "无返回值；每个命令至多排队一个对应的单行响应或一组 EHLO capabilities。MAIL/RCPT/DATA 只在前置状态满足时推进 transaction；UNKNOWN 不关闭连接；QUIT 在尽力同步 flush 221 后关闭连接并使 session 失效。",
     "INVARIANTS_USED": [
       "仅面向单线程事件循环或单线程调用路径；跨线程访问必须由上层同步。",
@@ -115,6 +115,7 @@
       "遵循 SMTP_COMMAND.MAIL FROM 映射规则：需要 greeting/auth 且 FROM: mailbox 语法合法",
       "遵循 SMTP_COMMAND.RCPT TO 映射规则：需要 MAIL FROM 且 TO: mailbox 合法，最多 SMTP_MAX_RECIPIENTS",
       "遵循 SMTP_COMMAND.DATA 映射规则：需要 sender 和至少一个 recipient；成功进入 DATA mode 并返回 354",
+      "AUTH 分发必须保留 cmd->arg 的完整 AUTH 参数并委托 handle_auth 解析 mechanism 与 optional initial response",
       "MAIL FROM 保存新 sender 后不得调用会清空 mail_from/has_mail_from 的 smtp_session_reset_transaction",
       "UNKNOWN 只排队 500，不改变连接与 session 生命周期",
       "QUIT 的 queue 221、flush、close 顺序不可交换，close 后必须立即结束函数",
@@ -212,7 +213,7 @@
       "PACKET": "SMTP_COMMAND",
       "WIRE_FIELD": "AUTH",
       "STRATEGY": "store_in_field",
-      "RULE": "委托 handle_auth 处理 LOGIN/PLAIN；continuation 状态只写入 session->auth_state，unsupported mechanism 返回 504。",
+      "RULE": "支持 AUTH LOGIN、AUTH LOGIN <initial-response>、AUTH PLAIN、AUTH PLAIN <initial-response>；handle_command 只原样委托 handle_auth(server, session, cmd)，不得预先拆分、改写、解码或丢弃 cmd->arg。具体 mechanism 与 initial response 拆分在 handle_auth 内完成；continuation 状态只写入 session->auth_state，unsupported mechanism 返回 504。",
       "TARGET": "session->auth_state"
     },
     {
