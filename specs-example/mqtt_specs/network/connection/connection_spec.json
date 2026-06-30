@@ -211,7 +211,7 @@
         "SIGNATURE": "bool mqtt_connection_read(mqtt_connection_t* c, bool* peer_closed)",
         "NAME": "mqtt_connection_read",
         "KIND": "FUNC",
-        "ROLE": "循环 recv 拉取字节并追加缓冲，正确处理 EAGAIN/EINTR/对端关闭/错误分支",
+        "ROLE": "循环 recv 拉取字节到内部输入缓冲，正确处理 EAGAIN/EINTR/对端关闭/错误分支；不得使用 zero-length recv 或 MSG_PEEK 判断关闭",
         "VISIBILITY": "public"
       },
       {

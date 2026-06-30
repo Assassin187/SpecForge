@@ -18,6 +18,7 @@ from agent.coder.generation import (
 )
 from agent.coder.llm_client import LLMRequest, LLMResponse, LLMUsage
 from agent.coder.models import FileSpec, ModuleEntry, ProtocolMeta, SpecBundle
+from agent.coder.specs import load_spec_bundle_from_root
 from agent.coder.verifier import VerificationResult
 from agent.common.llm_client import _is_retryable_openai_error
 
@@ -121,6 +122,39 @@ def _main_bundle(spec_root: Path) -> SpecBundle:
         file_specs_by_source_path={file_spec.source_path: file_spec},
         function_specs_by_trace={},
         consistency_rules=[],
+        diagnostics=[],
+    )
+
+
+def _http_main_bundle() -> SpecBundle:
+    repo_root = Path(__file__).resolve().parents[3]
+    full = load_spec_bundle_from_root(repo_root / "specs-example/http_specs", validate_rendered_headers=False)
+    file_spec = full.file_specs_by_source_path["main.c"]
+    function_specs = {
+        item.trace_id: full.function_specs_by_trace[item.trace_id]
+        for item in file_spec.source_interfaces
+        if item.trace_id in full.function_specs_by_trace
+    }
+    module = ModuleEntry(
+        name="main",
+        role="HTTP entrypoint",
+        dependencies=[],
+        files=["main.c"],
+        artifacts=[],
+        doc_ref=[],
+        raw={},
+    )
+    return SpecBundle(
+        protocol=full.protocol,
+        module_spec_path=full.module_spec_path,
+        spec_root=full.spec_root,
+        generation_order=["main"],
+        modules_in_order=[module],
+        file_specs_by_trace={file_spec.trace_id: file_spec},
+        file_specs_by_header_path={},
+        file_specs_by_source_path={"main.c": file_spec},
+        function_specs_by_trace=function_specs,
+        consistency_rules=full.consistency_rules,
         diagnostics=[],
     )
 
@@ -302,12 +336,47 @@ class CoderRepairTests(unittest.TestCase):
         self.assertIsNone(manifest["verification_success"])
         verify_behavior.assert_not_called()
 
-    def test_source_only_main_uses_llm_generation(self) -> None:
+    def test_http_main_specs_use_llm_generation(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:
             tmp = Path(raw_tmp)
-            main_source = '#include "server/smtp_server.h"\nint main(void) { return 0; }\n'
+            main_source = """#include "server/http_server.h"
+
+#include <stdint.h>
+#include <stdlib.h>
+
+static uint16_t parse_port(const char* s) {
+    if (!s || !s[0]) {
+        return 0;
+    }
+    char* end = NULL;
+    unsigned long raw = strtoul(s, &end, 10);
+    if ((end && *end != '\\0') || raw == 0 || raw > 65535UL) {
+        return 0;
+    }
+    return (uint16_t)raw;
+}
+
+int main(int argc, char** argv) {
+    uint16_t port = argc > 1 ? parse_port(argv[1]) : 8080;
+    if (port == 0) {
+        port = 8080;
+    }
+    const char* root_dir = (argc > 2 && argv[2][0]) ? argv[2] : ".";
+    http_server_t* server = http_server_create(port, root_dir);
+    if (!server) {
+        return 1;
+    }
+    if (http_server_start(server) != 0) {
+        http_server_destroy(server);
+        return 1;
+    }
+    (void)http_server_run(server);
+    http_server_destroy(server);
+    return 0;
+}
+"""
             llm = FakeLLM(main_source)
-            generator = ProjectGenerator(_main_bundle(tmp), llm, tmp / "out")
+            generator = ProjectGenerator(_http_main_bundle(), llm, tmp / "out")
 
             with patch("agent.coder.generation._compile_project", return_value=_completed(0)):
                 with patch("agent.coder.verifier.ProjectVerifier.verify_behavior", return_value=VerificationResult(True, [])):
@@ -316,12 +385,28 @@ class CoderRepairTests(unittest.TestCase):
             generated = generator.project_dir / "main.c"
             generated_content = generated.read_text(encoding="utf-8")
             prompt = llm.requests[0].messages[1]["content"]
+            manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+            prompt_logs = list((tmp / "out/_agent_logs").glob("*prompt_main.c.txt"))
 
         self.assertTrue(result.success)
+        self.assertEqual(len(llm.requests), 1)
         self.assertEqual(generated_content, main_source)
         self.assertIn("Generate the full C source file `main.c`", prompt)
+        self.assertIn("Entrypoint raw specs", prompt)
+        self.assertIn("argv[1]", prompt)
+        self.assertIn("8080", prompt)
+        self.assertIn("argv[2]", prompt)
+        self.assertIn("root_dir", prompt)
+        self.assertIn("Never pass NULL", prompt)
+        self.assertIn("http_server_create", prompt)
+        self.assertIn("http_server_start", prompt)
+        self.assertIn("http_server_run", prompt)
+        self.assertIn("http_server_destroy", prompt)
         self.assertIn("This is a source-only file", prompt)
-        self.assertIn("server/smtp_server.h", prompt)
+        self.assertIn("server/http_server.h", prompt)
+        self.assertEqual(manifest["llm_call_usage"][0]["subject"], "main.c")
+        self.assertIn("source_generation", manifest["stage_token_usage"])
+        self.assertTrue(prompt_logs)
 
     def test_source_only_main_compile_error_is_repairable(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:

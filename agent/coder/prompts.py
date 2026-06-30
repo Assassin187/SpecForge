@@ -191,6 +191,23 @@ def _private_interface_summary(file_spec: FileSpec, function_specs: list[Functio
     return "\n".join(lines) if lines else "- none"
 
 
+def _entrypoint_raw_specs(function_specs: list[FunctionSpec]) -> str:
+    entries: list[dict[str, Any]] = []
+    for spec in function_specs:
+        if spec.function_type.upper() != "ENTRYPOINT":
+            continue
+        entries.append(
+            {
+                "TRACE_ID": spec.trace_id,
+                "SIGNATURE": spec.signature.raw,
+                "FUNCTION_TYPE": spec.function_type,
+                "RELY": spec.rely,
+                "LOGIC": spec.raw.get("LOGIC", spec.body),
+            }
+        )
+    return _json(entries)
+
+
 def build_source_prompt(
     bundle: SpecBundle,
     module: ModuleEntry,
@@ -253,6 +270,36 @@ Requirements:
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": content},
     ]
+
+
+def build_main_source_prompt(
+    bundle: SpecBundle,
+    module: ModuleEntry,
+    file_spec: FileSpec,
+    function_specs: list[FunctionSpec],
+    generated_header: str,
+    dependency_headers: dict[str, str],
+) -> list[dict[str, str]]:
+    messages = build_source_prompt(bundle, module, file_spec, function_specs, generated_header, dependency_headers)
+    main_section = f"""Entrypoint raw specs:
+{_entrypoint_raw_specs(function_specs)}
+
+Entrypoint/main-specific requirements:
+- Generate the full C source-only entrypoint file; do not include a nonexistent main header.
+- Implement every SOURCE.INTERFACE listed for this file, including static helper functions such as parse_port.
+- Treat the ENTRYPOINT LOGIC as the exact command-line and lifecycle contract.
+- Preserve argv indexes and defaults exactly. If LOGIC says argv[2] supplies root_dir with default ".", generate a named local variable from argv[2] and pass it to the create function.
+- Never pass NULL for an argument whose value is specified by argc/argv/defaults in the specs. Pass NULL only when the specs explicitly require NULL.
+- Follow RELY.FUNC lifecycle order: create -> start -> run -> destroy, unless the ENTRYPOINT LOGIC says otherwise.
+- On create/start failure, return a non-zero exit code; if an object was created before failure, destroy it before returning.
+- Output only the complete C file contents, with no Markdown.
+
+"""
+    messages[1] = {
+        **messages[1],
+        "content": messages[1]["content"].replace("Requirements:\n", f"{main_section}Requirements:\n", 1),
+    }
+    return messages
 
 
 def build_repair_prompt(

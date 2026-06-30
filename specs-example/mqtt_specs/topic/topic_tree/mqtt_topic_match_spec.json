@@ -35,11 +35,17 @@
   },
   "LOGIC": {
     "INPUT": "输入为过滤器 filter 与主题 topic",
-    "ACTION": "逐层解析 filter/topic；支持 + 匹配单层，# 匹配剩余所有层且必须位于末尾；普通层级执行精确匹配；最终依据双方是否同时结束返回结果",
+    "ACTION": "逐层解析 filter/topic 并比较：普通层级必须 exact match；+ 必须作为完整 filter level 且只匹配一个 topic level；# 必须作为完整且最后一个 filter level，并立即匹配剩余 topic。普通层全部匹配后，只有 filter 与 topic 同时消费完才返回 true；不得把已结束后的空 segment 当作有效匹配层。",
     "OUTPUT": "返回 true 表示匹配成功，false 表示不匹配或参数非法",
     "INVARIANTS_USED": [
       "# 仅在最后一层合法",
-      "匹配过程不修改输入字符串"
+      "匹配过程不修改输入字符串",
+      "interop/topic 匹配 interop/topic",
+      "interop/topic 不匹配 interop/topic/x",
+      "a/# 匹配 a/b",
+      "a/+ 匹配 a/b",
+      "a/+ 不匹配 a/b/c",
+      "a/#/x 非法或不得匹配任何 topic"
     ]
   }
 }

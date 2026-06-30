@@ -155,7 +155,7 @@
         "SIGNATURE": "bool mqtt_topic_match(const char* filter, const char* topic)",
         "NAME": "mqtt_topic_match",
         "KIND": "FUNC",
-        "ROLE": "逐层比较过滤器与主题，支持 + 单层与 # 多层通配符匹配",
+        "ROLE": "逐层比较过滤器与主题，必须同时支持 exact filter、+ 单层通配与 # 末尾多层通配匹配",
         "VISIBILITY": "public"
       },
       {
@@ -211,7 +211,7 @@
         "SIGNATURE": "static bool next_level(const char* s, size_t s_len, size_t* io_pos, const char** out_start, size_t* out_len, bool* out_done)",
         "NAME": "next_level",
         "KIND": "FUNC",
-        "ROLE": "按 / 分隔提取主题层级分段并推进读取位置",
+        "ROLE": "按 / 分隔提取主题层级分段并推进读取位置；不得使用越界 sentinel，结束状态必须由 out_done 表达",
         "VISIBILITY": "private"
       }
     ]

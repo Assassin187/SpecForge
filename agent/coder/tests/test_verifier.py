@@ -6,8 +6,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from agent.coder.cli import default_output_dir
-from agent.coder.generation import render_main_c, render_makefile
-from agent.coder.models import FileSpec, HeaderInterface, ModuleEntry, ProtocolMeta, SpecBundle
+from agent.coder.generation import render_makefile
+from agent.coder.models import FileSpec, ModuleEntry, ProtocolMeta, SpecBundle
 from agent.coder.protocol_behavior_val import coap
 from agent.coder.verifier import ProjectVerifier
 
@@ -66,28 +66,6 @@ class VerifierTests(unittest.TestCase):
         self.assertEqual(result.scenarios[0]["name"], "coap_get_hello")
         self.assertEqual(result.scenarios[0]["status"], "failed")
         self.assertTrue(all(item["status"] == "skipped" for item in result.scenarios[1:]))
-
-    def test_main_uses_protocol_default_port(self) -> None:
-        with tempfile.TemporaryDirectory() as raw_tmp:
-            root = Path(raw_tmp)
-            bundle = _bundle(root, default_port=5683)
-            app_spec = FileSpec(
-                **{
-                    **bundle.file_specs_by_source_path["main.c"].__dict__,
-                    "header_path": "server/app.h",
-                    "source_path": "server/app.c",
-                    "header_data": [{"NAME": "coap_server_t", "KIND": "TYPE", "VISIBILITY": "PUBLIC"}],
-                    "header_interfaces": [
-                        HeaderInterface("coap_server_t* coap_server_create(uint16_t port)", "coap_server_create", "FUNC", "API", "", "PUBLIC")
-                    ],
-                }
-            )
-            bundle.modules_in_order = [ModuleEntry("app", "runtime app", [], ["server/app.h", "server/app.c"], [], [], {})]
-            bundle.file_specs_by_header_path = {"server/app.h": app_spec}
-
-            rendered = render_main_c(bundle)
-
-        self.assertIn("return 5683;", rendered)
 
     def test_default_output_dir_uses_protocol_binary_name(self) -> None:
         output_dir = default_output_dir(_bundle(Path("."), protocol="coap"))

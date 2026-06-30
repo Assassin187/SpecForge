@@ -284,7 +284,12 @@
     },
     {
       "ID": "C4",
-      "RULE": "topic filter 匹配规则必须与 MQTT 3.1.1 的 +/# 语义一致（# 仅允许出现在末尾）；不符合的 filter 应在上层拒绝或安全处理。",
+      "RULE": "topic filter 匹配规则必须与 MQTT 3.1.1 的 exact、+/# 语义一致：exact filter 必须匹配 identical topic；+/# 通配规则不能破坏 exact route；# 仅允许出现在末尾；不符合的 filter 应在上层拒绝或安全处理。",
+      "DOC_REF": []
+    },
+    {
+      "ID": "C4a",
+      "RULE": "network 层只能通过真实 recv 到非空缓冲区的返回值判断 EOF；禁止使用 zero-length recv 或 MSG_PEEK/peek 探测来判断 peer closed。",
       "DOC_REF": []
     },
     {
