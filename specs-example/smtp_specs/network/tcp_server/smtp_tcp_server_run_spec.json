@@ -49,11 +49,11 @@
   },
   "EVENT": {
     "TRIGGER": "检查 listen_fd/epoll_fd 有效后设置 running=true；循环 epoll_wait；listen_fd 事件调用 accept_loop，客户端错误/挂断关闭连接，可读/可写事件映射为 SMTP_IO_READABLE/SMTP_IO_WRITABLE 后调用 on_event。",
-    "PRECONDITION": "相关 server/session/connection 对象已创建；NULL 输入按当前实现的保护分支处理。",
-    "INPUT": "输入为 int smtp_tcp_server_run(smtp_tcp_server_t* server) 的参数集合。",
+    "PRECONDITION": "输入参数：server(smtp_tcp_server_t*，可为 NULL，BORROWED)；遵守单线程事件循环调用约束。",
+    "INPUT": "输入参数：server(smtp_tcp_server_t*，可为 NULL，BORROWED)。",
     "ACTION": "检查 listen_fd/epoll_fd 有效后设置 running=true；循环 epoll_wait；listen_fd 事件调用 accept_loop，客户端错误/挂断关闭连接，可读/可写事件映射为 SMTP_IO_READABLE/SMTP_IO_WRITABLE 后调用 on_event。",
-    "STATE_CHANGE": "可能更新 TCP 事件循环、SMTP session、输出队列或连接集合状态。",
-    "RESPONSE": "通过返回值、连接关闭、队列响应或回调副作用体现处理结果。",
+    "STATE_CHANGE": "可能更新 server->running(进入循环时置 true)；事件可能产生状态副作用，不承诺幂等。",
+    "RESPONSE": "成功运行到 stop 后返回 0；server、listen_fd 或 epoll_fd 无效时返回 -1。",
     "EVENT_TYPE": "RUNTIME_EVENT"
   },
   "ACCESS_PATHS": [

@@ -34,17 +34,17 @@
       {
         "NAME": "http_status_text",
         "KIND": "CALL",
-        "ROLE": ""
+        "ROLE": "send_error 调用 http_status_text 完成子步骤"
       },
       {
         "NAME": "http_response_send",
         "KIND": "CALL",
-        "ROLE": ""
+        "ROLE": "send_error 调用 http_response_send 完成子步骤"
       },
       {
         "NAME": "http_tcp_server_update_interest",
         "KIND": "CALL",
-        "ROLE": ""
+        "ROLE": "send_error 调用 http_tcp_server_update_interest 完成子步骤"
       }
     ],
     "VAR": []
@@ -52,9 +52,12 @@
   "LOGIC": {
     "INPUT": "输入 server、session、HTTP 状态码。",
     "ACTION": "snprintf 生成 HTML 错误页面→http_response_send 发送→http_tcp_server_update_interest 注册写事件。",
-    "OUTPUT": "通过返回值或副作用反映处理结果。",
+    "OUTPUT": "返回值表达snprintf 生成 HTML 错误页面→http_response_send 发送→http_tcp_server_update_interest 注册写事件的结果；成功、失败和特殊分支按当前 C 实现的返回码区分。",
     "INVARIANTS_USED": [
-      "函数执行保持本模块内部状态一致性。"
+      "仅面向单线程事件循环或单线程调用路径；跨线程访问必须由上层同步。",
+      "函数可能分配资源、消费缓冲、修改链表、写文件或更新网络状态，不承诺幂等。",
+      "session 非空；status_code 为标准 HTTP 错误码（400/403/404/405/413/500/501）",
+      "HTTP 错误响应已排入连接的输出缓冲队列"
     ]
   }
 }

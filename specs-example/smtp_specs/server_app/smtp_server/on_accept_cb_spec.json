@@ -71,11 +71,11 @@
   },
   "EVENT": {
     "TRIGGER": "tcp_server 接受新连接后调用；创建 smtp_session_t，失败则关闭 fd，成功后排队发送 '<hostname> ESMTP ready' 的 220 greeting。",
-    "PRECONDITION": "相关 server/session/connection 对象已创建；NULL 输入按当前实现的保护分支处理。",
-    "INPUT": "输入为 static void on_accept_cb(void* user, int fd, const struct sockaddr_storage* peer, socklen_t peer_len) 的参数集合。",
+    "PRECONDITION": "输入参数：user(void*，可为 NULL，BORROWED)；fd(int，不可为 NULL，BORROWED)；peer(const struct sockaddr_storage*，可为 NULL，BORROWED)；peer_len(socklen_t，不可为 NULL，BORROWED)；遵守单线程事件循环调用约束。",
+    "INPUT": "输入参数：user(void*，可为 NULL，BORROWED)；fd(int，不可为 NULL，BORROWED)；peer(const struct sockaddr_storage*，可为 NULL，BORROWED)；peer_len(socklen_t，不可为 NULL，BORROWED)。",
     "ACTION": "tcp_server 接受新连接后调用；创建 smtp_session_t，失败则关闭 fd，成功后排队发送 '<hostname> ESMTP ready' 的 220 greeting。",
-    "STATE_CHANGE": "可能更新 TCP 事件循环、SMTP session、输出队列或连接集合状态。",
-    "RESPONSE": "通过返回值、连接关闭、队列响应或回调副作用体现处理结果。",
+    "STATE_CHANGE": "新增或拒绝一个连接/session，并相应更新 server 管理链表或 TCP client 集合；重复触发不得破坏状态一致性。",
+    "RESPONSE": "无直接返回值；成功时新增 session/connection 并注册到上层容器，失败时关闭 fd 并清理临时对象。",
     "EVENT_TYPE": "RUNTIME_EVENT"
   }
 }

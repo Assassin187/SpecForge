@@ -2,8 +2,6 @@
   "KIND": "FUNCTION_SPEC",
   "TRACE_ID": "http/network/tcp_server/http_tcp_server_update_interest",
   "FUNCTION_TYPE": "ALGORITHM",
-  "THREAD_SAFETY": "SINGLE_THREAD_ONLY",
-  "IDEMPOTENT": false,
   "ROLE": "更新 fd 的 epoll 监听事件（基础 EPOLLIN|EPOLLRDHUP，按需追加 EPOLLOUT）",
   "SIGNATURE": {
     "RAW": "int http_tcp_server_update_interest(http_tcp_server_t* server, int fd, bool want_write)",
@@ -55,7 +53,9 @@
     "ACTION": "find_client 查找节点→若 want_write 状态未变直接返回 0→epoll_ctl EPOLL_CTL_MOD 更新事件掩码→更新 node->want_write。",
     "OUTPUT": "成功返回 0，失败返回 -1。",
     "INVARIANTS_USED": [
-      "函数执行保持本模块内部状态一致性。"
+      "仅面向单线程事件循环或单线程调用路径；跨线程访问必须由上层同步。",
+      "函数可能分配资源、消费缓冲、修改链表、写文件或更新网络状态，不承诺幂等。",
+      "调用方必须遵守 SIGNATURE.PARAMS 中的 NULLABLE 与 OWNERSHIP 约束。"
     ]
   }
 }

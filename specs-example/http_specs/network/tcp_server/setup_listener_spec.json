@@ -2,8 +2,6 @@
   "KIND": "FUNCTION_SPEC",
   "TRACE_ID": "http/network/tcp_server/setup_listener",
   "FUNCTION_TYPE": "ALGORITHM",
-  "THREAD_SAFETY": "SINGLE_THREAD_ONLY",
-  "IDEMPOTENT": false,
   "ROLE": "创建非阻塞 IPv4 TCP 监听 socket：socket→SO_REUSEADDR→set_nonblocking→bind→listen(128)",
   "SIGNATURE": {
     "RAW": "static int setup_listener(http_tcp_server_t* server)",
@@ -39,7 +37,9 @@
     "ACTION": "socket(AF_INET, SOCK_STREAM, 0) 创建→setsockopt SO_REUSEADDR→set_nonblocking→bind INADDR_ANY:port→listen(fd, 128)。任一步失败则 close 并返回 -1。",
     "OUTPUT": "成功设置 server->listen_fd 并返回 0。",
     "INVARIANTS_USED": [
-      "函数执行保持本模块内部状态一致性。"
+      "仅面向单线程事件循环或单线程调用路径；跨线程访问必须由上层同步。",
+      "函数可能分配资源、消费缓冲、修改链表、写文件或更新网络状态，不承诺幂等。",
+      "调用方必须遵守 SIGNATURE.PARAMS 中的 NULLABLE 与 OWNERSHIP 约束。"
     ]
   }
 }

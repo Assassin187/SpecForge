@@ -27,20 +27,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "确保动态字节缓冲容量至少达到 needed，按 4096 起步倍增",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
-            }
-          ],
-          "IDEMPOTENT": true,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
         "VISIBILITY": "private"
       },
       {
@@ -50,20 +36,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "为已建立 fd 创建 smtp_connection_t 并初始化缓冲状态",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -73,20 +45,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "释放连接对象及输入/输出缓冲，但不主动 close fd",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -96,20 +54,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "读取连接 fd；conn 为 NULL 时返回 -1",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
-            }
-          ],
-          "IDEMPOTENT": true,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -119,20 +63,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "从非阻塞 socket 尽可能读取字节追加到输入缓冲",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -142,20 +72,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "从输入缓冲弹出一行，去除结尾 LF 和可选 CR，返回调用方拥有的新字符串",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
-            }
-          ],
-          "IDEMPOTENT": true,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -165,20 +81,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "把待发送字节复制到输出缓冲队尾",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -188,20 +90,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "将 NUL 结尾文本排入输出队列",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -211,20 +99,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "判断输出队列是否仍有未发送字节",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
-            }
-          ],
-          "IDEMPOTENT": true,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -234,20 +108,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "尝试把输出缓冲剩余字节发送到 socket",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
         "VISIBILITY": "public"
       }
     ]

@@ -26,24 +26,24 @@
     "STRUCT": [
       {
         "NAME": "http_session_t",
-        "ROLE": ""
+        "ROLE": "flush_and_update 读取或维护的 http_session_t 状态"
       }
     ],
     "FUNC": [
       {
         "NAME": "http_connection_flush",
         "KIND": "CALL",
-        "ROLE": ""
+        "ROLE": "flush_and_update 调用 http_connection_flush 完成子步骤"
       },
       {
         "NAME": "http_connection_has_pending",
         "KIND": "CALL",
-        "ROLE": ""
+        "ROLE": "flush_and_update 调用 http_connection_has_pending 完成子步骤"
       },
       {
         "NAME": "http_tcp_server_update_interest",
         "KIND": "CALL",
-        "ROLE": ""
+        "ROLE": "flush_and_update 调用 http_tcp_server_update_interest 完成子步骤"
       }
     ],
     "VAR": []
@@ -51,9 +51,12 @@
   "LOGIC": {
     "INPUT": "输入 server 和 session。",
     "ACTION": "http_connection_flush 刷写→http_connection_has_pending 检查剩余→http_tcp_server_update_interest 按需更新。",
-    "OUTPUT": "通过返回值或副作用反映处理结果。",
+    "OUTPUT": "返回值表达http_connection_flush 刷写→http_connection_has_pending 检查剩余→http_tcp_server_update_interest 按需更新的结果；成功、失败和特殊分支按当前 C 实现的返回码区分。",
     "INVARIANTS_USED": [
-      "函数执行保持本模块内部状态一致性。"
+      "仅面向单线程事件循环或单线程调用路径；跨线程访问必须由上层同步。",
+      "函数可能分配资源、消费缓冲、修改链表、写文件或更新网络状态，不承诺幂等。",
+      "server 和 session 均非空；server->tcp 已初始化",
+      "输出缓冲数据已尽可能发送；epoll 监听事件已根据残留数据更新"
     ]
   }
 }

@@ -26,18 +26,18 @@
     "STRUCT": [
       {
         "NAME": "struct http_server",
-        "ROLE": ""
+        "ROLE": "remove_session 读取或维护的 struct http_server 状态"
       },
       {
         "NAME": "http_session_node_t",
-        "ROLE": ""
+        "ROLE": "remove_session 读取或维护的 http_session_node_t 状态"
       }
     ],
     "FUNC": [
       {
         "NAME": "http_session_destroy",
         "KIND": "CALL",
-        "ROLE": ""
+        "ROLE": "remove_session 调用 http_session_destroy 完成子步骤"
       }
     ],
     "VAR": []
@@ -45,9 +45,12 @@
   "LOGIC": {
     "INPUT": "输入 server 和 fd。",
     "ACTION": "指针的指针遍历链表→匹配后解除链接→http_session_destroy 销毁会话→free 节点。",
-    "OUTPUT": "通过返回值或副作用反映处理结果。",
+    "OUTPUT": "无返回值；副作用为指针的指针遍历链表→匹配后解除链接→http_session_destroy 销毁会话→free 节点。",
     "INVARIANTS_USED": [
-      "函数执行保持本模块内部状态一致性。"
+      "仅面向单线程事件循环或单线程调用路径；跨线程访问必须由上层同步。",
+      "重复调用不得破坏内部一致性；无匹配对象、空输入或已完成状态按当前实现安全处理。",
+      "server 非空",
+      "匹配 fd 的节点从链表移除并释放内存；fd 未匹配时无副作用"
     ]
   }
 }

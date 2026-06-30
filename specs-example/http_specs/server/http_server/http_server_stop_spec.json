@@ -22,17 +22,20 @@
       {
         "NAME": "http_tcp_server_stop",
         "KIND": "CALL",
-        "ROLE": ""
+        "ROLE": "http_server_stop 调用 http_tcp_server_stop 完成子步骤"
       }
     ],
     "VAR": []
   },
   "LOGIC": {
-    "INPUT": "输入来自函数参数。",
+    "INPUT": "输入参数：server(http_server_t*，可为 NULL，BORROWED)。",
     "ACTION": "空安全检查→委托 http_tcp_server_stop。",
-    "OUTPUT": "通过返回值或副作用反映处理结果。",
+    "OUTPUT": "无返回值；对象有效时请求底层事件循环停止，NULL 输入不产生副作用。",
     "INVARIANTS_USED": [
-      "函数执行保持本模块内部状态一致性。"
+      "仅面向单线程事件循环或单线程调用路径；跨线程访问必须由上层同步。",
+      "重复调用不得破坏内部一致性；无匹配对象、空输入或已完成状态按当前实现安全处理。",
+      "server 非空且 server->tcp 已初始化",
+      "TCP server 运行标志置为 false，事件线程将退出循环"
     ]
   }
 }

@@ -34,10 +34,13 @@
     "VAR": []
   },
   "LOGIC": {
-    "INPUT": "输入来自函数参数。",
+    "INPUT": "输入参数：conn(http_connection_t*，不可为 NULL，BORROWED)；text(const char*，可为 NULL，BORROWED)。",
     "ACTION": "text==NULL 返回 -1；否则 strlen(text) 后调用 http_connection_queue(conn, text, len)。",
-    "OUTPUT": "委托 http_connection_queue 的返回值。"
-  },
-  "THREAD_SAFETY": "SINGLE_THREAD_ONLY",
-  "IDEMPOTENT": false
+    "OUTPUT": "委托 http_connection_queue 的返回值。",
+    "INVARIANTS_USED": [
+      "仅面向单线程事件循环或单线程调用路径；跨线程访问必须由上层同步。",
+      "函数可能分配资源、消费缓冲、修改链表、写文件或更新网络状态，不承诺幂等。",
+      "调用方必须遵守 SIGNATURE.PARAMS 中的 NULLABLE 与 OWNERSHIP 约束。"
+    ]
+  }
 }

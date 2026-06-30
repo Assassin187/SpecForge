@@ -49,13 +49,6 @@
       "../protocol/http_response.h",
       "../network/connection.h"
     ],
-    "SYSTEM_DEPENDENCY": [
-      "<stdarg.h>",
-      "<stdio.h>",
-      "<stdlib.h>",
-      "<string.h>",
-      "<time.h>"
-    ],
     "DATA": [],
     "INTERFACE": [
       {
@@ -63,21 +56,7 @@
         "SIGNATURE": "const char* http_status_text(int code)",
         "NAME": "http_status_text",
         "KIND": "FUNC",
-        "ROLE": "switch-case 查找表将状态码映射为 RFC 标准文本字面量；未知码返回 \"Unknown\"",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "code 为有效的 HTTP 状态码整数"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "返回指向静态字符串字面量的指针，调用方无需释放"
-            }
-          ],
-          "IDEMPOTENT": true,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
+        "ROLE": "将 HTTP 状态码映射为 RFC 标准状态文本；未知码返回 Unknown",
         "VISIBILITY": "public"
       },
       {
@@ -85,30 +64,7 @@
         "SIGNATURE": "int http_response_send(http_connection_t* conn, int status, const char** extra_headers, const void* body, size_t body_len)",
         "NAME": "http_response_send",
         "KIND": "FUNC",
-        "ROLE": "按 HTTP/1.1 规范顺序构建响应：状态行→Date(RFC 1123)→Server→Content-Length→Connection:close→遍历 extra_headers→空白行→正文；每部分通过 queuefv 追加到连接输出缓冲",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "conn 为已创建的有效连接对象"
-            },
-            {
-              "TEXT": "extra_headers 为 NULL 或以 NULL 终止的 \"Name: value\" 字符串数组"
-            },
-            {
-              "TEXT": "body 非 NULL 时 body_len 必须为正文实际长度；body 为 NULL 时 body_len 应为 0"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "完整 HTTP/1.1 响应字节序列已追加到 conn 的输出缓冲"
-            },
-            {
-              "TEXT": "返回 0 表示成功，返回 -1 表示队列操作失败"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
+        "ROLE": "构建完整 HTTP/1.1 响应并排队到连接输出缓冲：状态行→Date→Server→Content-Length→Connection:close→可选 extra_headers→空白行→可选正文",
         "VISIBILITY": "public"
       },
       {
@@ -116,55 +72,15 @@
         "SIGNATURE": "int http_response_send_html(http_connection_t* conn, int status, const char* title, const char* fmt, ...)",
         "NAME": "http_response_send_html",
         "KIND": "FUNC",
-        "ROLE": "vsnprintf 将变参格式化为内容字符串→snprintf 包装为标准 HTML5 文档结构（含 title 与 body）→设置 Content-Type: text/html 头部→委托 http_response_send 发送",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "conn 为已创建的有效连接对象"
-            },
-            {
-              "TEXT": "fmt 为有效的 printf 格式字符串，变参与格式说明符匹配"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "格式化的 HTML 响应已通过 http_response_send 追加到 conn 的输出缓冲"
-            },
-            {
-              "TEXT": "返回 0 表示成功，返回 -1 表示格式化或发送失败"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
+        "ROLE": "将 printf 风格格式化字符串包装为 text/html 响应并发送",
         "VISIBILITY": "public"
       },
       {
         "TRACE_ID": "http/protocol/http_response/queuefv",
-        "SIGNATURE": "static int queuefv(http_connection_t* conn, const char* fmt, va_list args)",
+        "SIGNATURE": "static int queuefv(http_connection_t* conn, const char* fmt, ...)",
         "NAME": "queuefv",
         "KIND": "FUNC",
-        "ROLE": "静态辅助函数：vsnprintf 将格式化字符串写入栈缓冲区，通过 http_connection_queue_str 追加到连接输出缓冲；格式化失败返回 -1",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "conn 为已创建的有效连接对象"
-            },
-            {
-              "TEXT": "fmt 与 args 构成有效的 printf 格式字符串与参数"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "格式化后的字符串已追加到 conn 的输出缓冲"
-            },
-            {
-              "TEXT": "返回 0 表示成功，返回 -1 表示格式化或队列操作失败"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
+        "ROLE": "静态辅助：vsnprintf 格式化到栈缓冲后委托 http_connection_queue_str",
         "VISIBILITY": "private"
       }
     ]

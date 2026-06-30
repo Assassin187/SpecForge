@@ -41,12 +41,14 @@
     "VAR": []
   },
   "LOGIC": {
-    "INPUT": "输入为 static smtp_session_t* find_session(smtp_server_t* server, int fd) 的参数集合。",
-    "ACTION": "按 control_fd 在 server session 链表中查找 session",
-    "OUTPUT": "按签名返回成功/失败、对象指针、格式化长度或无返回值；失败路径遵循当前 C 实现。",
+    "INPUT": "输入参数：server(smtp_server_t*，可为 NULL，BORROWED)；fd(int，不可为 NULL，BORROWED)。",
+    "ACTION": "按 control_fd 在 server session 链表中查找 session。",
+    "OUTPUT": "成功返回对象指针；分配、查找或初始化失败时返回 NULL。",
     "INVARIANTS_USED": [
-      "不引入当前源码不存在的 SMTP 扩展或额外协议状态。",
-      "所有缓冲写入必须受目标容量约束保护。"
+      "仅面向单线程事件循环或单线程调用路径；跨线程访问必须由上层同步。",
+      "重复调用不得破坏内部一致性；无匹配对象、空输入或已完成状态按当前实现安全处理。",
+      "调用方必须遵守 SIGNATURE.PARAMS 中的 NULLABLE 与 OWNERSHIP 约束。",
+      "维护 server->sessions：遍历入口"
     ]
   },
   "ACCESS_PATHS": [

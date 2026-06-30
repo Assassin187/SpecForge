@@ -34,11 +34,11 @@
   },
   "EVENT": {
     "TRIGGER": "应用启动后调用；委托 smtp_tcp_server_run，后续 accept/event/close 由注册回调驱动。",
-    "PRECONDITION": "相关 server/session/connection 对象已创建；NULL 输入按当前实现的保护分支处理。",
-    "INPUT": "输入为 int smtp_server_run(smtp_server_t* server) 的参数集合。",
+    "PRECONDITION": "输入参数：server(smtp_server_t*，可为 NULL，BORROWED)；遵守单线程事件循环调用约束。",
+    "INPUT": "输入参数：server(smtp_server_t*，可为 NULL，BORROWED)。",
     "ACTION": "应用启动后调用；委托 smtp_tcp_server_run，后续 accept/event/close 由注册回调驱动。",
-    "STATE_CHANGE": "可能更新 TCP 事件循环、SMTP session、输出队列或连接集合状态。",
-    "RESPONSE": "通过返回值、连接关闭、队列响应或回调副作用体现处理结果。",
+    "STATE_CHANGE": "可能更新与应用启动后调用；委托 smtp_tcp_server_run，后续 accept/event/close 由注册回调驱动相关的运行时状态；事件可能产生状态副作用，不承诺幂等。",
+    "RESPONSE": "返回 smtp_tcp_server_run 的结果；server 为 NULL 时返回 -1。",
     "EVENT_TYPE": "RUNTIME_EVENT"
   }
 }

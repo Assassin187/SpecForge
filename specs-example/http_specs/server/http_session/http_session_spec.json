@@ -62,9 +62,6 @@
     "DEPENDENCY": [
       "../server/http_session.h"
     ],
-    "SYSTEM_DEPENDENCY": [
-      "<stdlib.h>"
-    ],
     "DATA": [],
     "INTERFACE": [
       {
@@ -72,26 +69,7 @@
         "SIGNATURE": "http_session_t* http_session_create(int fd)",
         "NAME": "http_session_create",
         "KIND": "FUNC",
-        "ROLE": "calloc 分配会话对象，设置 fd，调用 http_connection_create 创建底层连接；任一失败则清理已分配资源并返回 NULL",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "fd 为已 accept 的有效 socket 文件描述符；并发访问需由上层同步控制"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "成功返回有效的 http_session_t*，其 fd 字段设置为入参 fd，conn 字段指向新分配的连接对象"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY",
-          "CALL_CONTRACTS": [
-            {
-              "TEXT": "成功返回动态分配的会话对象，调用方必须通过 http_session_destroy 释放"
-            }
-          ]
-        },
+        "ROLE": "为已 accept 的 fd 分配会话对象并创建底层连接对象；任一失败清理并返回 NULL",
         "VISIBILITY": "public"
       },
       {
@@ -99,21 +77,7 @@
         "SIGNATURE": "void http_session_destroy(http_session_t* session)",
         "NAME": "http_session_destroy",
         "KIND": "FUNC",
-        "ROLE": "空安全检查后先销毁底层连接对象 http_connection_destroy，再 free 会话自身",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "session 为有效的 http_session_t* 或 NULL；并发访问需由上层同步控制"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "session 及其关联的连接对象被释放；session 为 NULL 时无操作"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
+        "ROLE": "销毁底层连接对象并释放会话；空指针安全",
         "VISIBILITY": "public"
       }
     ]

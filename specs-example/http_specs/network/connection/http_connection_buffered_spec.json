@@ -27,12 +27,16 @@
     "VAR": []
   },
   "LOGIC": {
-    "INPUT": "输入来自函数参数。",
+    "INPUT": "输入参数：conn(const http_connection_t*，可为 NULL，BORROWED)。",
     "ACTION": "空安全检查后返回 conn->in_len。",
-    "OUTPUT": "通过返回值反映可读字节数。"
+    "OUTPUT": "通过返回值反映可读字节数。",
+    "INVARIANTS_USED": [
+      "仅面向单线程事件循环或单线程调用路径；跨线程访问必须由上层同步。",
+      "函数可能分配资源、消费缓冲、修改链表、写文件或更新网络状态，不承诺幂等。",
+      "调用方必须遵守 SIGNATURE.PARAMS 中的 NULLABLE 与 OWNERSHIP 约束。",
+      "维护 conn->in_len：只读返回当前缓冲有效长度"
+    ]
   },
-  "THREAD_SAFETY": "SINGLE_THREAD_ONLY",
-  "IDEMPOTENT": false,
   "ACCESS_PATHS": [
     {
       "PATH": "conn->in_len",

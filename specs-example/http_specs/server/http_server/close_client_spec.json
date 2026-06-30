@@ -28,26 +28,18 @@
       {
         "NAME": "http_tcp_server_close_client",
         "KIND": "CALL",
-        "ROLE": ""
+        "ROLE": "close_client 调用 http_tcp_server_close_client 完成子步骤"
       }
     ],
     "VAR": []
   },
-  "LOGIC": {
-    "INPUT": "输入 server 和待关闭的 fd。",
-    "ACTION": "委托 http_tcp_server_close_client 执行 epoll 删除+socket close+节点移除+on_close 回调。",
-    "OUTPUT": "通过返回值或副作用反映处理结果。",
-    "INVARIANTS_USED": [
-      "函数执行保持本模块内部状态一致性。"
-    ]
-  },
   "EVENT": {
     "TRIGGER": "当连接需要关闭时（读错误/对端关闭/响应完成）调用。",
-    "PRECONDITION": "fd 为有效客户端 socket。",
+    "PRECONDITION": "fd 为有效客户端 socket；单线程事件循环调用。",
     "INPUT": "server 和待关闭的 fd。",
     "ACTION": "委托 http_tcp_server_close_client 执行 epoll 删除+socket close+节点移除+on_close 回调。",
-    "STATE_CHANGE": "fd 从 epoll 和客户端链表移除。",
-    "RESPONSE": "",
-    "EVENT_TYPE": ""
+    "STATE_CHANGE": "fd 从 epoll 和客户端链表移除；事件可能产生状态副作用，不承诺幂等。",
+    "RESPONSE": "无直接返回值；关闭 fd 后移除并释放对应 session/connection 状态。",
+    "EVENT_TYPE": "网络事件回调"
   }
 }

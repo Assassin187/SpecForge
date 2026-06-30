@@ -10,19 +10,27 @@
     "PARAMS": [
       {
         "TYPE": "const char*",
-        "NAME": "root_dir"
+        "NAME": "root_dir",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
       },
       {
         "TYPE": "const char*",
-        "NAME": "uri_path"
+        "NAME": "uri_path",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
       },
       {
         "TYPE": "char*",
-        "NAME": "out_abs"
+        "NAME": "out_abs",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
       },
       {
         "TYPE": "size_t",
-        "NAME": "out_len"
+        "NAME": "out_len",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
       }
     ]
   },
@@ -37,7 +45,10 @@
     "OUTPUT": "成功返回 0 并通过 out_abs 输出绝对路径；路径遍历返回 -1。",
     "INVARIANTS_USED": [
       "out_abs 输出路径必须位于 root_dir 前缀内",
-      "目录遍历攻击必须被拒绝并设置 errno=EACCES"
+      "目录遍历攻击必须被拒绝并设置 errno=EACCES",
+      "仅面向单线程事件循环或单线程调用路径；跨线程访问必须由上层同步。",
+      "函数可能分配资源、消费缓冲、修改链表、写文件或更新网络状态，不承诺幂等。",
+      "调用方必须遵守 SIGNATURE.PARAMS 中的 NULLABLE 与 OWNERSHIP 约束。"
     ]
   }
 }

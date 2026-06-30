@@ -27,20 +27,17 @@
     "VAR": []
   },
   "LOGIC": {
-    "INPUT": "输入来自函数参数。",
+    "INPUT": "输入参数：conn(http_connection_t*，不可为 NULL，BORROWED)。",
     "ACTION": "扫描 in_buf 查找 \\n；未找到返回 NULL；找到后去除尾部 \\r；malloc 分配 line_len+1 字节并 memcpy；memmove 消费缓冲中已提取数据（包括 \\n）。",
     "OUTPUT": "成功返回动态分配的行字符串（调用方负责 free）；行不完整返回 NULL。",
     "INVARIANTS_USED": [
-      "函数执行保持本模块内部状态一致性。"
+      "仅面向单线程事件循环或单线程调用路径；跨线程访问必须由上层同步。",
+      "函数可能分配资源、消费缓冲、修改链表、写文件或更新网络状态，不承诺幂等。",
+      "调用方必须遵守 SIGNATURE.PARAMS 中的 NULLABLE 与 OWNERSHIP 约束。",
+      "维护 conn->in_buf：扫描 \\n 并从中提取行数据",
+      "维护 conn->in_len：提取成功后通过 memmove 缩减"
     ]
   },
-  "THREAD_SAFETY": "SINGLE_THREAD_ONLY",
-  "IDEMPOTENT": false,
-  "CALL_CONTRACTS": [
-    {
-      "TEXT": "返回动态分配的字符串，调用方负责 free"
-    }
-  ],
   "ACCESS_PATHS": [
     {
       "PATH": "conn->in_buf",

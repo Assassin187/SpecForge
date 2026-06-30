@@ -76,17 +76,6 @@
       "../resource/file_ops.h",
       "../server/http_session.h"
     ],
-    "SYSTEM_DEPENDENCY": [
-      "<arpa/inet.h>",
-      "<errno.h>",
-      "<fcntl.h>",
-      "<limits.h>",
-      "<stdio.h>",
-      "<stdlib.h>",
-      "<string.h>",
-      "<sys/stat.h>",
-      "<unistd.h>"
-    ],
     "DATA": [
       {
         "NAME": "struct http_server",
@@ -149,21 +138,7 @@
         "NAME": "find_session",
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
-        "ROLE": "遍历 sessions 链表，根据 fd 查找对应会话对象",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "server 非空；fd 为有效文件描述符"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "返回匹配 fd 的会话指针，未找到时返回 NULL"
-            }
-          ],
-          "IDEMPOTENT": true,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
+        "ROLE": "在 server 会话链表中按 fd 查找会话",
         "VISIBILITY": "private"
       },
       {
@@ -172,274 +147,106 @@
         "NAME": "remove_session",
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
-        "ROLE": "从 sessions 链表中移除并销毁指定 fd 的会话节点",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "server 非空"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "匹配 fd 的节点从链表移除并释放内存；fd 未匹配时无副作用"
-            }
-          ],
-          "IDEMPOTENT": true,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
+        "ROLE": "从 server 会话链表中按 fd 删除并销毁会话",
         "VISIBILITY": "private"
       },
       {
         "TRACE_ID": "http/server/http_server/add_session",
-        "SIGNATURE": "static void add_session(http_server_t* server, http_session_t* session)",
+        "SIGNATURE": "static int add_session(http_server_t* server, http_session_t* session)",
         "NAME": "add_session",
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
-        "ROLE": "创建链表节点并将新会话追加到 sessions 链表头部",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "server 和 session 均非空"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "session 包装为新节点插入 sessions 链表头部"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
+        "ROLE": "将新会话节点头插法加入 server 会话链表",
         "VISIBILITY": "private"
       },
       {
         "TRACE_ID": "http/server/http_server/send_error",
-        "SIGNATURE": "static void send_error(http_session_t* session, int status_code)",
+        "SIGNATURE": "static int send_error(http_server_t* server, http_session_t* session, int code)",
         "NAME": "send_error",
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
-        "ROLE": "构造并发送 HTTP 错误响应（状态行+Date+Server+Connection:close+HTML body）",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "session 非空；status_code 为标准 HTTP 错误码（400/403/404/405/413/500/501）"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "HTTP 错误响应已排入连接的输出缓冲队列"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
+        "ROLE": "发送 HTML 错误响应并注册写监听",
         "VISIBILITY": "private"
       },
       {
         "TRACE_ID": "http/server/http_server/flush_and_update",
-        "SIGNATURE": "static void flush_and_update(http_server_t* server, http_session_t* session)",
+        "SIGNATURE": "static int flush_and_update(http_server_t* server, http_session_t* session)",
         "NAME": "flush_and_update",
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
-        "ROLE": "刷写会话连接输出缓冲并更新 epoll 监听事件（含 pending 时注册 EPOLLOUT）",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "server 和 session 均非空；server->tcp 已初始化"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "输出缓冲数据已尽可能发送；epoll 监听事件已根据残留数据更新"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
+        "ROLE": "刷写连接输出缓冲并根据剩余数据更新 epoll 写监听",
         "VISIBILITY": "private"
       },
       {
         "TRACE_ID": "http/server/http_server/serve_file",
-        "SIGNATURE": "static void serve_file(http_server_t* server, http_session_t* session, const char* resolved_path, bool is_head)",
+        "SIGNATURE": "static int serve_file(http_server_t* server, http_session_t* session, const http_request_t* req, bool head_only)",
         "NAME": "serve_file",
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
-        "ROLE": "服务文件请求：stat 检查路径类型→普通文件读取并响应（HEAD 跳过 body）→目录优先 index.html→无 index.html 时生成 HTML 列表→不存在时 404",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "server 和 session 非空；resolved_path 已通过 http_resolve_path 规范化"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "成功时响应已排入输出缓冲；失败时已调用 send_error 发送对应错误码"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
+        "ROLE": "核心文件服务函数：resolve_path→stat→文件则读取并发送→目录则优先 index.html 否则列表→不存在则 404",
         "VISIBILITY": "private"
       },
       {
         "TRACE_ID": "http/server/http_server/handle_get",
-        "SIGNATURE": "static void handle_get(http_server_t* server, http_session_t* session, http_request_t* request)",
+        "SIGNATURE": "static int handle_get(http_server_t* server, http_session_t* session, const http_request_t* req)",
         "NAME": "handle_get",
         "KIND": "FUNC",
         "FUNCTION_TYPE": "EVENT_HANDLER",
-        "ROLE": "处理 GET 请求：http_resolve_path 解析路径→serve_file 服务文件或目录",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "server、session、request 均非空；request->uri 已填充"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "响应已交由 serve_file/send_error 排入输出队列"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
+        "ROLE": "GET 请求处理器：委托 serve_file(head_only=false)",
         "VISIBILITY": "private"
       },
       {
         "TRACE_ID": "http/server/http_server/handle_head",
-        "SIGNATURE": "static void handle_head(http_server_t* server, http_session_t* session, http_request_t* request)",
+        "SIGNATURE": "static int handle_head(http_server_t* server, http_session_t* session, const http_request_t* req)",
         "NAME": "handle_head",
         "KIND": "FUNC",
         "FUNCTION_TYPE": "EVENT_HANDLER",
-        "ROLE": "处理 HEAD 请求：与 GET 逻辑一致但 serve_file 的 is_head=true 跳过响应正文",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "server、session、request 均非空；request->uri 已填充"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "包含 Content-Length 等头部的响应已排队，无 body"
-            }
-          ],
-          "IDEMPOTENT": true,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
+        "ROLE": "HEAD 请求处理器：委托 serve_file(head_only=true)，仅发送头部不含正文",
         "VISIBILITY": "private"
       },
       {
         "TRACE_ID": "http/server/http_server/handle_post",
-        "SIGNATURE": "static void handle_post(http_server_t* server, http_session_t* session, http_request_t* request)",
+        "SIGNATURE": "static int handle_post(http_server_t* server, http_session_t* session, const http_request_t* req)",
         "NAME": "handle_post",
         "KIND": "FUNC",
         "FUNCTION_TYPE": "EVENT_HANDLER",
-        "ROLE": "处理 POST 请求：http_resolve_path 解析→POST 到目录返回 405→文件已存在返回 409→body 超限返回 413→O_CREAT|O_WRONLY|O_EXCL 创建文件→成功 201",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "server、session、request 均非空；request->uri 和 request->body 已填充"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "文件创建成功时返回 201；失败时已调用 send_error 返回对应错误码"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
+        "ROLE": "POST 请求处理器：resolve_path 确定目标→目录返回 405→fopen wb 写入 body→201 Created 响应",
         "VISIBILITY": "private"
       },
       {
         "TRACE_ID": "http/server/http_server/dispatch",
-        "SIGNATURE": "static void dispatch(http_server_t* server, http_session_t* session, http_request_t* request)",
+        "SIGNATURE": "static int dispatch(http_server_t* server, http_session_t* session, const http_request_t* req)",
         "NAME": "dispatch",
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
-        "ROLE": "根据 request->method 分派到 handle_get/handle_head/handle_post 处理器；未知方法返回 501",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "server、session、request 均非空；request->method 已由解析器填充"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "请求已被对应处理器处理；未知方法时已调用 send_error(501)"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
+        "ROLE": "按请求方法分发到对应处理器：GET→handle_get, HEAD→handle_head, POST→handle_post, UNKNOWN→501",
         "VISIBILITY": "private"
       },
       {
         "TRACE_ID": "http/server/http_server/on_accept_cb",
-        "SIGNATURE": "static void on_accept_cb(void* user, int fd)",
+        "SIGNATURE": "static void on_accept_cb(void* user, int fd, const struct sockaddr_storage* peer, socklen_t peer_len)",
         "NAME": "on_accept_cb",
         "KIND": "FUNC",
         "FUNCTION_TYPE": "EVENT_HANDLER",
-        "ROLE": "TCP server accept 回调：http_session_create 创建会话→add_session 加入链表→注册 fd EPOLLIN 监听",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "user 指向有效的 http_server_t；fd 为 accept 返回的客户端 socket"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "新会话已创建并注册到 server 会话链表；fd 已注册 EPOLLIN 到 epoll"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
+        "ROLE": "TCP server 新连接回调：创建会话→加入链表→失败则关闭客户端",
         "VISIBILITY": "private"
       },
       {
         "TRACE_ID": "http/server/http_server/close_client",
-        "SIGNATURE": "static void close_client(http_server_t* server, http_session_t* session)",
+        "SIGNATURE": "static void close_client(http_server_t* server, int fd)",
         "NAME": "close_client",
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
-        "ROLE": "关闭客户端连接：从 server 链表移除会话→销毁 session→委托 TCP server 关闭 fd",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "server 和 session 均非空"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "会话已从链表移除并释放；客户端 fd 已 close 且从 epoll 移除"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
+        "ROLE": "关闭客户端连接：委托 http_tcp_server_close_client 关闭 fd 并清理",
         "VISIBILITY": "private"
       },
       {
         "TRACE_ID": "http/server/http_server/on_event_cb",
-        "SIGNATURE": "static void on_event_cb(void* user, int fd, int events)",
+        "SIGNATURE": "static void on_event_cb(void* user, int fd, uint32_t events)",
         "NAME": "on_event_cb",
         "KIND": "FUNC",
         "FUNCTION_TYPE": "EVENT_HANDLER",
-        "ROLE": "TCP server 事件回调：EPOLLIN→http_connection_read+http_request_parse→dispatch 处理请求→flush_and_update；EPOLLOUT→http_connection_flush→完成时 close_client；EPOLLERR/EPOLLHUP→close_client",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "user 指向有效的 http_server_t；fd 为触发事件的客户端 socket；events 为 epoll 事件标志位"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "读事件已解析并触发 dispatch；写事件已 flush 并在完成后关闭连接；错误/挂起事件已清理客户端"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
+        "ROLE": "TCP server 数据/写就绪事件回调：按事件类型分发到读/写/关闭处理",
         "VISIBILITY": "private"
       },
       {
@@ -448,21 +255,7 @@
         "NAME": "on_close_cb",
         "KIND": "FUNC",
         "FUNCTION_TYPE": "EVENT_HANDLER",
-        "ROLE": "TCP server close 回调：find_session 查找→remove_session 清理残留会话资源",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "user 指向有效的 http_server_t；fd 为被关闭的客户端 socket"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "对应会话已从链表移除并释放；fd 已从 epoll 注销"
-            }
-          ],
-          "IDEMPOTENT": true,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
+        "ROLE": "TCP server 连接关闭回调：从 server 链表移除会话",
         "VISIBILITY": "private"
       },
       {
@@ -471,21 +264,7 @@
         "NAME": "http_server_create",
         "KIND": "FUNC",
         "FUNCTION_TYPE": "EVENT_HANDLER",
-        "ROLE": "创建 HTTP server：realpath 解析 root 目录→stat 验证目录存在→strncpy 保存 root→创建 TCP server 并绑定 on_accept/on_event/on_close 回调",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "root_dir 非空且为有效路径字符串；port 为 1-65535 的有效端口号"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "成功时返回初始化的 http_server_t 指针；root 目录不存在或 realpath 失败时返回 NULL"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
+        "ROLE": "创建 HTTP server：realpath 解析 root→stat 验证目录→保存 root→创建 TCP server 并绑定回调",
         "VISIBILITY": "public"
       },
       {
@@ -495,20 +274,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "EVENT_HANDLER",
         "ROLE": "委托 http_tcp_server_start 启动底层 TCP server",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "server 非空且 server->tcp 已通过 http_server_create 初始化"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "成功返回 0；socket/bind/epoll 失败时返回 -1 并设置 errno"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -518,20 +283,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "EVENT_HANDLER",
         "ROLE": "委托 http_tcp_server_run 进入事件循环",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "server 非空；http_server_start 已成功调用"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "事件循环运行至 http_server_stop 被调用后退出，正常退出返回 0"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -541,20 +292,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "EVENT_HANDLER",
         "ROLE": "委托 http_tcp_server_stop 停止事件循环",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "server 非空且 server->tcp 已初始化"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "TCP server 运行标志置为 false，事件线程将退出循环"
-            }
-          ],
-          "IDEMPOTENT": true,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -563,21 +300,7 @@
         "NAME": "http_server_destroy",
         "KIND": "FUNC",
         "FUNCTION_TYPE": "EVENT_HANDLER",
-        "ROLE": "遍历销毁所有活跃会话→停止并销毁 TCP server→释放 server 自身；空指针安全",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "无强制前置条件；server 可为 NULL"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "server 为 NULL 时立即返回；否则所有会话节点、TCP server 及 server 自身均已释放"
-            }
-          ],
-          "IDEMPOTENT": true,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
+        "ROLE": "遍历销毁所有活跃会话→停止并销毁 TCP server→释放 server；空指针安全",
         "VISIBILITY": "public"
       }
     ]

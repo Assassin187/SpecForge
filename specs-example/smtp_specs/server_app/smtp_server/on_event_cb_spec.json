@@ -109,11 +109,11 @@
   },
   "EVENT": {
     "TRIGGER": "当 SMTP_IO_WRITABLE 置位时 flush 输出；当 SMTP_IO_READABLE 置位时读取 socket 并循环弹出完整行，超长行返回 500，DATA mode 优先交给 handle_data_line，AUTH continuation 交给 handle_auth_continuation，否则解析命令并调用 handle_command。",
-    "PRECONDITION": "相关 server/session/connection 对象已创建；NULL 输入按当前实现的保护分支处理。",
-    "INPUT": "输入为 static void on_event_cb(void* user, int fd, uint32_t events) 的参数集合。",
+    "PRECONDITION": "输入参数：user(void*，可为 NULL，BORROWED)；fd(int，不可为 NULL，BORROWED)；events(uint32_t，不可为 NULL，BORROWED)；遵守单线程事件循环调用约束。",
+    "INPUT": "输入参数：user(void*，可为 NULL，BORROWED)；fd(int，不可为 NULL，BORROWED)；events(uint32_t，不可为 NULL，BORROWED)。",
     "ACTION": "当 SMTP_IO_WRITABLE 置位时 flush 输出；当 SMTP_IO_READABLE 置位时读取 socket 并循环弹出完整行，超长行返回 500，DATA mode 优先交给 handle_data_line，AUTH continuation 交给 handle_auth_continuation，否则解析命令并调用 handle_command。",
-    "STATE_CHANGE": "可能更新 TCP 事件循环、SMTP session、输出队列或连接集合状态。",
-    "RESPONSE": "通过返回值、连接关闭、队列响应或回调副作用体现处理结果。",
+    "STATE_CHANGE": "可能消费输入缓冲、追加输出队列、更新写兴趣、推进协议会话状态或关闭连接；重复触发不得破坏状态一致性。",
+    "RESPONSE": "无直接返回值；根据读写事件刷新输出、读取输入、解析协议消息、分发业务处理或关闭连接。",
     "EVENT_TYPE": "RUNTIME_EVENT"
   }
 }

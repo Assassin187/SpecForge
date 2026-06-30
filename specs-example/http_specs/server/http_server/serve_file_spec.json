@@ -38,57 +38,57 @@
     "STRUCT": [
       {
         "NAME": "struct http_server",
-        "ROLE": ""
+        "ROLE": "serve_file 读取或维护的 struct http_server 状态"
       },
       {
         "NAME": "http_session_t",
-        "ROLE": ""
+        "ROLE": "serve_file 读取或维护的 http_session_t 状态"
       },
       {
         "NAME": "http_request_t",
-        "ROLE": ""
+        "ROLE": "serve_file 读取或维护的 http_request_t 状态"
       }
     ],
     "FUNC": [
       {
         "NAME": "http_resolve_path",
         "KIND": "CALL",
-        "ROLE": ""
+        "ROLE": "serve_file 调用 http_resolve_path 完成子步骤"
       },
       {
         "NAME": "send_error",
         "KIND": "CALL",
-        "ROLE": ""
+        "ROLE": "serve_file 调用 send_error 完成子步骤"
       },
       {
         "NAME": "http_stat_path",
         "KIND": "CALL",
-        "ROLE": ""
+        "ROLE": "serve_file 调用 http_stat_path 完成子步骤"
       },
       {
         "NAME": "http_read_file",
         "KIND": "CALL",
-        "ROLE": ""
+        "ROLE": "serve_file 调用 http_read_file 完成子步骤"
       },
       {
         "NAME": "http_mime_by_ext",
         "KIND": "CALL",
-        "ROLE": ""
+        "ROLE": "serve_file 调用 http_mime_by_ext 完成子步骤"
       },
       {
         "NAME": "http_dir_listing_html",
         "KIND": "CALL",
-        "ROLE": ""
+        "ROLE": "serve_file 调用 http_dir_listing_html 完成子步骤"
       },
       {
         "NAME": "http_response_send",
         "KIND": "CALL",
-        "ROLE": ""
+        "ROLE": "serve_file 调用 http_response_send 完成子步骤"
       },
       {
         "NAME": "http_tcp_server_update_interest",
         "KIND": "CALL",
-        "ROLE": ""
+        "ROLE": "serve_file 调用 http_tcp_server_update_interest 完成子步骤"
       }
     ],
     "VAR": []
@@ -98,14 +98,10 @@
     "ACTION": "http_resolve_path 安全解析路径→失败返回 403→http_stat_path 检查类型→普通文件：http_read_file 读取→http_mime_by_ext 获取 Content-Type→http_response_send（head_only 时 body=NULL）→目录：拼接 index.html 并 stat→存在则读取服务→不存在则 http_dir_listing_html 生成列表→发送。",
     "OUTPUT": "成功返回 0，失败返回 -1。",
     "INVARIANTS_USED": [
-      "函数执行保持本模块内部状态一致性。"
+      "仅面向单线程事件循环或单线程调用路径；跨线程访问必须由上层同步。",
+      "函数可能分配资源、消费缓冲、修改链表、写文件或更新网络状态，不承诺幂等。",
+      "server 和 session 非空；resolved_path 已通过 http_resolve_path 规范化",
+      "成功时响应已排入输出缓冲；失败时已调用 send_error 发送对应错误码"
     ]
-  },
-  "CALL_CONTRACTS": [
-    {
-      "NAME": "http_stat_path",
-      "SIGNATURE": "int http_stat_path(const char* abs_path)",
-      "RETURN_CONTRACT": "returns 0=regular file, 1=directory, -1=error; these are abstract type codes, NOT mode_t bitmasks — compare with ==0, ==1, ==-1; do NOT apply S_ISREG/S_ISDIR macros"
-    }
-  ]
+  }
 }

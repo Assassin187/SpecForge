@@ -2,8 +2,6 @@
   "KIND": "FUNCTION_SPEC",
   "TRACE_ID": "http/network/tcp_server/add_client",
   "FUNCTION_TYPE": "ALGORITHM",
-  "THREAD_SAFETY": "SINGLE_THREAD_ONLY",
-  "IDEMPOTENT": false,
   "ROLE": "为已 accept 的 fd 分配客户端节点并注册到 epoll（EPOLLIN|EPOLLRDHUP）",
   "SIGNATURE": {
     "RAW": "static int add_client(http_tcp_server_t* server, int fd)",
@@ -43,7 +41,9 @@
     "ACTION": "calloc 分配节点；epoll_ctl EPOLL_CTL_ADD 注册 EPOLLIN|EPOLLRDHUP；失败时 free 节点返回 -1；成功则设置 fd 并头插法加入 server->clients 链表。",
     "OUTPUT": "成功返回 0，失败返回 -1。",
     "INVARIANTS_USED": [
-      "函数执行保持本模块内部状态一致性。"
+      "仅面向单线程事件循环或单线程调用路径；跨线程访问必须由上层同步。",
+      "函数可能分配资源、消费缓冲、修改链表、写文件或更新网络状态，不承诺幂等。",
+      "调用方必须遵守 SIGNATURE.PARAMS 中的 NULLABLE 与 OWNERSHIP 约束。"
     ]
   }
 }

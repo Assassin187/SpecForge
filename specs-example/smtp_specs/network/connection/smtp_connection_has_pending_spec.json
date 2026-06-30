@@ -27,12 +27,15 @@
     "VAR": []
   },
   "LOGIC": {
-    "INPUT": "输入为 bool smtp_connection_has_pending(const smtp_connection_t* conn) 的参数集合。",
-    "ACTION": "判断输出队列是否仍有未发送字节",
-    "OUTPUT": "按签名返回成功/失败、对象指针、格式化长度或无返回值；失败路径遵循当前 C 实现。",
+    "INPUT": "输入参数：conn(const smtp_connection_t*，可为 NULL，BORROWED)。",
+    "ACTION": "判断输出队列是否仍有未发送字节。",
+    "OUTPUT": "返回输出队列是否仍有待发送字节；对象为 NULL 时返回 false。",
     "INVARIANTS_USED": [
-      "不引入当前源码不存在的 SMTP 扩展或额外协议状态。",
-      "所有缓冲写入必须受目标容量约束保护。"
+      "仅面向单线程事件循环或单线程调用路径；跨线程访问必须由上层同步。",
+      "重复调用不得破坏内部一致性；无匹配对象、空输入或已完成状态按当前实现安全处理。",
+      "调用方必须遵守 SIGNATURE.PARAMS 中的 NULLABLE 与 OWNERSHIP 约束。",
+      "维护 conn->out_off：已发送偏移",
+      "维护 conn->out_len：输出总长度"
     ]
   },
   "ACCESS_PATHS": [

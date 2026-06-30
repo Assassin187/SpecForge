@@ -27,12 +27,17 @@
     "VAR": []
   },
   "LOGIC": {
-    "INPUT": "输入来自函数参数。",
+    "INPUT": "输入参数：conn(const http_connection_t*，可为 NULL，BORROWED)。",
     "ACTION": "空指针返回 false；否则返回 conn->out_off < conn->out_len。",
-    "OUTPUT": "通过返回值反映是否存在待发送数据。"
+    "OUTPUT": "通过返回值反映是否存在待发送数据。",
+    "INVARIANTS_USED": [
+      "仅面向单线程事件循环或单线程调用路径；跨线程访问必须由上层同步。",
+      "函数可能分配资源、消费缓冲、修改链表、写文件或更新网络状态，不承诺幂等。",
+      "调用方必须遵守 SIGNATURE.PARAMS 中的 NULLABLE 与 OWNERSHIP 约束。",
+      "维护 conn->out_off：只读比较当前发送偏移",
+      "维护 conn->out_len：只读比较当前缓冲长度"
+    ]
   },
-  "THREAD_SAFETY": "SINGLE_THREAD_ONLY",
-  "IDEMPOTENT": false,
   "ACCESS_PATHS": [
     {
       "PATH": "conn->out_off",

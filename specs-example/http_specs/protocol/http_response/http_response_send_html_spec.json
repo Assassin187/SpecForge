@@ -31,6 +31,12 @@
         "NAME": "fmt",
         "NULLABLE": false,
         "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "...",
+        "NAME": "varargs",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
       }
     ]
   },
@@ -52,7 +58,13 @@
     "INVARIANTS_USED": [
       "HTML 内容缓冲上限 8192 字节",
       "extra_headers 仅包含 Content-Type: text/html",
-      "title 用于 HTML <title> 元素"
+      "title 用于 HTML <title> 元素",
+      "仅面向单线程事件循环或单线程调用路径；跨线程访问必须由上层同步。",
+      "函数可能分配资源、消费缓冲、修改链表、写文件或更新网络状态，不承诺幂等。",
+      "conn 为已创建的有效连接对象",
+      "fmt 为有效的 printf 格式字符串，变参与格式说明符匹配",
+      "格式化的 HTML 响应已通过 http_response_send 追加到 conn 的输出缓冲",
+      "返回 0 表示成功，返回 -1 表示格式化或发送失败"
     ]
   }
 }

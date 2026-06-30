@@ -74,12 +74,18 @@
     "VAR": []
   },
   "LOGIC": {
-    "INPUT": "输入为 static void handle_auth(smtp_server_t* server, smtp_session_t* session, const smtp_command_t* cmd) 的参数集合。",
-    "ACTION": "处理 AUTH 命令，支持 LOGIN 和 PLAIN，可带 initial response 或进入 continuation",
-    "OUTPUT": "按签名返回成功/失败、对象指针、格式化长度或无返回值；失败路径遵循当前 C 实现。",
+    "INPUT": "输入参数：server(smtp_server_t*，可为 NULL，BORROWED)；session(smtp_session_t*，可为 NULL，BORROWED)；cmd(const smtp_command_t*，可为 NULL，BORROWED)。",
+    "ACTION": "处理 AUTH 命令，支持 LOGIN 和 PLAIN，可带 initial response 或进入 continuation。",
+    "OUTPUT": "无返回值；副作用为处理 AUTH 命令，支持 LOGIN 和 PLAIN，可带 initial response 或进入 continuation。",
     "INVARIANTS_USED": [
-      "不引入当前源码不存在的 SMTP 扩展或额外协议状态。",
-      "所有缓冲写入必须受目标容量约束保护。"
+      "仅面向单线程事件循环或单线程调用路径；跨线程访问必须由上层同步。",
+      "函数可能分配资源、消费缓冲、修改链表、写文件或更新网络状态，不承诺幂等。",
+      "调用方必须遵守 SIGNATURE.PARAMS 中的 NULLABLE 与 OWNERSHIP 约束。",
+      "维护 session->auth_state：设置 LOGIN/PLAIN continuation",
+      "维护 session->authenticated：已认证则拒绝重复 AUTH",
+      "遵循 AUTH.mechanism 映射规则：机制名大小写规整为 LOGIN 或 PLAIN；其他机制返回 504",
+      "遵循 AUTH_LOGIN.initial_response 映射规则：可选 initial username base64，随后等待 password",
+      "遵循 AUTH_PLAIN.initial_response 映射规则：可选 PLAIN blob，缺省则发送空 334 challenge"
     ]
   },
   "ACCESS_PATHS": [

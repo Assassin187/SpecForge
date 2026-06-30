@@ -20,20 +20,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "创建 session 并为 control_fd 创建 smtp_connection_t",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -43,20 +29,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "清空 MAIL/RCPT/DATA transaction 状态，不影响 greeting/authenticated",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -66,20 +38,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "清空 AUTH continuation 状态和 LOGIN 暂存用户名",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -89,20 +47,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "销毁 session 及其 smtp_connection_t",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
         "VISIBILITY": "public"
       }
     ]

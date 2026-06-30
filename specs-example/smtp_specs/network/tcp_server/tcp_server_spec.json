@@ -39,20 +39,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "给 fd 增加 O_NONBLOCK 标志",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
-            }
-          ],
-          "IDEMPOTENT": true,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
         "VISIBILITY": "private"
       },
       {
@@ -62,20 +48,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "按 fd 在线性 client 链表中查找节点",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
-            }
-          ],
-          "IDEMPOTENT": true,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
         "VISIBILITY": "private"
       },
       {
@@ -85,20 +57,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "把 client fd 注册到 epoll 并插入 clients 链表",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
         "VISIBILITY": "private"
       },
       {
@@ -108,20 +66,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "从 clients 链表移除 fd 节点并释放节点内存",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
         "VISIBILITY": "private"
       },
       {
@@ -131,20 +75,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "关闭客户端 fd、从 epoll/client 链表删除，并触发 on_close",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -154,20 +84,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "创建 TCP server 运行时对象并记录端口、回调和 user 指针",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -177,20 +93,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "按 want_write 修改客户端 epoll interest 中的 EPOLLOUT",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
-            }
-          ],
-          "IDEMPOTENT": true,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -200,20 +102,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "创建、设置非阻塞、bind 并 listen TCP socket",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
-            }
-          ],
-          "IDEMPOTENT": true,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
         "VISIBILITY": "private"
       },
       {
@@ -223,20 +111,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "初始化监听 socket 和 epoll，并把 listen_fd 注册为 EPOLLIN",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -246,20 +120,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "循环 accept 所有待处理连接，设置非阻塞、加入 epoll 并触发 on_accept",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
-            }
-          ],
-          "IDEMPOTENT": true,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
         "VISIBILITY": "private"
       },
       {
@@ -269,20 +129,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "EVENT",
         "ROLE": "进入 epoll_wait 主事件循环并把内核事件转换为 SMTP_IO_* 回调",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -292,20 +138,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "请求停止事件循环",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -315,20 +147,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "关闭所有客户端、监听 fd、epoll fd 并释放 server",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
         "VISIBILITY": "public"
       }
     ]

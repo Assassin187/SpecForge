@@ -38,47 +38,39 @@
     "STRUCT": [
       {
         "NAME": "struct http_server",
-        "ROLE": ""
+        "ROLE": "on_accept_cb 读取或维护的 struct http_server 状态"
       }
     ],
     "FUNC": [
       {
         "NAME": "http_session_create",
         "KIND": "CALL",
-        "ROLE": ""
+        "ROLE": "on_accept_cb 调用 http_session_create 完成子步骤"
       },
       {
         "NAME": "add_session",
         "KIND": "CALL",
-        "ROLE": ""
+        "ROLE": "on_accept_cb 调用 add_session 完成子步骤"
       },
       {
         "NAME": "http_tcp_server_close_client",
         "KIND": "CALL",
-        "ROLE": ""
+        "ROLE": "on_accept_cb 调用 http_tcp_server_close_client 完成子步骤"
       },
       {
         "NAME": "http_session_destroy",
         "KIND": "CALL",
-        "ROLE": ""
+        "ROLE": "on_accept_cb 调用 http_session_destroy 完成子步骤"
       }
     ],
     "VAR": []
   },
-  "LOGIC": {
-    "INPUT": "输入 user（强转为 http_server_t*）、fd、peer 地址。",
-    "ACTION": "http_session_create(fd) 创建会话→add_session 加入 server->sessions 链表。任一失败则 http_session_destroy 清理并 http_tcp_server_close_client 关闭 fd。",
-    "OUTPUT": "通过返回值或副作用反映处理结果。",
-    "INVARIANTS_USED": [
-      "函数执行保持本模块内部状态一致性。"
-    ]
-  },
   "EVENT": {
     "TRIGGER": "TCP server accept 到新连接时被 http_tcp_server_run 回调。",
-    "PRECONDITION": "user 指向有效的 http_server_t 对象。",
+    "PRECONDITION": "user 指向有效的 http_server_t 对象；单线程事件循环调用。",
     "INPUT": "user(强转为 http_server_t*)、fd、peer 地址。",
     "ACTION": "http_session_create(fd) 创建会话→add_session 加入 server->sessions 链表。任一失败则 http_session_destroy 清理并 http_tcp_server_close_client 关闭 fd。",
-    "STATE_CHANGE": "server->sessions 链表新增节点。",
+    "STATE_CHANGE": "server->sessions 链表新增节点；事件可能产生状态副作用，不承诺幂等。",
     "RESPONSE": "无直接返回值；副作用为会话已加入 server 管理。",
     "EVENT_TYPE": "网络事件回调"
   }

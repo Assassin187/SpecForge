@@ -38,12 +38,15 @@
     "VAR": []
   },
   "LOGIC": {
-    "INPUT": "输入为 int smtp_connection_read(smtp_connection_t* conn) 的参数集合。",
+    "INPUT": "输入参数：conn(smtp_connection_t*，可为 NULL，BORROWED)。",
     "ACTION": "循环 recv；EINTR 重试，EAGAIN/EWOULDBLOCK 在无新数据时返回 -2，对端关闭返回 0，错误返回 -1。",
-    "OUTPUT": "按签名返回成功/失败、对象指针、格式化长度或无返回值；失败路径遵循当前 C 实现。",
+    "OUTPUT": "返回本轮读取字节数；对端关闭且无已读数据返回 0，无新数据返回 -2，错误返回 -1。",
     "INVARIANTS_USED": [
-      "不引入当前源码不存在的 SMTP 扩展或额外协议状态。",
-      "所有缓冲写入必须受目标容量约束保护。"
+      "仅面向单线程事件循环或单线程调用路径；跨线程访问必须由上层同步。",
+      "函数可能分配资源、消费缓冲、修改链表、写文件或更新网络状态，不承诺幂等。",
+      "调用方必须遵守 SIGNATURE.PARAMS 中的 NULLABLE 与 OWNERSHIP 约束。",
+      "维护 conn->in_buf：追加收到的字节",
+      "维护 conn->in_len：增加输入长度"
     ]
   },
   "ACCESS_PATHS": [

@@ -40,12 +40,13 @@
     "VAR": []
   },
   "LOGIC": {
-    "INPUT": "输入为 static int decode_b64_to_text(const char* b64, char* out, size_t out_len) 的参数集合。",
-    "ACTION": "把 base64 文本解码为 NUL 结尾字符串，拒绝空结果或溢出",
-    "OUTPUT": "按签名返回成功/失败、对象指针、格式化长度或无返回值；失败路径遵循当前 C 实现。",
+    "INPUT": "输入参数：b64(const char*，可为 NULL，BORROWED)；out(char*，可为 NULL，BORROWED)；out_len(size_t，不可为 NULL，BORROWED)。",
+    "ACTION": "把 base64 文本解码为 NUL 结尾字符串，拒绝空结果或溢出。",
+    "OUTPUT": "返回值表达把 base64 文本解码为 NUL 结尾字符串，拒绝空结果或溢出的结果；成功、失败和特殊分支按当前 C 实现的返回码区分。",
     "INVARIANTS_USED": [
-      "不引入当前源码不存在的 SMTP 扩展或额外协议状态。",
-      "所有缓冲写入必须受目标容量约束保护。"
+      "仅面向单线程事件循环或单线程调用路径；跨线程访问必须由上层同步。",
+      "重复调用不得破坏内部一致性；无匹配对象、空输入或已完成状态按当前实现安全处理。",
+      "调用方必须遵守 SIGNATURE.PARAMS 中的 NULLABLE 与 OWNERSHIP 约束。"
     ]
   }
 }

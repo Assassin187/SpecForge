@@ -34,7 +34,7 @@
       {
         "NAME": "serve_file",
         "KIND": "CALL",
-        "ROLE": ""
+        "ROLE": "handle_head 调用 serve_file 完成子步骤"
       }
     ],
     "VAR": []
@@ -44,7 +44,10 @@
     "ACTION": "委托 serve_file(server, session, req, true)。",
     "OUTPUT": "透传 serve_file 返回值。",
     "INVARIANTS_USED": [
-      "函数执行保持本模块内部状态一致性。"
+      "仅面向单线程事件循环或单线程调用路径；跨线程访问必须由上层同步。",
+      "重复调用不得破坏内部一致性；无匹配对象、空输入或已完成状态按当前实现安全处理。",
+      "server、session、request 均非空；request->uri 已填充",
+      "包含 Content-Length 等头部的响应已排队，无 body"
     ]
   }
 }

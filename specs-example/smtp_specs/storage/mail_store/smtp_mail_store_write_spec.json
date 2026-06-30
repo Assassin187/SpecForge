@@ -71,12 +71,23 @@
     "VAR": []
   },
   "LOGIC": {
-    "INPUT": "输入为 int smtp_mail_store_write(const char* root_dir, const smtp_mail_t* mail, char* out_path, size_t out_path_len) 的参数集合。",
-    "ACTION": "生成唯一 .eml 文件并写入 envelope headers、空行和 DATA 内容",
-    "OUTPUT": "按签名返回成功/失败、对象指针、格式化长度或无返回值；失败路径遵循当前 C 实现。",
+    "INPUT": "输入参数：root_dir(const char*，可为 NULL，BORROWED)；mail(const smtp_mail_t*，可为 NULL，BORROWED)；out_path(char*，可为 NULL，BORROWED)；out_path_len(size_t，不可为 NULL，BORROWED)。",
+    "ACTION": "生成唯一 .eml 文件并写入 envelope headers、空行和 DATA 内容。",
+    "OUTPUT": "成功返回 0 并可选写入保存路径；参数无效、建目录/建文件/写入/关闭失败时返回 -1，并清理未完成文件。",
     "INVARIANTS_USED": [
-      "不引入当前源码不存在的 SMTP 扩展或额外协议状态。",
-      "所有缓冲写入必须受目标容量约束保护。"
+      "仅面向单线程事件循环或单线程调用路径；跨线程访问必须由上层同步。",
+      "函数可能分配资源、消费缓冲、修改链表、写文件或更新网络状态，不承诺幂等。",
+      "调用方必须遵守 SIGNATURE.PARAMS 中的 NULLABLE 与 OWNERSHIP 约束。",
+      "维护 smtp_mail_t.helo_name：HELO/EHLO 名称",
+      "维护 smtp_mail_t.auth_user：认证用户",
+      "维护 smtp_mail_t.mail_from：envelope sender",
+      "维护 smtp_mail_t.rcpt_to：recipient 指针数组",
+      "维护 smtp_mail_t.rcpt_count：recipient 数量",
+      "维护 smtp_mail_t.data：DATA 内容",
+      "维护 smtp_mail_t.data_len：DATA 长度",
+      "维护 mail->rcpt_to[i]：写入每个 X-SMTP-Envelope-To header",
+      "遵循 SMTP_MAIL_FILE.envelope_headers 映射规则：写入 X-SMTP-HELO/X-SMTP-Auth-User/X-SMTP-Envelope-From 和每个 X-SMTP-Envelope-To",
+      "遵循 SMTP_MAIL_FILE.message_data 映射规则：空行后写入 mail->data 长度为 mail->data_len 的原始 DATA"
     ]
   },
   "ACCESS_PATHS": [

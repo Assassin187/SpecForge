@@ -10,15 +10,21 @@
     "PARAMS": [
       {
         "TYPE": "const char*",
-        "NAME": "abs_path"
+        "NAME": "abs_path",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
       },
       {
         "TYPE": "char**",
-        "NAME": "out_data"
+        "NAME": "out_data",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
       },
       {
         "TYPE": "size_t*",
-        "NAME": "out_len"
+        "NAME": "out_len",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
       }
     ]
   },
@@ -30,10 +36,13 @@
   "LOGIC": {
     "INPUT": "输入文件路径和输出指针。",
     "ACTION": "fopen rb→fseek SEEK_END→ftell 获取大小→rewind→malloc→fread 全部→fclose→通过 out_data/out_len 输出。",
-    "OUTPUT": "成功返回 0 并设置 *out_data/*out_len；失败返回 -1，不转移所有权。",
+    "OUTPUT": "成功返回 0，*out_data 指向堆分配文件内容且 *out_len 为文件字节数；失败返回 -1 并设置 *out_data 为 NULL、*out_len 为 0；调用方只在成功时 free(*out_data)。",
     "INVARIANTS_USED": [
       "成功时 *out_data 指向堆分配缓冲区，调用方必须 free",
-      "失败时 *out_data 为 NULL，*out_len 为 0，调用方无需 free"
+      "失败时 *out_data 为 NULL，*out_len 为 0，调用方无需 free",
+      "仅面向单线程事件循环或单线程调用路径；跨线程访问必须由上层同步。",
+      "函数可能分配资源、消费缓冲、修改链表、写文件或更新网络状态，不承诺幂等。",
+      "调用方必须遵守 SIGNATURE.PARAMS 中的 NULLABLE 与 OWNERSHIP 约束。"
     ]
   }
 }

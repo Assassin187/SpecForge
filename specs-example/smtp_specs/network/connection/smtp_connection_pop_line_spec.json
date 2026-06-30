@@ -27,12 +27,16 @@
     "VAR": []
   },
   "LOGIC": {
-    "INPUT": "输入为 char* smtp_connection_pop_line(smtp_connection_t* conn) 的参数集合。",
-    "ACTION": "从输入缓冲弹出一行，去除结尾 LF 和可选 CR，返回调用方拥有的新字符串",
-    "OUTPUT": "按签名返回成功/失败、对象指针、格式化长度或无返回值；失败路径遵循当前 C 实现。",
+    "INPUT": "输入参数：conn(smtp_connection_t*，可为 NULL，BORROWED)。",
+    "ACTION": "从输入缓冲弹出一行，去除结尾 LF 和可选 CR，返回调用方拥有的新字符串。",
+    "OUTPUT": "成功返回堆分配行字符串并消费输入缓冲；尚无完整行、参数无效或分配失败返回 NULL。",
     "INVARIANTS_USED": [
-      "不引入当前源码不存在的 SMTP 扩展或额外协议状态。",
-      "所有缓冲写入必须受目标容量约束保护。"
+      "仅面向单线程事件循环或单线程调用路径；跨线程访问必须由上层同步。",
+      "重复调用不得破坏内部一致性；无匹配对象、空输入或已完成状态按当前实现安全处理。",
+      "调用方必须遵守 SIGNATURE.PARAMS 中的 NULLABLE 与 OWNERSHIP 约束。",
+      "维护 conn->in_buf：查找 LF 并 memmove 剩余字节",
+      "维护 conn->in_len：消费已弹出的行",
+      "遵循 SMTP_LINE.CRLF_line 映射规则：输入缓冲必须出现 LF 才返回完整行；返回值不包含 CRLF"
     ]
   },
   "ACCESS_PATHS": [

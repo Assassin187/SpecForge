@@ -27,7 +27,10 @@
     "OUTPUT": "返回路径类型判别码。",
     "INVARIANTS_USED": [
       "S_ISREG 与 S_ISDIR 互斥，优先级 S_ISREG 先于 S_ISDIR",
-      "stat 失败时返回 -1，不修改全局状态"
+      "stat 失败时返回 -1，不修改全局状态",
+      "仅面向单线程事件循环或单线程调用路径；跨线程访问必须由上层同步。",
+      "重复调用不得破坏内部一致性；无匹配对象、空输入或已完成状态按当前实现安全处理。",
+      "调用方必须遵守 SIGNATURE.PARAMS 中的 NULLABLE 与 OWNERSHIP 约束。"
     ]
   }
 }

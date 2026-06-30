@@ -43,12 +43,15 @@
     "VAR": []
   },
   "LOGIC": {
-    "INPUT": "输入为 smtp_tcp_server_t* smtp_tcp_server_create(uint16_t port, smtp_tcp_callbacks_t callbacks, void* user) 的参数集合。",
-    "ACTION": "创建 TCP server 运行时对象并记录端口、回调和 user 指针",
-    "OUTPUT": "按签名返回成功/失败、对象指针、格式化长度或无返回值；失败路径遵循当前 C 实现。",
+    "INPUT": "输入参数：port(uint16_t，不可为 NULL，BORROWED)；callbacks(smtp_tcp_callbacks_t，不可为 NULL，BORROWED)；user(void*，可为 NULL，BORROWED)。",
+    "ACTION": "创建 TCP server 运行时对象并记录端口、回调和 user 指针。",
+    "OUTPUT": "成功返回新分配并初始化的对象指针；分配或依赖初始化失败返回 NULL，并清理已分配资源。",
     "INVARIANTS_USED": [
-      "不引入当前源码不存在的 SMTP 扩展或额外协议状态。",
-      "所有缓冲写入必须受目标容量约束保护。"
+      "仅面向单线程事件循环或单线程调用路径；跨线程访问必须由上层同步。",
+      "函数可能分配资源、消费缓冲、修改链表、写文件或更新网络状态，不承诺幂等。",
+      "调用方必须遵守 SIGNATURE.PARAMS 中的 NULLABLE 与 OWNERSHIP 约束。",
+      "维护 server->listen_fd：初始化为 -1",
+      "维护 server->epoll_fd：初始化为 -1"
     ]
   },
   "ACCESS_PATHS": [

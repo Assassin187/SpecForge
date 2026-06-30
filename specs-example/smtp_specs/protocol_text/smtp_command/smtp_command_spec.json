@@ -20,20 +20,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "将大写命令 verb 映射为 smtp_command_kind_t，未命中返回 SMTP_CMD_UNKNOWN",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
-            }
-          ],
-          "IDEMPOTENT": true,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
         "VISIBILITY": "private"
       },
       {
@@ -43,20 +29,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "解析单行 SMTP 命令，跳过前导空白、verb 大写化、复制并右裁剪参数",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
-            }
-          ],
-          "IDEMPOTENT": true,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -66,20 +38,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "把命令枚举转换为固定命令名字符串，未知值返回 UNKNOWN",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
-            }
-          ],
-          "IDEMPOTENT": true,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
         "VISIBILITY": "public"
       }
     ]

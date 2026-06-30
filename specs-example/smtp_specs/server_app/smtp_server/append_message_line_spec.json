@@ -33,12 +33,18 @@
     "VAR": []
   },
   "LOGIC": {
-    "INPUT": "输入为 static int append_message_line(smtp_session_t* session, const char* raw_line) 的参数集合。",
-    "ACTION": "向 DATA 缓冲追加一行，处理 dot-stuffing 并追加 CRLF",
-    "OUTPUT": "按签名返回成功/失败、对象指针、格式化长度或无返回值；失败路径遵循当前 C 实现。",
+    "INPUT": "输入参数：session(smtp_session_t*，可为 NULL，BORROWED)；raw_line(const char*，可为 NULL，BORROWED)。",
+    "ACTION": "向 DATA 缓冲追加一行，处理 dot-stuffing 并追加 CRLF。",
+    "OUTPUT": "返回值表达向 DATA 缓冲追加一行，处理 dot-stuffing 并追加 CRLF的结果；成功、失败和特殊分支按当前 C 实现的返回码区分。",
     "INVARIANTS_USED": [
-      "不引入当前源码不存在的 SMTP 扩展或额外协议状态。",
-      "所有缓冲写入必须受目标容量约束保护。"
+      "仅面向单线程事件循环或单线程调用路径；跨线程访问必须由上层同步。",
+      "函数可能分配资源、消费缓冲、修改链表、写文件或更新网络状态，不承诺幂等。",
+      "调用方必须遵守 SIGNATURE.PARAMS 中的 NULLABLE 与 OWNERSHIP 约束。",
+      "维护 session->message_buf：追加行内容与 CRLF",
+      "维护 session->message_len：增加写入长度",
+      "维护 session->message_too_large：超出 SMTP_MAX_MESSAGE_SIZE 时置 true",
+      "遵循 SMTP_DATA.dot_stuffed_line 映射规则：行首为两个字符以上且首字符为 '.' 时去掉一个前导 dot",
+      "遵循 SMTP_DATA.line_ending 映射规则：每个 DATA 行以 CRLF 形式存入 message_buf"
     ]
   },
   "ACCESS_PATHS": [

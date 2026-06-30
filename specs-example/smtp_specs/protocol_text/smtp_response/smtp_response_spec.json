@@ -20,20 +20,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "格式化单行 SMTP 响应为 '<code> <text>\\r\\n'",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
-            }
-          ],
-          "IDEMPOTENT": true,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
         "VISIBILITY": "public"
       },
       {
@@ -43,20 +29,6 @@
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
         "ROLE": "格式化 EHLO capability 多行响应，声明 AUTH LOGIN PLAIN、SIZE 和 8BITMIME",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "调用方传入的指针参数应满足函数签名约束；需要跨线程访问时由上层同步。"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "函数按当前 SMTP 示例实现维护相关对象状态、返回码或队列/文件副作用。"
-            }
-          ],
-          "IDEMPOTENT": true,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
         "VISIBILITY": "public"
       }
     ]

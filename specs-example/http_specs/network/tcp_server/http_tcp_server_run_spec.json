@@ -2,8 +2,6 @@
   "KIND": "FUNCTION_SPEC",
   "TRACE_ID": "http/network/tcp_server/http_tcp_server_run",
   "FUNCTION_TYPE": "ALGORITHM",
-  "THREAD_SAFETY": "SINGLE_THREAD_ONLY",
-  "IDEMPOTENT": false,
   "ROLE": "运行 epoll 事件循环：epoll_wait 1s 超时，分派 accept/read/write/close 事件",
   "SIGNATURE": {
     "RAW": "int http_tcp_server_run(http_tcp_server_t* server)",
@@ -54,7 +52,10 @@
     "OUTPUT": "正常退出返回 0，异常返回错误码。",
     "INVARIANTS_USED": [
       "running 标志控制循环生命周期",
-      "事件循环退出后不残留待处理事件"
+      "事件循环退出后不残留待处理事件",
+      "仅面向单线程事件循环或单线程调用路径；跨线程访问必须由上层同步。",
+      "函数可能分配资源、消费缓冲、修改链表、写文件或更新网络状态，不承诺幂等。",
+      "调用方必须遵守 SIGNATURE.PARAMS 中的 NULLABLE 与 OWNERSHIP 约束。"
     ]
   }
 }

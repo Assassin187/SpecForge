@@ -33,12 +33,19 @@
     "VAR": []
   },
   "LOGIC": {
-    "INPUT": "输入来自函数参数。",
+    "INPUT": "输入参数：conn(http_connection_t*，不可为 NULL，BORROWED)。",
     "ACTION": "循环 send(conn->fd, out_buf+out_off, out_len-out_off, 0)；EINTR 重试；EAGAIN/EWOULDBLOCK 返回 1（部分发送，需注册 EPOLLOUT）；错误返回 -1；全部发送后 out_len=out_off=0 返回 0。",
-    "OUTPUT": "0=全部发送完成，1=部分发送需重试，-1=错误。"
+    "OUTPUT": "0=全部发送完成，1=部分发送需重试，-1=错误。",
+    "INVARIANTS_USED": [
+      "仅面向单线程事件循环或单线程调用路径；跨线程访问必须由上层同步。",
+      "函数可能分配资源、消费缓冲、修改链表、写文件或更新网络状态，不承诺幂等。",
+      "调用方必须遵守 SIGNATURE.PARAMS 中的 NULLABLE 与 OWNERSHIP 约束。",
+      "维护 conn->fd：作为 send 的 socket 参数来源",
+      "维护 conn->out_buf：从 out_off 偏移开始发送",
+      "维护 conn->out_off：随 send 成功推进；全部发送后归零",
+      "维护 conn->out_len：全部发送后归零"
+    ]
   },
-  "THREAD_SAFETY": "SINGLE_THREAD_ONLY",
-  "IDEMPOTENT": false,
   "ACCESS_PATHS": [
     {
       "PATH": "conn->fd",

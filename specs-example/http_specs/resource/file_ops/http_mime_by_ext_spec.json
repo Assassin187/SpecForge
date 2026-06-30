@@ -32,7 +32,10 @@
     "OUTPUT": "返回静态 MIME 字符串字面量。",
     "INVARIANTS_USED": [
       "返回字符串为静态字面量，调用方不得释放",
-      "未匹配时统一返回 application/octet-stream"
+      "未匹配时统一返回 application/octet-stream",
+      "仅面向单线程事件循环或单线程调用路径；跨线程访问必须由上层同步。",
+      "重复调用不得破坏内部一致性；无匹配对象、空输入或已完成状态按当前实现安全处理。",
+      "调用方必须遵守 SIGNATURE.PARAMS 中的 NULLABLE 与 OWNERSHIP 约束。"
     ]
   }
 }

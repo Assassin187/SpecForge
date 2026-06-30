@@ -32,29 +32,29 @@
     "STRUCT": [
       {
         "NAME": "http_request_t",
-        "ROLE": ""
+        "ROLE": "dispatch 读取或维护的 http_request_t 状态"
       }
     ],
     "FUNC": [
       {
         "NAME": "handle_get",
         "KIND": "CALL",
-        "ROLE": ""
+        "ROLE": "dispatch 调用 handle_get 完成子步骤"
       },
       {
         "NAME": "handle_head",
         "KIND": "CALL",
-        "ROLE": ""
+        "ROLE": "dispatch 调用 handle_head 完成子步骤"
       },
       {
         "NAME": "handle_post",
         "KIND": "CALL",
-        "ROLE": ""
+        "ROLE": "dispatch 调用 handle_post 完成子步骤"
       },
       {
         "NAME": "send_error",
         "KIND": "CALL",
-        "ROLE": ""
+        "ROLE": "dispatch 调用 send_error 完成子步骤"
       }
     ],
     "VAR": []
@@ -64,7 +64,10 @@
     "ACTION": "switch(req->method)：HTTP_GET→handle_get; HTTP_HEAD→handle_head; HTTP_POST→handle_post; HTTP_UNKNOWN→send_error 501。",
     "OUTPUT": "成功返回 0，失败返回 -1。",
     "INVARIANTS_USED": [
-      "函数执行保持本模块内部状态一致性。"
+      "仅面向单线程事件循环或单线程调用路径；跨线程访问必须由上层同步。",
+      "函数可能分配资源、消费缓冲、修改链表、写文件或更新网络状态，不承诺幂等。",
+      "server、session、request 均非空；request->method 已由解析器填充",
+      "请求已被对应处理器处理；未知方法时已调用 send_error(501)"
     ]
   }
 }

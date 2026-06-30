@@ -118,13 +118,6 @@
     "DEPENDENCY": [
       "../network/connection.h"
     ],
-    "SYSTEM_DEPENDENCY": [
-      "<errno.h>",
-      "<stdlib.h>",
-      "<string.h>",
-      "<sys/socket.h>",
-      "<unistd.h>"
-    ],
     "DATA": [
       {
         "NAME": "struct http_connection",
@@ -139,26 +132,7 @@
         "SIGNATURE": "http_connection_t* http_connection_create(int fd)",
         "NAME": "http_connection_create",
         "KIND": "FUNC",
-        "ROLE": "calloc 分配连接对象，设置 fd，返回对象指针；失败返回 NULL",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "调用前对象指针应有效；并发访问需由上层同步控制"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "函数执行后维持模块内部状态一致性，并向调用方返回结果/副作用"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY",
-          "CALL_CONTRACTS": [
-            {
-              "TEXT": "返回动态分配的对象，调用方必须通过 http_connection_destroy 释放"
-            }
-          ]
-        },
+        "ROLE": "为已建立的 socket fd 分配并初始化连接对象，设置 fd、清零缓冲字段",
         "VISIBILITY": "public"
       },
       {
@@ -166,21 +140,7 @@
         "SIGNATURE": "void http_connection_destroy(http_connection_t* conn)",
         "NAME": "http_connection_destroy",
         "KIND": "FUNC",
-        "ROLE": "空安全检查后释放 in_buf、out_buf 与连接对象自身",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "调用前对象指针应有效；并发访问需由上层同步控制"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "函数执行后维持模块内部状态一致性，并向调用方返回结果/副作用"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
+        "ROLE": "释放连接对象的输入/输出缓冲区并释放连接对象自身；空指针安全返回",
         "VISIBILITY": "public"
       },
       {
@@ -188,21 +148,7 @@
         "SIGNATURE": "int http_connection_fd(const http_connection_t* conn)",
         "NAME": "http_connection_fd",
         "KIND": "FUNC",
-        "ROLE": "空安全返回 fd；NULL 时返回 -1",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "调用前对象指针应有效；并发访问需由上层同步控制"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "函数执行后维持模块内部状态一致性，并向调用方返回结果/副作用"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
+        "ROLE": "返回连接的 socket fd；空指针或无效连接返回 -1",
         "VISIBILITY": "public"
       },
       {
@@ -210,21 +156,7 @@
         "SIGNATURE": "int http_connection_read(http_connection_t* conn)",
         "NAME": "http_connection_read",
         "KIND": "FUNC",
-        "ROLE": "循环 recv 读取数据并追加到输入缓冲，正确处理 EAGAIN/EINTR/对端关闭/错误分支",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "调用前对象指针应有效；并发访问需由上层同步控制"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "函数执行后维持模块内部状态一致性，并向调用方返回结果/副作用"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
+        "ROLE": "非阻塞循环 recv 读取 socket 数据并追加到输入缓冲；正确处理 EAGAIN/EINTR/对端关闭",
         "VISIBILITY": "public"
       },
       {
@@ -232,21 +164,7 @@
         "SIGNATURE": "char* http_connection_pop_line(http_connection_t* conn)",
         "NAME": "http_connection_pop_line",
         "KIND": "FUNC",
-        "ROLE": "扫描 \\n 分隔符提取行，去除尾部 \\r，malloc 返回副本并通过 memmove 消费缓冲",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "调用前对象指针应有效；并发访问需由上层同步控制"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "函数执行后维持模块内部状态一致性，并向调用方返回结果/副作用"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
+        "ROLE": "从输入缓冲提取以 \\n 分隔的一行，去除尾部 \\r，动态分配返回；行不完整返回 NULL",
         "VISIBILITY": "public"
       },
       {
@@ -254,21 +172,7 @@
         "SIGNATURE": "char* http_connection_pop_bytes(http_connection_t* conn, size_t len)",
         "NAME": "http_connection_pop_bytes",
         "KIND": "FUNC",
-        "ROLE": "校验 in_len >= len，malloc 复制并通过 memmove 消费缓冲",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "调用前对象指针应有效；并发访问需由上层同步控制"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "函数执行后维持模块内部状态一致性，并向调用方返回结果/副作用"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
+        "ROLE": "从输入缓冲提取指定长度的字节，动态分配返回；数据不足返回 NULL",
         "VISIBILITY": "public"
       },
       {
@@ -276,21 +180,7 @@
         "SIGNATURE": "size_t http_connection_buffered(const http_connection_t* conn)",
         "NAME": "http_connection_buffered",
         "KIND": "FUNC",
-        "ROLE": "空安全返回 in_len",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "调用前对象指针应有效；并发访问需由上层同步控制"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "函数执行后维持模块内部状态一致性，并向调用方返回结果/副作用"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
+        "ROLE": "返回输入缓冲当前可读字节数；空指针返回 0",
         "VISIBILITY": "public"
       },
       {
@@ -298,21 +188,7 @@
         "SIGNATURE": "int http_connection_queue(http_connection_t* conn, const void* data, size_t len)",
         "NAME": "http_connection_queue",
         "KIND": "FUNC",
-        "ROLE": "校验参数后调用 ensure_cap 扩容，memcpy 追加到输出缓冲",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "调用前对象指针应有效；并发访问需由上层同步控制"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "函数执行后维持模块内部状态一致性，并向调用方返回结果/副作用"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
+        "ROLE": "将原始字节追加到输出缓冲队列；自动扩容",
         "VISIBILITY": "public"
       },
       {
@@ -320,21 +196,7 @@
         "SIGNATURE": "int http_connection_queue_str(http_connection_t* conn, const char* text)",
         "NAME": "http_connection_queue_str",
         "KIND": "FUNC",
-        "ROLE": "通过 strlen 计算长度后委托 http_connection_queue；text==NULL 返回 -1",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "调用前对象指针应有效；并发访问需由上层同步控制"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "函数执行后维持模块内部状态一致性，并向调用方返回结果/副作用"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
+        "ROLE": "将 C 字符串通过 strlen 计算长度后委托 http_connection_queue 追加到输出缓冲",
         "VISIBILITY": "public"
       },
       {
@@ -342,21 +204,7 @@
         "SIGNATURE": "int http_connection_flush(http_connection_t* conn)",
         "NAME": "http_connection_flush",
         "KIND": "FUNC",
-        "ROLE": "循环 send 刷写 out_buf+out_off；全部发送后重置 out_len/out_off=0 返回 0；EAGAIN 时返回 1 通知上层注册 EPOLLOUT",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "调用前对象指针应有效；并发访问需由上层同步控制"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "函数执行后维持模块内部状态一致性，并向调用方返回结果/副作用"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
+        "ROLE": "非阻塞 send 刷写输出缓冲；全部发送返回 0，部分发送返回 1 通知上层注册 EPOLLOUT",
         "VISIBILITY": "public"
       },
       {
@@ -364,21 +212,7 @@
         "SIGNATURE": "bool http_connection_has_pending(const http_connection_t* conn)",
         "NAME": "http_connection_has_pending",
         "KIND": "FUNC",
-        "ROLE": "返回 out_off < out_len 布尔值",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "调用前对象指针应有效；并发访问需由上层同步控制"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "函数执行后维持模块内部状态一致性，并向调用方返回结果/副作用"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
+        "ROLE": "判断连接是否存在待发送数据（out_off < out_len）",
         "VISIBILITY": "public"
       },
       {
@@ -386,21 +220,7 @@
         "SIGNATURE": "static int ensure_cap(uint8_t** buf, size_t* cap, size_t needed)",
         "NAME": "ensure_cap",
         "KIND": "FUNC",
-        "ROLE": "缓冲扩容函数：从 4096 起倍增直到满足 needed，通过 realloc 分配",
-        "CONTRACT": {
-          "PRECONDITION": [
-            {
-              "TEXT": "调用前对象指针应有效；并发访问需由上层同步控制"
-            }
-          ],
-          "POSTCONDITION": [
-            {
-              "TEXT": "函数执行后维持模块内部状态一致性，并向调用方返回结果/副作用"
-            }
-          ],
-          "IDEMPOTENT": false,
-          "THREAD_SAFETY": "SINGLE_THREAD_ONLY"
-        },
+        "ROLE": "缓冲扩容函数：从 4096 起倍增直到满足 needed 字节需求",
         "VISIBILITY": "private"
       }
     ]
