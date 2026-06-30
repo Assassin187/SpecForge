@@ -30,7 +30,7 @@
         "NAME": "http_response_send",
         "KIND": "FUNC",
         "FUNCTION_TYPE": "ALGORITHM",
-        "ROLE": "构建完整 HTTP/1.1 响应：状态行→Date→Server→Content-Length→Connection:close→可选 extra_headers→空白行→可选正文；extra_headers 为 NULL 终止的 \"Name: value\" 字符串数组",
+        "ROLE": "构建完整 HTTP/1.1 响应：状态行→Date→Server→Content-Length→Connection:close→可选 extra_headers→空白行→可选正文；extra_headers 为 NULL 终止的完整 \"Name: value\" header line 字符串数组，每项必须包含冒号；body_len 表示 advertised Content-Length，不仅是实际写出的 body 字节数",
         "VISIBILITY": "public"
       },
       {
@@ -64,7 +64,7 @@
         "SIGNATURE": "int http_response_send(http_connection_t* conn, int status, const char** extra_headers, const void* body, size_t body_len)",
         "NAME": "http_response_send",
         "KIND": "FUNC",
-        "ROLE": "构建完整 HTTP/1.1 响应并排队到连接输出缓冲：状态行→Date→Server→Content-Length→Connection:close→可选 extra_headers→空白行→可选正文",
+        "ROLE": "构建完整 HTTP/1.1 响应并排队到连接输出缓冲：状态行→Date→Server→Content-Length→Connection:close→可选完整 header line 数组 extra_headers→空白行→可选正文；body_len 始终用于 Content-Length",
         "VISIBILITY": "public"
       },
       {

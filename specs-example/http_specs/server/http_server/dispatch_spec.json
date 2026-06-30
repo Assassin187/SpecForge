@@ -61,13 +61,14 @@
   },
   "LOGIC": {
     "INPUT": "输入 server、session、已解析的 req。",
-    "ACTION": "switch(req->method)：HTTP_GET→handle_get; HTTP_HEAD→handle_head; HTTP_POST→handle_post; HTTP_UNKNOWN→send_error 501。",
+    "ACTION": "switch(req->method)：HTTP_GET→handle_get; HTTP_HEAD→handle_head; HTTP_POST→handle_post; HTTP_UNKNOWN→send_error 501。HTTP_UNKNOWN 是 parser 对合法但不支持 method token 的正常输出，必须在此处映射为 501 Not Implemented。",
     "OUTPUT": "成功返回 0，失败返回 -1。",
     "INVARIANTS_USED": [
       "仅面向单线程事件循环或单线程调用路径；跨线程访问必须由上层同步。",
       "函数可能分配资源、消费缓冲、修改链表、写文件或更新网络状态，不承诺幂等。",
       "server、session、request 均非空；request->method 已由解析器填充",
-      "请求已被对应处理器处理；未知方法时已调用 send_error(501)"
+      "请求已被对应处理器处理；未知方法时已调用 send_error(501)",
+      "不得把 HTTP_UNKNOWN 改写为 400；unsupported method 的唯一响应码是 501"
     ]
   }
 }

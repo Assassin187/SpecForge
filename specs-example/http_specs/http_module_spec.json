@@ -354,12 +354,12 @@
     },
     {
       "ID": "C4",
-      "RULE": "每个请求-响应周期结束后必须关闭 TCP 连接（Connection: close）；不实现 keep-alive、pipelining 或持久连接复用。",
+      "RULE": "每个请求-响应周期结束后必须发送 Connection: close，flush 已排队响应字节，然后关闭 TCP 连接；不实现 keep-alive、pipelining 或持久连接复用。",
       "DOC_REF": []
     },
     {
       "ID": "C5",
-      "RULE": "仅支持 GET、HEAD、POST 三种方法；任何其他方法（包括 PUT、DELETE、PATCH、OPTIONS 等）必须返回 501 Not Implemented。",
+      "RULE": "仅支持 GET、HEAD、POST 三种方法；任何其他合法 HTTP method token（包括 PUT、DELETE、PATCH、OPTIONS 等）必须由 parser 保留为 HTTP_UNKNOWN，并由 dispatcher 返回 501 Not Implemented；不得在 parser 阶段映射为 400 Bad Request。",
       "DOC_REF": []
     },
     {
@@ -375,6 +375,26 @@
     {
       "ID": "C8",
       "RULE": "只能使用 canonical header 中声明的 public types、fields、enum values 与 functions；不得臆造额外 HTTP surface。",
+      "DOC_REF": []
+    },
+    {
+      "ID": "C9",
+      "RULE": "HEAD 响应不得发送 body，但 Content-Length 必须等于同资源 GET 响应的 body 长度，不得因为 body=NULL 而写成 Content-Length: 0。",
+      "DOC_REF": []
+    },
+    {
+      "ID": "C10",
+      "RULE": "http_response_send.extra_headers 必须是 NULL 终止的完整 header line 字符串数组，例如 \"Content-Type: text/plain\"；禁止生成 {\"Content-Type\", \"text/plain\", NULL} 这种 name/value 交替数组。",
+      "DOC_REF": []
+    },
+    {
+      "ID": "C11",
+      "RULE": "位于 document root 内但 leaf 不存在的路径必须返回 404 Not Found；目录遍历、root 外路径或安全校验失败才返回 403 Forbidden。",
+      "DOC_REF": []
+    },
+    {
+      "ID": "C12",
+      "RULE": "任何 error response 在关闭连接前必须先 flush 已排队响应，避免客户端读到空响应或 partial response。",
       "DOC_REF": []
     }
   ],

@@ -111,7 +111,7 @@
     "TRIGGER": "epoll 报告客户端 fd 有事件时被 http_tcp_server_run 回调。",
     "PRECONDITION": "user 指向有效的 http_server_t，fd 对应活跃会话；单线程事件循环调用。",
     "INPUT": "user、fd、epoll 事件标志位。",
-    "ACTION": "HTTP_IO_WRITABLE：flush_and_update→若无剩余待发数据则 close_client。HTTP_IO_READABLE：http_connection_read→读取 0 或错误则 close_client→否则 http_request_parse→0 完成则 dispatch 并 flush_and_update→1 需更多数据→-1 则 send_error 400。",
+    "ACTION": "HTTP_IO_WRITABLE：flush_and_update→若无剩余待发数据则 close_client。HTTP_IO_READABLE：http_connection_read→读取 0 或错误则 close_client→否则 http_request_parse→0 完成则 dispatch→flush_and_update→若无剩余待发数据则 close_client；parse 返回 1 表示需更多数据且不发送响应；parse 返回 -1 表示 malformed request，必须 send_error(400)→flush_and_update→close_client。任何成功或错误响应都必须先 flush 已排队字节，再关闭连接。",
     "STATE_CHANGE": "可能创建/消费请求、发送响应、关闭连接；事件可能产生状态副作用，不承诺幂等。",
     "RESPONSE": "无直接返回值；根据读写事件刷新输出、读取输入、解析协议消息、分发业务处理或关闭连接。",
     "EVENT_TYPE": "网络事件回调"

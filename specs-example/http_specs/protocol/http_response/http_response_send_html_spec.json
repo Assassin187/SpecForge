@@ -53,11 +53,11 @@
   },
   "LOGIC": {
     "INPUT": "输入 conn、状态码、标题、printf 格式字符串及可变参数。",
-    "ACTION": "vsnprintf 格式化内容到 8192 字节栈缓冲→snprintf 包装为完整 HTML→设置 Content-Type: text/html 作为 extra_headers→委托 http_response_send。",
+    "ACTION": "vsnprintf 格式化内容到 8192 字节栈缓冲→snprintf 包装为完整 HTML→设置单个完整 header line \"Content-Type: text/html\" 作为 extra_headers→委托 http_response_send。",
     "OUTPUT": "成功返回 0，格式化溢出或发送失败返回 -1。",
     "INVARIANTS_USED": [
       "HTML 内容缓冲上限 8192 字节",
-      "extra_headers 仅包含 Content-Type: text/html",
+      "extra_headers 仅包含单个完整字符串 \"Content-Type: text/html\"，禁止拆成 \"Content-Type\" 和 \"text/html\" 两个数组元素",
       "title 用于 HTML <title> 元素",
       "仅面向单线程事件循环或单线程调用路径；跨线程访问必须由上层同步。",
       "函数可能分配资源、消费缓冲、修改链表、写文件或更新网络状态，不承诺幂等。",
