@@ -14,13 +14,16 @@
 
 - `nl-plan-code`
   - 输入同上。
-  - 先生成 `nl_plan.md`，描述协议角色、模块划分、数据结构、函数职责、解析逻辑、状态处理和错误处理。
-  - 再基于 `nl_plan.md` 生成 `project_strategy.json`，并复用同一套分文件生成、编译修复和 smoke test 流程。
+  - 先生成只含自然语言实现思路的 `nl_plan.md`；禁止 JSON/YAML、table-like specs、inventory、dependency graph、type ownership table、`FILE_SPEC`、`FUNCTION_SPEC` 等结构化 planning artifacts。
+  - 将压缩后的 plan brief 加入 FS-Direct 的 source tree skeleton 和 pair-wise `.h/.c` completion prompt；skeleton 仍只包含 `path`、`kind`、`order`，`main.c` 仍作为单独 generation unit。
+  - 后续直接复用 FS-Direct 的 static checks、compile、已有 source-level repair 和 smoke test，不生成或消费 `project_strategy.json`。
   - 该 baseline 用于检验自然语言工程计划是否足以替代结构化 implementation-oriented protocol specs。
 
 - `full-specforge`
   - 保持现有流程：`protocol_facts.json + target_profile.json -> planning agent -> spec_bundle -> coder agent -> compile/repair/smoke`。
   - 本目录只通过 CLI adapter 调用现有 `agent.planning` 和 `agent.coder`，不修改 planner、spec compiler 或 coder schema。
+
+两条 baseline 共用同一套 generation reliability 约束：已有 headers 通过 Clang AST 机械提取完整 public declarations，Clang 不可用或无法解析时回退到移除 comments/include guards 后的完整 header；header context 只按完整 declaration block 裁剪。Skeleton 和 pair completion 只接受严格 JSON object，单次请求使用 16,384 completion token 上限，deterministic parse/schema validation 失败时最多重新生成一次。该 retry 属于 generation validation，不修改 compile repair。
 
 ## Anti-Leak Boundary
 
@@ -33,7 +36,7 @@ baseline runner 必须只使用 allowed inputs：
 
 baseline 不得调用 planning agent，不得读取 `specs-example/`、`gold_specs/` 或 `spec_bundle/`，不得使用 SpecForge 的 `PROTOCOL_MODULE_SPEC`、`FILE_SPEC`、`FUNCTION_SPEC`、dependency graph、wire/access binding 或 validators。
 
-`baseline_runner.py` 会对生成物和 allowed input snapshot 执行 forbidden term scan，并在 `summary.json` / `run_manifest.json` 中记录 `leakage_guard`。
+`baseline_runner.py` 会对 allowed input snapshot、skeleton 和生成源码执行 forbidden term scan，并在 `summary.json` / `run_manifest.json` 中记录 `leakage_guard`。文件级 `planning_artifact_guard` 禁止 FS-Direct 生成任何 planning artifact，并禁止 NL-Plan 生成 `nl_plan.md` 以外的 planning artifact。NL-Plan 另以 `nl_plan_guard_status` / `nl_plan_guard` 记录非空计划文件是否成功生成；该 guard 不扫描计划内容。
 
 ## Supported Protocols
 
@@ -109,7 +112,7 @@ evaluation/planning_utility/out/<run_id>/
     ├── nl-plan-code/
     │   ├── allowed_inputs/
     │   ├── nl_plan.md
-    │   ├── project_strategy.json
+    │   ├── source_tree_skeleton.json
     │   ├── coder_out/
     │   └── summary.json
     └── full-specforge/
@@ -129,9 +132,12 @@ evaluation/planning_utility/out/<run_id>/
 - `pair_completion_status`
 - `strategy_generation_status`
 - `nl_plan_status`
+- `nl_plan_guard_status`、`nl_plan_guard`
 - `file_generation_status`
 - `generated_pairs`
 - `generated_files`
+- `header_context_diagnostics`
+- `json_retry_count`、`json_generation_attempts`、`failed_generation_unit`
 - `planning_artifact_guard`
 - `static_check_status`
 - `compile_status`

@@ -24,13 +24,12 @@ from agent.coder.llm_client import FixedQwenClient, LLMRequest, LLMResponse, LLM
 from agent.coder.protocol_behavior_val import verify_protocol_behavior
 
 from .configs import ProtocolConfig, rel_to_repo
+from .header_context import HeaderExtraction, extract_header_declarations, fit_header_context
 from .prompts import (
-    build_file_messages,
     build_nl_plan_messages,
     build_pair_completion_messages,
     build_repair_messages,
     build_source_tree_skeleton_messages,
-    build_strategy_messages,
 )
 from .requirements import build_allowed_inputs, write_json
 
@@ -61,6 +60,8 @@ PLANNING_ARTIFACT_NAMES = {
 PLANNING_ARTIFACT_PREFIXES = ("type_ownership", "behavior_contract")
 MAX_SOURCE_PROMPT_BYTES = 4 * 1024 * 1024
 MAX_HEADER_CONTEXT_BYTES = 256 * 1024
+JSON_MAX_COMPLETION_TOKENS = 16384
+JSON_MAX_RETRIES = 1
 
 
 @dataclass
@@ -94,18 +95,30 @@ def _json(data: Any) -> str:
 
 
 def _parse_json_response(text: str) -> dict[str, Any]:
-    stripped = _strip_fences(text).strip()
-    try:
-        parsed = json.loads(stripped)
-    except json.JSONDecodeError:
-        start = stripped.find("{")
-        end = stripped.rfind("}")
-        if start < 0 or end <= start:
-            raise
-        parsed = json.loads(stripped[start : end + 1])
+    parsed = json.loads(text.strip())
     if not isinstance(parsed, dict):
         raise ValueError("LLM response JSON must be an object")
     return parsed
+
+
+def _json_retry_messages(
+    messages: list[dict[str, str]],
+    reason: str,
+    attempt: int,
+) -> list[dict[str, str]]:
+    return [
+        *messages,
+        {
+            "role": "user",
+            "content": (
+                f"JSON retry attempt {attempt}. Regenerate the complete requested JSON object from scratch. "
+                "The previous response was rejected by deterministic validation. The first character must be '{' "
+                "and the last character must be '}'. Return strict standard JSON only, with double-quoted keys and "
+                "strings, correctly escaped source content, and no markdown, prose, analysis, comments outside source "
+                f"content, or trailing commas. Rejection reason: {reason}"
+            ),
+        },
+    ]
 
 
 def _safe_project_path(path: str) -> str:
@@ -121,34 +134,6 @@ def _safe_project_path(path: str) -> str:
     if normalized != "Makefile" and Path(normalized).suffix not in allowed:
         raise ValueError(f"unsupported project file extension: {path}")
     return normalized
-
-
-def validate_project_strategy(strategy: dict[str, Any]) -> list[str]:
-    errors: list[str] = []
-    files = strategy.get("files")
-    if not isinstance(files, list) or not files:
-        return ["strategy.files must be a non-empty list"]
-    paths: list[str] = []
-    for index, item in enumerate(files):
-        if not isinstance(item, dict):
-            errors.append(f"strategy.files[{index}] must be an object")
-            continue
-        raw_path = str(item.get("path", ""))
-        try:
-            path = _safe_project_path(raw_path)
-        except ValueError as exc:
-            errors.append(str(exc))
-            continue
-        if path == "Makefile":
-            continue
-        if path in paths:
-            errors.append(f"duplicate project file path: {path}")
-        paths.append(path)
-    if not any(path.endswith(".c") for path in paths):
-        errors.append("strategy must include at least one C source file")
-    if "main.c" not in paths:
-        errors.append("strategy must include main.c")
-    return errors
 
 
 def validate_source_tree_skeleton(skeleton: dict[str, Any]) -> list[str]:
@@ -202,17 +187,6 @@ def validate_source_tree_skeleton(skeleton: dict[str, Any]) -> list[str]:
     if "main.c" not in paths:
         errors.append("skeleton must include main.c")
     return errors
-
-
-def _ordered_strategy_files(strategy: dict[str, Any]) -> list[dict[str, Any]]:
-    files = [item for item in strategy.get("files", []) if isinstance(item, dict)]
-    normalized: list[dict[str, Any]] = []
-    for item in files:
-        path = _safe_project_path(str(item.get("path", "")))
-        if path == "Makefile":
-            continue
-        normalized.append({**item, "path": path})
-    return sorted(normalized, key=lambda item: (0 if item["path"].endswith(".h") else 2 if item["path"] == "main.c" else 1, item["path"]))
 
 
 def _ordered_skeleton_files(skeleton: dict[str, Any]) -> list[dict[str, Any]]:
@@ -281,42 +255,6 @@ def _count_scenarios(scenarios: list[dict[str, str]]) -> dict[str, int]:
     return counts
 
 
-def _extract_header_declarations(content: str) -> str:
-    extracted: list[str] = []
-    block: list[str] = []
-    capture = False
-    for raw_line in content.splitlines():
-        line = raw_line.strip()
-        if not line:
-            continue
-        if capture:
-            block.append(raw_line)
-            if ";" in line:
-                extracted.extend(block)
-                block = []
-                capture = False
-            continue
-        if line.startswith("#include") or line.startswith("#define"):
-            extracted.append(raw_line)
-            continue
-        starts_declaration = (
-            line.startswith("typedef")
-            or line.startswith("struct ")
-            or line.startswith("enum ")
-        )
-        if starts_declaration:
-            block = [raw_line]
-            if ";" in line:
-                extracted.extend(block)
-                block = []
-            else:
-                capture = True
-            continue
-        if line.endswith(";") and "(" in line and not line.startswith(("if", "for", "while", "switch")):
-            extracted.append(raw_line)
-    return "\n".join(extracted)
-
-
 class BaselineProjectRunner:
     method: str = METHOD_NL
 
@@ -342,8 +280,12 @@ class BaselineProjectRunner:
         self.generated_pairs: list[dict[str, Any]] = []
         self.generated_files: list[str] = []
         self.expected_files: list[str] = []
-        self.current_strategy: dict[str, Any] | None = None
         self.current_skeleton: dict[str, Any] | None = None
+        self.header_context_cache: dict[str, HeaderExtraction] = {}
+        self.header_context_diagnostics: list[dict[str, str]] = []
+        self.json_retry_count = 0
+        self.json_generation_attempts: list[dict[str, Any]] = []
+        self.failed_generation_unit: dict[str, Any] | None = None
         self.timer = StageTimer()
 
     def run(self) -> BaselineRunResult:
@@ -402,7 +344,8 @@ class BaselineProjectRunner:
             )
             return self._finish(summary, manifest_path)
         except Exception as exc:  # noqa: BLE001
-            self._mark_failure(summary, "runner", f"{type(exc).__name__}: {exc}")
+            if not summary.get("failure_stage"):
+                self._mark_failure(summary, "runner", f"{type(exc).__name__}: {exc}")
             manifest_path = self._write_manifest(summary, None, "runner_error", [], [])
             return self._finish(summary, manifest_path)
 
@@ -436,6 +379,10 @@ class BaselineProjectRunner:
             "pair_completion_status": "not_run",
             "generated_pairs": [],
             "generated_files": [],
+            "header_context_diagnostics": [],
+            "json_retry_count": 0,
+            "json_generation_attempts": [],
+            "failed_generation_unit": None,
             "planning_artifact_guard": {"status": "not_run", "findings": []},
             "static_check_status": "not_run",
             "compile_status": "not_run",
@@ -484,10 +431,24 @@ class BaselineProjectRunner:
         existing = self.stage_token_usage.get(stage, _usage_to_dict(LLMUsage(0, 0, 0)))
         self.stage_token_usage[stage] = _usage_to_dict(_add_usage(LLMUsage(**existing), usage))
 
-    def _generate_with_usage(self, stage: str, call_type: str, subject: str, messages: list[dict[str, str]]) -> LLMResponse:
+    def _generate_with_usage(
+        self,
+        stage: str,
+        call_type: str,
+        subject: str,
+        messages: list[dict[str, str]],
+        *,
+        max_completion_tokens: int | None = None,
+    ) -> LLMResponse:
         self.logs.write(f"prompt_{stage}_{subject}", _json(messages))
         response = self.llm_client.generate_with_usage(
-            LLMRequest(messages=messages, top_p=0.2, temperature=0.2, is_stream=True)
+            LLMRequest(
+                messages=messages,
+                top_p=0.2,
+                temperature=0.2,
+                is_stream=True,
+                max_completion_tokens=max_completion_tokens,
+            )
         )
         if not isinstance(response, LLMResponse):
             raise RuntimeError(f"Expected LLMResponse, got {type(response)!r}")
@@ -495,73 +456,73 @@ class BaselineProjectRunner:
         self.logs.write(f"response_{stage}_{subject}", response.content)
         return response
 
+    def _generate_validated_json(
+        self,
+        *,
+        stage: str,
+        subject: str,
+        messages: list[dict[str, str]],
+        validator,
+        unit_paths: list[str],
+    ) -> Any:
+        rejection_reasons: list[str] = []
+        for attempt in range(1, JSON_MAX_RETRIES + 2):
+            attempt_messages = messages
+            call_type = "generate"
+            if attempt > 1:
+                self.json_retry_count += 1
+                call_type = "json_retry"
+                attempt_messages = _json_retry_messages(messages, rejection_reasons[-1], attempt - 1)
+            response = self._generate_with_usage(
+                stage,
+                call_type,
+                subject,
+                attempt_messages,
+                max_completion_tokens=JSON_MAX_COMPLETION_TOKENS,
+            )
+            try:
+                validated = validator(response.content)
+            except ValueError as exc:
+                reason = " ".join(str(exc).split())[:500]
+                rejection_reasons.append(reason)
+                if attempt <= JSON_MAX_RETRIES:
+                    continue
+                record = {
+                    "stage": stage,
+                    "subject": subject,
+                    "attempt_count": attempt,
+                    "retry_count": attempt - 1,
+                    "status": "failed",
+                    "rejection_reasons": rejection_reasons,
+                }
+                self.json_generation_attempts.append(record)
+                self.failed_generation_unit = {
+                    "stage": stage,
+                    "subject": subject,
+                    "paths": list(unit_paths),
+                }
+                raise ValueError(
+                    f"{stage} JSON validation failed after {attempt} attempts for {subject}: {reason}"
+                ) from exc
+            self.json_generation_attempts.append(
+                {
+                    "stage": stage,
+                    "subject": subject,
+                    "attempt_count": attempt,
+                    "retry_count": attempt - 1,
+                    "status": "passed",
+                    "rejection_reasons": rejection_reasons,
+                }
+            )
+            return validated
+        raise AssertionError("unreachable JSON generation loop")
+
     def _generate_nl_plan(self, allowed_inputs: dict[str, Any]) -> str:
         messages = build_nl_plan_messages(protocol=self.config.protocol, allowed_inputs=allowed_inputs)
         response = self._generate_with_usage("nl_plan", "generate", self.config.protocol, messages)
         plan = _strip_fences(response.content)
         (self.output_dir / "nl_plan.md").write_text(plan, encoding="utf-8")
         return plan
-
-    def _run_generation(self, allowed_inputs: dict[str, Any], summary: dict[str, Any]) -> None:
-        summary["source_tree_skeleton_status"] = "not_applicable"
-        summary["pair_completion_status"] = "not_applicable"
-        nl_plan = self.timer.run("nl_plan", lambda: self._generate_nl_plan(allowed_inputs))
-        summary["nl_plan_status"] = "passed"
-        strategy = self.timer.run("strategy_generation", lambda: self._generate_strategy(allowed_inputs, nl_plan))
-        summary["strategy_generation_status"] = "passed"
-        self.timer.run("file_generation", lambda: self._generate_files(allowed_inputs, strategy, nl_plan))
-        summary["file_generation_status"] = "passed"
-        summary["generated_files"] = self.generated_files
-
-    def _generate_strategy(self, allowed_inputs: dict[str, Any], nl_plan: str) -> dict[str, Any]:
-        messages = build_strategy_messages(
-            protocol=self.config.protocol,
-            binary_name=self.config.binary_name,
-            argv_contract=self.config.argv_contract,
-            allowed_inputs=allowed_inputs,
-            nl_plan=nl_plan,
-        )
-        response = self._generate_with_usage("strategy", "generate", self.config.protocol, messages)
-        strategy = _parse_json_response(response.content)
-        errors = validate_project_strategy(strategy)
-        if errors:
-            raise ValueError("; ".join(errors))
-        write_json(self.output_dir / "project_strategy.json", strategy)
-        self.current_strategy = strategy
-        return strategy
-
-    def _generate_files(self, allowed_inputs: dict[str, Any], strategy: dict[str, Any], nl_plan: str) -> None:
-        headers: dict[str, str] = {}
-        ordered = _ordered_strategy_files(strategy)
-        self.expected_files = [item["path"] for item in ordered]
-        for item in ordered:
-            path = item["path"]
-            header_context = _json(headers)
-            if len(header_context.encode("utf-8")) > MAX_HEADER_CONTEXT_BYTES:
-                header_context = header_context.encode("utf-8")[:MAX_HEADER_CONTEXT_BYTES].decode("utf-8", errors="ignore")
-            messages = build_file_messages(
-                protocol=self.config.protocol,
-                argv_contract=self.config.argv_contract,
-                allowed_inputs=allowed_inputs,
-                strategy=strategy,
-                file_item=item,
-                header_context=header_context,
-                nl_plan=nl_plan,
-            )
-            if _messages_size_bytes(messages) > MAX_SOURCE_PROMPT_BYTES:
-                raise RuntimeError(f"source generation prompt too large for {path}")
-            response = self._generate_with_usage("file_generation", "generate", path, messages)
-            content = _strip_fences(response.content)
-            target = self.project_dir / path
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(content, encoding="utf-8")
-            if path not in self.generated_files:
-                self.generated_files.append(path)
-            if path.endswith(".h"):
-                headers[path] = content
-            self.logs.write(f"generated_file_{path}", content)
-        sources = [item["path"] for item in ordered if item["path"].endswith(".c")]
-        (self.project_dir / "Makefile").write_text(_render_makefile(self.config.binary_name, sources), encoding="utf-8")
 
     def _project_headers(self) -> dict[str, str]:
         headers: dict[str, str] = {}
@@ -577,27 +538,18 @@ class BaselineProjectRunner:
         return headers
 
     def _project_header_declarations(self) -> dict[str, str]:
-        declarations: dict[str, str] = {}
-        used = 0
+        extractions: list[tuple[str, HeaderExtraction]] = []
         for path in sorted(self.project_dir.rglob("*.h")):
             relative = path.relative_to(self.project_dir).as_posix()
-            content = path.read_text(encoding="utf-8", errors="ignore")
-            extracted = _extract_header_declarations(content)
-            encoded = extracted.encode("utf-8")
-            if used + len(encoded) > MAX_HEADER_CONTEXT_BYTES:
-                remaining = MAX_HEADER_CONTEXT_BYTES - used
-                if remaining <= 0:
-                    break
-                extracted = encoded[:remaining].decode("utf-8", errors="ignore")
-                encoded = extracted.encode("utf-8")
-            declarations[relative] = extracted
-            used += len(encoded)
+            if relative not in self.header_context_cache:
+                self.header_context_cache[relative] = extract_header_declarations(path, self.project_dir)
+            extractions.append((relative, self.header_context_cache[relative]))
+        declarations, diagnostics = fit_header_context(extractions, MAX_HEADER_CONTEXT_BYTES)
+        self.header_context_diagnostics = diagnostics
         return declarations
 
     def _run_static_checks(self) -> list[str]:
         errors: list[str] = []
-        if self.current_strategy is not None:
-            errors.extend(validate_project_strategy(self.current_strategy))
         if self.current_skeleton is not None:
             errors.extend(validate_source_tree_skeleton(self.current_skeleton))
         expected = self.expected_files
@@ -627,7 +579,7 @@ class BaselineProjectRunner:
         leakage = self._leakage_findings()
         if leakage:
             errors.append(f"forbidden leakage terms found: {', '.join(item['term'] for item in leakage[:3])}")
-        if self.method == METHOD_FS_DIRECT:
+        if self.method in BASELINE_METHODS:
             planning_artifacts = self._planning_artifact_findings()
             if planning_artifacts:
                 errors.append(
@@ -637,13 +589,11 @@ class BaselineProjectRunner:
         return errors
 
     def _leakage_findings(self) -> list[dict[str, str]]:
-        roots = [self.output_dir / "allowed_inputs", self.project_dir]
-        if self.method == METHOD_FS_DIRECT:
-            roots.append(self.output_dir / "source_tree_skeleton.json")
-        else:
-            roots.append(self.output_dir / "project_strategy.json")
-        if self.method == METHOD_NL:
-            roots.append(self.output_dir / "nl_plan.md")
+        roots = [
+            self.output_dir / "allowed_inputs",
+            self.project_dir,
+            self.output_dir / "source_tree_skeleton.json",
+        ]
         findings: list[dict[str, str]] = []
         for root in roots:
             paths = [root] if root.is_file() else sorted(root.rglob("*")) if root.exists() else []
@@ -657,13 +607,15 @@ class BaselineProjectRunner:
         return findings
 
     def _planning_artifact_findings(self) -> list[dict[str, str]]:
-        if self.method != METHOD_FS_DIRECT or not self.output_dir.exists():
+        if self.method not in BASELINE_METHODS or not self.output_dir.exists():
             return []
         findings: list[dict[str, str]] = []
         for path in sorted(self.output_dir.rglob("*")):
             if not path.is_file():
                 continue
             name = path.name
+            if self.method == METHOD_NL and name == "nl_plan.md":
+                continue
             if name in PLANNING_ARTIFACT_NAMES or any(name.startswith(prefix) for prefix in PLANNING_ARTIFACT_PREFIXES):
                 findings.append({"path": str(path.relative_to(self.output_dir)), "kind": "planning_artifact"})
         return findings
@@ -774,11 +726,23 @@ class BaselineProjectRunner:
             },
             "leakage_guard": {"status": "passed" if not leakage else "failed", "findings": leakage},
             "planning_artifact_guard": planning_artifact_guard,
+            "generated_pairs": self.generated_pairs,
+            "generated_files": self.generated_files,
+            "header_context_diagnostics": self.header_context_diagnostics,
+            "json_retry_count": self.json_retry_count,
+            "json_generation_attempts": self.json_generation_attempts,
+            "failed_generation_unit": self.failed_generation_unit,
             "llm_call_usage": self.llm_call_usage,
             "stage_token_usage": self.stage_token_usage,
             "workflow_token_usage": _usage_to_dict(self.workflow_usage),
             "timings": self.timer.timings,
         }
+        if self.method == METHOD_NL:
+            manifest["nl_plan_guard_status"] = summary.get("nl_plan_guard_status", "not_run")
+            manifest["nl_plan_guard"] = summary.get(
+                "nl_plan_guard",
+                {"status": "not_run", "findings": []},
+            )
         return self.logs.write_named("run_manifest.json", _json(manifest) + "\n")
 
     def _finish(self, summary: dict[str, Any], manifest_path: Path | None) -> BaselineRunResult:
@@ -789,6 +753,12 @@ class BaselineProjectRunner:
         summary["stage_token_usage"] = self.stage_token_usage
         summary["workflow_token_usage"] = _usage_to_dict(self.workflow_usage)
         summary["timings"] = self.timer.timings
+        summary["generated_pairs"] = self.generated_pairs
+        summary["generated_files"] = self.generated_files
+        summary["header_context_diagnostics"] = self.header_context_diagnostics
+        summary["json_retry_count"] = self.json_retry_count
+        summary["json_generation_attempts"] = self.json_generation_attempts
+        summary["failed_generation_unit"] = self.failed_generation_unit
         summary["leakage_guard"] = {"status": "passed" if not leakage else "failed", "findings": leakage}
         summary["planning_artifact_guard"] = planning_artifact_guard
         if manifest_path is not None:
@@ -835,38 +805,72 @@ class FSDirectCoderRunner(BaselineProjectRunner):
         summary["nl_plan_status"] = "not_applicable"
         summary["strategy_generation_status"] = "not_applicable"
         summary["file_generation_status"] = "not_applicable"
-        skeleton = self.timer.run(
-            "source_tree_skeleton",
-            lambda: self._generate_source_tree_skeleton(allowed_inputs),
-        )
-        summary["source_tree_skeleton_status"] = "passed"
-        self.timer.run(
-            "pair_completion",
-            lambda: self._generate_pair_completion(allowed_inputs, skeleton),
-        )
-        summary["pair_completion_status"] = "passed"
-        summary["generated_pairs"] = self.generated_pairs
-        summary["generated_files"] = self.generated_files
+        self._run_skeleton_pair_completion(allowed_inputs, summary)
 
-    def _generate_source_tree_skeleton(self, allowed_inputs: dict[str, Any]) -> dict[str, Any]:
+    def _run_skeleton_pair_completion(
+        self,
+        allowed_inputs: dict[str, Any],
+        summary: dict[str, Any],
+        nl_plan: str = "",
+    ) -> None:
+        try:
+            skeleton = self.timer.run(
+                "source_tree_skeleton",
+                lambda: self._generate_source_tree_skeleton(allowed_inputs, nl_plan),
+            )
+        except Exception as exc:
+            summary["source_tree_skeleton_status"] = "failed"
+            self._mark_failure(summary, "source_tree_skeleton", f"{type(exc).__name__}: {exc}")
+            raise
+        summary["source_tree_skeleton_status"] = "passed"
+        try:
+            self.timer.run(
+                "pair_completion",
+                lambda: self._generate_pair_completion(allowed_inputs, skeleton, nl_plan),
+            )
+        except Exception as exc:
+            summary["pair_completion_status"] = "failed"
+            self._mark_failure(summary, "pair_completion", f"{type(exc).__name__}: {exc}")
+            raise
+        summary["pair_completion_status"] = "passed"
+
+    def _generate_source_tree_skeleton(
+        self,
+        allowed_inputs: dict[str, Any],
+        nl_plan: str = "",
+    ) -> dict[str, Any]:
         messages = build_source_tree_skeleton_messages(
             protocol=self.config.protocol,
             allowed_inputs=allowed_inputs,
+            nl_plan=nl_plan,
         )
-        response = self._generate_with_usage("source_tree_skeleton", "generate", self.config.protocol, messages)
-        skeleton = _parse_json_response(response.content)
-        errors = validate_source_tree_skeleton(skeleton)
-        if errors:
-            raise ValueError("; ".join(errors))
-        normalized = {"files": _ordered_skeleton_files(skeleton)}
+
+        def validate(text: str) -> dict[str, Any]:
+            skeleton = _parse_json_response(text)
+            errors = validate_source_tree_skeleton(skeleton)
+            if errors:
+                raise ValueError("; ".join(errors))
+            return {"files": _ordered_skeleton_files(skeleton)}
+
+        normalized = self._generate_validated_json(
+            stage="source_tree_skeleton",
+            subject=self.config.protocol,
+            messages=messages,
+            validator=validate,
+            unit_paths=[],
+        )
         self.current_skeleton = normalized
         self.expected_files = [item["path"] for item in normalized["files"]]
         write_json(self.output_dir / "source_tree_skeleton.json", normalized)
         return normalized
 
-    def _generate_pair_completion(self, allowed_inputs: dict[str, Any], skeleton: dict[str, Any]) -> None:
+    def _generate_pair_completion(
+        self,
+        allowed_inputs: dict[str, Any],
+        skeleton: dict[str, Any],
+        nl_plan: str = "",
+    ) -> None:
         units = _skeleton_generation_units(skeleton)
-        self.generated_pairs = [{"kind": unit["kind"], "paths": unit["paths"]} for unit in units if unit["kind"] == "pair"]
         skeleton_paths = [item["path"] for item in _ordered_skeleton_files(skeleton)]
         for unit in units:
             paths = unit["paths"]
@@ -878,12 +882,18 @@ class FSDirectCoderRunner(BaselineProjectRunner):
                 unit=unit,
                 generated_files=self.generated_files,
                 header_declarations=self._project_header_declarations(),
+                nl_plan=nl_plan,
             )
             if _messages_size_bytes(messages) > MAX_SOURCE_PROMPT_BYTES:
                 raise RuntimeError(f"pair completion prompt too large for {', '.join(paths)}")
             subject = "__".join(paths)
-            response = self._generate_with_usage("pair_completion", "generate", subject, messages)
-            generated = self._parse_pair_completion_response(response.content, paths)
+            generated = self._generate_validated_json(
+                stage="pair_completion",
+                subject=subject,
+                messages=messages,
+                validator=lambda text: self._parse_pair_completion_response(text, paths),
+                unit_paths=paths,
+            )
             for relative_path in paths:
                 content = generated[relative_path]
                 target = self.project_dir / relative_path
@@ -892,12 +902,16 @@ class FSDirectCoderRunner(BaselineProjectRunner):
                 self.logs.write(f"generated_file_{relative_path}", content)
                 if relative_path not in self.generated_files:
                     self.generated_files.append(relative_path)
+            if unit["kind"] == "pair":
+                self.generated_pairs.append({"kind": "pair", "paths": list(paths)})
         sources = [path for path in self.expected_files if path.endswith(".c")]
         (self.project_dir / "Makefile").write_text(_render_makefile(self.config.binary_name, sources), encoding="utf-8")
 
     @staticmethod
     def _parse_pair_completion_response(text: str, expected_paths: list[str]) -> dict[str, str]:
         parsed = _parse_json_response(text)
+        if set(parsed) != {"files"}:
+            raise ValueError("pair completion top-level keys must be exactly: files")
         files = parsed.get("files")
         if not isinstance(files, list):
             raise ValueError("pair completion response must contain files list")
@@ -906,6 +920,8 @@ class FSDirectCoderRunner(BaselineProjectRunner):
         for index, item in enumerate(files):
             if not isinstance(item, dict):
                 raise ValueError(f"pair completion files[{index}] must be an object")
+            if set(item) != {"path", "content"}:
+                raise ValueError(f"pair completion files[{index}] keys must be exactly: path, content")
             path = _safe_project_path(str(item.get("path", "")))
             if path not in expected:
                 raise ValueError(f"pair completion returned unexpected path: {path}")
@@ -921,5 +937,34 @@ class FSDirectCoderRunner(BaselineProjectRunner):
         return generated
 
 
-class NLPlanCodeRunner(BaselineProjectRunner):
+class NLPlanCodeRunner(FSDirectCoderRunner):
     method = METHOD_NL
+
+    def _base_summary(self) -> dict[str, Any]:
+        summary = super()._base_summary()
+        summary["nl_plan_guard_status"] = "not_run"
+        summary["nl_plan_guard"] = {"status": "not_run", "findings": []}
+        return summary
+
+    def _run_generation(self, allowed_inputs: dict[str, Any], summary: dict[str, Any]) -> None:
+        summary["strategy_generation_status"] = "not_applicable"
+        summary["file_generation_status"] = "not_applicable"
+        nl_plan = self.timer.run("nl_plan", lambda: self._generate_nl_plan(allowed_inputs))
+        summary["nl_plan_status"] = "passed"
+        guard = self._nl_plan_guard()
+        summary["nl_plan_guard_status"] = guard["status"]
+        summary["nl_plan_guard"] = guard
+        if guard["status"] != "passed":
+            raise ValueError("nl_plan.md was not generated as a non-empty natural-language plan")
+        self._run_skeleton_pair_completion(allowed_inputs, summary, nl_plan)
+
+    def _nl_plan_guard(self) -> dict[str, Any]:
+        path = self.output_dir / "nl_plan.md"
+        if not path.is_file():
+            return {"status": "failed", "findings": [{"path": "nl_plan.md", "reason": "missing"}]}
+        if not path.read_text(encoding="utf-8", errors="ignore").strip():
+            return {
+                "status": "failed",
+                "findings": [{"path": "nl_plan.md", "reason": "empty"}],
+            }
+        return {"status": "passed", "findings": []}
