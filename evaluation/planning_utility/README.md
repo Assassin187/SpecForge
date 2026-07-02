@@ -6,10 +6,10 @@
 
 本实验支持三种方法：
 
-- `direct-code-agent`
+- `fs-direct-coder`
   - 输入 `protocol_facts.json`、`target_profile.json`、从 `minimum_v1` 抽取的最小功能需求，以及统一的 binary/argv runtime contract。
-  - 先生成轻量 `project_strategy.json`，包含模块划分、文件清单、接口草图和 entrypoint/build 约束。
-  - 再按文件逐个生成 `.h`、`.c`、`main.c`，由 runner 写入 deterministic `Makefile`。
+  - 先生成 `source_tree_skeleton.json`，只包含源码路径、文件类型和生成顺序，不包含模块职责、接口草图、函数列表、依赖关系或行为计划。
+  - 再以 `.h/.c` 文件对为生成单位补全源码，`main.c` 单独生成，由 runner 写入 deterministic `Makefile`。
   - 随后执行 static checks、compile、source-level `.c` repair，编译成功后运行最小行为测试。
 
 - `nl-plan-code`
@@ -59,7 +59,7 @@ python3 -m evaluation.planning_utility.run_matrix --help
 ```bash
 python3 -m evaluation.planning_utility.run_matrix \
   --protocol http \
-  --method direct-code-agent \
+  --method fs-direct-coder \
   --api-key-env ALI_API
 ```
 
@@ -99,9 +99,9 @@ evaluation/planning_utility/out/<run_id>/
 ├── matrix_summary.json
 ├── matrix_summary.md
 └── <protocol>/
-    ├── direct-code-agent/
+    ├── fs-direct-coder/
     │   ├── allowed_inputs/
-    │   ├── project_strategy.json
+    │   ├── source_tree_skeleton.json
     │   ├── coder_out/
     │   │   ├── <protocol>/
     │   │   └── _agent_logs/run_manifest.json
@@ -125,9 +125,14 @@ evaluation/planning_utility/out/<run_id>/
 
 - method、protocol、input hashes、binary/argv contract
 - `planning_status`
+- `source_tree_skeleton_status`
+- `pair_completion_status`
 - `strategy_generation_status`
 - `nl_plan_status`
 - `file_generation_status`
+- `generated_pairs`
+- `generated_files`
+- `planning_artifact_guard`
 - `static_check_status`
 - `compile_status`
 - `repair_iterations`
@@ -157,4 +162,3 @@ python3 -m unittest discover -s evaluation/planning_utility/tests -v
 ```bash
 python3 -m unittest agent.coder.tests.test_minimum_matrix_runner -v
 ```
-

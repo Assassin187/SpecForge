@@ -7,7 +7,7 @@ from typing import Any
 
 from agent.coder.llm_client import FixedQwenClient
 
-from .baseline_runner import BASELINE_METHODS, DirectCodeAgentRunner, NLPlanCodeRunner
+from .baseline_runner import BASELINE_METHODS, FSDirectCoderRunner, NLPlanCodeRunner
 from .configs import DEFAULT_OUTPUT_ROOT, PROTOCOLS, ProtocolConfig, rel_to_repo
 from .full_specforge_adapter import run_full_specforge
 from .requirements import write_json
@@ -38,8 +38,8 @@ def _run_method(
     max_repair_rounds: int,
     full_planning_dirs: dict[str, Path],
 ) -> dict[str, Any]:
-    if method == "direct-code-agent":
-        runner = DirectCodeAgentRunner(
+    if method == "fs-direct-coder":
+        runner = FSDirectCoderRunner(
             config,
             method_dir,
             llm_client=FixedQwenClient(api_key_env),
@@ -79,20 +79,22 @@ def _write_matrix_outputs(matrix_dir: Path, summaries: list[dict[str, Any]]) -> 
         f"- generated_at: `{payload['generated_at']}`",
         f"- matrix_dir: `{payload['matrix_dir']}`",
         "",
-        "| method | protocol | planning | strategy | files | static | compile | smoke | failure_stage | diagnostic |",
+        "| method | protocol | planning | structure | codegen | static | compile | smoke | failure_stage | diagnostic |",
         "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for item in summaries:
         diagnostic = str(item.get("main_diagnostic") or "").replace("|", "\\|")
         if len(diagnostic) > 180:
             diagnostic = diagnostic[:177] + "..."
+        structure = _first_status(item, "source_tree_skeleton_status", "strategy_generation_status", "readiness_status")
+        codegen = _first_status(item, "pair_completion_status", "file_generation_status")
         lines.append(
-            "| {method} | {protocol} | {planning} | {strategy} | {files} | {static} | {compile} | {smoke} | {failure} | {diag} |".format(
+            "| {method} | {protocol} | {planning} | {structure} | {codegen} | {static} | {compile} | {smoke} | {failure} | {diag} |".format(
                 method=item.get("method", ""),
                 protocol=item.get("protocol", ""),
                 planning=item.get("planning_status", ""),
-                strategy=item.get("strategy_generation_status", item.get("readiness_status", "")),
-                files=item.get("file_generation_status", ""),
+                structure=structure,
+                codegen=codegen,
                 static=item.get("static_check_status", item.get("schema_loader_rendered_header_status", "")),
                 compile=item.get("compile_status", ""),
                 smoke=item.get("smoke_status", ""),
@@ -101,6 +103,14 @@ def _write_matrix_outputs(matrix_dir: Path, summaries: list[dict[str, Any]]) -> 
             )
         )
     (matrix_dir / "matrix_summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _first_status(item: dict[str, Any], *keys: str) -> str:
+    for key in keys:
+        value = item.get(key)
+        if value and value not in {"not_applicable", "not_run"}:
+            return str(value)
+    return ""
 
 
 def build_parser() -> argparse.ArgumentParser:
