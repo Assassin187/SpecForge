@@ -4,6 +4,21 @@ import json
 from typing import Any
 
 
+CODER_SYSTEM_PROMPT = """You generate production-quality C code from the available implementation context.
+
+Rules:
+- Return only the requested strict JSON object containing complete file contents, with no Markdown fences, analysis, or commentary.
+- Keep the implementation portable to Linux with C11.
+- Treat existing header declarations as authoritative for existing public structs, enums, typedefs, macros, callback shapes, and function signatures.
+- Never invent fields or constants for an existing public type, and never change an existing public symbol name or signature.
+- Keep definitions within the requested generation unit and respect public symbol ownership across files.
+- Include every standard/POSIX or project header required by called functions and used types; implicit function declarations are forbidden.
+- Treat every applicable minimum requirement and runtime constraint as a hard behavioral requirement.
+- Do not reference or copy any external implementation or repository.
+- You may add static private helpers, private types, and concise implementation comments when needed.
+"""
+
+
 def _json(data: Any) -> str:
     return json.dumps(data, ensure_ascii=False, separators=(",", ":"))
 
@@ -176,16 +191,20 @@ Rules:
 - Do not output a plan, design explanation, module responsibilities, interface list, function inventory, type inventory, call graph, include graph, or architecture notes.
 - Do not put design deliberation, uncertainty, interface-gap discussion, TODO text, or self-analysis inside generated source comments. Resolve ambiguity with the smallest implementation compatible with existing declarations.
 - Finish every requested file and close every JSON string, array, and object before ending the response.
-- Reuse public declarations already present in existing_header_public_declarations.
-- Do not redefine an existing public enum, struct, typedef, macro, or function prototype.
+- Treat existing_header_public_declarations as the canonical public interfaces owned by previously generated units. Include and call those interfaces; do not copy their definitions into the current unit.
+- Do not redefine an existing public enum, struct, typedef, macro, callback shape, or function prototype. A required forward declaration of an existing type is allowed, but its definition remains owned by its original header.
+- For a header/source pair, the requested header owns every new public symbol introduced by this unit, and the paired source must implement all of that header's public function prototypes without changing their signatures.
+- A public type or function has exactly one owning header/source pair. Do not define a public function whose prototype belongs to another header; include its owner header and call it instead.
+- Do not emit a non-static public function definition without a matching prototype in the current unit's header, except for `main` in main.c.
+- For main.c, define only `main` and optional static private helpers. Use existing public APIs for protocol behavior and never reimplement another unit's public functions or types.
 - Header files should contain include guards, required includes, public declarations, constants, and prototypes only.
-- Source files should include their header when present and implement only the requested files.
+- Source files should include their paired header as the primary project include when present and implement only symbols owned by the requested unit.
 - Use portable C11 and Linux/POSIX networking APIs as needed.
 - Keep behavior aligned with the minimum requirements and runtime contract: {argv_contract}.
 - Do not include Markdown fences or commentary outside the JSON.
 """
     return [
-        {"role": "system", "content": "You return strict JSON containing complete C files, without analysis or prose."},
+        {"role": "system", "content": CODER_SYSTEM_PROMPT},
         {"role": "user", "content": content},
     ]
 

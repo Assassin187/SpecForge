@@ -305,10 +305,11 @@ class BaselineProjectRunner:
                 return self._finish(summary, manifest_path)
             summary["static_check_status"] = "passed"
 
-            compile_result, repair_stop_reason, rounds, blocking_files, rejected_candidates = self.timer.run(
-                "compile_repair",
-                self._compile_and_repair,
-            )
+            compile_result = self.timer.run("compile", self._compile_once)
+            repair_stop_reason = "compile_succeeded" if compile_result.returncode == 0 else "repair_disabled"
+            rounds = 0
+            blocking_files: list[str] = []
+            rejected_candidates: list[dict[str, str]] = []
             summary["compile_status"] = "passed" if compile_result.returncode == 0 else "failed"
             summary["compile_returncode"] = compile_result.returncode
             summary["repair_iterations"] = rounds
@@ -682,6 +683,12 @@ class BaselineProjectRunner:
                 return last_result, "compile_succeeded", round_idx, [], rejected
         return last_result, "max_rounds_exhausted", self.max_repair_rounds, [], rejected
 
+    def _compile_once(self) -> subprocess.CompletedProcess[str]:
+        result = _compile_project(self.project_dir, self.config.binary_name)
+        self.logs.write("compile_stdout_0", result.stdout)
+        self.logs.write("compile_stderr_0", result.stderr)
+        return result
+
     def _run_behavior(self) -> tuple[bool, list[dict[str, str]], str | None]:
         ok, scenarios, error = verify_protocol_behavior(self.config.protocol, self.project_dir, self.config.binary_name)
         write_json(
@@ -710,7 +717,8 @@ class BaselineProjectRunner:
             "log_dir": str(self.logs.root),
             "binary_name": self.config.binary_name,
             "argv_contract": self.config.argv_contract,
-            "max_repair_rounds": self.max_repair_rounds,
+            "repair_enabled": False,
+            "max_repair_rounds": 0,
             "generation_success": compile_result is not None and compile_result.returncode == 0,
             "compile_success": compile_result is not None and compile_result.returncode == 0,
             "compile_returncode": compile_result.returncode if compile_result is not None else None,

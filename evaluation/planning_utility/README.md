@@ -72,9 +72,10 @@ python3 -m evaluation.planning_utility.run_matrix \
 python3 -m evaluation.planning_utility.run_matrix \
   --protocol smtp \
   --method nl-plan-code \
-  --max-repair-rounds 3 \
   --api-key-env ALI_API
 ```
+
+`fs-direct-coder` 和 `nl-plan-code` 只生成源码并执行一次 compile，不调用 repair；compile 失败时保留原始生成代码。`--max-repair-rounds` 仅影响 `full-specforge`。
 
 运行完整三方法、四协议矩阵：
 

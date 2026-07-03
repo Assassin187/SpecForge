@@ -119,7 +119,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--method", action="append", choices=METHODS, help="Method(s) to run; default: all")
     parser.add_argument("--output-root", default=str(DEFAULT_OUTPUT_ROOT))
     parser.add_argument("--api-key-env", default="ALI_API")
-    parser.add_argument("--max-repair-rounds", type=int, default=3)
+    parser.add_argument("--max-repair-rounds", type=int, default=3, help="Repair rounds for full-specforge; baselines disable repair")
     parser.add_argument("--full-planning-dir", action="append", default=[], help="Existing Full SpecForge planning run as protocol=PATH")
     parser.add_argument("--fail-on-method-failure", action="store_true")
     return parser
