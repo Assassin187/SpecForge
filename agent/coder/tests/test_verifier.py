@@ -63,7 +63,7 @@ class VerifierTests(unittest.TestCase):
 
         self.assertFalse(result.ok)
         self.assertEqual(result.diagnostics[0].code, "behavior_verification_failed")
-        self.assertEqual(result.scenarios[0]["name"], "coap_get_hello")
+        self.assertEqual(result.scenarios[0]["name"], "runtime_error")
         self.assertEqual(result.scenarios[0]["status"], "failed")
         self.assertTrue(all(item["status"] == "skipped" for item in result.scenarios[1:]))
 

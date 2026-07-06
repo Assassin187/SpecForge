@@ -12,7 +12,7 @@
 
 ## 当前工作流程（PPT 版）
 
-`coder` 的端到端流程可以理解为：**加载 SPEC → 校验一致性 → 按模块生成工程 → 编译 → 按错误修复 → 编译成功后执行非阻断行为检查 → 输出 manifest 与日志**。
+`coder` 的端到端流程可以理解为：**加载 SPEC → 校验一致性 → 按模块生成工程 → 编译 → 按错误修复 → 编译成功后执行非阻断行为检查 → 输出 manifest 与日志**。使用 `--skip-repair` 时，生成完整工程和 Makefile 后直接结束，不执行项目编译、repair 或行为检查。
 
 ```mermaid
 flowchart TD
@@ -34,6 +34,7 @@ flowchart TD
     J --> L
     K --> L
     L --> M[Makefile 本地生成]
+    M -->|--skip-repair| O
     M --> N[make mqtt_broker]
 
     N -->|成功| V[执行协议行为检查<br/>逐项记录 pass/fail]
@@ -229,10 +230,11 @@ python3 -m agent coder [全局参数] <子命令> [子命令参数]
 
 | 参数 | 说明 | 哪些命令需要 |
 |------|------|-------------|
-| `--spec-root` | 规格根目录 | `validate` / `generate` / `verify` |
+| `--spec-root` | 规格根目录 | `validate` / `generate` / `repair` / `verify` |
 | `--output-dir` | 输出/项目目录 | `generate` / `verify` |
-| `--api-key-env` | LLM API key 环境变量名（默认 `ALI_API`） | `validate` / `generate` |
-| `--max-repair-rounds` | 最大编译修复轮数（默认 3） | `generate` |
+| `--api-key-env` | LLM API key 环境变量名（默认 `ALI_API`） | `validate` / `generate` / `repair` |
+| `--max-repair-rounds` | 最大编译修复轮数（默认 3） | `generate` / `repair` |
+| `--skip-repair` | 生成代码后直接结束，跳过项目编译、repair 和行为检查 | `generate` |
 
 ### `validate` — 校验规格
 
@@ -254,12 +256,37 @@ python3 -m agent coder \
   generate
 ```
 
+只生成工程、不执行项目编译与 repair：
+
+```bash
+python3 -m agent coder \
+  --spec-root ~/SpecForge/specs-example/mqtt_specs \
+  --skip-repair \
+  generate
+```
+
+该模式成功生成工程后返回 0；manifest 记录 `compile_run: false`、`compile_success: null` 和 `repair.stop_reason: skipped_by_cli`。
+
 生成的协议工程位于 `<output-dir>/<protocol_slug>/`，日志位于同级 `_agent_logs/`，
 `run_manifest.json` 也写入 `_agent_logs/`。日志只保留 prompt、编译输出、manifest 等诊断材料；
 manifest 中包含逐次 LLM 调用、按阶段汇总和最终总计的 token 用量。
 
 编译成功后的协议行为检查仅作为**非阻断**检查项：行为测试失败不会触发 repair，
 不会覆盖 compile repair 状态，也不会改变 `generate` 的成功状态或退出码。
+
+### `repair` — 编译修复已有工程
+
+独立 repair 会先完整复制已有协议代码项目，再在副本中执行编译，根据错误定位对应 `.c` 并调用 LLM repair，随后重新编译，直到成功或达到 `--max-repair-rounds`。原始项目不会被修改或清空，该命令也不执行行为检查。
+
+```bash
+python3 -m agent coder \
+  --spec-root ~/SpecForge/specs-example/mqtt_specs \
+  --max-repair-rounds 3 \
+  repair \
+  --project-dir agent/out/mqtt_broker_20260610_185335/mqtt
+```
+
+`--project-dir` 必须直接指向包含 `Makefile` 的原始协议项目。repair 副本写入 `<原项目父目录>/<项目名>_repair_<timestamp>/<项目名>/`；日志和带编号的 `repair_manifest.json` 写入该 repair run 的 `_agent_logs/`。manifest 同时记录 `source_project_dir` 和实际修改的 `project_dir`，便于对比原始代码与修复结果。
 
 ### `verify` — 校验已有工程
 

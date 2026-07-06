@@ -37,11 +37,23 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--output-dir", default=None)
     parser.add_argument("--max-repair-rounds", type=int, default=3)
+    parser.add_argument(
+        "--skip-repair",
+        action="store_true",
+        help="Stop after code generation without building the project, repairing, or running behavior checks.",
+    )
     parser.add_argument("--api-key-env", default="ALI_API", help="Environment variable containing the Qwen API key")
 
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("validate", help="Validate specs and LLM adapter prerequisites")
     sub.add_parser("generate", help="Generate the protocol project from specs")
+    repair_parser = sub.add_parser("repair", help="Compile and repair an existing protocol project")
+    repair_parser.add_argument(
+        "--project-dir",
+        required=True,
+        type=_path,
+        help="Existing protocol project directory containing a Makefile",
+    )
     sub.add_parser("verify", help="Verify generated project structure, build, and smoke test")
 
     test_parser = sub.add_parser("test", help="Run protocol behavior smoke tests against an existing project")
@@ -109,13 +121,16 @@ def cmd_generate(args: argparse.Namespace) -> int:
         llm_client=FixedQwenClient(args.api_key_env),
         output_dir=_path(args.output_dir) if args.output_dir else default_output_dir(bundle),
         max_repair_rounds=args.max_repair_rounds,
+        skip_repair=args.skip_repair,
     )
     result = generator.generate()
     print(f"Manifest: {result.manifest_path}")
     print(result.compile_stdout)
     if result.compile_stderr:
         print(result.compile_stderr)
-    if result.success:
+    if args.skip_repair:
+        print("Code generation completed; project build, repair, and behavior checks were skipped.")
+    elif result.success:
         print("Generation succeeded: final compile passed.")
     else:
         if bundle.has_errors():
@@ -149,6 +164,43 @@ def cmd_verify(args: argparse.Namespace) -> int:
     if result.compile_stderr:
         print(result.compile_stderr)
     return 0 if result.ok else 1
+
+
+def cmd_repair(args: argparse.Namespace) -> int:
+    try:
+        bundle = _load_bundle(args, validate_rendered_headers=False)
+    except Exception as exc:  # noqa: BLE001
+        print(f"ERROR spec_discovery: {exc}")
+        return 1
+    _print_diagnostics(bundle)
+    if bundle.has_errors():
+        print("Repair aborted because spec validation reported errors.")
+        return 1
+
+    generator = ProjectGenerator(
+        bundle=bundle,
+        llm_client=FixedQwenClient(args.api_key_env),
+        output_dir=args.project_dir.parent,
+        max_repair_rounds=args.max_repair_rounds,
+    )
+    try:
+        result = generator.repair_existing(args.project_dir)
+    except FileNotFoundError as exc:
+        print(f"ERROR: {exc}")
+        return 1
+    print(f"Repair project: {generator.project_dir}")
+    print(f"Manifest: {result.manifest_path}")
+    if result.compile_stdout:
+        print(result.compile_stdout)
+    if result.compile_stderr:
+        print(result.compile_stderr)
+    if result.success:
+        print("Repair succeeded: final compile passed.")
+    else:
+        print(f"Repair stop reason: {result.repair_stop_reason}")
+        for path in result.repair_blocking_files:
+            print(f"- {path}")
+    return 0 if result.success else 1
 
 
 def cmd_test(args: argparse.Namespace) -> int:
@@ -187,6 +239,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_validate(args)
     if args.command == "generate":
         return cmd_generate(args)
+    if args.command == "repair":
+        return cmd_repair(args)
     if args.command == "verify":
         return cmd_verify(args)
     if args.command == "test":

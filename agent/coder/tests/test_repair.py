@@ -5,11 +5,13 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 from openai import OpenAIError
 
 from agent.coder import generation
+from agent.coder.cli import build_parser
 from agent.coder.generation import (
     ProjectGenerator,
     _compact_compile_diagnostics,
@@ -160,13 +162,223 @@ def _http_main_bundle() -> SpecBundle:
 
 
 class CoderRepairTests(unittest.TestCase):
-    def _generator(self, tmp: Path, llm: FakeLLM) -> ProjectGenerator:
-        generator = ProjectGenerator(_bundle(tmp), llm, tmp / "out", max_repair_rounds=3)
+    def _generator(self, tmp: Path, llm: FakeLLM, **kwargs: Any) -> ProjectGenerator:
+        generator = ProjectGenerator(_bundle(tmp), llm, tmp / "out", max_repair_rounds=3, **kwargs)
         generator.project_dir.mkdir(parents=True)
         (generator.project_dir / "protocol").mkdir()
         (generator.project_dir / "protocol/coap_message.h").write_text("#pragma once\n", encoding="utf-8")
         (generator.project_dir / "protocol/coap_message.c").write_text("int broken;\n", encoding="utf-8")
         return generator
+
+    def test_default_prompt_builders_are_preserved(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            generator = ProjectGenerator(_bundle(Path(raw_tmp)), FakeLLM(""), Path(raw_tmp) / "out")
+
+        self.assertIs(generator.source_prompt_builder, generation.build_source_prompt)
+        self.assertIs(generator.main_source_prompt_builder, generation.build_main_source_prompt)
+        self.assertIs(generator.repair_prompt_builder, generation.build_repair_prompt)
+        self.assertIsNone(generator.prompt_observer)
+
+    def test_skip_repair_cli_stops_after_code_generation(self) -> None:
+        args = build_parser().parse_args(["--skip-repair", "generate"])
+        self.assertTrue(args.skip_repair)
+
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            tmp = Path(raw_tmp)
+            generator = ProjectGenerator(_bundle(tmp), FakeLLM("int generated;\n"), tmp / "out", skip_repair=True)
+            with patch("agent.coder.generation._compile_project") as compile_project:
+                with patch("agent.coder.verifier.ProjectVerifier.verify_behavior") as verify_behavior:
+                    result = generator.generate()
+
+            manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+
+        self.assertTrue(result.success)
+        self.assertEqual(result.repair_stop_reason, "skipped_by_cli")
+        self.assertTrue(manifest["skip_repair"])
+        self.assertFalse(manifest["compile_run"])
+        self.assertIsNone(manifest["compile_success"])
+        self.assertFalse(manifest["verification_run"])
+        compile_project.assert_not_called()
+        verify_behavior.assert_not_called()
+
+    def test_repair_existing_project_compiles_and_repairs_without_regeneration(self) -> None:
+        args = build_parser().parse_args(["repair", "--project-dir", "/tmp/existing-project"])
+        self.assertEqual(args.project_dir, Path("/tmp/existing-project"))
+
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            tmp = Path(raw_tmp)
+            generator = self._generator(tmp, FakeLLM("int fixed;\n"))
+            existing_log = tmp / "out/_agent_logs/001_existing.txt"
+            existing_log.write_text("keep\n", encoding="utf-8")
+            original_project_dir = generator.project_dir
+            source_path = original_project_dir / "protocol/coap_message.c"
+            fail = _completed(1, stderr="protocol/coap_message.c:1:1: error: bad source\n")
+            with patch.object(generator, "prepare_output_dir") as prepare_output_dir, patch(
+                "agent.coder.generation._compile_project", side_effect=[fail, _completed(0)]
+            ) as compile_project:
+                result = generator.repair_existing(generator.project_dir)
+
+            manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+            original_source = source_path.read_text(encoding="utf-8")
+            repaired_source = (generator.project_dir / "protocol/coap_message.c").read_text(encoding="utf-8")
+            preserved_log = existing_log.read_text(encoding="utf-8")
+
+        self.assertTrue(result.success)
+        self.assertEqual(original_source, "int broken;\n")
+        self.assertEqual(repaired_source, "int fixed;\n")
+        self.assertEqual(preserved_log, "keep\n")
+        self.assertNotEqual(generator.project_dir, original_project_dir)
+        self.assertTrue(generator.project_dir.parent.name.startswith("coap_repair_"))
+        self.assertEqual(manifest["mode"], "repair_existing")
+        self.assertEqual(manifest["source_project_dir"], str(original_project_dir.resolve()))
+        self.assertEqual(manifest["project_dir"], str(generator.project_dir))
+        self.assertEqual(manifest["repair"]["rounds_attempted"], 1)
+        self.assertEqual(compile_project.call_count, 2)
+        prepare_output_dir.assert_not_called()
+
+    def test_injected_source_prompt_builder_and_observer_are_used(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            tmp = Path(raw_tmp)
+            llm = FakeLLM("int generated;\n")
+            messages = [
+                {"role": "system", "content": "custom source system"},
+                {"role": "user", "content": "custom source prompt"},
+            ]
+            builder_subjects: list[str] = []
+            observer_events: list[tuple[str, str]] = []
+
+            def source_builder(bundle, module, file_spec, function_specs, generated_header, dependency_headers):
+                builder_subjects.append(file_spec.source_path)
+                return messages
+
+            def observer(stage: str, subject: str, observed_messages: list[dict[str, str]]) -> None:
+                self.assertEqual(llm.requests, [])
+                self.assertFalse(list((tmp / "out/_agent_logs").glob("*prompt_protocol_coap_message.c.txt")))
+                self.assertIs(observed_messages, messages)
+                observer_events.append((stage, subject))
+
+            generator = ProjectGenerator(
+                _bundle(tmp),
+                llm,
+                tmp / "out",
+                source_prompt_builder=source_builder,
+                prompt_observer=observer,
+            )
+            with patch("agent.coder.generation._compile_project", return_value=_completed(0)):
+                with patch("agent.coder.verifier.ProjectVerifier.verify_behavior", return_value=VerificationResult(True, [])):
+                    result = generator.generate()
+
+        self.assertTrue(result.success)
+        self.assertEqual(builder_subjects, ["protocol/coap_message.c"])
+        self.assertEqual(observer_events, [("source_generation", "protocol/coap_message.c")])
+        self.assertEqual(llm.requests[0].messages, messages)
+
+    def test_injected_main_source_prompt_builder_is_used(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            tmp = Path(raw_tmp)
+            llm = FakeLLM("int main(void) { return 0; }\n")
+            messages = [
+                {"role": "system", "content": "custom main system"},
+                {"role": "user", "content": "custom main prompt"},
+            ]
+
+            def source_builder(*args):
+                self.fail("main.c must not use source_prompt_builder")
+
+            def main_source_builder(bundle, module, file_spec, function_specs, generated_header, dependency_headers):
+                return messages
+
+            generator = ProjectGenerator(
+                _main_bundle(tmp),
+                llm,
+                tmp / "out",
+                source_prompt_builder=source_builder,
+                main_source_prompt_builder=main_source_builder,
+            )
+            with patch("agent.coder.generation._compile_project", return_value=_completed(0)):
+                with patch("agent.coder.verifier.ProjectVerifier.verify_behavior", return_value=VerificationResult(True, [])):
+                    result = generator.generate()
+
+        self.assertTrue(result.success)
+        self.assertEqual(llm.requests[0].messages, messages)
+
+    def test_injected_repair_prompt_builder_and_observer_are_used(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            tmp = Path(raw_tmp)
+            llm = FakeLLM("int fixed;\n")
+            messages = [
+                {"role": "system", "content": "custom repair system"},
+                {"role": "user", "content": "custom repair prompt"},
+            ]
+            builder_subjects: list[str] = []
+            observer_events: list[tuple[str, str]] = []
+
+            def repair_builder(
+                bundle,
+                module,
+                file_spec,
+                target_path,
+                canonical_header,
+                current_content,
+                compile_errors,
+                dependency_headers,
+            ):
+                builder_subjects.append(target_path)
+                return messages
+
+            def observer(stage: str, subject: str, observed_messages: list[dict[str, str]]) -> None:
+                self.assertEqual(llm.requests, [])
+                self.assertFalse(list((tmp / "out/_agent_logs").glob("*repair_prompt_*")))
+                self.assertIs(observed_messages, messages)
+                observer_events.append((stage, subject))
+
+            generator = self._generator(
+                tmp,
+                llm,
+                repair_prompt_builder=repair_builder,
+                prompt_observer=observer,
+            )
+            fail = _completed(1, stderr="protocol/coap_message.c:1:1: error: bad source\n")
+            success = _completed(0)
+            with patch("agent.coder.generation._compile_project", side_effect=[fail, success]):
+                outcome = generator._repair_until_compiles([], "coap_server")
+
+        self.assertEqual(outcome.stop_reason, "compile_succeeded")
+        self.assertEqual(builder_subjects, ["protocol/coap_message.c"])
+        self.assertEqual(observer_events, [("repair", "protocol/coap_message.c")])
+        self.assertEqual(llm.requests[0].messages, messages)
+
+    def test_prompt_observer_failure_blocks_generation_llm_and_prompt_log(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            tmp = Path(raw_tmp)
+            llm = FakeLLM("int generated;\n")
+
+            def reject_prompt(stage: str, subject: str, messages: list[dict[str, str]]) -> None:
+                raise RuntimeError("prompt rejected")
+
+            generator = ProjectGenerator(_bundle(tmp), llm, tmp / "out", prompt_observer=reject_prompt)
+            with self.assertRaisesRegex(RuntimeError, "prompt rejected"):
+                generator.generate()
+
+            self.assertEqual(llm.requests, [])
+            self.assertFalse(list((tmp / "out/_agent_logs").glob("*prompt_protocol_coap_message.c.txt")))
+
+    def test_prompt_observer_failure_blocks_repair_llm_and_prompt_log(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            tmp = Path(raw_tmp)
+            llm = FakeLLM("int fixed;\n")
+
+            def reject_prompt(stage: str, subject: str, messages: list[dict[str, str]]) -> None:
+                raise RuntimeError("prompt rejected")
+
+            generator = self._generator(tmp, llm, prompt_observer=reject_prompt)
+            fail = _completed(1, stderr="protocol/coap_message.c:1:1: error: bad source\n")
+            with patch("agent.coder.generation._compile_project", return_value=fail):
+                with self.assertRaisesRegex(RuntimeError, "prompt rejected"):
+                    generator._repair_until_compiles([], "coap_server")
+
+            self.assertEqual(llm.requests, [])
+            self.assertFalse(list((tmp / "out/_agent_logs").glob("*repair_prompt_*")))
 
     def test_header_error_blocks_repair_without_llm_or_header_write(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:
