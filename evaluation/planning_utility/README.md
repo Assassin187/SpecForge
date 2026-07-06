@@ -62,6 +62,16 @@ baseline 不得调用 planning agent，不得读取 `specs-example/`、`gold_spe
 
 ## Usage
 
+### Command scripts
+
+执行 MQTT 的 Full SpecForge planning，并让 coder 只生成代码、不执行项目编译和 repair：
+
+```bash
+evaluation/planning_utility/commands/run_mqtt_planning_coder_generate_only.sh
+```
+
+脚本默认读取 `ALI_API`，可通过 `API_KEY_ENV` 指定其他 API key 环境变量名。每次运行输出到 `evaluation/planning_utility/out/mqtt_planning_coder_generate_only_<timestamp>/`。
+
 查看参数：
 
 ```bash
