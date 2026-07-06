@@ -317,6 +317,65 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
         rules_text = "\n".join(prompt_payload["application_protocol_engineering_experience"])
         self.assertIn("source/header boundaries", rules_text)
         self.assertIn("minimal_scope", rules_text)
+        self.assertIn("dedicated time/timer/timeout module", rules_text)
+
+    def test_architecture_ranking_fallback_scores_down_dedicated_time_modules(self) -> None:
+        def module(
+            module_id: str,
+            responsibilities: list[str],
+            capabilities: list[str],
+            state_owned: list[str] | None = None,
+            deps: list[str] | None = None,
+        ) -> dict:
+            return {
+                "module_id": module_id,
+                "name": module_id,
+                "responsibilities": responsibilities,
+                "owned_capabilities": capabilities,
+                "state_owned": state_owned or [],
+                "dependency_hints": deps or [],
+            }
+
+        profile = {
+            "required_capabilities": [
+                {"capability_id": "message_decode"},
+                {"capability_id": "session_state"},
+                {"capability_id": "routing_dispatch"},
+                {"capability_id": "role_composition"},
+                {"capability_id": "timer_source"},
+                {"capability_id": "timeout_handling"},
+            ]
+        }
+        separate_time = {
+            "candidate_id": "separate_time",
+            "modules": [
+                module("codec", ["message decode"], ["message_decode"]),
+                module("session", ["session state"], ["session_state"], ["session_state"]),
+                module("timer_manager", ["timer and timeout scheduling"], ["timer_source", "timeout_handling"], ["timer_heap"]),
+                module("router", ["routing dispatch"], ["routing_dispatch"], deps=["session"]),
+                module("broker_app", ["broker role"], ["role_composition"], deps=["codec", "session", "timer_manager", "router"]),
+            ],
+        }
+        integrated_time = copy.deepcopy(separate_time)
+        integrated_time["candidate_id"] = "integrated_time"
+        integrated_time["modules"] = [
+            separate_time["modules"][0],
+            {
+                **separate_time["modules"][1],
+                "responsibilities": ["session state and timeout handling"],
+                "owned_capabilities": ["session_state", "timer_source", "timeout_handling"],
+                "state_owned": ["session_state", "session_timers"],
+            },
+            separate_time["modules"][3],
+            {**separate_time["modules"][4], "dependency_hints": ["codec", "session", "router"]},
+        ]
+        ranking = deterministic_architecture_ranking(
+            {"schema_version": "architecture_candidates/v1", "candidates": [separate_time, integrated_time]},
+            profile,
+        )
+        self.assertEqual(ranking["selected_candidate_id"], "integrated_time")
+        separate_score = next(item for item in ranking["scores"] if item["candidate_id"] == "separate_time")
+        self.assertIn("Dedicated time/timer module", separate_score["weaknesses"][0])
 
     def test_full_readiness_requires_metadata_and_valid_call_bindings(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:
@@ -1929,6 +1988,29 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
             self.assertFalse(any(target["target_kind"] == "callback_or_event_boundary" for target in derive_type_generation_targets(draft, codec, planning_ir)))
             self.assertFalse(any(target["target_kind"] == "callback_or_event_boundary" for target in derive_type_generation_targets(draft, session, planning_ir)))
             self.assertTrue(any(target["target_kind"] == "callback_or_event_boundary" for target in derive_type_generation_targets(draft, network, planning_ir)))
+
+    def test_timer_type_generation_targets_only_timer_callback(self) -> None:
+        timer = {
+            "module_id": "timer_service",
+            "name": "timer_service",
+            "role": "Timer service schedules keepalive timeout callbacks for connection cleanup and close handling",
+            "dependencies": [],
+            "artifacts": [
+                {"name": "mqtt_timer_arm", "kind": "FUNC", "role": "arm timer for connection timeout"},
+                {"name": "mqtt_timer_cancel", "kind": "FUNC", "role": "cancel timer on close"},
+            ],
+            "state_owned": ["timer heap"],
+            "owned_capabilities": ["timer_source", "timeout_handling"],
+            "files": [],
+            "doc_ref": [],
+        }
+        targets = derive_type_generation_targets({"protocol_name": "mqtt", "module_artifacts": [timer]}, timer, {})
+        callbacks = [target for target in targets if target["target_kind"] == "callback_or_event_boundary"]
+        self.assertEqual(len(callbacks), 1)
+        self.assertEqual(
+            callbacks[0]["required_fields"],
+            [{"field_name": "on_timer", "field_type": "mqtt_timer_service_on_timer_fn", "source_field_id": ""}],
+        )
 
     def test_type_inventory_normalizes_callback_collection_and_private_callback_param_refs(self) -> None:
         module = {

@@ -89,6 +89,15 @@ def _architecture_module_text(module: dict[str, Any]) -> str:
     ).lower()
 
 
+def _is_dedicated_time_module(module: dict[str, Any]) -> bool:
+    identity = f"{module.get('module_id', '')} {module.get('name', '')}".lower().replace("-", "_")
+    identity_tokens = {token for chunk in identity.split() for token in chunk.split("_") if token}
+    if identity_tokens & {"time", "timer", "timing", "timeout", "keepalive"} or "keep_alive" in identity:
+        return True
+    owned = {str(cap) for cap in module.get("owned_capabilities", []) if str(cap).strip()}
+    return bool(owned) and owned <= {"timer_source", "timeout_handling"}
+
+
 def _engineering_groups_for_module(module: dict[str, Any]) -> set[str]:
     text = _architecture_module_text(module)
     groups: set[str] = set()
@@ -268,11 +277,14 @@ def deterministic_architecture_ranking(candidates: dict[str, Any], profile: dict
     expected_groups = _expected_engineering_groups(required)
     scored: list[tuple[float, dict[str, Any]]] = []
     dimensions_by_candidate: dict[str, dict[str, int]] = {}
+    dedicated_time_by_candidate: dict[str, bool] = {}
     for candidate in candidates.get("candidates", []):
         modules = candidate.get("modules", []) if isinstance(candidate, dict) else []
         covered = _candidate_owned_capabilities(candidate)
         support_count = sum(1 for module in modules if isinstance(module, dict) and module.get("support_module"))
         module_count = len(modules) if isinstance(modules, list) else 0
+        dedicated_time_module_count = sum(1 for module in modules if isinstance(module, dict) and _is_dedicated_time_module(module))
+        dedicated_time_penalty = dedicated_time_module_count * 12
         coverage_score = 10 if required <= covered else int(10 * len(required & covered) / max(len(required), 1))
         module_groups = [_engineering_groups_for_module(module) for module in modules if isinstance(module, dict)]
         covered_groups = {group for groups in module_groups for group in groups}
@@ -322,8 +334,11 @@ def deterministic_architecture_ranking(candidates: dict[str, Any], profile: dict
             + testability_score
             + simplicity_score
             - support_count * 2
+            - dedicated_time_penalty
         )
-        dimensions_by_candidate[str(candidate.get("candidate_id", ""))] = dimensions
+        candidate_id = str(candidate.get("candidate_id", ""))
+        dimensions_by_candidate[candidate_id] = dimensions
+        dedicated_time_by_candidate[candidate_id] = dedicated_time_module_count > 0
         scored.append((total, candidate))
     scored.sort(key=lambda item: item[0], reverse=True)
     selected = scored[0][1] if scored else {}
@@ -335,8 +350,12 @@ def deterministic_architecture_ranking(candidates: dict[str, Any], profile: dict
                 "total_score": total,
                 "dimension_scores": dimensions_by_candidate.get(str(candidate.get("candidate_id", "")), {}),
                 "strengths": ["Deterministic fallback ranking based on capability coverage, engineering boundaries, ownership, acyclicity, and testability."],
-                "weaknesses": [],
-                "risks": [],
+                "weaknesses": ["Dedicated time/timer module increases planning and implementation surface."]
+                if dedicated_time_by_candidate.get(str(candidate.get("candidate_id", "")))
+                else [],
+                "risks": ["Prefer integrating timing responsibilities into session/state/runtime boundaries unless the profile requires a standalone timer service."]
+                if dedicated_time_by_candidate.get(str(candidate.get("candidate_id", "")))
+                else [],
             }
             for total, candidate in scored
         ],

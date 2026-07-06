@@ -752,29 +752,38 @@ def derive_type_generation_targets(draft: dict[str, Any], module_artifact: dict[
                     "trace_ref_keys": source_message_ids,
                 }
             )
-    if any(word in text for word in ("callback", "event", "timer", "epoll", "accept", "runtime", "server", "listen")):
+    capability_ids = {str(item).lower() for item in module_artifact.get("owned_capabilities", []) if str(item).strip()}
+    capability_text = f"{module_identity} {module_artifact.get('role', '')} {owned_caps}".lower()
+    transport_caps = {"transport_runtime", "transport_io", "transport_runtime_io", "network_io"}
+    transport_markers = ("network", "transport", "tcp", "udp", "socket", "epoll", "server", "listen", "accept")
+    timer_caps = {"timer_source", "timeout_handling"}
+    timer_markers = ("timer", "timeout", "keepalive", "keep_alive", "schedule")
+    transport_callback_capable = bool(capability_ids & transport_caps) or any(word in capability_text for word in transport_markers)
+    timer_callback_capable = bool(capability_ids & timer_caps) or any(word in capability_text for word in timer_markers)
+    if transport_callback_capable or timer_callback_capable:
         callback_fields: list[dict[str, str]] = []
-        if any(word in text for word in ("accept", "server", "listen", "connection")):
+        if transport_callback_capable and any(word in text for word in ("accept", "server", "listen", "connection")):
             callback_fields.append({"field_name": "on_accept", "field_type": f"{protocol}_{module_id}_on_accept_fn", "source_field_id": ""})
-        if any(word in text for word in ("data", "read", "receive", "io", "epoll", "connection")):
+        if transport_callback_capable and any(word in text for word in ("data", "read", "receive", "io", "epoll", "connection")):
             callback_fields.append({"field_name": "on_data", "field_type": f"{protocol}_{module_id}_on_data_fn", "source_field_id": ""})
-        if any(word in text for word in ("close", "closed", "destroy", "connection")):
+        if transport_callback_capable and any(word in text for word in ("close", "closed", "destroy", "connection")):
             callback_fields.append({"field_name": "on_close", "field_type": f"{protocol}_{module_id}_on_close_fn", "source_field_id": ""})
-        if "timer" in text:
+        if (transport_callback_capable or timer_callback_capable) and any(word in text for word in timer_markers):
             callback_fields.append({"field_name": "on_timer", "field_type": f"{protocol}_{module_id}_on_timer_fn", "source_field_id": ""})
-        targets.append(
-            {
-                "target_id": f"target:{module_id}:callback_boundary",
-                "target_kind": "callback_or_event_boundary",
-                "suggested_name": f"{protocol}_{module_id}_callbacks_t",
-                "owner_module_id": module_id,
-                "source_message_ids": [],
-                "source_field_ids": [],
-                "required_fields": callback_fields,
-                "reason": "Runtime/event responsibilities need stable callback or event boundary types.",
-                "trace_ref_keys": module_artifact.get("source_fact_ids", []),
-            }
-        )
+        if callback_fields:
+            targets.append(
+                {
+                    "target_id": f"target:{module_id}:callback_boundary",
+                    "target_kind": "callback_or_event_boundary",
+                    "suggested_name": f"{protocol}_{module_id}_callbacks_t",
+                    "owner_module_id": module_id,
+                    "source_message_ids": [],
+                    "source_field_ids": [],
+                    "required_fields": callback_fields,
+                    "reason": "Runtime/event responsibilities need stable callback or event boundary types.",
+                    "trace_ref_keys": module_artifact.get("source_fact_ids", []),
+                }
+            )
     if _module_needs_private_state(module_artifact) and not _module_has_context_type_artifact(module_artifact, protocol):
         targets.append(
             {

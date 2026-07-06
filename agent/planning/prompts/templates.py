@@ -548,6 +548,7 @@ def architecture_ranking_messages(architecture_context: dict[str, Any], architec
                         "Reward candidates that separate transport/runtime callbacks, codec/data model, session/resource ownership, routing/dispatch, and broker lifecycle when those capabilities exist in the profile.",
                         "Reward clear state/resource ownership: one module owns each mutable state/resource family, lower-level modules do not depend back on broker/app flow modules, and dependency_hints are acyclic consumer -> provider intent.",
                         "Score down minimal_scope or catch-all candidates that compress transport, codec, state/session, routing, and app orchestration into coarse buckets merely to reduce module count.",
+                        "Score down candidates that introduce a dedicated time/timer/timeout module; prefer integrating timing responsibilities into session, state, runtime, or role modules unless a standalone timer service is explicitly unavoidable.",
                         "Score down candidates whose modules are label buckets without realistic public API, private helper, test seam, or source/header unit cohesion.",
                         "Implementation simplicity means coder-friendly boundaries, small compile units, and testability; it does not mean choosing the candidate closest to five modules.",
                     ],
