@@ -209,34 +209,163 @@ Rules:
     ]
 
 
-def build_repair_messages(
+def _repair_diagnostics_view(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    visible: list[dict[str, Any]] = []
+    for item in items:
+        visible.append(
+            {
+                key: item.get(key, "")
+                for key in ("phase", "path", "symbol", "message")
+                if item.get(key, "") not in {"", None}
+            }
+        )
+    return visible
+
+
+def _repair_classification_view(classification: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: value
+        for key, value in classification.items()
+        if key not in {"category", "planning_dependent"} and value not in {"", None}
+    }
+
+
+REPAIR_SYSTEM_PROMPT = """You repair generated C projects under a bounded generic repair policy.
+
+Rules:
+- Return one unified diff only. Do not return full file contents, Markdown fences, prose, or analysis.
+- Use only the supplied C files, headers, diagnostics, and runtime argv contract.
+- Focus on local C syntax and build defects, header/include/declaration visibility defects, and straightforward function/signature/linkage mismatches.
+- Prefer the smallest local edit that reduces compiler/linker diagnostics.
+- You may add minimal local declarations, include guards, includes, feature macros, argument adaptation, return adaptation, or tiny compatibility code when needed to compile.
+- Keep the patch tied to the supplied diagnostics and existing declarations.
+"""
+
+
+def build_source_repair_messages(
     *,
     argv_contract: str,
-    allowed_inputs: dict[str, Any],
     target_path: str,
-    project_headers: dict[str, str],
-    current_content: str,
-    compile_errors: str,
+    target_content: str,
+    related_headers: dict[str, str],
+    related_snippets: dict[str, str],
+    diagnostics: list[dict[str, Any]],
+    classification: dict[str, Any],
+    allow_pair: bool,
 ) -> list[dict[str, str]]:
-    content = f"""Repair source file `{target_path}` so the project compiles.
+    content = f"""Repair a bounded generated-C build defect in `{target_path}`.
 
-Compact implementation context:
-{_json(_implementation_view(allowed_inputs))}
+Allowed files:
+- Always: `{target_path}`
+- Also allowed only if necessary: the same-stem .h/.c pair is {"allowed" if allow_pair else "not allowed"}.
 
-Project headers. Treat these declarations as authoritative:
-{_json(project_headers)}
+Runtime argv contract:
+{argv_contract}
 
-Compiler errors:
-{compile_errors}
+Issue metadata:
+{_json(_repair_classification_view(classification))}
 
-Current file content:
-{current_content}
+Root-cause diagnostics:
+{_json(_repair_diagnostics_view(diagnostics))}
 
-Output only the full corrected contents of `{target_path}`.
-Preserve the runtime contract: {argv_contract}.
-Do not redefine shared enum/type/constant declarations that already exist in project headers; include the owner header and adjust this source file only.
+Related headers, authoritative for visible declarations:
+{_json(related_headers)}
+
+Related declaration/definition/callsite snippets:
+{_json(related_snippets)}
+
+Target file content:
+```c
+{target_content}
+```
+
+Repair focus:
+- missing forward declaration or low-risk include;
+- header/source declaration and definition mismatch;
+- obvious argument count or return-value mismatch;
+- static/extern visibility;
+- duplicate pasted implementation within the same file;
+- simple unique function naming drift;
+- minimal local code needed to satisfy an existing signature or callsite.
+- local compatibility glue when the called declaration, definition, or nearby usage makes the intended shape mechanically clear.
+
+Output a unified diff only.
 """
     return [
-        {"role": "system", "content": "You repair C source files using compiler diagnostics and project headers."},
+        {"role": "system", "content": REPAIR_SYSTEM_PROMPT},
+        {"role": "user", "content": content},
+    ]
+
+
+def build_link_repair_messages(
+    *,
+    argv_contract: str,
+    target_path: str,
+    target_content: str,
+    file_index: dict[str, Any],
+    diagnostics: list[dict[str, Any]],
+) -> list[dict[str, str]]:
+    content = f"""Repair a bounded generic link defect for `{target_path}`.
+
+Runtime argv contract:
+{argv_contract}
+
+Link diagnostics:
+{_json(_repair_diagnostics_view(diagnostics))}
+
+Lightweight repair index:
+{_json(file_index)}
+
+Target file content:
+```c
+{target_content}
+```
+
+Repair focus:
+- make a duplicate helper static when it is local to one file;
+- align static/extern visibility;
+- use a unique nearby function name only when signatures are compatible;
+- add a tiny lifecycle implementation only for init/free/close/destroy style helpers;
+- add minimal glue needed to satisfy an existing symbol when the intended shape is mechanically obvious from nearby declarations.
+
+Output a unified diff only.
+"""
+    return [
+        {"role": "system", "content": REPAIR_SYSTEM_PROMPT},
+        {"role": "user", "content": content},
+    ]
+
+
+def build_runtime_repair_messages(
+    *,
+    argv_contract: str,
+    target_path: str,
+    target_content: str,
+    runtime_diagnostics: dict[str, Any],
+) -> list[dict[str, str]]:
+    content = f"""Repair a minimal startup/runtime contract defect in `{target_path}`.
+
+Runtime argv contract:
+{argv_contract}
+
+Startup diagnostics:
+{_json(runtime_diagnostics)}
+
+Target file content:
+```c
+{target_content}
+```
+
+Repair focus:
+- binary startup argument parsing;
+- port bind/listen setup;
+- immediately exiting main loop;
+- startup crash caused by local initialization;
+- minimal compile/startup glue that preserves the existing program shape.
+
+Output a unified diff only.
+"""
+    return [
+        {"role": "system", "content": REPAIR_SYSTEM_PROMPT},
         {"role": "user", "content": content},
     ]

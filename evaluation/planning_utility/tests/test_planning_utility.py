@@ -5,6 +5,7 @@ import json
 import subprocess
 import tempfile
 import unittest
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -12,12 +13,13 @@ from unittest.mock import patch
 from agent.coder.llm_client import LLMResponse, LLMUsage
 from agent.planning.adapters.target_profile import load_target_profile
 
-from evaluation.planning_utility import baseline_runner, prompts
+from evaluation.planning_utility import baseline_runner, prompts, repair_cli
 from evaluation.planning_utility.baseline_runner import (
     FSDirectCoderRunner,
     NLPlanCodeRunner,
     validate_source_tree_skeleton,
 )
+from evaluation.planning_utility.bounded_repair import BoundedCRepairRunner, RepairConfig
 from evaluation.planning_utility.configs import PROTOCOLS, ProtocolConfig
 from evaluation.planning_utility.header_context import (
     HeaderExtraction,
@@ -107,7 +109,10 @@ class RepairLLM:
 
     def generate_with_usage(self, request: Any) -> LLMResponse:
         self.requests.append(request)
-        return LLMResponse("int main(void) { return 0; }\n", LLMUsage(30, 20, 50))
+        return LLMResponse(
+            "--- main.c\n+++ main.c\n@@ -1 +1 @@\n-int main(void) { return missing_symbol(); }\n+int main(void) { return 0; }\n",
+            LLMUsage(30, 20, 50),
+        )
 
 
 class RetryOnceLLM(FakeLLM):
@@ -308,6 +313,34 @@ static inline int api_private(void) { return 1; }
                 ["main.c"],
             )
 
+    def test_repair_prompts_use_concrete_issue_descriptions(self) -> None:
+        diagnostics = [
+            {
+                "category": "C2",
+                "phase": "compile",
+                "path": "main.c",
+                "symbol": "run_server",
+                "message": "implicit declaration of function run_server",
+                "planning_dependent": False,
+            }
+        ]
+        messages = prompts.build_source_repair_messages(
+            argv_contract="./toy_app <port>",
+            target_path="main.c",
+            target_content="int main(void) { return run_server(); }\n",
+            related_headers={"app.h": "int run_server(int port);\n"},
+            related_snippets={"main.c": "1: int main(void) { return run_server(); }"},
+            diagnostics=diagnostics,
+            classification={"category": "C2", "planning_dependent": False},
+            allow_pair=False,
+        )
+        text = "\n".join(item["content"] for item in messages)
+        for term in ("C1", "C2", "C3", "C4", "C5", "Forbidden fixes", "Out-of-scope", "module ownership", "message model", "state model"):
+            self.assertNotIn(term, text)
+        self.assertIn("local C syntax and build defects", text)
+        self.assertIn("header/include/declaration visibility defects", text)
+        self.assertIn("function/signature/linkage mismatches", text)
+
     def test_pair_json_retries_once_then_records_success(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:
             tmp = Path(raw_tmp)
@@ -418,16 +451,17 @@ static inline int api_private(void) { return 1; }
             self.assertEqual(direct.summary["source_tree_skeleton_status"], "passed")
             self.assertEqual(direct.summary["pair_completion_status"], "passed")
             self.assertEqual(direct.summary["repair_iterations"], 0)
-            self.assertEqual(direct.summary["repair_stop_reason"], "compile_succeeded")
-            self.assertIn("compile", direct.summary["timings"])
-            self.assertNotIn("compile_repair", direct.summary["timings"])
+            self.assertEqual(direct.summary["repair_stop_reason"], "completed")
+            self.assertIn("bounded_repair", direct.summary["timings"])
+            self.assertTrue((tmp / "fs" / "coder_out" / "_agent_logs" / "repair_summary.json").is_file())
             self.assertEqual(fs_llm.pair_calls, 2)
             self.assertTrue(all(request.max_completion_tokens == 16384 for request in fs_llm.requests))
             self.assertFalse((tmp / "fs" / "project_strategy.json").exists())
             self.assertFalse((tmp / "fs" / "nl_plan.md").exists())
             direct_manifest = json.loads(direct.manifest_path.read_text(encoding="utf-8"))
-            self.assertFalse(direct_manifest["repair_enabled"])
-            self.assertEqual(direct_manifest["max_repair_rounds"], 0)
+            self.assertTrue(direct_manifest["repair_enabled"])
+            self.assertEqual(direct_manifest["max_repair_calls"], 6)
+            self.assertEqual(direct_manifest["repair"]["bounded_generic_c_repair"]["link_after_repair"], "passed")
             skeleton = json.loads((tmp / "fs" / "source_tree_skeleton.json").read_text())
             for item in skeleton["files"]:
                 self.assertLessEqual(set(item), {"path", "kind", "order"})
@@ -498,33 +532,194 @@ static inline int api_private(void) { return 1; }
             "_generate_source_tree_skeleton",
             "_generate_pair_completion",
             "_run_static_checks",
-            "_compile_and_repair",
-            "_run_behavior",
+            "_run_bounded_repair",
         ):
             with self.subTest(method_name=method_name):
                 self.assertIs(getattr(NLPlanCodeRunner, method_name), getattr(FSDirectCoderRunner, method_name))
 
-    def test_existing_source_repair_flow_can_still_run(self) -> None:
+    def test_existing_project_repair_flow_can_run_independently(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:
             tmp = Path(raw_tmp)
             config = _toy_config(tmp)
             repair_llm = RepairLLM()
-            runner = FSDirectCoderRunner(config, tmp / "repair", llm_client=repair_llm, max_repair_rounds=1)
-            runner._prepare_output_dir()
-            (runner.project_dir / "main.c").write_text("int main(void) { return missing_symbol(); }\n", encoding="utf-8")
-            (runner.project_dir / "Makefile").write_text(
+            project_dir = tmp / "coder_out" / "toy"
+            project_dir.mkdir(parents=True)
+            (project_dir / "main.c").write_text("int main(void) { return missing_symbol(); }\n", encoding="utf-8")
+            (project_dir / "Makefile").write_text(
                 "CC ?= gcc\nCFLAGS ?= -std=c11 -Wall -Werror=implicit-function-declaration -I.\n"
                 "TARGET ?= toy_app\nSRCS = main.c\nall: $(TARGET)\n$(TARGET): $(SRCS)\n\t$(CC) $(CFLAGS) -o $@ $(SRCS)\n",
                 encoding="utf-8",
             )
-            result, stop_reason, rounds, blocking_files, rejected = runner._compile_and_repair()
-            self.assertEqual(result.returncode, 0)
-            self.assertEqual(stop_reason, "compile_succeeded")
-            self.assertEqual(rounds, 1)
-            self.assertFalse(blocking_files)
-            self.assertFalse(rejected)
+            summary = BoundedCRepairRunner(
+                RepairConfig(
+                    project_dir=project_dir,
+                    method="fs-direct-coder",
+                    protocol=config.protocol,
+                    binary_name=config.binary_name,
+                    argv_contract=config.argv_contract,
+                    output_summary_path=tmp / "repair_summary.json",
+                    max_repair_calls=1,
+                ),
+                llm_client=repair_llm,
+            ).run()
+            self.assertEqual(summary["link_after_repair"], "passed")
+            self.assertEqual(summary["repair_stop_reason"], "completed")
+            self.assertEqual(summary["llm_repair_calls"], 1)
             self.assertEqual(len(repair_llm.requests), 1)
             self.assertIsNone(repair_llm.requests[0].max_completion_tokens)
+
+    def test_deterministic_c1_include_repair(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            tmp = Path(raw_tmp)
+            project_dir = tmp / "coder_out" / "toy"
+            project_dir.mkdir(parents=True)
+            (project_dir / "main.c").write_text(
+                "int main(void) { char *p = malloc(4); free(p); return 0; }\n",
+                encoding="utf-8",
+            )
+            (project_dir / "Makefile").write_text(
+                "CC ?= gcc\nCFLAGS ?= -std=c11 -Wall -Werror=implicit-function-declaration -I.\n"
+                "TARGET ?= toy_app\nSRCS = main.c\nall: $(TARGET)\n$(TARGET): $(SRCS)\n\t$(CC) $(CFLAGS) -o $@ $(SRCS)\n",
+                encoding="utf-8",
+            )
+            summary = BoundedCRepairRunner(
+                RepairConfig(
+                    project_dir=project_dir,
+                    method="nl-plan-code",
+                    protocol="toy",
+                    binary_name="toy_app",
+                    argv_contract="./toy_app <port>",
+                    output_summary_path=tmp / "repair_summary.json",
+                    max_repair_calls=0,
+                ),
+                llm_client=RepairLLM(),
+            ).run()
+            self.assertEqual(summary["llm_repair_calls"], 0)
+            self.assertEqual(summary["link_after_repair"], "passed")
+            self.assertIn("#include <stdlib.h>", (project_dir / "main.c").read_text(encoding="utf-8"))
+
+    def test_repair_cli_copies_existing_project_before_modifying(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            tmp = Path(raw_tmp)
+            source_project_dir = tmp / "source" / "coder_out" / "toy"
+            source_project_dir.mkdir(parents=True)
+            (source_project_dir / "main.c").write_text(
+                "int main(void) { char *p = malloc(4); free(p); return 0; }\n",
+                encoding="utf-8",
+            )
+            (source_project_dir / "Makefile").write_text(
+                "CC ?= gcc\nCFLAGS ?= -std=c11 -Wall -Werror=implicit-function-declaration -I.\n"
+                "TARGET ?= toy_app\nSRCS = main.c\nall: $(TARGET)\n$(TARGET): $(SRCS)\n\t$(CC) $(CFLAGS) -o $@ $(SRCS)\n",
+                encoding="utf-8",
+            )
+            run_root = tmp / "out" / "20260706_120000"
+            requested_summary = tmp / "requested_repair_summary.json"
+
+            result = repair_cli._run_one(
+                {
+                    "project_dir": str(source_project_dir),
+                    "method": "fs-direct-coder",
+                    "protocol": "toy",
+                    "binary_name": "toy_app",
+                    "argv_contract": "./toy_app <port>",
+                    "output_summary_path": str(requested_summary),
+                    "repair_run_root": str(run_root),
+                },
+                api_key_env="ALI_API",
+                max_repair_calls=0,
+                dry_run=False,
+            )
+
+            copied_project_dir = run_root / "toy" / "fs-direct-coder" / "coder_out" / "toy"
+            self.assertEqual(result["status"], "ok")
+            self.assertTrue(copied_project_dir.is_dir())
+            self.assertNotIn("#include <stdlib.h>", (source_project_dir / "main.c").read_text(encoding="utf-8"))
+            self.assertIn("#include <stdlib.h>", (copied_project_dir / "main.c").read_text(encoding="utf-8"))
+            self.assertEqual(result["repair_project_dir"], str(copied_project_dir))
+            self.assertEqual(result["canonical_summary_path"], str(copied_project_dir.parent / "_agent_logs" / "repair_summary.json"))
+            self.assertFalse(requested_summary.exists())
+            self.assertEqual(result["summary"]["source_project_dir"], str(source_project_dir))
+            self.assertEqual(result["summary"]["project_dir"], str(copied_project_dir))
+            self.assertEqual(result["summary"]["repair_run_root"], str(run_root))
+
+    def test_repair_cli_batches_projects_under_one_generated_layout(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            tmp = Path(raw_tmp)
+            run_root = tmp / "out" / "20260706_120000"
+            rows = [
+                {
+                    "project_dir": str(tmp / "src1" / "coder_out" / "toy"),
+                    "method": "fs-direct-coder",
+                    "protocol": "toy",
+                    "binary_name": "toy_app",
+                    "argv_contract": "./toy_app <port>",
+                    "output_summary_path": str(tmp / "outside.json"),
+                },
+                {
+                    "project_dir": str(tmp / "src2" / "coder_out" / "toy"),
+                    "method": "nl-plan-code",
+                    "protocol": "toy",
+                    "binary_name": "toy_app",
+                    "argv_contract": "./toy_app <port>",
+                },
+            ]
+            prepared = repair_cli._prepare_repair_rows(rows, run_root)
+            self.assertEqual({row["repair_run_root"] for row in prepared}, {str(run_root)})
+            self.assertEqual(prepared[0]["repair_method_dir"], "fs-direct-coder")
+            self.assertEqual(prepared[1]["repair_method_dir"], "nl-plan-code")
+            self.assertNotIn("output_summary_path", prepared[0])
+            self.assertEqual(
+                run_root / prepared[0]["protocol"] / prepared[0]["repair_method_dir"] / "coder_out" / prepared[0]["protocol"],
+                run_root / "toy" / "fs-direct-coder" / "coder_out" / "toy",
+            )
+
+    def test_repair_cli_uses_repair_round_and_nested_timestamp(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            tmp = Path(raw_tmp)
+            rows = [
+                {
+                    "project_dir": str(
+                        tmp
+                        / "20260703_mqtt_no_repair_round_2"
+                        / "20260703_123939"
+                        / "mqtt"
+                        / "fs-direct-coder"
+                        / "coder_out"
+                        / "mqtt"
+                    ),
+                    "method": "fs-direct-coder",
+                    "protocol": "mqtt",
+                    "binary_name": "mqtt_broker",
+                    "argv_contract": "./mqtt_broker <port>",
+                }
+            ]
+            now = datetime(2026, 7, 6, 15, 32, 28)
+            with patch("evaluation.planning_utility.repair_cli.DEFAULT_OUTPUT_ROOT", tmp / "out"):
+                run_root = repair_cli._fresh_run_root(rows, now)
+            self.assertEqual(
+                run_root,
+                tmp / "out" / "20260706_mqtt_after_repair_round_2" / "20260706_153228",
+            )
+
+    def test_incomplete_source_tree_is_recorded(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            tmp = Path(raw_tmp)
+            project_dir = tmp / "broken"
+            project_dir.mkdir()
+            summary = BoundedCRepairRunner(
+                RepairConfig(
+                    project_dir=project_dir,
+                    method="fs-direct-coder",
+                    protocol="toy",
+                    binary_name="toy_app",
+                    argv_contract="./toy_app <port>",
+                    output_summary_path=tmp / "repair_summary.json",
+                    max_repair_calls=6,
+                ),
+                llm_client=RepairLLM(),
+            ).run()
+            self.assertEqual(summary["repair_stop_reason"], "incomplete_source_tree")
+            self.assertTrue((tmp / "repair_diagnostics.json").is_file())
 
     def test_baseline_source_avoids_forbidden_spec_imports(self) -> None:
         source = inspect.getsource(baseline_runner) + inspect.getsource(prompts)
@@ -540,8 +735,10 @@ static inline int api_private(void) { return 1; }
         for term in forbidden:
             self.assertNotIn(term, source)
         self.assertFalse(hasattr(baseline_runner, "validate_project_strategy"))
+        self.assertFalse(hasattr(baseline_runner.BaselineProjectRunner, "_compile_and_repair"))
         self.assertFalse(hasattr(prompts, "build_strategy_messages"))
         self.assertFalse(hasattr(prompts, "build_file_messages"))
+        self.assertFalse(hasattr(prompts, "build_repair_messages"))
 
 
 if __name__ == "__main__":

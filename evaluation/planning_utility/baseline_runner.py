@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import shutil
-import subprocess
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -12,23 +11,18 @@ from typing import Any
 from agent.coder.generation import (
     GenerationLogger,
     _add_usage,
-    _compact_compile_diagnostics,
-    _compile_project,
-    _extract_project_error_files,
     _messages_size_bytes,
     _strip_fences,
     _usage_to_dict,
-    _validate_repair_candidate,
 )
 from agent.coder.llm_client import FixedQwenClient, LLMRequest, LLMResponse, LLMUsage
-from agent.coder.protocol_behavior_val import verify_protocol_behavior
 
+from .bounded_repair import BoundedCRepairRunner, RepairConfig
 from .configs import ProtocolConfig, rel_to_repo
 from .header_context import HeaderExtraction, extract_header_declarations, fit_header_context
 from .prompts import (
     build_nl_plan_messages,
     build_pair_completion_messages,
-    build_repair_messages,
     build_source_tree_skeleton_messages,
 )
 from .requirements import build_allowed_inputs, write_json
@@ -265,6 +259,7 @@ class BaselineProjectRunner:
         *,
         llm_client: FixedQwenClient,
         max_repair_rounds: int = 3,
+        max_repair_calls: int = 6,
     ) -> None:
         self.config = config
         self.output_dir = output_dir
@@ -273,6 +268,7 @@ class BaselineProjectRunner:
         self.logs = GenerationLogger(self.coder_out / "_agent_logs")
         self.llm_client = llm_client
         self.max_repair_rounds = max_repair_rounds
+        self.max_repair_calls = max_repair_calls
         self.workflow_usage = LLMUsage(0, 0, 0)
         self.stage_token_usage: dict[str, dict[str, int]] = {}
         self.llm_call_usage: list[dict[str, Any]] = []
@@ -292,6 +288,7 @@ class BaselineProjectRunner:
         self._prepare_output_dir()
         summary = self._base_summary()
         manifest_path: Path | None = None
+        repair_summary: dict[str, Any] | None = None
         try:
             self.llm_client.ensure_ready()
             allowed_inputs = self.timer.run("allowed_inputs", self._write_allowed_inputs)
@@ -301,53 +298,25 @@ class BaselineProjectRunner:
             if static_errors:
                 summary["static_check_status"] = "failed"
                 self._mark_failure(summary, "static_check", "; ".join(static_errors[:3]))
-                manifest_path = self._write_manifest(summary, None, "static_check_failed", [], [])
+                manifest_path = self._write_manifest(summary, None)
                 return self._finish(summary, manifest_path)
             summary["static_check_status"] = "passed"
 
-            compile_result = self.timer.run("compile", self._compile_once)
-            repair_stop_reason = "compile_succeeded" if compile_result.returncode == 0 else "repair_disabled"
-            rounds = 0
-            blocking_files: list[str] = []
-            rejected_candidates: list[dict[str, str]] = []
-            summary["compile_status"] = "passed" if compile_result.returncode == 0 else "failed"
-            summary["compile_returncode"] = compile_result.returncode
-            summary["repair_iterations"] = rounds
-            summary["repair_stop_reason"] = repair_stop_reason
-            summary["repaired_files"] = self.repaired_files
-            summary["blocking_files"] = blocking_files
-            summary["rejected_candidates"] = rejected_candidates
-
-            verification_success: bool | None = None
-            scenarios: list[dict[str, str]] = []
-            verification_error: str | None = None
-            if compile_result.returncode == 0:
-                verification_success, scenarios, verification_error = self.timer.run("smoke", self._run_behavior)
-                summary["smoke_status"] = "passed" if verification_success else "failed"
-                summary["verification_success"] = verification_success
-                summary["scenario_counts"] = _count_scenarios(scenarios)
-                summary["verification"] = {"scenarios": scenarios, "error": verification_error}
-                if not verification_success:
-                    self._mark_failure(summary, "smoke", verification_error or self._first_failed_scenario(scenarios))
-            else:
-                summary["smoke_status"] = "not_run"
-                summary["verification_success"] = None
-                summary["scenario_counts"] = {"passed": 0, "failed": 0, "skipped": 0}
-                summary["verification"] = {"scenarios": [], "error": None}
-                self._mark_failure(summary, "compile", repair_stop_reason)
-
-            manifest_path = self._write_manifest(
-                summary,
-                compile_result,
-                repair_stop_reason,
-                blocking_files,
-                rejected_candidates,
-            )
+            repair_summary = self.timer.run("bounded_repair", self._run_bounded_repair)
+            self._merge_repair_usage(repair_summary)
+            self._apply_repair_summary(summary, repair_summary, override_compile=True)
+            manifest_path = self._write_manifest(summary, repair_summary)
             return self._finish(summary, manifest_path)
         except Exception as exc:  # noqa: BLE001
             if not summary.get("failure_stage"):
                 self._mark_failure(summary, "runner", f"{type(exc).__name__}: {exc}")
-            manifest_path = self._write_manifest(summary, None, "runner_error", [], [])
+            if repair_summary is None and self.project_dir.exists():
+                try:
+                    repair_summary = self._run_bounded_repair(max_repair_calls=0)
+                    self._apply_repair_summary(summary, repair_summary, override_compile=False)
+                except Exception:  # noqa: BLE001
+                    repair_summary = None
+            manifest_path = self._write_manifest(summary, repair_summary)
             return self._finish(summary, manifest_path)
 
     def _prepare_output_dir(self) -> None:
@@ -392,8 +361,16 @@ class BaselineProjectRunner:
             "repair_stop_reason": "",
             "repaired_files": [],
             "blocking_files": [],
+            "repair_summary_path": "",
+            "compile_before_repair": "not_run",
+            "compile_after_deterministic": "not_run",
+            "compile_after_llm": "not_run",
+            "link_after_repair": "not_run",
+            "runtime_start_status": "not_run",
+            "planning_dependent_remaining_count": 0,
             "smoke_status": "not_run",
             "verification_success": None,
+            "verification": {"scenarios": [], "error": None},
             "scenario_counts": {"passed": 0, "failed": 0, "skipped": 0},
             "failure_stage": "",
             "failure_categories": [],
@@ -525,19 +502,6 @@ class BaselineProjectRunner:
         (self.output_dir / "nl_plan.md").write_text(plan, encoding="utf-8")
         return plan
 
-    def _project_headers(self) -> dict[str, str]:
-        headers: dict[str, str] = {}
-        used = 0
-        for path in sorted(self.project_dir.rglob("*.h")):
-            relative = path.relative_to(self.project_dir).as_posix()
-            content = path.read_text(encoding="utf-8", errors="ignore")
-            encoded = content.encode("utf-8")
-            if used + len(encoded) > MAX_HEADER_CONTEXT_BYTES:
-                break
-            headers[relative] = content
-            used += len(encoded)
-        return headers
-
     def _project_header_declarations(self) -> dict[str, str]:
         extractions: list[tuple[str, HeaderExtraction]] = []
         for path in sorted(self.project_dir.rglob("*.h")):
@@ -553,30 +517,6 @@ class BaselineProjectRunner:
         errors: list[str] = []
         if self.current_skeleton is not None:
             errors.extend(validate_source_tree_skeleton(self.current_skeleton))
-        expected = self.expected_files
-        if not expected:
-            errors.append("no expected generated files recorded")
-        for path in expected:
-            if not (self.project_dir / path).is_file():
-                errors.append(f"missing generated file: {path}")
-        makefile = self.project_dir / "Makefile"
-        if not makefile.is_file():
-            errors.append("missing Makefile")
-        else:
-            text = makefile.read_text(encoding="utf-8", errors="ignore")
-            if self.config.binary_name not in text:
-                errors.append(f"Makefile does not mention target {self.config.binary_name}")
-            dry = subprocess.run(
-                ["make", "-n", self.config.binary_name],
-                cwd=self.project_dir,
-                text=True,
-                capture_output=True,
-                check=False,
-            )
-            self.logs.write("make_dry_run_stdout", dry.stdout)
-            self.logs.write("make_dry_run_stderr", dry.stderr)
-            if dry.returncode != 0:
-                errors.append("make -n failed")
         leakage = self._leakage_findings()
         if leakage:
             errors.append(f"forbidden leakage terms found: {', '.join(item['term'] for item in leakage[:3])}")
@@ -625,88 +565,113 @@ class BaselineProjectRunner:
         findings = self._planning_artifact_findings()
         return {"status": "passed" if not findings else "failed", "findings": findings}
 
-    def _compile_and_repair(self) -> tuple[subprocess.CompletedProcess[str], str, int, list[str], list[dict[str, str]]]:
-        allowed_inputs = build_allowed_inputs(self.config.facts_path, self.config.target_profile_path, self._runtime_contract())
-        last_result = _compile_project(self.project_dir, self.config.binary_name)
-        self.logs.write("compile_stdout_0", last_result.stdout)
-        self.logs.write("compile_stderr_0", last_result.stderr)
-        if last_result.returncode == 0:
-            return last_result, "compile_succeeded", 0, [], []
-
-        rejected: list[dict[str, str]] = []
-        for round_idx in range(1, self.max_repair_rounds + 1):
-            error_files = _extract_project_error_files(last_result.stdout, last_result.stderr, self.project_dir)
-            blocking_headers = [path for path in error_files if path.endswith(".h")]
-            if blocking_headers:
-                return last_result, "header_compile_error", round_idx - 1, blocking_headers, rejected
-            repairable = [path for path in error_files if path.endswith(".c") and (self.project_dir / path).is_file()]
-            if not repairable:
-                return last_result, "no_repairable_sources", round_idx - 1, [], rejected
-            changed = False
-            for relative_path in repairable:
-                current_path = self.project_dir / relative_path
-                current_content = current_path.read_text(encoding="utf-8", errors="ignore")
-                diagnostics = _compact_compile_diagnostics(
-                    last_result.stdout,
-                    last_result.stderr,
-                    relative_path,
-                    self.project_dir,
-                )
-                messages = build_repair_messages(
-                    argv_contract=self.config.argv_contract,
-                    allowed_inputs=allowed_inputs,
-                    target_path=relative_path,
-                    project_headers=self._project_headers(),
-                    current_content=current_content,
-                    compile_errors=diagnostics,
-                )
-                request_size = _messages_size_bytes(messages)
-                if request_size > MAX_SOURCE_PROMPT_BYTES:
-                    return last_result, "repair_request_too_large", round_idx - 1, [], rejected
-                response = self._generate_with_usage("repair", f"repair_round_{round_idx}", relative_path, messages)
-                candidate = _strip_fences(response.content)
-                ok, reason = _validate_repair_candidate(relative_path, current_content, candidate)
-                if not ok:
-                    rejected.append({"path": relative_path, "reason": reason})
-                    continue
-                current_path.write_text(candidate, encoding="utf-8")
-                self.logs.write(f"repaired_file_{round_idx}_{relative_path}", candidate)
-                if relative_path not in self.repaired_files:
-                    self.repaired_files.append(relative_path)
-                changed = True
-            if not changed:
-                return last_result, "no_repair_progress", round_idx, [], rejected
-            last_result = _compile_project(self.project_dir, self.config.binary_name)
-            self.logs.write(f"compile_stdout_{round_idx}", last_result.stdout)
-            self.logs.write(f"compile_stderr_{round_idx}", last_result.stderr)
-            if last_result.returncode == 0:
-                return last_result, "compile_succeeded", round_idx, [], rejected
-        return last_result, "max_rounds_exhausted", self.max_repair_rounds, [], rejected
-
-    def _compile_once(self) -> subprocess.CompletedProcess[str]:
-        result = _compile_project(self.project_dir, self.config.binary_name)
-        self.logs.write("compile_stdout_0", result.stdout)
-        self.logs.write("compile_stderr_0", result.stderr)
-        return result
-
-    def _run_behavior(self) -> tuple[bool, list[dict[str, str]], str | None]:
-        ok, scenarios, error = verify_protocol_behavior(self.config.protocol, self.project_dir, self.config.binary_name)
-        write_json(
-            self.logs.root / "behavior_verification.json",
-            {"success": ok, "scenarios": scenarios, "error": error},
+    def _run_bounded_repair(self, max_repair_calls: int | None = None) -> dict[str, Any]:
+        runner = BoundedCRepairRunner(
+            RepairConfig(
+                project_dir=self.project_dir,
+                method=self.method,
+                protocol=self.config.protocol,
+                binary_name=self.config.binary_name,
+                argv_contract=self.config.argv_contract,
+                output_summary_path=self.coder_out / "_agent_logs" / "repair_summary.json",
+                max_repair_calls=self.max_repair_calls if max_repair_calls is None else max_repair_calls,
+                transport=self.config.transport,
+            ),
+            llm_client=self.llm_client,
         )
-        return ok, scenarios, error
+        return runner.run()
+
+    def _merge_repair_usage(self, repair_summary: dict[str, Any]) -> None:
+        for item in repair_summary.get("llm_call_usage", []):
+            if isinstance(item, dict):
+                self.llm_call_usage.append(item)
+        for stage, usage in repair_summary.get("stage_token_usage", {}).items():
+            if not isinstance(usage, dict):
+                continue
+            existing = self.stage_token_usage.get(stage, _usage_to_dict(LLMUsage(0, 0, 0)))
+            self.stage_token_usage[stage] = _usage_to_dict(_add_usage(LLMUsage(**existing), LLMUsage(**usage)))
+        workflow = repair_summary.get("workflow_token_usage", {})
+        if isinstance(workflow, dict):
+            self.workflow_usage = _add_usage(self.workflow_usage, LLMUsage(**workflow))
+
+    def _apply_repair_summary(
+        self,
+        summary: dict[str, Any],
+        repair_summary: dict[str, Any],
+        *,
+        override_compile: bool,
+    ) -> None:
+        summary["repair_summary_path"] = rel_to_repo(self.coder_out / "_agent_logs" / "repair_summary.json")
+        for key in (
+            "compile_before_repair",
+            "compile_after_deterministic",
+            "compile_after_llm",
+            "link_after_repair",
+            "runtime_start_status",
+            "planning_dependent_remaining_count",
+        ):
+            summary[key] = repair_summary.get(key, summary.get(key))
+        summary["repair_iterations"] = repair_summary.get("llm_repair_calls", 0)
+        summary["repair_stop_reason"] = repair_summary.get("repair_stop_reason", "")
+        summary["repaired_files"] = repair_summary.get("repaired_files", [])
+        summary["blocking_files"] = repair_summary.get("blocking_files", [])
+        self.repaired_files = list(summary["repaired_files"])
+        summary["repair_metrics"] = {
+            key: repair_summary.get(key)
+            for key in (
+                "deterministic_patch_count",
+                "llm_patch_count",
+                "llm_repair_calls",
+                "semantic_risk_count",
+                "generated_stub_count",
+                "wrapper_count",
+                "duplicate_symbol_repairs",
+                "signature_alignment_repairs",
+                "portability_repairs",
+                "planning_dependent_remaining_count",
+                "C1_before_count",
+                "C2_before_count",
+                "C3_before_count",
+                "C4_before_count",
+                "C5_before_count",
+                "C1_fixed_count",
+                "C2_fixed_count",
+                "C3_fixed_count",
+                "C4_fixed_count",
+                "C5_fixed_count",
+                "C1_remaining_count",
+                "C2_remaining_count",
+                "C3_remaining_count",
+                "C4_remaining_count",
+                "C5_remaining_count",
+            )
+        }
+        if not override_compile:
+            return
+        compile_passed = repair_summary.get("link_after_repair") == "passed"
+        summary["compile_status"] = "passed" if compile_passed else "failed"
+        summary["compile_returncode"] = 0 if compile_passed else 1
+        summary["smoke_status"] = repair_summary.get("smoke_status", "not_run")
+        summary["verification_success"] = repair_summary.get("verification_success")
+        verification = repair_summary.get("verification") or {"scenarios": [], "error": None}
+        summary["verification"] = verification
+        summary["scenario_counts"] = _count_scenarios(verification.get("scenarios", []))
+        if not compile_passed:
+            self._mark_failure(summary, "compile", summary["repair_stop_reason"])
+        elif summary["smoke_status"] == "failed":
+            scenarios = verification.get("scenarios", [])
+            self._mark_failure(summary, "smoke", verification.get("error") or self._first_failed_scenario(scenarios))
+        elif repair_summary.get("runtime_start_status") == "failed":
+            self._mark_failure(summary, "runtime_start", summary["repair_stop_reason"])
 
     def _write_manifest(
         self,
         summary: dict[str, Any],
-        compile_result: subprocess.CompletedProcess[str] | None,
-        repair_stop_reason: str,
-        blocking_files: list[str],
-        rejected_candidates: list[dict[str, str]],
+        repair_summary: dict[str, Any] | None,
     ) -> Path:
         leakage = self._leakage_findings()
         planning_artifact_guard = self._planning_artifact_guard()
+        compile_success = summary.get("compile_status") == "passed"
         manifest = {
             "schema_version": "planning_utility_baseline_run_manifest/v1",
             "method": self.method,
@@ -717,20 +682,23 @@ class BaselineProjectRunner:
             "log_dir": str(self.logs.root),
             "binary_name": self.config.binary_name,
             "argv_contract": self.config.argv_contract,
-            "repair_enabled": False,
+            "repair_enabled": True,
             "max_repair_rounds": 0,
-            "generation_success": compile_result is not None and compile_result.returncode == 0,
-            "compile_success": compile_result is not None and compile_result.returncode == 0,
-            "compile_returncode": compile_result.returncode if compile_result is not None else None,
+            "max_repair_calls": self.max_repair_calls,
+            "generation_success": summary.get("pair_completion_status") == "passed",
+            "compile_success": compile_success,
+            "compile_returncode": summary.get("compile_returncode"),
             "verification_run": summary.get("smoke_status") in {"passed", "failed"},
             "verification_success": summary.get("verification_success"),
             "verification": summary.get("verification", {"scenarios": [], "error": None}),
             "repaired_files": self.repaired_files,
             "repair": {
-                "stop_reason": repair_stop_reason,
+                "summary_path": summary.get("repair_summary_path", ""),
+                "stop_reason": summary.get("repair_stop_reason", ""),
                 "rounds_attempted": summary.get("repair_iterations") or 0,
-                "blocking_files": blocking_files,
-                "rejected_candidates": rejected_candidates,
+                "blocking_files": summary.get("blocking_files", []),
+                "rejected_candidates": [],
+                "bounded_generic_c_repair": repair_summary or {},
             },
             "leakage_guard": {"status": "passed" if not leakage else "failed", "findings": leakage},
             "planning_artifact_guard": planning_artifact_guard,

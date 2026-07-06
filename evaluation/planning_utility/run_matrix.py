@@ -36,6 +36,7 @@ def _run_method(
     *,
     api_key_env: str,
     max_repair_rounds: int,
+    max_repair_calls: int,
     full_planning_dirs: dict[str, Path],
 ) -> dict[str, Any]:
     if method == "fs-direct-coder":
@@ -44,6 +45,7 @@ def _run_method(
             method_dir,
             llm_client=FixedQwenClient(api_key_env),
             max_repair_rounds=max_repair_rounds,
+            max_repair_calls=max_repair_calls,
         )
         return runner.run().summary
     if method == "nl-plan-code":
@@ -52,6 +54,7 @@ def _run_method(
             method_dir,
             llm_client=FixedQwenClient(api_key_env),
             max_repair_rounds=max_repair_rounds,
+            max_repair_calls=max_repair_calls,
         )
         return runner.run().summary
     if method == METHOD_FULL:
@@ -119,7 +122,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--method", action="append", choices=METHODS, help="Method(s) to run; default: all")
     parser.add_argument("--output-root", default=str(DEFAULT_OUTPUT_ROOT))
     parser.add_argument("--api-key-env", default="ALI_API")
-    parser.add_argument("--max-repair-rounds", type=int, default=3, help="Repair rounds for full-specforge; baselines disable repair")
+    parser.add_argument("--max-repair-rounds", type=int, default=3, help="Repair rounds for full-specforge only")
+    parser.add_argument("--max-repair-calls", type=int, default=6, help="Bounded generic C repair calls for fs-direct-coder and nl-plan-code")
     parser.add_argument("--full-planning-dir", action="append", default=[], help="Existing Full SpecForge planning run as protocol=PATH")
     parser.add_argument("--fail-on-method-failure", action="store_true")
     return parser
@@ -142,6 +146,7 @@ def main(argv: list[str] | None = None) -> int:
                     matrix_dir / protocol / method,
                     api_key_env=args.api_key_env,
                     max_repair_rounds=args.max_repair_rounds,
+                    max_repair_calls=args.max_repair_calls,
                     full_planning_dirs=full_planning_dirs,
                 )
             )
