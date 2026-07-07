@@ -734,6 +734,10 @@ def lower_planned_module_artifacts_for_coder(artifacts: list[dict[str, Any]]) ->
     for artifact in artifacts:
         if not isinstance(artifact, dict):
             continue
+        visibility = str(artifact.get("visibility") or artifact.get("VISIBILITY") or "").strip().lower()
+        api_surface = str(artifact.get("api_surface") or artifact.get("API_SURFACE") or "").strip().lower()
+        if visibility in {"internal", "private", "static", "module_internal"} or api_surface in {"internal", "private", "module_internal", "private_helper", "static_helper"}:
+            continue
         name = str(artifact.get("name") or artifact.get("NAME") or "").strip()
         kind = str(artifact.get("kind") or artifact.get("KIND") or "").upper()
         role = str(artifact.get("role") or artifact.get("ROLE") or "").strip()

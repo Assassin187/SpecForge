@@ -10,13 +10,12 @@ from agent.coder.models import SpecBundle
 from agent.coder.specs import load_spec_bundle_from_root, normalize_repo_path
 
 from .configs import REPO_ROOT
-from .transformer import FORBIDDEN_VISIBLE_TERMS
+from .transformer import FORBIDDEN_VISIBLE_TERMS, S2_PROJECT_GRAPH_FORBIDDEN_TERMS
 
 
-SUPPORTED_VIEWS = {"s1"}
-RESERVED_VIEWS = {"s2"}
+SUPPORTED_VIEWS = {"s1", "s2"}
 
-PROMPT_FORBIDDEN_TERMS: tuple[str, ...] = (
+S1_PROMPT_FORBIDDEN_TERMS: tuple[str, ...] = (
     *FORBIDDEN_VISIBLE_TERMS,
     "GENERATION_ORDER",
     "MODULES",
@@ -32,6 +31,32 @@ PROMPT_FORBIDDEN_TERMS: tuple[str, ...] = (
     "Machine-readable constraints",
     "Consistency rules",
 )
+
+S2_PROMPT_FORBIDDEN_TERMS: tuple[str, ...] = (
+    *S2_PROJECT_GRAPH_FORBIDDEN_TERMS,
+    "Machine-readable constraints",
+    "Consistency rules",
+)
+
+PROMPT_FORBIDDEN_TERMS = S1_PROMPT_FORBIDDEN_TERMS
+
+
+def prompt_forbidden_terms(view_name: str) -> tuple[str, ...]:
+    normalized = view_name.lower().strip()
+    if normalized == "s1":
+        return S1_PROMPT_FORBIDDEN_TERMS
+    if normalized == "s2":
+        return S2_PROMPT_FORBIDDEN_TERMS
+    raise UnsupportedViewError(f"unsupported ablation view '{view_name}'")
+
+
+def visible_boundary_name(view_name: str) -> str:
+    normalized = view_name.lower().strip()
+    if normalized == "s1":
+        return "s1_local_specfs"
+    if normalized == "s2":
+        return "s2_project_graph_specfs"
+    raise UnsupportedViewError(f"unsupported ablation view '{view_name}'")
 
 
 class ViewSpecError(RuntimeError):
@@ -146,6 +171,25 @@ def _load_headers(view_root: Path, manifest: dict[str, Any]) -> dict[str, str]:
     return headers
 
 
+def _load_project_graph(view_root: Path, manifest: dict[str, Any]) -> dict[str, Any]:
+    artifact = manifest.get("artifacts", {}).get("project_graph", {})
+    artifact_path = str(artifact.get("artifact_path", ""))
+    expected_hash = str(artifact.get("sha256", ""))
+    if not artifact_path:
+        raise ViewSpecError("S2 manifest is missing project_graph artifact")
+    path = view_root / artifact_path
+    if not path.is_file():
+        raise ViewSpecError(f"missing project graph artifact: {path}")
+    text = path.read_text(encoding="utf-8")
+    _assert_no_visible_leakage(path, text, S2_PROJECT_GRAPH_FORBIDDEN_TERMS)
+    if expected_hash and sha256_text(text) != expected_hash:
+        raise ViewSpecError(f"project graph artifact hash mismatch: {path}")
+    graph = json.loads(text)
+    if graph.get("visibility") != "s2_coder_visible_project_graph":
+        raise ViewSpecError("S2 project graph has an unexpected visibility marker")
+    return graph
+
+
 def _validate_execution_manifest(view_root: Path, execution_manifest: dict[str, Any]) -> None:
     if execution_manifest.get("visibility") != "hidden_evaluator_only":
         raise ViewSpecError("execution_manifest must be hidden_evaluator_only")
@@ -165,23 +209,28 @@ def load_ablation_view_context(
     full_spec_root: str | Path | None = None,
 ) -> AblationViewContext:
     normalized_view = view_name.lower().strip()
-    if normalized_view in RESERVED_VIEWS:
-        raise UnsupportedViewError(f"view '{normalized_view}' is reserved for SpecFS-ProjectGraph but is not implemented yet")
     if normalized_view not in SUPPORTED_VIEWS:
         raise UnsupportedViewError(f"unsupported ablation view '{view_name}'")
 
     root = Path(view_root).expanduser().resolve()
     if root.name == "specfs_projection":
         root = root.parent
+    if (root / normalized_view).is_dir():
+        root = root / normalized_view
     if not root.is_dir():
         raise ViewSpecError(f"view root not found: {root}")
 
     transformation_manifest = read_json(root / "transformation_manifest.json")
     execution_manifest = read_json(root / "execution_manifest.json")
+    manifest_view = str(transformation_manifest.get("view", normalized_view)).lower().strip()
+    if manifest_view != normalized_view:
+        raise ViewSpecError(f"view root contains '{manifest_view}' artifacts, not '{normalized_view}'")
     if transformation_manifest.get("validation", {}).get("leakage_scan", {}).get("status") != "passed":
         raise ViewSpecError("transformation manifest leakage_scan did not pass")
     if transformation_manifest.get("validation", {}).get("source_loader", {}).get("status") != "passed":
         raise ViewSpecError("transformation manifest source_loader did not pass")
+    if normalized_view == "s2" and transformation_manifest.get("validation", {}).get("s2_project_graph_leakage_scan", {}).get("status") != "passed":
+        raise ViewSpecError("transformation manifest s2_project_graph_leakage_scan did not pass")
     _validate_execution_manifest(root, execution_manifest)
 
     source_root = resolve_repo_path(full_spec_root or transformation_manifest.get("source_root", ""))
@@ -197,6 +246,7 @@ def load_ablation_view_context(
         raise ViewSpecError("function artifact count mismatch")
     if int(expected.get("headers", len(headers))) != len(headers):
         raise ViewSpecError("header artifact count mismatch")
+    project_graph = _load_project_graph(root, transformation_manifest) if normalized_view == "s2" else None
 
     return AblationViewContext(
         view_name=normalized_view,
@@ -206,5 +256,5 @@ def load_ablation_view_context(
         transformation_manifest=transformation_manifest,
         function_blocks_by_trace=function_blocks,
         headers_by_path=headers,
-        project_graph=None,
+        project_graph=project_graph,
     )

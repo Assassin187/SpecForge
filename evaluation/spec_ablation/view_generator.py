@@ -8,18 +8,19 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from agent.coder.generation import ProjectGenerator, _bundle_binary_name
+from agent.coder.generation import DEFAULT_MAX_REPAIR_ROUNDS, ProjectGenerator, _bundle_binary_name
 from agent.coder.llm_client import FixedQwenClient
 from agent.coder.verifier import ProjectVerifier
 
 from .configs import REPO_ROOT
 from .view_prompts import ViewPromptBuilder
 from .view_specs import (
-    PROMPT_FORBIDDEN_TERMS,
     AblationViewContext,
     UnsupportedViewError,
     ViewSpecError,
     load_ablation_view_context,
+    prompt_forbidden_terms,
+    visible_boundary_name,
 )
 
 
@@ -28,6 +29,10 @@ DEFAULT_OUTPUT_ROOT = REPO_ROOT / "evaluation" / "spec_ablation" / "out"
 
 class PromptLeakageError(RuntimeError):
     """Raised when a view prompt crosses its allowed visibility boundary."""
+
+
+def _path(value: str) -> Path:
+    return Path(value).expanduser()
 
 
 @dataclass
@@ -42,7 +47,7 @@ class PromptAudit:
 
     def __call__(self, stage: str, subject: str, messages: list[dict[str, str]]) -> None:
         payload = json.dumps(messages, ensure_ascii=False, sort_keys=True)
-        violations = [term for term in PROMPT_FORBIDDEN_TERMS if term in payload]
+        violations = [term for term in prompt_forbidden_terms(self.view_name) if term in payload]
         record = {
             "view": self.view_name,
             "stage": stage,
@@ -50,7 +55,7 @@ class PromptAudit:
             "message_count": len(messages),
             "request_sha256": hashlib.sha256(payload.encode("utf-8")).hexdigest(),
             "request_bytes": len(payload.encode("utf-8")),
-            "visible_boundary": f"{self.view_name}_local_specfs" if self.view_name == "s1" else self.view_name,
+            "visible_boundary": visible_boundary_name(self.view_name),
             "leakage_scan": {
                 "status": "failed" if violations else "passed",
                 "violations": violations,
@@ -71,20 +76,29 @@ def default_output_dir(context: AblationViewContext, round_number: int = 1) -> P
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Generate code from SpecFS ablation specification views")
-    parser.add_argument("--view", default="s1", help="Ablation view to use: s1 now; s2 is reserved")
+    parser.add_argument("--view", default="s1", help="Ablation view to use: s1 or s2")
     parser.add_argument("--view-root", required=True, help="Path to transformed view artifacts or its specfs_projection directory")
     parser.add_argument("--full-spec-root", default=None, help="Optional source oracle override for deterministic assembly")
     parser.add_argument("--output-dir", default=None)
     parser.add_argument("--round-number", type=int, default=1, help="Experiment round number used in the default output directory name")
-    parser.add_argument("--api-key-env", default="ALI_API")
-    parser.add_argument("--max-repair-rounds", type=int, default=3)
-    parser.add_argument("--skip-repair", action="store_true")
+    parser.add_argument("--api-key-env", default="ALI_API", help="Environment variable containing the Qwen API key")
+    parser.add_argument("--max-repair-rounds", type=int, default=DEFAULT_MAX_REPAIR_ROUNDS)
+    parser.add_argument(
+        "--skip-repair",
+        action="store_true",
+        help="Stop after code generation without building the project, repairing, or running behavior checks.",
+    )
 
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("validate", help="Validate view artifacts and the internal source oracle")
     sub.add_parser("generate", help="Generate a protocol project from the ablation view")
-    repair = sub.add_parser("repair", help="Compile and repair an existing generated project with the view prompt boundary")
-    repair.add_argument("--project-dir", required=True, type=Path)
+    repair = sub.add_parser("repair", help="Compile and repair an existing protocol project")
+    repair.add_argument(
+        "--project-dir",
+        required=True,
+        type=_path,
+        help="Existing protocol project directory containing a Makefile",
+    )
     sub.add_parser("verify", help="Verify generated project structure, compile, and behavior")
     return parser
 

@@ -485,6 +485,18 @@
           "items": {
             "type": "string"
           }
+        },
+        "PRECONDITION": {
+          "type": "string"
+        },
+        "POSTCONDITION": {
+          "type": "string"
+        },
+        "IDEMPOTENT": {
+          "type": "boolean"
+        },
+        "THREAD_SAFETY": {
+          "type": "string"
         }
       }
     },
@@ -522,6 +534,21 @@
         "EVENT_TYPE": {
           "type": "string",
           "minLength": 1
+        },
+        "INVARIANTS_USED": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "POSTCONDITION": {
+          "type": "string"
+        },
+        "IDEMPOTENT": {
+          "type": "boolean"
+        },
+        "THREAD_SAFETY": {
+          "type": "string"
         }
       }
     }

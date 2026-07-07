@@ -10,6 +10,8 @@ TARGET_PROFILE="${REPO_ROOT}/agent/planning/planning_target_profile_mqtt.json"
 PLANNING_RUN="${RUN_ROOT}/planning_run"
 CODER_OUT="${RUN_ROOT}/coder_out"
 API_KEY_ENV="${API_KEY_ENV:-ALI_API}"
+VALIDATE_TMP="$(mktemp -d)"
+trap 'rm -rf "${VALIDATE_TMP}"' EXIT
 
 mkdir -p "${RUN_ROOT}"
 cd "${REPO_ROOT}"
@@ -17,7 +19,7 @@ cd "${REPO_ROOT}"
 python3 -m agent planning validate \
   --facts "${FACTS}" \
   --target-profile "${TARGET_PROFILE}" \
-  --output-dir "${RUN_ROOT}/planning_validate"
+  --output-dir "${VALIDATE_TMP}/planning_validate"
 
 python3 -m agent planning plan \
   --facts "${FACTS}" \

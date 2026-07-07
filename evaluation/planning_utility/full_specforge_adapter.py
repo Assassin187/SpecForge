@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -155,19 +156,20 @@ def run_full_specforge(
         write_json(output_dir / "summary.json", summary)
         return summary
 
-    validate_cmd = [
-        sys.executable,
-        "-m",
-        "agent.planning",
-        "validate",
-        "--facts",
-        str(config.facts_path),
-        "--target-profile",
-        str(config.target_profile_path),
-        "--output-dir",
-        str(output_dir / "planning_validate"),
-    ]
-    validate = _run_command(validate_cmd, log_dir=log_dir, name="01_planning_validate")
+    with tempfile.TemporaryDirectory(prefix="specforge_planning_validate_") as validate_tmp:
+        validate_cmd = [
+            sys.executable,
+            "-m",
+            "agent.planning",
+            "validate",
+            "--facts",
+            str(config.facts_path),
+            "--target-profile",
+            str(config.target_profile_path),
+            "--output-dir",
+            str(Path(validate_tmp) / "planning_validate"),
+        ]
+        validate = _run_command(validate_cmd, log_dir=log_dir, name="01_planning_validate")
     summary["command_log"].append({key: validate[key] for key in ("name", "command", "returncode", "started_at", "ended_at", "stdout_path", "stderr_path")})
     if validate["returncode"] != 0:
         summary["planning_status"] = "failed"

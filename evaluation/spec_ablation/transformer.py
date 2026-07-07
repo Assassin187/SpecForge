@@ -22,9 +22,19 @@ from agent.coder.specs import (
 from .configs import DEFAULT_OUTPUT_ROOT, PROTOCOL_CONFIGS, ProtocolConfig, protocol_keys, rel_to_repo
 
 
-TRANSFORMER_VERSION = "spec_ablation_s1_transformer/v1"
-MANIFEST_SCHEMA = "spec_ablation_s1_transformation_manifest/v1"
-EXECUTION_MANIFEST_SCHEMA = "spec_ablation_s1_execution_manifest/v1"
+VIEW_SCHEMAS = {
+    "s1": {
+        "transformer_version": "spec_ablation_s1_transformer/v1",
+        "manifest_schema": "spec_ablation_s1_transformation_manifest/v1",
+        "execution_manifest_schema": "spec_ablation_s1_execution_manifest/v1",
+    },
+    "s2": {
+        "transformer_version": "spec_ablation_s2_transformer/v1",
+        "manifest_schema": "spec_ablation_s2_transformation_manifest/v1",
+        "execution_manifest_schema": "spec_ablation_s2_execution_manifest/v1",
+    },
+}
+PROJECT_GRAPH_SCHEMA = "spec_ablation_s2_project_graph/v1"
 
 FORBIDDEN_VISIBLE_TERMS: tuple[str, ...] = (
     "PROTOCOL_MODULE_SPEC",
@@ -38,6 +48,20 @@ FORBIDDEN_VISIBLE_TERMS: tuple[str, ...] = (
     "CONSISTENCY_RULES",
     "DOC_REF",
     "TRACE_REFS",
+)
+
+S2_PROJECT_GRAPH_FORBIDDEN_TERMS: tuple[str, ...] = (
+    *FORBIDDEN_VISIBLE_TERMS,
+    "ROLE",
+    "ARTIFACTS",
+    "DATA",
+    "INTERFACE",
+    "FUNCTION_TYPE",
+    "PARAMS",
+    "NULLABLE",
+    "OWNERSHIP",
+    "PUBLIC_SYMBOLS",
+    "SCOPE",
 )
 
 _LOCAL_DEPENDENCY_CATEGORIES = ("STRUCT", "FUNC", "VAR")
@@ -393,12 +417,181 @@ def _visible_leakage_scan(root: Path) -> dict[str, Any]:
     }
 
 
+def _s2_project_graph_leakage_scan(path: Path) -> dict[str, Any]:
+    text = path.read_text(encoding="utf-8")
+    violations = [{"path": path.name, "term": term} for term in S2_PROJECT_GRAPH_FORBIDDEN_TERMS if term in text]
+    return {
+        "status": "passed" if not violations else "failed",
+        "forbidden_terms": list(S2_PROJECT_GRAPH_FORBIDDEN_TERMS),
+        "violations": violations,
+    }
+
+
+def _module_file_membership(bundle: SpecBundle) -> dict[str, str]:
+    by_path: dict[str, FileSpec] = {}
+    for file_spec in bundle.file_specs_by_trace.values():
+        if file_spec.header_path:
+            by_path[file_spec.header_path] = file_spec
+        if file_spec.source_path:
+            by_path[file_spec.source_path] = file_spec
+
+    membership: dict[str, str] = {}
+    for module in bundle.modules_in_order:
+        for file_path in module.files:
+            file_spec = by_path.get(file_path)
+            if file_spec is None:
+                continue
+            current = membership.get(file_spec.trace_id)
+            if current is not None and current != module.name:
+                raise TransformationError(
+                    f"File '{file_spec.trace_id}' appears in multiple modules: {current}, {module.name}"
+                )
+            membership[file_spec.trace_id] = module.name
+    return membership
+
+
+def _function_linkage(function_spec: FunctionSpec, file_spec: FileSpec) -> str:
+    source_item = next((item for item in file_spec.source_interfaces if item.trace_id == function_spec.trace_id), None)
+    visibility = str(source_item.visibility if source_item is not None else "").strip().lower()
+    signature = str(source_item.signature if source_item is not None else function_spec.signature.raw).strip()
+    if signature.startswith("static "):
+        return "internal_static"
+    if visibility == "public":
+        return "external"
+    if visibility == "private":
+        return "internal"
+    return visibility or "unspecified"
+
+
+def _dedupe_ordered(values: Iterable[str]) -> list[str]:
+    return list(dict.fromkeys(value for value in values if value))
+
+
+def _s2_project_graph(bundle: SpecBundle, ordered_files: list[FileSpec]) -> dict[str, Any]:
+    membership = _module_file_membership(bundle)
+    module_order = {module.name: order for order, module in enumerate(bundle.modules_in_order)}
+    file_order = {file_spec.trace_id: order for order, file_spec in enumerate(ordered_files)}
+
+    by_path: dict[str, FileSpec] = {}
+    for file_spec in bundle.file_specs_by_trace.values():
+        if file_spec.header_path:
+            by_path[file_spec.header_path] = file_spec
+        if file_spec.source_path:
+            by_path[file_spec.source_path] = file_spec
+
+    modules: list[dict[str, Any]] = []
+    module_dependency_edges: list[dict[str, str]] = []
+    for module in bundle.modules_in_order:
+        file_trace_ids = _dedupe_ordered(
+            by_path[file_path].trace_id for file_path in module.files if file_path in by_path
+        )
+        modules.append(
+            {
+                "module_name": module.name,
+                "generation_order": module_order[module.name],
+                "contains_file_trace_ids": file_trace_ids,
+                "dependency_modules": list(module.dependencies),
+            }
+        )
+        module_dependency_edges.extend({"from_module": module.name, "to_module": dep} for dep in module.dependencies)
+
+    files: list[dict[str, Any]] = []
+    functions: list[dict[str, Any]] = []
+    source_positions: list[dict[str, Any]] = []
+    file_dependency_edges: list[dict[str, str]] = []
+    seen_file_edges: set[tuple[str, str, str]] = set()
+    global_function_order = 0
+
+    for order, file_spec in enumerate(ordered_files):
+        module_name = membership.get(file_spec.trace_id, "")
+        function_specs = function_specs_for_file(bundle, file_spec)
+        function_trace_ids = [spec.trace_id for spec in function_specs]
+        dependency_trace_ids: list[str] = []
+
+        for dependency_kind, dependencies in (
+            ("header", file_spec.header_dependencies),
+            ("source", file_spec.source_dependencies),
+        ):
+            for dependency_path in dependencies:
+                target = by_path.get(dependency_path)
+                target_trace_id = target.trace_id if target is not None else ""
+                if target_trace_id:
+                    dependency_trace_ids.append(target_trace_id)
+                edge_key = (file_spec.trace_id, dependency_kind, dependency_path)
+                if edge_key in seen_file_edges:
+                    continue
+                seen_file_edges.add(edge_key)
+                file_dependency_edges.append(
+                    {
+                        "from_file_trace_id": file_spec.trace_id,
+                        "dependency_kind": dependency_kind,
+                        "dependency_path": dependency_path,
+                        "to_file_trace_id": target_trace_id,
+                    }
+                )
+
+        files.append(
+            {
+                "file_trace_id": file_spec.trace_id,
+                "module_name": module_name,
+                "generation_order": order,
+                "header_path": file_spec.header_path,
+                "source_path": file_spec.source_path,
+                "contains_function_trace_ids": function_trace_ids,
+                "header_dependency_paths": list(file_spec.header_dependencies),
+                "source_dependency_paths": list(file_spec.source_dependencies),
+                "dependency_file_trace_ids": _dedupe_ordered(dependency_trace_ids),
+            }
+        )
+        source_positions.append(
+            {
+                "source_path": file_spec.source_path,
+                "file_trace_id": file_spec.trace_id,
+                "module_name": module_name,
+                "module_generation_order": module_order.get(module_name, -1),
+                "file_generation_order": order,
+                "function_trace_ids": function_trace_ids,
+            }
+        )
+
+        for function_order, function_spec in enumerate(function_specs):
+            functions.append(
+                {
+                    "function_trace_id": function_spec.trace_id,
+                    "function_name": function_spec.signature.name,
+                    "module_name": module_name,
+                    "file_trace_id": file_spec.trace_id,
+                    "source_path": file_spec.source_path,
+                    "linkage": _function_linkage(function_spec, file_spec),
+                    "file_function_order": function_order,
+                    "file_generation_order": file_order[file_spec.trace_id],
+                    "global_function_order": global_function_order,
+                }
+            )
+            global_function_order += 1
+
+    return {
+        "schema_version": PROJECT_GRAPH_SCHEMA,
+        "visibility": "s2_coder_visible_project_graph",
+        "module_generation_order": [module.name for module in bundle.modules_in_order],
+        "source_files": [file_spec.source_path for file_spec in ordered_files if file_spec.source_path],
+        "header_files": [file_spec.header_path for file_spec in ordered_files if file_spec.header_path],
+        "modules": modules,
+        "module_dependency_edges": module_dependency_edges,
+        "files": files,
+        "file_dependency_edges": file_dependency_edges,
+        "functions": functions,
+        "source_positions": source_positions,
+    }
+
+
 def _execution_manifest(
     config: ProtocolConfig,
     bundle: SpecBundle,
     ordered_files: list[FileSpec],
     function_artifacts: dict[str, str],
     header_artifacts: dict[str, str],
+    view_name: str,
 ) -> dict[str, Any]:
     sources: list[dict[str, Any]] = []
     for order, file_spec in enumerate(ordered_files):
@@ -421,10 +614,11 @@ def _execution_manifest(
             }
         )
     return {
-        "schema_version": EXECUTION_MANIFEST_SCHEMA,
+        "schema_version": VIEW_SCHEMAS[view_name]["execution_manifest_schema"],
         "protocol": config.protocol,
+        "view": view_name,
         "visibility": "hidden_evaluator_only",
-        "note": "This manifest is evaluator control data and must not be inserted into S1 generation or repair prompts.",
+        "note": f"This manifest is evaluator control data and must not be inserted into {view_name.upper()} generation or repair prompts.",
         "sources": sources,
     }
 
@@ -445,7 +639,10 @@ def _loader_validation(bundle: SpecBundle) -> dict[str, Any]:
     }
 
 
-def _build_transformation(config: ProtocolConfig, root: Path) -> dict[str, Any]:
+def _build_transformation(config: ProtocolConfig, root: Path, view_name: str) -> dict[str, Any]:
+    if view_name not in VIEW_SCHEMAS:
+        raise TransformationError(f"Unsupported view '{view_name}'")
+
     bundle = load_spec_bundle_from_root(config.specs_root, validate_rendered_headers=False)
     loader_validation = _loader_validation(bundle)
     if loader_validation["status"] != "passed":
@@ -499,18 +696,19 @@ def _build_transformation(config: ProtocolConfig, root: Path) -> dict[str, Any]:
             for resolution in resolutions:
                 rely_resolutions.append({"trace_id": function_spec.trace_id, **resolution})
 
-    execution_manifest = _execution_manifest(config, bundle, ordered_files, function_artifacts, header_artifacts)
+    execution_manifest = _execution_manifest(config, bundle, ordered_files, function_artifacts, header_artifacts, view_name)
     _write_json(root / "execution_manifest.json", execution_manifest)
 
     leakage = _visible_leakage_scan(root)
     if leakage["status"] != "passed":
-        raise TransformationError(f"S1 visible artifact leakage detected: {leakage['violations']}")
+        raise TransformationError(f"{view_name.upper()} local artifact leakage detected: {leakage['violations']}")
 
-    output_payload_hash = _tree_hash(root, exclude={"transformation_manifest.json"})
+    schema = VIEW_SCHEMAS[view_name]
     manifest = {
-        "schema_version": MANIFEST_SCHEMA,
-        "transformer_version": TRANSFORMER_VERSION,
+        "schema_version": schema["manifest_schema"],
+        "transformer_version": schema["transformer_version"],
         "protocol": config.protocol,
+        "view": view_name,
         "source_root": rel_to_repo(config.specs_root),
         "output_root": ".",
         "counts": {
@@ -520,7 +718,7 @@ def _build_transformation(config: ProtocolConfig, root: Path) -> dict[str, Any]:
         },
         "hashes": {
             "source_specs_tree_sha256": _tree_hash(config.specs_root, pattern="*_spec.json"),
-            "output_payload_sha256": output_payload_hash,
+            "output_payload_sha256": "",
         },
         "artifacts": {
             "functions": function_records,
@@ -533,24 +731,121 @@ def _build_transformation(config: ProtocolConfig, root: Path) -> dict[str, Any]:
         },
         "rely_resolution": rely_resolutions,
     }
+
+    if view_name == "s2":
+        project_graph = _s2_project_graph(bundle, ordered_files)
+        project_graph_artifact = specfs_root / "project_graph.json"
+        _write_json(project_graph_artifact, project_graph)
+        s2_project_graph_leakage = _s2_project_graph_leakage_scan(project_graph_artifact)
+        if s2_project_graph_leakage["status"] != "passed":
+            raise TransformationError(f"S2 project graph leakage detected: {s2_project_graph_leakage['violations']}")
+        manifest["counts"]["project_graphs"] = 1
+        manifest["artifacts"]["project_graph"] = {
+            "artifact_path": project_graph_artifact.relative_to(root).as_posix(),
+            "sha256": _sha256_bytes(project_graph_artifact.read_bytes()),
+        }
+        manifest["validation"]["s2_project_graph_leakage_scan"] = s2_project_graph_leakage
+
+    manifest["hashes"]["output_payload_sha256"] = _tree_hash(root, exclude={"transformation_manifest.json"})
     manifest["transformation_hash"] = _sha256_text(_canonical_json(manifest))
     _write_json(root / "transformation_manifest.json", manifest)
     return manifest
 
 
-def transform_protocol(protocol: str, output_dir: str | Path, *, overwrite: bool = False) -> dict[str, Any]:
+def _view_keys(values: Iterable[str] | str | None = None) -> list[str]:
+    if values is None:
+        return list(VIEW_SCHEMAS)
+    raw_values = [values] if isinstance(values, str) else list(values)
+    selected: list[str] = []
+    for value in raw_values:
+        if value == "all":
+            selected.extend(VIEW_SCHEMAS)
+        elif value in VIEW_SCHEMAS:
+            selected.append(value)
+        else:
+            raise TransformationError(f"Unsupported view '{value}'")
+    return list(dict.fromkeys(selected))
+
+
+def _remove_legacy_flat_artifacts(target: Path) -> None:
+    for path in (target / "transformation_manifest.json", target / "execution_manifest.json", target / "specfs_projection"):
+        if path.is_dir():
+            shutil.rmtree(path)
+        elif path.exists():
+            path.unlink()
+
+
+def _view_set_manifest(config: ProtocolConfig, root: Path, generated: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    views: dict[str, Any] = {}
+    for view_name in VIEW_SCHEMAS:
+        manifest = generated.get(view_name)
+        manifest_path = root / view_name / "transformation_manifest.json"
+        if manifest is None and manifest_path.is_file():
+            with manifest_path.open("r", encoding="utf-8") as fh:
+                manifest = json.load(fh)
+        if manifest is None:
+            continue
+        views[view_name] = {
+            "root": view_name,
+            "transformation_manifest": f"{view_name}/transformation_manifest.json",
+            "transformation_hash": manifest["transformation_hash"],
+            "counts": manifest["counts"],
+        }
+    return {
+        "schema_version": "spec_ablation_view_set_manifest/v1",
+        "protocol": config.protocol,
+        "source_root": rel_to_repo(config.specs_root),
+        "views": views,
+    }
+
+
+def transform_protocol(
+    protocol: str,
+    output_dir: str | Path,
+    *,
+    overwrite: bool = False,
+    views: Iterable[str] | str | None = None,
+) -> dict[str, Any]:
     if protocol not in PROTOCOL_CONFIGS:
         raise TransformationError(f"Unsupported protocol '{protocol}'")
     target = Path(output_dir)
-    if target.exists():
-        if not overwrite and any(target.iterdir()):
-            raise TransformationError(f"Output directory already exists: {target}")
+    selected_views = _view_keys(views)
+    if target.exists() and overwrite and set(selected_views) == set(VIEW_SCHEMAS):
         shutil.rmtree(target)
     target.mkdir(parents=True, exist_ok=True)
-    return _build_transformation(PROTOCOL_CONFIGS[protocol], target)
+
+    legacy_flat = any(
+        (target / name).exists()
+        for name in ("transformation_manifest.json", "execution_manifest.json", "specfs_projection")
+    )
+    if legacy_flat and not overwrite:
+        raise TransformationError(f"Output directory contains legacy flat artifacts: {target}")
+    if legacy_flat:
+        _remove_legacy_flat_artifacts(target)
+
+    config = PROTOCOL_CONFIGS[protocol]
+    generated: dict[str, dict[str, Any]] = {}
+    for view_name in selected_views:
+        view_root = target / view_name
+        if view_root.exists():
+            if not overwrite and any(view_root.iterdir()):
+                raise TransformationError(f"Output view directory already exists: {view_root}")
+            shutil.rmtree(view_root)
+        view_root.mkdir(parents=True, exist_ok=True)
+        generated[view_name] = _build_transformation(config, view_root, view_name)
+
+    view_set = _view_set_manifest(config, target, generated)
+    _write_json(target / "view_set_manifest.json", view_set)
+    return view_set
 
 
-def transform_many(protocols: Iterable[str], output_root: str | Path, *, overwrite: bool = False) -> list[dict[str, Any]]:
+def transform_many(
+    protocols: Iterable[str],
+    output_root: str | Path,
+    *,
+    overwrite: bool = False,
+    views: Iterable[str] | str | None = None,
+) -> list[dict[str, Any]]:
     root = Path(output_root)
     root.mkdir(parents=True, exist_ok=True)
     selected: list[str] = []
@@ -559,25 +854,25 @@ def transform_many(protocols: Iterable[str], output_root: str | Path, *, overwri
     if not selected:
         selected = protocol_keys("all")
     selected = list(dict.fromkeys(selected))
-    return [transform_protocol(protocol, root / protocol, overwrite=overwrite) for protocol in selected]
+    return [transform_protocol(protocol, root / protocol, overwrite=overwrite, views=views) for protocol in selected]
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Deterministically project Full-SpecForge specs to S1 SpecFS-Flat artifacts.")
+    parser = argparse.ArgumentParser(description="Deterministically project Full-SpecForge specs to S1/S2 ablation views.")
     parser.add_argument("--protocol", action="append", default=[], help="Protocol(s) to transform: mqtt/http/coap/smtp/all")
+    parser.add_argument("--view", action="append", default=[], help="View(s) to transform: s1/s2/all")
     parser.add_argument("--output", default=str(DEFAULT_OUTPUT_ROOT), help="Output root; protocol subdirectories are created under it")
-    parser.add_argument("--overwrite", action="store_true", help="Replace existing protocol output directories")
+    parser.add_argument("--overwrite", action="store_true", help="Replace selected view output directories")
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
-    manifests = transform_many(args.protocol or ["all"], args.output, overwrite=args.overwrite)
+    manifests = transform_many(args.protocol or ["all"], args.output, overwrite=args.overwrite, views=args.view or ["all"])
     summaries = [
         {
             "protocol": manifest["protocol"],
-            "transformation_hash": manifest["transformation_hash"],
-            "counts": manifest["counts"],
+            "views": manifest["views"],
         }
         for manifest in manifests
     ]

@@ -8,25 +8,28 @@
 RQ2: How do different coder-facing specification forms affect the quality of generated protocol implementations?
 ```
 
-该实验只研究 coder-facing specification form 对协议实现生成质量的影响，不评价 facts agent 的事实抽取能力，也不评价 planning agent 从 protocol facts 生成 protocol specs 的能力。实验中的所有输入均来自同一套完整的 reference specs，即 `specs-example/<protocol>_specs`。S1 和 S2 由该完整 specs 确定性转换得到，S3 直接使用该完整 specs。这样可以避免不同 LLM 规划结果带来的内容差异，使实验变量尽可能集中在 specification form 和 coder-visible information 上。
+该实验只研究 coder-facing specification form 对协议实现生成质量的影响，不评价 facts agent 的事实抽取能力，也不评价 planning agent 从 protocol facts 生成 protocol specs 的能力。实验中的所有输入均来自同一套完整的 reference specs，即 `specs-example/<protocol>_specs`。S1、S2 和 S3 由该完整 specs 确定性转换得到，S4 直接使用该完整 specs。这样可以避免不同 LLM 规划结果带来的内容差异，使实验变量尽可能集中在 specification form 和 coder-visible information 上。
 
-本实验比较三种规格形式：
+本实验比较四种规格形式：
 
 ```text
 S1 SpecFS-Local
     + global module/file/function project graph
     = S2 SpecFS-ProjectGraph
+    + structured FILE header/source interface fields
+    = S3 SpecFS-InterfaceGrounded
     + SpecForge engineering semantics and protocol-specific constraints
-    = S3 Full-SpecForge
+    = S4 Full-SpecForge
 ```
 
-三组的递进关系如下：
+四组的递进关系如下：
 
 1. S1 只提供当前 translation unit 的局部 SpecFS view，包括 function-local specification blocks 和 raw header declarations。
 2. S2 在 S1 的基础上额外暴露全局 module/file/function project graph，包括 module/file membership、dependency edges 和 generation order。
-3. S3 在 S2 的基础上进一步提供完整的 SpecForge engineering semantics、protocol-specific grounding 和 machine-readable constraints。
+3. S3 在 S2 的基础上额外暴露三类结构化 interface grounding：`FILE.HEADER.DATA.TYPE_SPEC`、`FILE.HEADER.INTERFACE` 和 `FILE.SOURCE.INTERFACE`。
+4. S4 在 S3 的基础上进一步提供完整的 SpecForge engineering semantics、protocol-specific grounding 和 machine-readable constraints。
 
-因此，S1 vs. S2 用于检验 global project structure visibility 的独立作用；S2 vs. S3 用于检验完整工程语义和协议约束的额外作用；S1 vs. S3 用于衡量完整 SpecForge specification form 相对局部 SpecFS specification view 的总体收益。
+因此，S1 vs. S2 用于检验 global project structure visibility 的独立作用；S2 vs. S3 用于检验 structured ABI/interface grounding 的额外作用；S3 vs. S4 用于检验完整工程语义和协议约束的额外作用；S1 vs. S4 用于衡量完整 SpecForge specification form 相对局部 SpecFS specification view 的总体收益。
 
 ## 2. 实验范围
 
@@ -38,7 +41,7 @@ S1 SpecFS-Local
 specs-example/<protocol>_specs
 ```
 
-其中完整 specs 被视为 source oracle。S1 和 S2 是对该 oracle 的确定性投影，S3 是未经降级的原始 Full-SpecForge 输入。
+其中完整 specs 被视为 source oracle。S1、S2 和 S3 是对该 oracle 的确定性投影，S4 是未经降级的原始 Full-SpecForge 输入。
 
 实验对象包括：
 
@@ -53,7 +56,7 @@ SMTP
 
 ## 3. 总体控制原则
 
-本实验的主要控制原则是：三组尽可能共享相同的代码生成任务、项目结构、公共 ABI、编译流程、修复流程和行为验证流程；唯一系统性变化应来自 coder 可见的 specification form。
+本实验的主要控制原则是：四组尽可能共享相同的代码生成任务、项目结构、公共 ABI、编译流程、修复流程和行为验证流程；唯一系统性变化应来自 coder 可见的 specification form。
 
 具体控制内容如下：
 
@@ -78,9 +81,9 @@ same runtime contract
 same model configuration
 ```
 
-三组不要求 prompt 文本逐字一致，因为 S1、S2 和 S3 的 specification form 本身不同。但三组应保持相同的代码生成任务语义，即都要求 LLM 为当前 translation unit 生成 C source file，并遵守相同的输出约束、编译约束和文件修改边界。
+四组不要求 prompt 文本逐字一致，因为 S1、S2、S3 和 S4 的 specification form 本身不同。但四组应保持相同的代码生成任务语义，即都要求 LLM 为当前 translation unit 生成 C source file，并遵守相同的输出约束、编译约束和文件修改边界。
 
-尤其需要注意的是，S3 使用现有 SpecForge coder，其 prompt 形式和具体内容不做修改。S1 和 S2 的代码生成器不是重新设计一个新的 prompt 工程系统，而是基于现有 SpecForge coder 的设计迁移而来。S1/S2 只改变 specification 信息的获取形式和可见 payload，不改变代码生成任务本身。
+尤其需要注意的是，S4 使用现有 SpecForge coder，其 prompt 形式和具体内容不做修改。S1、S2 和 S3 的代码生成器不是重新设计一个新的 prompt 工程系统，而是基于现有 SpecForge coder 的设计迁移而来。S1/S2/S3 只改变 specification 信息的获取形式和可见 payload，不改变代码生成任务本身。
 
 ## 4. 与现有 coder 的适配边界
 
@@ -98,9 +101,9 @@ load spec_bundle
 -> behavior validation
 ```
 
-其中，`.h`、`main.c` 和 `Makefile` 均由 deterministic renderer 或 deterministic template 生成；LLM 只参与普通 `.c` source generation 和 repair `.c`。该边界在三组实验中保持一致。
+其中，`.h`、`main.c` 和 `Makefile` 均由 deterministic renderer 或 deterministic template 生成；LLM 只参与普通 `.c` source generation 和 repair `.c`。该边界在四组实验中保持一致。
 
-因此，本实验中的三组都遵守以下规则：
+因此，本实验中的四组都遵守以下规则：
 
 1. LLM 不生成头文件。
 2. LLM 不修改头文件。
@@ -110,9 +113,9 @@ load spec_bundle
 6. compile failure 后的 repair 也只允许修改 `.c` source file。
 7. 如果错误来自 deterministic header，则记录为 header/spec lowering failure，而不是交给 LLM 修复。
 
-S1 和 S2 需要适配现有 coder，是因为它们不直接使用 Full-SpecForge 的完整 `PROTOCOL_MODULE_SPEC`、`FILE_SPEC` 和 `FUNCTION_SPEC` 作为 coder-visible input。适配目标不是改变 coder 的任务，而是改变 coder 看到的 specification view。
+S1、S2 和 S3 需要适配现有 coder，是因为它们不直接使用 Full-SpecForge 的完整 `PROTOCOL_MODULE_SPEC`、`FILE_SPEC` 和 `FUNCTION_SPEC` 作为 coder-visible input。适配目标不是改变 coder 的任务，而是改变 coder 看到的 specification view。
 
-可以将三组的 coder-facing view 概括为：
+可以将四组的 coder-facing view 概括为：
 
 ```text
 S1:
@@ -122,10 +125,13 @@ S2:
   source generation task + deterministic headers + same local SpecFS function blocks + global project graph
 
 S3:
+  source generation task + deterministic headers + same S2 view + structured FILE interface grounding
+
+S4:
   existing SpecForge coder prompt + full SpecForge specs
 ```
 
-其中 S3 是完整系统设置，不修改现有 coder prompt。S1/S2 是为了消融实验而构造的兼容性输入视图，尽量复用现有 coder 的 source generation、compile、repair 和 behavior validation pipeline。
+其中 S4 是完整系统设置，不修改现有 coder prompt。S1/S2/S3 是为了消融实验而构造的兼容性输入视图，尽量复用现有 coder 的 source generation、compile、repair 和 behavior validation pipeline。
 
 ## 5. S1: SpecFS-Local
 
@@ -139,7 +145,7 @@ S1 回答的问题是：
 仅依赖当前 translation unit 的 function-local contracts 和 raw C declarations，是否足以驱动可编译、可运行的多文件协议实现？
 ```
 
-这里的 S1 不是“完全没有文件信息”的单函数生成 baseline。为了在多文件 C 项目设置下保持三组可比，S1 仍然需要知道当前正在生成哪个 translation unit，以及该 translation unit 中需要实现哪些 function specs。但这种信息仅用于定义当前 source generation unit，不构成全局文件拓扑、模块边界或依赖图。
+这里的 S1 不是“完全没有文件信息”的单函数生成 baseline。为了在多文件 C 项目设置下保持四组可比，S1 仍然需要知道当前正在生成哪个 translation unit，以及该 translation unit 中需要实现哪些 function specs。但这种信息仅用于定义当前 source generation unit，不构成全局文件拓扑、模块边界或依赖图。
 
 ## 5.2 Coder-visible specification form
 
@@ -174,7 +180,7 @@ S1 中每个 function 被转换为一个 SpecFS-style `.spec` artifact。每个 
 
 S1 中的 header 以 SpecFS-style `.header` 形式暴露给 coder。该 `.header` 只包含 header dependencies 和 canonical C declarations。它是 prompt-visible artifact，用于告诉 LLM 当前可用的公共声明；它不是由 LLM 生成的实际 `.h` 文件。
 
-实际参与编译的 `.h` 文件仍由 deterministic header renderer 生成。这样可以保持 S1 与 S2/S3 在 public ABI 上可比，也避免把头文件生成能力混入实验变量。
+实际参与编译的 `.h` 文件仍由 deterministic header renderer 生成。这样可以保持 S1 与 S2/S3/S4 在 public ABI 上可比，也避免把头文件生成能力混入实验变量。
 
 S1 prompt 中允许出现当前 translation unit 的最小局部上下文：
 
@@ -423,25 +429,156 @@ same source generation task semantics as the existing coder
 same output constraints as the existing coder
 ```
 
-LLM 输出完整 `.c` source file。后续编译、repair 和 behavior validation 与 S1/S3 保持一致。
+LLM 输出完整 `.c` source file。后续编译、repair 和 behavior validation 与 S1/S3/S4 保持一致。
 
-## 7. S3: Full-SpecForge
+## 7. S3: SpecFS-InterfaceGrounded
 
 ## 7.1 设计目标
 
-S3 是完整 SpecForge setting。它直接使用未经降级的 `specs-example/<protocol>_specs` 和现有 SpecForge coder。
+S3 用于测试 structured ABI/interface grounding 的独立作用。它保留 S2 的 local SpecFS-style function blocks 和 global project graph，并额外向 coder 暴露 Full-SpecForge `FILE_SPEC` 中与 public/private C interface 直接相关的三个字段：
+
+```text
+FILE.HEADER.DATA.TYPE_SPEC
+FILE.HEADER.INTERFACE
+FILE.SOURCE.INTERFACE
+```
+
+S3 不暴露完整 SpecForge engineering semantics、protocol-specific grounding、wire mapping、call contracts、forbidden symbols 或 test vectors。它的目标是缓解 S1/S2 中出现的 struct field hallucination、function signature drift 和 source-local helper mismatch，使实验在 S2 和 S4 之间形成更平滑的梯度。
 
 S3 回答的问题是：
 
 ```text
-完整 SpecForge engineering specs 相对 local function-local specs 和 project-graph-only specs 是否提供额外收益？
+在已有 local function contracts 和 global project graph 的基础上，结构化暴露 canonical C type/interface information 是否能提高多文件协议实现的可编译性和接口一致性？
 ```
 
-S3 是完整系统的上界对照，不对现有 coder prompt 形式和具体内容做任何修改。
+S3 不是完整 SpecForge setting，也不是新的 prompt 工程系统。它只测试 `FILE_SPEC` 中三个 interface-related fields 的增量价值。
 
 ## 7.2 Coder-visible specification form
 
-S3 使用完整的 SpecForge coder-facing specs，主要包括：
+S3 的 coder-visible input 包含三部分：
+
+```text
+1. 与 S1 完全相同的 local SpecFS-style function blocks
+2. 与 S2 完全相同的 global module/file/function project graph
+3. 从 FILE_SPEC 投影出的 structured interface grounding
+```
+
+相较 S2，S3 额外提供：
+
+```text
+HEADER.DATA.TYPE_SPEC:
+  canonical public/private type layout, including struct fields, enum values,
+  union variants, aliases, callback signatures, and visibility metadata when present
+
+HEADER.INTERFACE:
+  canonical public header function declarations, function names, signatures,
+  visibility, function type tags, and role text from the header interface
+
+SOURCE.INTERFACE:
+  canonical source-level function declarations for the current translation unit,
+  including public and private/static functions assigned to the source file
+```
+
+这三个字段主要提供 interface-level grounding，而不是完整 protocol semantics。S3 应将这些字段渲染为权威 C interface constraints，使 coder 能够看到当前 ABI 中真实存在的 struct fields、function signatures 和 source-local functions。
+
+例如，对 MQTT 这类多文件 C 实现，S3 应帮助 coder 避免以下 S1/S2 中常见错误：
+
+```text
+invented struct fields:
+  mqtt_connect_payload_t.will_topic
+  mqtt_connect_payload_t.username
+  mqtt_subscribe_payload_t.num_filters
+  mqtt_subscribe_payload_t.nentries
+  mqtt_tcp_callbacks_t.user
+
+wrong function shape:
+  mqtt_tcp_server_create(port, cb)
+  instead of mqtt_tcp_server_create(port, cb, user)
+
+source-local helper drift:
+  helper declarations inconsistent with SOURCE.INTERFACE
+```
+
+## 7.3 S3 不暴露的信息
+
+S3 不暴露以下 Full-SpecForge fields 或语义：
+
+```text
+protocol-specific grounding
+module/file/function role descriptions beyond S1 blocks and interface item roles
+artifact inventory beyond FILE interface/type declarations
+function type classification beyond HEADER/SOURCE.INTERFACE tags
+structured event model
+parameter nullability and ownership beyond what appears in rendered signatures
+ACCESS_PATHS
+WIRE_MAPPING
+CALL_CONTRACTS
+FORBIDDEN_SYMBOLS
+TEST_VECTORS
+CONSISTENCY_RULES
+DOC_REF
+TRACE_REFS beyond trace IDs required by SOURCE.INTERFACE membership
+```
+
+S3 尤其不应加入 `WIRE_MAPPING`、`FORBIDDEN_SYMBOLS` 或 `TEST_VECTORS`。因此，如果 S3 仍然错误处理 CONNECT optional wire fields、topic wildcard edge cases 或 unsupported protocol behavior，这些失败应被视为 S3 缺少完整 protocol semantics 的预期风险，而不是实验设计错误。
+
+## 7.4 S3 与现有 coder 的适配
+
+S3 可以在内部使用 loader-compatible envelope，但 coder-visible prompt 只能包含 S1 local SpecFS blocks、S2 project graph，以及允许暴露的三个 FILE fields。
+
+也就是说：
+
+```text
+Allowed visible fields:
+  FILE.HEADER.DATA.TYPE_SPEC
+  FILE.HEADER.INTERFACE
+  FILE.SOURCE.INTERFACE
+
+Disallowed visible fields:
+  LOGIC
+  EVENT
+  ACCESS_PATHS
+  WIRE_MAPPING
+  CALL_CONTRACTS
+  FORBIDDEN_SYMBOLS
+  TEST_VECTORS
+```
+
+S3 的 source generation 方式与 S1/S2 相同，仍然以 `.c` file 为 generation unit。不同之处在于，S3 在 S2 的 project graph 之外，额外提供当前 file 相关的 structured C type/interface information。
+
+S3 的代码生成输入可以抽象为：
+
+```text
+current target source file
+deterministic canonical headers
+same local SpecFS-style function blocks as S1/S2
+same global module/file/function project graph as S2
+FILE.HEADER.DATA.TYPE_SPEC
+FILE.HEADER.INTERFACE
+FILE.SOURCE.INTERFACE
+same source generation task semantics as the existing coder
+same output constraints as the existing coder
+```
+
+LLM 输出完整 `.c` source file。后续编译、repair 和 behavior validation 与 S1/S2/S4 保持一致。
+
+## 8. S4: Full-SpecForge
+
+## 8.1 设计目标
+
+S4 是完整 SpecForge setting。它直接使用未经降级的 `specs-example/<protocol>_specs` 和现有 SpecForge coder。
+
+S4 回答的问题是：
+
+```text
+完整 SpecForge engineering specs 相对 local specs、project graph 和 interface-grounded specs 是否提供额外收益？
+```
+
+S4 是完整系统的上界对照，不对现有 coder prompt 形式和具体内容做任何修改。
+
+## 8.2 Coder-visible specification form
+
+S4 使用完整的 SpecForge coder-facing specs，主要包括：
 
 ```text
 PROTOCOL_MODULE_SPEC
@@ -449,13 +586,13 @@ FILE_SPEC
 FUNCTION_SPEC
 ```
 
-相较 S2，S3 额外提供：
+相较 S3，S4 额外提供：
 
 ```text
 protocol metadata
 module/file/function roles
 artifact inventory
-structured public/private data
+structured public/private data beyond S3 interface fields
 function classification
 event model
 parameter nullability and ownership
@@ -469,11 +606,11 @@ cross-module consistency rules
 trace references when non-empty
 ```
 
-这些信息共同构成完整的 implementation-oriented engineering contract。S3 的意义不是只测试 JSON schema，而是测试完整 SpecForge specs 对 LLM source generation 的帮助。
+这些信息共同构成完整的 implementation-oriented engineering contract。S4 的意义不是只测试 JSON schema，而是测试完整 SpecForge specs 对 LLM source generation 的帮助。
 
-## 7.3 S3 的代码生成方式
+## 8.3 S4 的代码生成方式
 
-S3 直接使用现有 SpecForge coder 的完整流程：
+S4 直接使用现有 SpecForge coder 的完整流程：
 
 ```text
 load full spec_bundle
@@ -487,21 +624,21 @@ load full spec_bundle
 -> behavior validation
 ```
 
-S3 不修改现有 coder 的 prompt、renderer、repair prompt 或输入字段。这样可以保证 S3 代表真实 Full-SpecForge setting，而不是一个为了消融实验重新构造的变体。
+S4 不修改现有 coder 的 prompt、renderer、repair prompt 或输入字段。这样可以保证 S4 代表真实 Full-SpecForge setting，而不是一个为了消融实验重新构造的变体。
 
-## 7.4 S3 结果解释边界
+## 8.4 S4 结果解释边界
 
-S3 的效果只能归因于实际存在并进入 prompt 的字段。如果某些字段在当前 `specs-example` 中为空，例如 `CALL_CONTRACTS` 或 `DOC_REF`，则不能把 S3 的实验收益归因于这些字段。
+S4 的效果只能归因于实际存在并进入 prompt 的字段。如果某些字段在当前 `specs-example` 中为空，例如 `CALL_CONTRACTS` 或 `DOC_REF`，则不能把 S4 的实验收益归因于这些字段。
 
-此外，S2 vs. S3 的差异不应被解释为“纯 JSON 格式”的收益。该比较同时改变了信息量和工程语义，因此更准确的表述是：
+此外，S3 vs. S4 的差异不应被解释为“纯 JSON 格式”的收益。该比较同时改变了信息量和工程语义，因此更准确的表述是：
 
 ```text
 完整 SpecForge engineering contract 的组合效应。
 ```
 
-## 8. 三组代码生成流程对比
+## 9. 四组代码生成流程对比
 
-三组都生成相同结构的 C 协议项目。项目中包括：
+四组都生成相同结构的 C 协议项目。项目中包括：
 
 ```text
 deterministic headers
@@ -512,7 +649,7 @@ compiled binary
 behavior validation logs
 ```
 
-三组的主要差异在于 LLM 生成 `.c` source file 时看到的 specification payload 不同。
+四组的主要差异在于 LLM 生成 `.c` source file 时看到的 specification payload 不同。
 
 可以概括为：
 
@@ -530,12 +667,21 @@ S2 source generation:
 
 S3 source generation:
   deterministic headers
+  + same local SpecFS-style function-local blocks
+  + global module/file/function project graph
+  + FILE.HEADER.DATA.TYPE_SPEC
+  + FILE.HEADER.INTERFACE
+  + FILE.SOURCE.INTERFACE
+  -> LLM generates .c source file
+
+S4 source generation:
+  deterministic headers
   + full SpecForge specs
   + existing SpecForge coder prompt
   -> LLM generates .c source file
 ```
 
-三组的 deterministic 部分保持一致：
+四组的 deterministic 部分保持一致：
 
 ```text
 headers:
@@ -548,14 +694,14 @@ Makefile:
   generated deterministically from source list and binary target
 ```
 
-三组的 LLM 参与范围保持一致：
+四组的 LLM 参与范围保持一致：
 
 ```text
 ordinary .c source generation
 source-level repair for .c files only
 ```
 
-三组的 LLM 不参与：
+四组的 LLM 不参与：
 
 ```text
 header generation
@@ -566,9 +712,9 @@ main.c repair
 Makefile repair
 ```
 
-## 9. Repair 设计
+## 10. Repair 设计
 
-三组都允许最多相同轮数的 source-level repair。repair 的输入必须遵守各组的 specification boundary。
+四组都允许最多相同轮数的 source-level repair。repair 的输入必须遵守各组的 specification boundary。
 
 S1 repair 可见信息：
 
@@ -595,37 +741,50 @@ S3 repair 可见信息：
 current source file
 compiler diagnostics
 deterministic canonical headers
+same local SpecFS-style function blocks as S1/S2
+global module/file/function project graph
+FILE.HEADER.DATA.TYPE_SPEC
+FILE.HEADER.INTERFACE
+FILE.SOURCE.INTERFACE
+```
+
+S4 repair 可见信息：
+
+```text
+current source file
+compiler diagnostics
+deterministic canonical headers
 full SpecForge specs
 existing SpecForge repair prompt
 ```
 
-S1/S2 repair 不能重新注入 Full-SpecForge fields。否则 repair 阶段会破坏实验组别边界，使 S1/S2 不再是有效 baseline。
+S1/S2/S3 repair 不能重新注入 Full-SpecForge fields。S3 repair 也不能额外注入 `ACCESS_PATHS`、`WIRE_MAPPING`、`CALL_CONTRACTS`、`FORBIDDEN_SYMBOLS` 或 `TEST_VECTORS`。否则 repair 阶段会破坏实验组别边界，使 S1/S2/S3 不再是有效 baseline。
 
 如果 compile error 指向 deterministic header，则该问题不交给 LLM repair，而是记录为 header/spec lowering issue。这样可以避免把 deterministic artifact 的问题错误归因于 source generation 能力。
 
-## 10. 公平性控制
+## 11. 公平性控制
 
-## 10.1 统一输入来源
+## 11.1 统一输入来源
 
-S1、S2 和 S3 均来自同一套 full specs。S1/S2 不通过 LLM 重写 specs，而是通过 deterministic projection 得到。这样可以避免由于不同 specification 内容质量导致的混淆。
+S1、S2、S3 和 S4 均来自同一套 full specs。S1/S2/S3 不通过 LLM 重写 specs，而是通过 deterministic projection 得到。这样可以避免由于不同 specification 内容质量导致的混淆。
 
-## 10.2 统一 public ABI
+## 11.2 统一 public ABI
 
-三组使用相同的 public function signatures、public type declarations 和 header/source paths。S1/S2 获得 raw header declarations 不构成信息泄漏，因为 SpecFS-style specification 本身允许 `.header` 提供 C declarations。
+四组使用相同的 public function signatures、public type declarations 和 header/source paths。S1/S2 获得 raw header declarations 不构成信息泄漏，因为 SpecFS-style specification 本身允许 `.header` 提供 C declarations。S3 额外获得结构化的 type/interface information，但不改变实际编译使用的 deterministic headers。
 
-如果三组 header guard、格式或注释不完全一致，应比较 normalized declaration hash 和 dependency set，而不是要求 header 文件逐字节相同。
+如果四组 header guard、格式或注释不完全一致，应比较 normalized declaration hash 和 dependency set，而不是要求 header 文件逐字节相同。
 
-## 10.3 统一代码生成单位
+## 11.3 统一代码生成单位
 
-三组都以 `.c` file-level generation unit 生成代码。S1 虽然没有 visible global project graph，但仍通过 hidden execution manifest 在 evaluator 内部确定 function-to-source grouping。该 grouping 只用于定义当前 translation unit，不进入 prompt，因此不改变 S1 的 visible specification form。
+四组都以 `.c` file-level generation unit 生成代码。S1 虽然没有 visible global project graph，但仍通过 hidden execution manifest 在 evaluator 内部确定 function-to-source grouping。该 grouping 只用于定义当前 translation unit，不进入 prompt，因此不改变 S1 的 visible specification form。
 
-## 10.4 统一运行环境
+## 11.4 统一运行环境
 
-三组使用相同的模型配置、编译参数、repair round 上限、运行时参数和 behavior verifier。compile success、repair iterations、behavior pass rate 和 end-to-end success 在相同条件下比较。
+四组使用相同的模型配置、编译参数、repair round 上限、运行时参数和 behavior verifier。compile success、repair iterations、behavior pass rate 和 end-to-end success 在相同条件下比较。
 
-## 10.5 Prompt leakage 控制
+## 11.5 Prompt leakage 控制
 
-S1/S2 需要避免被消融字段重新进入 prompt。
+S1/S2/S3 需要避免被消融字段重新进入 prompt。
 
 S1 禁止出现：
 
@@ -675,7 +834,36 @@ TRACE_REFS
 
 S2 允许出现 global project graph information，但不能出现完整 SpecForge engineering semantics。
 
-## 11. 指标
+S3 禁止出现：
+
+```text
+protocol-specific grounding
+module/file/function role descriptions beyond S1 blocks and HEADER/SOURCE.INTERFACE item roles
+artifact inventory beyond FILE.HEADER.DATA.TYPE_SPEC and FILE interfaces
+structured event model
+ownership beyond rendered C signatures
+nullability beyond rendered C signatures
+ACCESS_PATHS
+WIRE_MAPPING
+CALL_CONTRACTS
+FORBIDDEN_SYMBOLS
+TEST_VECTORS
+CONSISTENCY_RULES
+DOC_REF
+TRACE_REFS beyond source-interface membership identifiers
+```
+
+S3 允许出现 global project graph information 和以下三类 structured FILE fields：
+
+```text
+FILE.HEADER.DATA.TYPE_SPEC
+FILE.HEADER.INTERFACE
+FILE.SOURCE.INTERFACE
+```
+
+S3 不能出现完整 SpecForge engineering semantics。它只测试 interface/type grounding 对 coder 的增量帮助。
+
+## 12. 指标
 
 本实验主要关注 generated implementation 的可编译性、可修复性和行为正确性。
 
@@ -714,7 +902,7 @@ wall-clock time
 
 Compile success 不能替代 behavior success。论文中的主要结论应优先基于 end-to-end success 和 behavior pass rate。
 
-如果 S3 specs 中包含 test vectors，则 evaluator 不能只使用与 test vectors 完全重合的场景。结果应区分：
+如果 S4 specs 中包含 test vectors，则 evaluator 不能只使用与 test vectors 完全重合的场景。结果应区分：
 
 ```text
 in-spec scenarios:
@@ -727,7 +915,7 @@ interop scenarios:
   检验生成实现能否与外部 client/server 交互
 ```
 
-## 12. 结果解释
+## 13. 结果解释
 
 S1 vs. S2：
 
@@ -740,12 +928,20 @@ S1 vs. S2：
 S2 vs. S3：
 
 ```text
-在已有 global project graph 的基础上，完整 SpecForge engineering semantics 和 protocol-specific constraints 是否继续带来收益？
+在已有 global project graph 的基础上，结构化 FILE type/interface grounding 是否继续带来收益？
 ```
 
-如果 S3 优于 S2，可以说明完整 implementation-oriented specs 的组合信息对代码生成有进一步帮助。但该收益不应被归因于单一字段，除非实验中单独做了字段级消融。
+如果 S3 优于 S2，可以说明 `FILE.HEADER.DATA.TYPE_SPEC`、`FILE.HEADER.INTERFACE` 和 `FILE.SOURCE.INTERFACE` 这类 interface-level grounding 有助于模型维护 public ABI、function signature 和 source-local helper 一致性。该收益不应被解释为完整 protocol grounding、wire mapping、negative constraints 或 test vectors 的收益，因为这些信息在 S3 中不可见。
 
-S1 vs. S3：
+S3 vs. S4：
+
+```text
+在已有 local specs、project graph 和 structured interface grounding 的基础上，完整 SpecForge engineering semantics 和 protocol-specific constraints 是否继续带来收益？
+```
+
+如果 S4 优于 S3，可以说明完整 implementation-oriented specs 的组合信息对代码生成有进一步帮助，尤其是 protocol behavior、wire-field handling、cross-function contracts、negative constraints 和 conformance guidance。但该收益不应被归因于单一字段，除非实验中单独做了字段级消融。
+
+S1 vs. S4：
 
 ```text
 完整 SpecForge coder-facing specs 相对 local SpecFS-style specs 的总体收益。
@@ -753,30 +949,32 @@ S1 vs. S3：
 
 该比较反映从局部 function-local specification view 到完整 implementation-oriented protocol specs 的整体差异。
 
-## 13. 有效性威胁
+## 14. 有效性威胁
 
 第一，`specs-example` 是 reference specs 或 code-derived oracle。本实验只能证明 specification form 对 coder usability 的影响，不能证明 planning agent 能从 technical documents 自动恢复同等质量的 specs。
 
 第二，S1 使用 hidden execution manifest 进行 project assembly 和 source scheduling。如果 manifest 内容泄漏到 prompt，会破坏 S1 的 local SpecFS baseline。因此必须将 manifest 限定为 evaluator-only control information。
 
-第三，S1/S2 的代码生成器基于现有 coder 迁移设计，但它们的 prompt 不可能与 S3 完全一致。实验控制目标是保持任务语义、输出约束、deterministic artifacts、compile/repair pipeline 和 behavior verifier 一致，而不是强制 prompt 文本逐字一致。
+第三，S1/S2/S3 的代码生成器基于现有 coder 迁移设计，但它们的 prompt 不可能与 S4 完全一致。实验控制目标是保持任务语义、输出约束、deterministic artifacts、compile/repair pipeline 和 behavior verifier 一致，而不是强制 prompt 文本逐字一致。
 
-第四，S2 vs. S3 同时改变表示结构和信息量，因此该比较不能解释为纯格式差异，而应解释为完整 SpecForge engineering contract 的组合效应。
+第四，S2 vs. S3 同时改变表示结构和信息量，但新增信息被严格限定为三个 FILE interface/type fields。因此该比较可以解释为 structured interface grounding 的增量效应，而不能解释为完整 SpecForge engineering contract 的收益。
 
-第五，完整 specs 通常比 S1/S2 更长。Prompt length 和 token usage 是 treatment 的一部分，不应人为补齐或截断 S1/S2，但应在结果中报告各组 token usage。
+第五，S3 vs. S4 同时改变表示结构和信息量，因此该比较不能解释为纯格式差异，而应解释为完整 SpecForge engineering contract 在 interface grounding 之外的组合效应。
 
-第六，当前 behavior tests 是 minimum functional conformance 或 behavior smoke tests，不等价于完整 RFC compliance。因此论文中应避免把通过 behavior tests 表述为完整协议一致性。
+第六，完整 specs 通常比 S1/S2/S3 更长。Prompt length 和 token usage 是 treatment 的一部分，不应人为补齐或截断低信息组，但应在结果中报告各组 token usage。
 
-## 14. 推荐论文表述
+第七，当前 behavior tests 是 minimum functional conformance 或 behavior smoke tests，不等价于完整 RFC compliance。因此论文中应避免把通过 behavior tests 表述为完整协议一致性。
+
+## 15. 推荐论文表述
 
 可以在论文中这样描述该实验：
 
 ```text
-To isolate the impact of coder-facing specification form, we derive three specification views from the same full reference specs. S1 exposes a local SpecFS-style view for the current translation unit, including function-local contracts and raw header declarations. S2 preserves the same local function payload but additionally exposes the global module/file/function project graph. S3 uses the original full SpecForge specs and the existing SpecForge coder without modifying its prompt. For S1 and S2, we migrate the existing coder design while changing only the form of specification information visible to the model. Across all groups, headers, main.c, and Makefile are generated deterministically; LLM calls are restricted to source-file generation and source-level repair. This setup keeps the generation task, project structure, compile pipeline, and behavior verifier comparable, while varying the specification information available to the coder.
+To isolate the impact of coder-facing specification form, we derive four specification views from the same full reference specs. S1 exposes a local SpecFS-style view for the current translation unit, including function-local contracts and raw header declarations. S2 preserves the same local function payload but additionally exposes the global module/file/function project graph. S3 further exposes structured interface grounding from FILE specs, limited to FILE.HEADER.DATA.TYPE_SPEC, FILE.HEADER.INTERFACE, and FILE.SOURCE.INTERFACE. S4 uses the original full SpecForge specs and the existing SpecForge coder without modifying its prompt. For S1-S3, we migrate the existing coder design while changing only the form of specification information visible to the model. Across all groups, headers, main.c, and Makefile are generated deterministically; LLM calls are restricted to source-file generation and source-level repair. This setup keeps the generation task, project structure, compile pipeline, and behavior verifier comparable, while varying the specification information available to the coder.
 ```
 
 中文表述：
 
 ```text
-为隔离 coder-facing specification form 的影响，我们从同一套完整 reference specs 中确定性派生三种 specification view。S1 暴露当前 translation unit 的局部 SpecFS-style view，包括 function-local contracts 和 raw header declarations；S2 保留与 S1 相同的局部函数语义内容，但额外暴露全局 module/file/function project graph；S3 使用未经降级的完整 SpecForge specs，并保持现有 SpecForge coder 的 prompt 形式和具体内容不变。对于 S1 和 S2，我们基于现有 coder 迁移代码生成设计，仅改变模型可见的 specification 信息形式。三组均使用 deterministic headers、deterministic main.c 和 deterministic Makefile，LLM 只参与 source-file generation 和 source-level repair。该设置使生成任务、项目结构、编译流程和行为验证器保持可比，同时系统性改变 coder 可见的 specification 信息。
+为隔离 coder-facing specification form 的影响，我们从同一套完整 reference specs 中确定性派生四种 specification view。S1 暴露当前 translation unit 的局部 SpecFS-style view，包括 function-local contracts 和 raw header declarations；S2 保留与 S1 相同的局部函数语义内容，但额外暴露全局 module/file/function project graph；S3 在 S2 基础上进一步暴露来自 FILE specs 的 structured interface grounding，且仅限 `FILE.HEADER.DATA.TYPE_SPEC`、`FILE.HEADER.INTERFACE` 和 `FILE.SOURCE.INTERFACE`；S4 使用未经降级的完整 SpecForge specs，并保持现有 SpecForge coder 的 prompt 形式和具体内容不变。对于 S1-S3，我们基于现有 coder 迁移代码生成设计，仅改变模型可见的 specification 信息形式。四组均使用 deterministic headers、deterministic main.c 和 deterministic Makefile，LLM 只参与 source-file generation 和 source-level repair。该设置使生成任务、项目结构、编译流程和行为验证器保持可比，同时系统性改变 coder 可见的 specification 信息。
 ```

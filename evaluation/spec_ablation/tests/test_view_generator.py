@@ -7,12 +7,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from agent.coder.generation import DEFAULT_MAX_REPAIR_ROUNDS
 from agent.coder.llm_client import LLMResponse, LLMUsage
 
 from evaluation.spec_ablation.transformer import FORBIDDEN_VISIBLE_TERMS, transform_protocol
-from evaluation.spec_ablation.view_generator import default_output_dir, main as view_generator_main
+from evaluation.spec_ablation.view_generator import build_parser, default_output_dir, main as view_generator_main
 from evaluation.spec_ablation.view_prompts import ViewPromptBuilder
-from evaluation.spec_ablation.view_specs import PROMPT_FORBIDDEN_TERMS, load_ablation_view_context
+from evaluation.spec_ablation.view_specs import PROMPT_FORBIDDEN_TERMS, load_ablation_view_context, prompt_forbidden_terms
 
 
 class FakeLLM:
@@ -37,6 +38,7 @@ class ViewGeneratorTests(unittest.TestCase):
         cls.root = Path(cls.tmp.name)
         transform_protocol("mqtt", cls.root / "mqtt", overwrite=True)
         cls.context = load_ablation_view_context(cls.root / "mqtt", view_name="s1")
+        cls.s2_context = load_ablation_view_context(cls.root / "mqtt", view_name="s2")
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -52,13 +54,26 @@ class ViewGeneratorTests(unittest.TestCase):
         self.assertIsNone(self.context.project_graph)
 
     def test_specfs_projection_directory_can_be_used_as_view_root(self) -> None:
-        context = load_ablation_view_context(self.root / "mqtt" / "specfs_projection", view_name="s1")
-        self.assertEqual(context.view_root, (self.root / "mqtt").resolve())
+        context = load_ablation_view_context(self.root / "mqtt" / "s1" / "specfs_projection", view_name="s1")
+        self.assertEqual(context.view_root, (self.root / "mqtt" / "s1").resolve())
         self.assertEqual(len(context.function_blocks_by_trace), 89)
 
     def test_default_output_dir_uses_protocol_view_and_round(self) -> None:
         output_dir = default_output_dir(self.context, round_number=3)
         self.assertRegex(output_dir.name, r"^\d{8}_\d{6}_mqtt_S1_round_3$")
+
+    def test_repair_cli_parameters_match_coder_defaults(self) -> None:
+        parser = build_parser()
+        default_args = parser.parse_args(["--view-root", str(self.root / "mqtt"), "generate"])
+        custom_args = parser.parse_args(
+            ["--view-root", str(self.root / "mqtt"), "--max-repair-rounds", "7", "--skip-repair", "generate"]
+        )
+        repair_args = parser.parse_args(["--view-root", str(self.root / "mqtt"), "repair", "--project-dir", "~/mqtt"])
+
+        self.assertEqual(default_args.max_repair_rounds, DEFAULT_MAX_REPAIR_ROUNDS)
+        self.assertEqual(custom_args.max_repair_rounds, 7)
+        self.assertTrue(custom_args.skip_repair)
+        self.assertEqual(repair_args.project_dir, Path("~/mqtt").expanduser())
 
     def test_s1_source_prompt_has_local_specfs_without_graph_leakage(self) -> None:
         file_spec = self.context.source_bundle.file_specs_by_source_path["protocol/mqtt_decoder.c"]
@@ -93,39 +108,89 @@ class ViewGeneratorTests(unittest.TestCase):
         for term in FORBIDDEN_VISIBLE_TERMS:
             self.assertNotIn(term, payload)
 
-    def test_s2_is_reserved_and_does_not_fall_back_to_s1(self) -> None:
+    def test_s2_validate_loads_project_graph_without_falling_back_to_s1(self) -> None:
+        self.assertEqual(self.s2_context.view_root, (self.root / "mqtt" / "s2").resolve())
+        self.assertIsNotNone(self.s2_context.project_graph)
+        self.assertEqual(self.s2_context.transformation_manifest["view"], "s2")
+        self.assertIn("project_graph", self.s2_context.transformation_manifest["artifacts"])
+
         stdout = io.StringIO()
         with contextlib.redirect_stdout(stdout):
             code = view_generator_main(["--view", "s2", "--view-root", str(self.root / "mqtt"), "validate"])
-        self.assertEqual(code, 2)
-        self.assertIn("reserved", stdout.getvalue())
+        self.assertEqual(code, 0)
+        self.assertIn('"view": "s2"', stdout.getvalue())
+
+    def test_s2_source_prompt_includes_project_graph_without_full_fields(self) -> None:
+        file_spec = self.s2_context.source_bundle.file_specs_by_source_path["protocol/mqtt_decoder.c"]
+        builder = ViewPromptBuilder(self.s2_context)
+        messages = builder.build_source_prompt(self.s2_context.source_bundle, self.s2_context.source_bundle.modules_in_order[0], file_spec, [], "/* canonical */", {})
+        payload = json.dumps(messages, ensure_ascii=False)
+
+        self.assertIn("Generate the full C source file `protocol/mqtt_decoder.c`", payload)
+        self.assertIn("S2 project graph context:", payload)
+        self.assertIn("Module Generation Order", payload)
+        self.assertIn("File Dependency Edges", payload)
+        self.assertIn("Functions", payload)
+        self.assertIn("Current Target Position", payload)
+        self.assertIn("protocol_codec", payload)
+        self.assertIn("file_generation_order: 3", payload)
+        self.assertIn("mqtt_decoder_feed", payload)
+        self.assertIn("mqtt_encode_suback", payload)
+        self.assertIn("[PROMPT]", payload)
+        for term in prompt_forbidden_terms("s2"):
+            self.assertNotIn(term, payload)
+
+    def test_s2_repair_prompt_has_graph_diagnostics_and_current_source(self) -> None:
+        file_spec = self.s2_context.source_bundle.file_specs_by_source_path["protocol/mqtt_decoder.c"]
+        builder = ViewPromptBuilder(self.s2_context)
+        messages = builder.build_repair_prompt(
+            self.s2_context.source_bundle,
+            self.s2_context.source_bundle.modules_in_order[0],
+            file_spec,
+            "protocol/mqtt_decoder.c",
+            "/* canonical */",
+            "int broken;",
+            "protocol/mqtt_decoder.c:1:1: error: broken",
+            {},
+        )
+        payload = json.dumps(messages, ensure_ascii=False)
+        self.assertIn("error: broken", payload)
+        self.assertIn("int broken;", payload)
+        self.assertIn("S2 project graph context:", payload)
+        self.assertIn("protocol/mqtt_encoder.c", payload)
+        self.assertIn("Do not edit headers, Makefile, or any other source file.", payload)
+        for term in prompt_forbidden_terms("s2"):
+            self.assertNotIn(term, payload)
 
     def test_fake_generation_uses_view_prompt_builder_and_writes_audit(self) -> None:
         from agent.coder.generation import ProjectGenerator
         from evaluation.spec_ablation.view_generator import PromptAudit
 
-        with tempfile.TemporaryDirectory() as raw_tmp:
-            output_dir = Path(raw_tmp) / "out"
-            builder = ViewPromptBuilder(self.context)
-            audit = PromptAudit(output_dir=output_dir, view_name="s1")
-            generator = ProjectGenerator(
-                bundle=self.context.source_bundle,
-                llm_client=FakeLLM(),
-                output_dir=output_dir,
-                skip_repair=True,
-                source_prompt_builder=builder.build_source_prompt,
-                main_source_prompt_builder=builder.build_main_source_prompt,
-                repair_prompt_builder=builder.build_repair_prompt,
-                prompt_observer=audit,
-            )
-            result = generator.generate()
-            self.assertTrue(result.success)
-            self.assertTrue((generator.project_dir / "Makefile").is_file())
-            self.assertTrue((generator.project_dir / "network/connection.h").is_file())
-            self.assertTrue((generator.project_dir / "protocol/mqtt_decoder.c").is_file())
-            audit_payload = json.loads(audit.path.read_text(encoding="utf-8"))
-            self.assertGreaterEqual(len(audit_payload), 1)
-            self.assertTrue(all(item["leakage_scan"]["status"] == "passed" for item in audit_payload))
+        for context in (self.context, self.s2_context):
+            with self.subTest(view=context.view_name), tempfile.TemporaryDirectory() as raw_tmp:
+                output_dir = Path(raw_tmp) / "out"
+                builder = ViewPromptBuilder(context)
+                audit = PromptAudit(output_dir=output_dir, view_name=context.view_name)
+                generator = ProjectGenerator(
+                    bundle=context.source_bundle,
+                    llm_client=FakeLLM(),
+                    output_dir=output_dir,
+                    skip_repair=True,
+                    source_prompt_builder=builder.build_source_prompt,
+                    main_source_prompt_builder=builder.build_main_source_prompt,
+                    repair_prompt_builder=builder.build_repair_prompt,
+                    prompt_observer=audit,
+                )
+                result = generator.generate()
+                self.assertTrue(result.success)
+                self.assertTrue((generator.project_dir / "Makefile").is_file())
+                self.assertTrue((generator.project_dir / "network/connection.h").is_file())
+                self.assertTrue((generator.project_dir / "protocol/mqtt_decoder.c").is_file())
+                audit_payload = json.loads(audit.path.read_text(encoding="utf-8"))
+                self.assertGreaterEqual(len(audit_payload), 1)
+                self.assertTrue(all(item["leakage_scan"]["status"] == "passed" for item in audit_payload))
+                expected_boundary = "s1_local_specfs" if context.view_name == "s1" else "s2_project_graph_specfs"
+                self.assertTrue(all(item["visible_boundary"] == expected_boundary for item in audit_payload))
 
 
 if __name__ == "__main__":
