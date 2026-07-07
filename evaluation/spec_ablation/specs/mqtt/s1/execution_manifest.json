@@ -548,5 +548,6 @@
       "source_path": "broker/broker.c"
     }
   ],
+  "view": "s1",
   "visibility": "hidden_evaluator_only"
 }

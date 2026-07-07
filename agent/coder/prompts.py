@@ -42,9 +42,12 @@ def _machine_constraints(bundle: SpecBundle, file_spec: FileSpec, function_specs
         "FUNCTIONS": [],
     }
     for spec in function_specs:
+        body_key = "EVENT" if spec.function_type == "EVENT" and "EVENT" in spec.raw else "LOGIC"
         constraints["FUNCTIONS"].append(
             {
                 "TRACE_ID": spec.trace_id,
+                "FUNCTION_TYPE": spec.function_type,
+                body_key: spec.raw.get(body_key, spec.body),
                 "ACCESS_PATHS": spec.raw.get("ACCESS_PATHS", []),
                 "WIRE_MAPPING": spec.raw.get("WIRE_MAPPING", []),
                 "CALL_CONTRACTS": spec.raw.get("CALL_CONTRACTS", []),
@@ -81,10 +84,30 @@ def _function_summary(file_spec: FileSpec, function_specs: list[FunctionSpec], b
         relied_funcs = ", ".join(func.get("NAME", "") for func in spec.rely.get("FUNC", []) if func.get("NAME")) or "none"
         if spec.function_type == "EVENT":
             action = spec.body.get("ACTION", "")
-            invariants = spec.body.get("STATE_CHANGE", "")
+            notes = [
+                f"trigger: {spec.body.get('TRIGGER', '')}",
+                f"input: {spec.body.get('INPUT', '')}",
+                f"precondition: {spec.body.get('PRECONDITION', '')}",
+                f"state_change: {spec.body.get('STATE_CHANGE', '')}",
+                f"response: {spec.body.get('RESPONSE', '')}",
+            ]
         else:
             action = spec.body.get("ACTION", "")
-            invariants = "; ".join(spec.body.get("INVARIANTS_USED", []))
+            notes = [
+                f"input: {spec.body.get('INPUT', '')}",
+                f"output: {spec.body.get('OUTPUT', '')}",
+                f"precondition: {spec.body.get('PRECONDITION', '')}",
+            ]
+        invariants = "; ".join(spec.body.get("INVARIANTS_USED", []))
+        notes.extend(
+            [
+                f"postcondition: {spec.body.get('POSTCONDITION', '')}",
+                f"thread_safety: {spec.body.get('THREAD_SAFETY', '')}",
+                f"idempotent: {spec.body.get('IDEMPOTENT', False)}",
+                f"invariants: {invariants}",
+            ]
+        )
+        notes_text = "; ".join(item for item in notes if item and not item.endswith(": "))
         lines.append(
             "\n".join(
                 [
@@ -93,7 +116,7 @@ def _function_summary(file_spec: FileSpec, function_specs: list[FunctionSpec], b
                     f"  kind: {spec.function_type}",
                     f"  relies on: {relied_funcs}",
                     f"  behavior: {action}",
-                    f"  notes: {invariants or 'none'}",
+                    f"  notes: {notes_text or 'none'}",
                 ]
             )
         )
@@ -173,6 +196,12 @@ def _callee_return_info(bundle: SpecBundle, file_spec: FileSpec, function_specs:
         output_desc = callee_spec.body.get("OUTPUT", "")
         if output_desc:
             parts.append(f"  output: {output_desc}")
+        postcondition_desc = callee_spec.body.get("POSTCONDITION", "")
+        if postcondition_desc:
+            parts.append(f"  postcondition: {postcondition_desc}")
+        thread_safety = callee_spec.body.get("THREAD_SAFETY", "")
+        if thread_safety:
+            parts.append(f"  thread safety: {thread_safety}")
 
         # If we have more than just the signature line, keep it
         if len(parts) > 1:

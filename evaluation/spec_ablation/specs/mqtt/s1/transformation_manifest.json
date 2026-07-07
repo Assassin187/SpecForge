@@ -685,7 +685,7 @@
     "headers": 10
   },
   "hashes": {
-    "output_payload_sha256": "7f9db771342041dfa61b8cdd103d7641039db3a2d790ecc6e7f25bf9b63c141a",
+    "output_payload_sha256": "5120a62eb4e185852676e05109d37e79ccc041fe92247e5fcd40dcdebe68d1ea",
     "source_specs_tree_sha256": "5d2dc8f420a72450aeb5d2667f0523d6069f3a76afee31fc753fbcaff8f01e1e"
   },
   "output_root": ".",
@@ -2478,7 +2478,7 @@
   ],
   "schema_version": "spec_ablation_s1_transformation_manifest/v1",
   "source_root": "specs-example/mqtt_specs",
-  "transformation_hash": "65c15975c70dac63f7712c75b01e6b1896ff8d7972bd1e31d6f5c5cdd8c87312",
+  "transformation_hash": "ddc17494ff166e62d0421cb37730d90dae858a3072a6811bc234766656ec9280",
   "transformer_version": "spec_ablation_s1_transformer/v1",
   "validation": {
     "leakage_scan": {
@@ -2502,5 +2502,6 @@
       "diagnostics": [],
       "status": "passed"
     }
-  }
+  },
+  "view": "s1"
 }

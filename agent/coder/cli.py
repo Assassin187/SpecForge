@@ -5,7 +5,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from .generation import ProjectGenerator, _bundle_binary_name
+from .generation import DEFAULT_MAX_REPAIR_ROUNDS, ProjectGenerator, _bundle_binary_name
 from .llm_client import FixedQwenClient
 from .protocol_behavior_val import _RUNNERS, verify_protocol_behavior
 from .specs import load_spec_bundle, load_spec_bundle_from_root, validate_rendered_headers_compile
@@ -36,7 +36,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional override; by default coder auto-discovers the module spec under --spec-root.",
     )
     parser.add_argument("--output-dir", default=None)
-    parser.add_argument("--max-repair-rounds", type=int, default=3)
+    parser.add_argument("--max-repair-rounds", type=int, default=DEFAULT_MAX_REPAIR_ROUNDS)
     parser.add_argument(
         "--skip-repair",
         action="store_true",

@@ -23,6 +23,7 @@ from .specs import (
 MAX_REPAIR_DIAGNOSTIC_BYTES = 64 * 1024
 MAX_REPAIR_REQUEST_BYTES = 4 * 1024 * 1024
 MAX_REPAIR_RESPONSE_BYTES = 1024 * 1024
+DEFAULT_MAX_REPAIR_ROUNDS = 3
 
 SourcePromptBuilder = Callable[
     [SpecBundle, ModuleEntry, FileSpec, list[FunctionSpec], str, dict[str, str]],
@@ -375,7 +376,7 @@ class ProjectGenerator:
         bundle: SpecBundle,
         llm_client: FixedQwenClient,
         output_dir: str | Path,
-        max_repair_rounds: int = 3,
+        max_repair_rounds: int = DEFAULT_MAX_REPAIR_ROUNDS,
         skip_repair: bool = False,
         source_prompt_builder: SourcePromptBuilder | None = None,
         main_source_prompt_builder: SourcePromptBuilder | None = None,

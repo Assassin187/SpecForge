@@ -1,0 +1,1762 @@
+{
+  "file_dependency_edges": [
+    {
+      "dependency_kind": "source",
+      "dependency_path": "network/connection.h",
+      "from_file_trace_id": "mqtt/network/connection",
+      "to_file_trace_id": "mqtt/network/connection"
+    },
+    {
+      "dependency_kind": "header",
+      "dependency_path": "network/connection.h",
+      "from_file_trace_id": "mqtt/network/tcp_server",
+      "to_file_trace_id": "mqtt/network/connection"
+    },
+    {
+      "dependency_kind": "source",
+      "dependency_path": "network/tcp_server.h",
+      "from_file_trace_id": "mqtt/network/tcp_server",
+      "to_file_trace_id": "mqtt/network/tcp_server"
+    },
+    {
+      "dependency_kind": "source",
+      "dependency_path": "protocol/mqtt_packet.h",
+      "from_file_trace_id": "mqtt/protocol/mqtt_packet",
+      "to_file_trace_id": "mqtt/protocol/mqtt_packet"
+    },
+    {
+      "dependency_kind": "header",
+      "dependency_path": "protocol/mqtt_packet.h",
+      "from_file_trace_id": "mqtt/protocol/mqtt_decoder",
+      "to_file_trace_id": "mqtt/protocol/mqtt_packet"
+    },
+    {
+      "dependency_kind": "source",
+      "dependency_path": "protocol/mqtt_decoder.h",
+      "from_file_trace_id": "mqtt/protocol/mqtt_decoder",
+      "to_file_trace_id": "mqtt/protocol/mqtt_decoder"
+    },
+    {
+      "dependency_kind": "header",
+      "dependency_path": "protocol/mqtt_packet.h",
+      "from_file_trace_id": "mqtt/protocol/mqtt_encoder",
+      "to_file_trace_id": "mqtt/protocol/mqtt_packet"
+    },
+    {
+      "dependency_kind": "source",
+      "dependency_path": "protocol/mqtt_encoder.h",
+      "from_file_trace_id": "mqtt/protocol/mqtt_encoder",
+      "to_file_trace_id": "mqtt/protocol/mqtt_encoder"
+    },
+    {
+      "dependency_kind": "header",
+      "dependency_path": "network/connection.h",
+      "from_file_trace_id": "mqtt/broker/session",
+      "to_file_trace_id": "mqtt/network/connection"
+    },
+    {
+      "dependency_kind": "source",
+      "dependency_path": "broker/session.h",
+      "from_file_trace_id": "mqtt/broker/session",
+      "to_file_trace_id": "mqtt/broker/session"
+    },
+    {
+      "dependency_kind": "header",
+      "dependency_path": "broker/session.h",
+      "from_file_trace_id": "mqtt/broker/session_manager",
+      "to_file_trace_id": "mqtt/broker/session"
+    },
+    {
+      "dependency_kind": "source",
+      "dependency_path": "broker/session_manager.h",
+      "from_file_trace_id": "mqtt/broker/session_manager",
+      "to_file_trace_id": "mqtt/broker/session_manager"
+    },
+    {
+      "dependency_kind": "source",
+      "dependency_path": "topic/topic_tree.h",
+      "from_file_trace_id": "mqtt/topic/topic_tree",
+      "to_file_trace_id": "mqtt/topic/topic_tree"
+    },
+    {
+      "dependency_kind": "header",
+      "dependency_path": "broker/session_manager.h",
+      "from_file_trace_id": "mqtt/router/message_router",
+      "to_file_trace_id": "mqtt/broker/session_manager"
+    },
+    {
+      "dependency_kind": "header",
+      "dependency_path": "protocol/mqtt_packet.h",
+      "from_file_trace_id": "mqtt/router/message_router",
+      "to_file_trace_id": "mqtt/protocol/mqtt_packet"
+    },
+    {
+      "dependency_kind": "header",
+      "dependency_path": "topic/topic_tree.h",
+      "from_file_trace_id": "mqtt/router/message_router",
+      "to_file_trace_id": "mqtt/topic/topic_tree"
+    },
+    {
+      "dependency_kind": "source",
+      "dependency_path": "router/message_router.h",
+      "from_file_trace_id": "mqtt/router/message_router",
+      "to_file_trace_id": "mqtt/router/message_router"
+    },
+    {
+      "dependency_kind": "source",
+      "dependency_path": "protocol/mqtt_encoder.h",
+      "from_file_trace_id": "mqtt/router/message_router",
+      "to_file_trace_id": "mqtt/protocol/mqtt_encoder"
+    },
+    {
+      "dependency_kind": "source",
+      "dependency_path": "broker/broker.h",
+      "from_file_trace_id": "mqtt/main",
+      "to_file_trace_id": "mqtt/broker/broker"
+    },
+    {
+      "dependency_kind": "header",
+      "dependency_path": "network/tcp_server.h",
+      "from_file_trace_id": "mqtt/broker/broker",
+      "to_file_trace_id": "mqtt/network/tcp_server"
+    },
+    {
+      "dependency_kind": "source",
+      "dependency_path": "broker/broker.h",
+      "from_file_trace_id": "mqtt/broker/broker",
+      "to_file_trace_id": "mqtt/broker/broker"
+    },
+    {
+      "dependency_kind": "source",
+      "dependency_path": "protocol/mqtt_decoder.h",
+      "from_file_trace_id": "mqtt/broker/broker",
+      "to_file_trace_id": "mqtt/protocol/mqtt_decoder"
+    },
+    {
+      "dependency_kind": "source",
+      "dependency_path": "protocol/mqtt_encoder.h",
+      "from_file_trace_id": "mqtt/broker/broker",
+      "to_file_trace_id": "mqtt/protocol/mqtt_encoder"
+    },
+    {
+      "dependency_kind": "source",
+      "dependency_path": "broker/session_manager.h",
+      "from_file_trace_id": "mqtt/broker/broker",
+      "to_file_trace_id": "mqtt/broker/session_manager"
+    },
+    {
+      "dependency_kind": "source",
+      "dependency_path": "router/message_router.h",
+      "from_file_trace_id": "mqtt/broker/broker",
+      "to_file_trace_id": "mqtt/router/message_router"
+    }
+  ],
+  "files": [
+    {
+      "contains_function_trace_ids": [
+        "mqtt/network/connection/mqtt_connection_create",
+        "mqtt/network/connection/mqtt_connection_destroy",
+        "mqtt/network/connection/mqtt_connection_fd",
+        "mqtt/network/connection/mqtt_connection_closed",
+        "mqtt/network/connection/mqtt_connection_peer",
+        "mqtt/network/connection/mqtt_connection_set_peer",
+        "mqtt/network/connection/mqtt_connection_read",
+        "mqtt/network/connection/mqtt_connection_flush",
+        "mqtt/network/connection/mqtt_connection_send",
+        "mqtt/network/connection/mqtt_connection_in_data",
+        "mqtt/network/connection/mqtt_connection_in_len",
+        "mqtt/network/connection/mqtt_connection_in_consume",
+        "mqtt/network/connection/mqtt_connection_want_write",
+        "mqtt/network/connection/mqtt_connection_close",
+        "mqtt/network/connection/ensure_in_cap"
+      ],
+      "dependency_file_trace_ids": [
+        "mqtt/network/connection"
+      ],
+      "file_trace_id": "mqtt/network/connection",
+      "generation_order": 0,
+      "header_dependency_paths": [],
+      "header_path": "network/connection.h",
+      "module_name": "network",
+      "source_dependency_paths": [
+        "network/connection.h"
+      ],
+      "source_path": "network/connection.c"
+    },
+    {
+      "contains_function_trace_ids": [
+        "mqtt/network/tcp_server/mqtt_tcp_server_create",
+        "mqtt/network/tcp_server/mqtt_tcp_server_destroy",
+        "mqtt/network/tcp_server/mqtt_tcp_server_start",
+        "mqtt/network/tcp_server/mqtt_tcp_server_run",
+        "mqtt/network/tcp_server/mqtt_tcp_server_stop",
+        "mqtt/network/tcp_server/set_nonblocking",
+        "mqtt/network/tcp_server/sockaddr_to_string",
+        "mqtt/network/tcp_server/find_conn",
+        "mqtt/network/tcp_server/remove_conn",
+        "mqtt/network/tcp_server/close_connection",
+        "mqtt/network/tcp_server/update_interest",
+        "mqtt/network/tcp_server/setup_listen_socket",
+        "mqtt/network/tcp_server/setup_epoll",
+        "mqtt/network/tcp_server/accept_loop"
+      ],
+      "dependency_file_trace_ids": [
+        "mqtt/network/connection",
+        "mqtt/network/tcp_server"
+      ],
+      "file_trace_id": "mqtt/network/tcp_server",
+      "generation_order": 1,
+      "header_dependency_paths": [
+        "network/connection.h"
+      ],
+      "header_path": "network/tcp_server.h",
+      "module_name": "network",
+      "source_dependency_paths": [
+        "network/tcp_server.h"
+      ],
+      "source_path": "network/tcp_server.c"
+    },
+    {
+      "contains_function_trace_ids": [
+        "mqtt/protocol/mqtt_packet/mqtt_packet_free"
+      ],
+      "dependency_file_trace_ids": [
+        "mqtt/protocol/mqtt_packet"
+      ],
+      "file_trace_id": "mqtt/protocol/mqtt_packet",
+      "generation_order": 2,
+      "header_dependency_paths": [],
+      "header_path": "protocol/mqtt_packet.h",
+      "module_name": "protocol_codec",
+      "source_dependency_paths": [
+        "protocol/mqtt_packet.h"
+      ],
+      "source_path": "protocol/mqtt_packet.c"
+    },
+    {
+      "contains_function_trace_ids": [
+        "mqtt/protocol/mqtt_decoder/mqtt_decoder_feed",
+        "mqtt/protocol/mqtt_decoder/try_parse_remaining_length",
+        "mqtt/protocol/mqtt_decoder/read_u16",
+        "mqtt/protocol/mqtt_decoder/read_string",
+        "mqtt/protocol/mqtt_decoder/decode_one"
+      ],
+      "dependency_file_trace_ids": [
+        "mqtt/protocol/mqtt_packet",
+        "mqtt/protocol/mqtt_decoder"
+      ],
+      "file_trace_id": "mqtt/protocol/mqtt_decoder",
+      "generation_order": 3,
+      "header_dependency_paths": [
+        "protocol/mqtt_packet.h"
+      ],
+      "header_path": "protocol/mqtt_decoder.h",
+      "module_name": "protocol_codec",
+      "source_dependency_paths": [
+        "protocol/mqtt_decoder.h"
+      ],
+      "source_path": "protocol/mqtt_decoder.c"
+    },
+    {
+      "contains_function_trace_ids": [
+        "mqtt/protocol/mqtt_encoder/mqtt_bytes_free",
+        "mqtt/protocol/mqtt_encoder/mqtt_encode_connack",
+        "mqtt/protocol/mqtt_encoder/mqtt_encode_suback",
+        "mqtt/protocol/mqtt_encoder/mqtt_encode_pingresp",
+        "mqtt/protocol/mqtt_encoder/mqtt_encode_publish_qos0",
+        "mqtt/protocol/mqtt_encoder/put_u16",
+        "mqtt/protocol/mqtt_encoder/remaining_length_bytes",
+        "mqtt/protocol/mqtt_encoder/put_remaining_length",
+        "mqtt/protocol/mqtt_encoder/make_bytes"
+      ],
+      "dependency_file_trace_ids": [
+        "mqtt/protocol/mqtt_packet",
+        "mqtt/protocol/mqtt_encoder"
+      ],
+      "file_trace_id": "mqtt/protocol/mqtt_encoder",
+      "generation_order": 4,
+      "header_dependency_paths": [
+        "protocol/mqtt_packet.h"
+      ],
+      "header_path": "protocol/mqtt_encoder.h",
+      "module_name": "protocol_codec",
+      "source_dependency_paths": [
+        "protocol/mqtt_encoder.h"
+      ],
+      "source_path": "protocol/mqtt_encoder.c"
+    },
+    {
+      "contains_function_trace_ids": [
+        "mqtt/broker/session/mqtt_session_create",
+        "mqtt/broker/session/mqtt_session_destroy",
+        "mqtt/broker/session/mqtt_session_id",
+        "mqtt/broker/session/mqtt_session_connection",
+        "mqtt/broker/session/mqtt_session_connected",
+        "mqtt/broker/session/mqtt_session_client_id",
+        "mqtt/broker/session/mqtt_session_mark_connected",
+        "mqtt/broker/session/mqtt_session_send"
+      ],
+      "dependency_file_trace_ids": [
+        "mqtt/network/connection",
+        "mqtt/broker/session"
+      ],
+      "file_trace_id": "mqtt/broker/session",
+      "generation_order": 5,
+      "header_dependency_paths": [
+        "network/connection.h"
+      ],
+      "header_path": "broker/session.h",
+      "module_name": "session",
+      "source_dependency_paths": [
+        "broker/session.h"
+      ],
+      "source_path": "broker/session.c"
+    },
+    {
+      "contains_function_trace_ids": [
+        "mqtt/broker/session_manager/mqtt_session_manager_create",
+        "mqtt/broker/session_manager/mqtt_session_manager_destroy",
+        "mqtt/broker/session_manager/mqtt_session_manager_add",
+        "mqtt/broker/session_manager/mqtt_session_manager_remove",
+        "mqtt/broker/session_manager/mqtt_session_manager_get",
+        "mqtt/broker/session_manager/ensure_cap"
+      ],
+      "dependency_file_trace_ids": [
+        "mqtt/broker/session",
+        "mqtt/broker/session_manager"
+      ],
+      "file_trace_id": "mqtt/broker/session_manager",
+      "generation_order": 6,
+      "header_dependency_paths": [
+        "broker/session.h"
+      ],
+      "header_path": "broker/session_manager.h",
+      "module_name": "session",
+      "source_dependency_paths": [
+        "broker/session_manager.h"
+      ],
+      "source_path": "broker/session_manager.c"
+    },
+    {
+      "contains_function_trace_ids": [
+        "mqtt/topic/topic_tree/mqtt_topic_tree_create",
+        "mqtt/topic/topic_tree/mqtt_topic_tree_destroy",
+        "mqtt/topic/topic_tree/mqtt_topic_tree_subscribe",
+        "mqtt/topic/topic_tree/mqtt_topic_tree_unsubscribe",
+        "mqtt/topic/topic_tree/mqtt_topic_tree_remove_session",
+        "mqtt/topic/topic_tree/mqtt_topic_tree_match_subscribers",
+        "mqtt/topic/topic_tree/mqtt_topic_match",
+        "mqtt/topic/topic_tree/ensure_entry_cap",
+        "mqtt/topic/topic_tree/ensure_sid_cap",
+        "mqtt/topic/topic_tree/find_entry",
+        "mqtt/topic/topic_tree/entry_has_sid",
+        "mqtt/topic/topic_tree/entry_remove_sid",
+        "mqtt/topic/topic_tree/delete_entry",
+        "mqtt/topic/topic_tree/next_level"
+      ],
+      "dependency_file_trace_ids": [
+        "mqtt/topic/topic_tree"
+      ],
+      "file_trace_id": "mqtt/topic/topic_tree",
+      "generation_order": 7,
+      "header_dependency_paths": [],
+      "header_path": "topic/topic_tree.h",
+      "module_name": "topic",
+      "source_dependency_paths": [
+        "topic/topic_tree.h"
+      ],
+      "source_path": "topic/topic_tree.c"
+    },
+    {
+      "contains_function_trace_ids": [
+        "mqtt/router/message_router/mqtt_message_router_create",
+        "mqtt/router/message_router/mqtt_message_router_destroy",
+        "mqtt/router/message_router/mqtt_message_router_subscribe",
+        "mqtt/router/message_router/mqtt_message_router_unsubscribe",
+        "mqtt/router/message_router/mqtt_message_router_remove_session",
+        "mqtt/router/message_router/mqtt_message_router_publish"
+      ],
+      "dependency_file_trace_ids": [
+        "mqtt/broker/session_manager",
+        "mqtt/protocol/mqtt_packet",
+        "mqtt/topic/topic_tree",
+        "mqtt/router/message_router",
+        "mqtt/protocol/mqtt_encoder"
+      ],
+      "file_trace_id": "mqtt/router/message_router",
+      "generation_order": 8,
+      "header_dependency_paths": [
+        "broker/session_manager.h",
+        "protocol/mqtt_packet.h",
+        "topic/topic_tree.h"
+      ],
+      "header_path": "router/message_router.h",
+      "module_name": "router",
+      "source_dependency_paths": [
+        "router/message_router.h",
+        "protocol/mqtt_encoder.h"
+      ],
+      "source_path": "router/message_router.c"
+    },
+    {
+      "contains_function_trace_ids": [
+        "mqtt/main/main"
+      ],
+      "dependency_file_trace_ids": [
+        "mqtt/broker/broker"
+      ],
+      "file_trace_id": "mqtt/main",
+      "generation_order": 9,
+      "header_dependency_paths": [],
+      "header_path": "",
+      "module_name": "broker_app",
+      "source_dependency_paths": [
+        "broker/broker.h"
+      ],
+      "source_path": "main.c"
+    },
+    {
+      "contains_function_trace_ids": [
+        "mqtt/broker/broker/mqtt_broker_create",
+        "mqtt/broker/broker/mqtt_broker_destroy",
+        "mqtt/broker/broker/mqtt_broker_start",
+        "mqtt/broker/broker/mqtt_broker_run",
+        "mqtt/broker/broker/mqtt_broker_stop",
+        "mqtt/broker/broker/handle_packet",
+        "mqtt/broker/broker/on_packet",
+        "mqtt/broker/broker/on_accept_cb",
+        "mqtt/broker/broker/on_close_cb",
+        "mqtt/broker/broker/on_data_cb"
+      ],
+      "dependency_file_trace_ids": [
+        "mqtt/network/tcp_server",
+        "mqtt/broker/broker",
+        "mqtt/protocol/mqtt_decoder",
+        "mqtt/protocol/mqtt_encoder",
+        "mqtt/broker/session_manager",
+        "mqtt/router/message_router"
+      ],
+      "file_trace_id": "mqtt/broker/broker",
+      "generation_order": 10,
+      "header_dependency_paths": [
+        "network/tcp_server.h"
+      ],
+      "header_path": "broker/broker.h",
+      "module_name": "broker_app",
+      "source_dependency_paths": [
+        "broker/broker.h",
+        "protocol/mqtt_decoder.h",
+        "protocol/mqtt_encoder.h",
+        "broker/session_manager.h",
+        "router/message_router.h"
+      ],
+      "source_path": "broker/broker.c"
+    }
+  ],
+  "functions": [
+    {
+      "file_function_order": 0,
+      "file_generation_order": 0,
+      "file_trace_id": "mqtt/network/connection",
+      "function_name": "mqtt_connection_create",
+      "function_trace_id": "mqtt/network/connection/mqtt_connection_create",
+      "global_function_order": 0,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/connection.c"
+    },
+    {
+      "file_function_order": 1,
+      "file_generation_order": 0,
+      "file_trace_id": "mqtt/network/connection",
+      "function_name": "mqtt_connection_destroy",
+      "function_trace_id": "mqtt/network/connection/mqtt_connection_destroy",
+      "global_function_order": 1,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/connection.c"
+    },
+    {
+      "file_function_order": 2,
+      "file_generation_order": 0,
+      "file_trace_id": "mqtt/network/connection",
+      "function_name": "mqtt_connection_fd",
+      "function_trace_id": "mqtt/network/connection/mqtt_connection_fd",
+      "global_function_order": 2,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/connection.c"
+    },
+    {
+      "file_function_order": 3,
+      "file_generation_order": 0,
+      "file_trace_id": "mqtt/network/connection",
+      "function_name": "mqtt_connection_closed",
+      "function_trace_id": "mqtt/network/connection/mqtt_connection_closed",
+      "global_function_order": 3,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/connection.c"
+    },
+    {
+      "file_function_order": 4,
+      "file_generation_order": 0,
+      "file_trace_id": "mqtt/network/connection",
+      "function_name": "mqtt_connection_peer",
+      "function_trace_id": "mqtt/network/connection/mqtt_connection_peer",
+      "global_function_order": 4,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/connection.c"
+    },
+    {
+      "file_function_order": 5,
+      "file_generation_order": 0,
+      "file_trace_id": "mqtt/network/connection",
+      "function_name": "mqtt_connection_set_peer",
+      "function_trace_id": "mqtt/network/connection/mqtt_connection_set_peer",
+      "global_function_order": 5,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/connection.c"
+    },
+    {
+      "file_function_order": 6,
+      "file_generation_order": 0,
+      "file_trace_id": "mqtt/network/connection",
+      "function_name": "mqtt_connection_read",
+      "function_trace_id": "mqtt/network/connection/mqtt_connection_read",
+      "global_function_order": 6,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/connection.c"
+    },
+    {
+      "file_function_order": 7,
+      "file_generation_order": 0,
+      "file_trace_id": "mqtt/network/connection",
+      "function_name": "mqtt_connection_flush",
+      "function_trace_id": "mqtt/network/connection/mqtt_connection_flush",
+      "global_function_order": 7,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/connection.c"
+    },
+    {
+      "file_function_order": 8,
+      "file_generation_order": 0,
+      "file_trace_id": "mqtt/network/connection",
+      "function_name": "mqtt_connection_send",
+      "function_trace_id": "mqtt/network/connection/mqtt_connection_send",
+      "global_function_order": 8,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/connection.c"
+    },
+    {
+      "file_function_order": 9,
+      "file_generation_order": 0,
+      "file_trace_id": "mqtt/network/connection",
+      "function_name": "mqtt_connection_in_data",
+      "function_trace_id": "mqtt/network/connection/mqtt_connection_in_data",
+      "global_function_order": 9,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/connection.c"
+    },
+    {
+      "file_function_order": 10,
+      "file_generation_order": 0,
+      "file_trace_id": "mqtt/network/connection",
+      "function_name": "mqtt_connection_in_len",
+      "function_trace_id": "mqtt/network/connection/mqtt_connection_in_len",
+      "global_function_order": 10,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/connection.c"
+    },
+    {
+      "file_function_order": 11,
+      "file_generation_order": 0,
+      "file_trace_id": "mqtt/network/connection",
+      "function_name": "mqtt_connection_in_consume",
+      "function_trace_id": "mqtt/network/connection/mqtt_connection_in_consume",
+      "global_function_order": 11,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/connection.c"
+    },
+    {
+      "file_function_order": 12,
+      "file_generation_order": 0,
+      "file_trace_id": "mqtt/network/connection",
+      "function_name": "mqtt_connection_want_write",
+      "function_trace_id": "mqtt/network/connection/mqtt_connection_want_write",
+      "global_function_order": 12,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/connection.c"
+    },
+    {
+      "file_function_order": 13,
+      "file_generation_order": 0,
+      "file_trace_id": "mqtt/network/connection",
+      "function_name": "mqtt_connection_close",
+      "function_trace_id": "mqtt/network/connection/mqtt_connection_close",
+      "global_function_order": 13,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/connection.c"
+    },
+    {
+      "file_function_order": 14,
+      "file_generation_order": 0,
+      "file_trace_id": "mqtt/network/connection",
+      "function_name": "ensure_in_cap",
+      "function_trace_id": "mqtt/network/connection/ensure_in_cap",
+      "global_function_order": 14,
+      "linkage": "internal_static",
+      "module_name": "network",
+      "source_path": "network/connection.c"
+    },
+    {
+      "file_function_order": 0,
+      "file_generation_order": 1,
+      "file_trace_id": "mqtt/network/tcp_server",
+      "function_name": "mqtt_tcp_server_create",
+      "function_trace_id": "mqtt/network/tcp_server/mqtt_tcp_server_create",
+      "global_function_order": 15,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/tcp_server.c"
+    },
+    {
+      "file_function_order": 1,
+      "file_generation_order": 1,
+      "file_trace_id": "mqtt/network/tcp_server",
+      "function_name": "mqtt_tcp_server_destroy",
+      "function_trace_id": "mqtt/network/tcp_server/mqtt_tcp_server_destroy",
+      "global_function_order": 16,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/tcp_server.c"
+    },
+    {
+      "file_function_order": 2,
+      "file_generation_order": 1,
+      "file_trace_id": "mqtt/network/tcp_server",
+      "function_name": "mqtt_tcp_server_start",
+      "function_trace_id": "mqtt/network/tcp_server/mqtt_tcp_server_start",
+      "global_function_order": 17,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/tcp_server.c"
+    },
+    {
+      "file_function_order": 3,
+      "file_generation_order": 1,
+      "file_trace_id": "mqtt/network/tcp_server",
+      "function_name": "mqtt_tcp_server_run",
+      "function_trace_id": "mqtt/network/tcp_server/mqtt_tcp_server_run",
+      "global_function_order": 18,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/tcp_server.c"
+    },
+    {
+      "file_function_order": 4,
+      "file_generation_order": 1,
+      "file_trace_id": "mqtt/network/tcp_server",
+      "function_name": "mqtt_tcp_server_stop",
+      "function_trace_id": "mqtt/network/tcp_server/mqtt_tcp_server_stop",
+      "global_function_order": 19,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/tcp_server.c"
+    },
+    {
+      "file_function_order": 5,
+      "file_generation_order": 1,
+      "file_trace_id": "mqtt/network/tcp_server",
+      "function_name": "set_nonblocking",
+      "function_trace_id": "mqtt/network/tcp_server/set_nonblocking",
+      "global_function_order": 20,
+      "linkage": "internal_static",
+      "module_name": "network",
+      "source_path": "network/tcp_server.c"
+    },
+    {
+      "file_function_order": 6,
+      "file_generation_order": 1,
+      "file_trace_id": "mqtt/network/tcp_server",
+      "function_name": "sockaddr_to_string",
+      "function_trace_id": "mqtt/network/tcp_server/sockaddr_to_string",
+      "global_function_order": 21,
+      "linkage": "internal_static",
+      "module_name": "network",
+      "source_path": "network/tcp_server.c"
+    },
+    {
+      "file_function_order": 7,
+      "file_generation_order": 1,
+      "file_trace_id": "mqtt/network/tcp_server",
+      "function_name": "find_conn",
+      "function_trace_id": "mqtt/network/tcp_server/find_conn",
+      "global_function_order": 22,
+      "linkage": "internal_static",
+      "module_name": "network",
+      "source_path": "network/tcp_server.c"
+    },
+    {
+      "file_function_order": 8,
+      "file_generation_order": 1,
+      "file_trace_id": "mqtt/network/tcp_server",
+      "function_name": "remove_conn",
+      "function_trace_id": "mqtt/network/tcp_server/remove_conn",
+      "global_function_order": 23,
+      "linkage": "internal_static",
+      "module_name": "network",
+      "source_path": "network/tcp_server.c"
+    },
+    {
+      "file_function_order": 9,
+      "file_generation_order": 1,
+      "file_trace_id": "mqtt/network/tcp_server",
+      "function_name": "close_connection",
+      "function_trace_id": "mqtt/network/tcp_server/close_connection",
+      "global_function_order": 24,
+      "linkage": "internal_static",
+      "module_name": "network",
+      "source_path": "network/tcp_server.c"
+    },
+    {
+      "file_function_order": 10,
+      "file_generation_order": 1,
+      "file_trace_id": "mqtt/network/tcp_server",
+      "function_name": "update_interest",
+      "function_trace_id": "mqtt/network/tcp_server/update_interest",
+      "global_function_order": 25,
+      "linkage": "internal_static",
+      "module_name": "network",
+      "source_path": "network/tcp_server.c"
+    },
+    {
+      "file_function_order": 11,
+      "file_generation_order": 1,
+      "file_trace_id": "mqtt/network/tcp_server",
+      "function_name": "setup_listen_socket",
+      "function_trace_id": "mqtt/network/tcp_server/setup_listen_socket",
+      "global_function_order": 26,
+      "linkage": "internal_static",
+      "module_name": "network",
+      "source_path": "network/tcp_server.c"
+    },
+    {
+      "file_function_order": 12,
+      "file_generation_order": 1,
+      "file_trace_id": "mqtt/network/tcp_server",
+      "function_name": "setup_epoll",
+      "function_trace_id": "mqtt/network/tcp_server/setup_epoll",
+      "global_function_order": 27,
+      "linkage": "internal_static",
+      "module_name": "network",
+      "source_path": "network/tcp_server.c"
+    },
+    {
+      "file_function_order": 13,
+      "file_generation_order": 1,
+      "file_trace_id": "mqtt/network/tcp_server",
+      "function_name": "accept_loop",
+      "function_trace_id": "mqtt/network/tcp_server/accept_loop",
+      "global_function_order": 28,
+      "linkage": "internal_static",
+      "module_name": "network",
+      "source_path": "network/tcp_server.c"
+    },
+    {
+      "file_function_order": 0,
+      "file_generation_order": 2,
+      "file_trace_id": "mqtt/protocol/mqtt_packet",
+      "function_name": "mqtt_packet_free",
+      "function_trace_id": "mqtt/protocol/mqtt_packet/mqtt_packet_free",
+      "global_function_order": 29,
+      "linkage": "external",
+      "module_name": "protocol_codec",
+      "source_path": "protocol/mqtt_packet.c"
+    },
+    {
+      "file_function_order": 0,
+      "file_generation_order": 3,
+      "file_trace_id": "mqtt/protocol/mqtt_decoder",
+      "function_name": "mqtt_decoder_feed",
+      "function_trace_id": "mqtt/protocol/mqtt_decoder/mqtt_decoder_feed",
+      "global_function_order": 30,
+      "linkage": "external",
+      "module_name": "protocol_codec",
+      "source_path": "protocol/mqtt_decoder.c"
+    },
+    {
+      "file_function_order": 1,
+      "file_generation_order": 3,
+      "file_trace_id": "mqtt/protocol/mqtt_decoder",
+      "function_name": "try_parse_remaining_length",
+      "function_trace_id": "mqtt/protocol/mqtt_decoder/try_parse_remaining_length",
+      "global_function_order": 31,
+      "linkage": "internal_static",
+      "module_name": "protocol_codec",
+      "source_path": "protocol/mqtt_decoder.c"
+    },
+    {
+      "file_function_order": 2,
+      "file_generation_order": 3,
+      "file_trace_id": "mqtt/protocol/mqtt_decoder",
+      "function_name": "read_u16",
+      "function_trace_id": "mqtt/protocol/mqtt_decoder/read_u16",
+      "global_function_order": 32,
+      "linkage": "internal_static",
+      "module_name": "protocol_codec",
+      "source_path": "protocol/mqtt_decoder.c"
+    },
+    {
+      "file_function_order": 3,
+      "file_generation_order": 3,
+      "file_trace_id": "mqtt/protocol/mqtt_decoder",
+      "function_name": "read_string",
+      "function_trace_id": "mqtt/protocol/mqtt_decoder/read_string",
+      "global_function_order": 33,
+      "linkage": "internal_static",
+      "module_name": "protocol_codec",
+      "source_path": "protocol/mqtt_decoder.c"
+    },
+    {
+      "file_function_order": 4,
+      "file_generation_order": 3,
+      "file_trace_id": "mqtt/protocol/mqtt_decoder",
+      "function_name": "decode_one",
+      "function_trace_id": "mqtt/protocol/mqtt_decoder/decode_one",
+      "global_function_order": 34,
+      "linkage": "internal_static",
+      "module_name": "protocol_codec",
+      "source_path": "protocol/mqtt_decoder.c"
+    },
+    {
+      "file_function_order": 0,
+      "file_generation_order": 4,
+      "file_trace_id": "mqtt/protocol/mqtt_encoder",
+      "function_name": "mqtt_bytes_free",
+      "function_trace_id": "mqtt/protocol/mqtt_encoder/mqtt_bytes_free",
+      "global_function_order": 35,
+      "linkage": "external",
+      "module_name": "protocol_codec",
+      "source_path": "protocol/mqtt_encoder.c"
+    },
+    {
+      "file_function_order": 1,
+      "file_generation_order": 4,
+      "file_trace_id": "mqtt/protocol/mqtt_encoder",
+      "function_name": "mqtt_encode_connack",
+      "function_trace_id": "mqtt/protocol/mqtt_encoder/mqtt_encode_connack",
+      "global_function_order": 36,
+      "linkage": "external",
+      "module_name": "protocol_codec",
+      "source_path": "protocol/mqtt_encoder.c"
+    },
+    {
+      "file_function_order": 2,
+      "file_generation_order": 4,
+      "file_trace_id": "mqtt/protocol/mqtt_encoder",
+      "function_name": "mqtt_encode_suback",
+      "function_trace_id": "mqtt/protocol/mqtt_encoder/mqtt_encode_suback",
+      "global_function_order": 37,
+      "linkage": "external",
+      "module_name": "protocol_codec",
+      "source_path": "protocol/mqtt_encoder.c"
+    },
+    {
+      "file_function_order": 3,
+      "file_generation_order": 4,
+      "file_trace_id": "mqtt/protocol/mqtt_encoder",
+      "function_name": "mqtt_encode_pingresp",
+      "function_trace_id": "mqtt/protocol/mqtt_encoder/mqtt_encode_pingresp",
+      "global_function_order": 38,
+      "linkage": "external",
+      "module_name": "protocol_codec",
+      "source_path": "protocol/mqtt_encoder.c"
+    },
+    {
+      "file_function_order": 4,
+      "file_generation_order": 4,
+      "file_trace_id": "mqtt/protocol/mqtt_encoder",
+      "function_name": "mqtt_encode_publish_qos0",
+      "function_trace_id": "mqtt/protocol/mqtt_encoder/mqtt_encode_publish_qos0",
+      "global_function_order": 39,
+      "linkage": "external",
+      "module_name": "protocol_codec",
+      "source_path": "protocol/mqtt_encoder.c"
+    },
+    {
+      "file_function_order": 5,
+      "file_generation_order": 4,
+      "file_trace_id": "mqtt/protocol/mqtt_encoder",
+      "function_name": "put_u16",
+      "function_trace_id": "mqtt/protocol/mqtt_encoder/put_u16",
+      "global_function_order": 40,
+      "linkage": "internal_static",
+      "module_name": "protocol_codec",
+      "source_path": "protocol/mqtt_encoder.c"
+    },
+    {
+      "file_function_order": 6,
+      "file_generation_order": 4,
+      "file_trace_id": "mqtt/protocol/mqtt_encoder",
+      "function_name": "remaining_length_bytes",
+      "function_trace_id": "mqtt/protocol/mqtt_encoder/remaining_length_bytes",
+      "global_function_order": 41,
+      "linkage": "internal_static",
+      "module_name": "protocol_codec",
+      "source_path": "protocol/mqtt_encoder.c"
+    },
+    {
+      "file_function_order": 7,
+      "file_generation_order": 4,
+      "file_trace_id": "mqtt/protocol/mqtt_encoder",
+      "function_name": "put_remaining_length",
+      "function_trace_id": "mqtt/protocol/mqtt_encoder/put_remaining_length",
+      "global_function_order": 42,
+      "linkage": "internal_static",
+      "module_name": "protocol_codec",
+      "source_path": "protocol/mqtt_encoder.c"
+    },
+    {
+      "file_function_order": 8,
+      "file_generation_order": 4,
+      "file_trace_id": "mqtt/protocol/mqtt_encoder",
+      "function_name": "make_bytes",
+      "function_trace_id": "mqtt/protocol/mqtt_encoder/make_bytes",
+      "global_function_order": 43,
+      "linkage": "internal_static",
+      "module_name": "protocol_codec",
+      "source_path": "protocol/mqtt_encoder.c"
+    },
+    {
+      "file_function_order": 0,
+      "file_generation_order": 5,
+      "file_trace_id": "mqtt/broker/session",
+      "function_name": "mqtt_session_create",
+      "function_trace_id": "mqtt/broker/session/mqtt_session_create",
+      "global_function_order": 44,
+      "linkage": "external",
+      "module_name": "session",
+      "source_path": "broker/session.c"
+    },
+    {
+      "file_function_order": 1,
+      "file_generation_order": 5,
+      "file_trace_id": "mqtt/broker/session",
+      "function_name": "mqtt_session_destroy",
+      "function_trace_id": "mqtt/broker/session/mqtt_session_destroy",
+      "global_function_order": 45,
+      "linkage": "external",
+      "module_name": "session",
+      "source_path": "broker/session.c"
+    },
+    {
+      "file_function_order": 2,
+      "file_generation_order": 5,
+      "file_trace_id": "mqtt/broker/session",
+      "function_name": "mqtt_session_id",
+      "function_trace_id": "mqtt/broker/session/mqtt_session_id",
+      "global_function_order": 46,
+      "linkage": "external",
+      "module_name": "session",
+      "source_path": "broker/session.c"
+    },
+    {
+      "file_function_order": 3,
+      "file_generation_order": 5,
+      "file_trace_id": "mqtt/broker/session",
+      "function_name": "mqtt_session_connection",
+      "function_trace_id": "mqtt/broker/session/mqtt_session_connection",
+      "global_function_order": 47,
+      "linkage": "external",
+      "module_name": "session",
+      "source_path": "broker/session.c"
+    },
+    {
+      "file_function_order": 4,
+      "file_generation_order": 5,
+      "file_trace_id": "mqtt/broker/session",
+      "function_name": "mqtt_session_connected",
+      "function_trace_id": "mqtt/broker/session/mqtt_session_connected",
+      "global_function_order": 48,
+      "linkage": "external",
+      "module_name": "session",
+      "source_path": "broker/session.c"
+    },
+    {
+      "file_function_order": 5,
+      "file_generation_order": 5,
+      "file_trace_id": "mqtt/broker/session",
+      "function_name": "mqtt_session_client_id",
+      "function_trace_id": "mqtt/broker/session/mqtt_session_client_id",
+      "global_function_order": 49,
+      "linkage": "external",
+      "module_name": "session",
+      "source_path": "broker/session.c"
+    },
+    {
+      "file_function_order": 6,
+      "file_generation_order": 5,
+      "file_trace_id": "mqtt/broker/session",
+      "function_name": "mqtt_session_mark_connected",
+      "function_trace_id": "mqtt/broker/session/mqtt_session_mark_connected",
+      "global_function_order": 50,
+      "linkage": "external",
+      "module_name": "session",
+      "source_path": "broker/session.c"
+    },
+    {
+      "file_function_order": 7,
+      "file_generation_order": 5,
+      "file_trace_id": "mqtt/broker/session",
+      "function_name": "mqtt_session_send",
+      "function_trace_id": "mqtt/broker/session/mqtt_session_send",
+      "global_function_order": 51,
+      "linkage": "external",
+      "module_name": "session",
+      "source_path": "broker/session.c"
+    },
+    {
+      "file_function_order": 0,
+      "file_generation_order": 6,
+      "file_trace_id": "mqtt/broker/session_manager",
+      "function_name": "mqtt_session_manager_create",
+      "function_trace_id": "mqtt/broker/session_manager/mqtt_session_manager_create",
+      "global_function_order": 52,
+      "linkage": "external",
+      "module_name": "session",
+      "source_path": "broker/session_manager.c"
+    },
+    {
+      "file_function_order": 1,
+      "file_generation_order": 6,
+      "file_trace_id": "mqtt/broker/session_manager",
+      "function_name": "mqtt_session_manager_destroy",
+      "function_trace_id": "mqtt/broker/session_manager/mqtt_session_manager_destroy",
+      "global_function_order": 53,
+      "linkage": "external",
+      "module_name": "session",
+      "source_path": "broker/session_manager.c"
+    },
+    {
+      "file_function_order": 2,
+      "file_generation_order": 6,
+      "file_trace_id": "mqtt/broker/session_manager",
+      "function_name": "mqtt_session_manager_add",
+      "function_trace_id": "mqtt/broker/session_manager/mqtt_session_manager_add",
+      "global_function_order": 54,
+      "linkage": "external",
+      "module_name": "session",
+      "source_path": "broker/session_manager.c"
+    },
+    {
+      "file_function_order": 3,
+      "file_generation_order": 6,
+      "file_trace_id": "mqtt/broker/session_manager",
+      "function_name": "mqtt_session_manager_remove",
+      "function_trace_id": "mqtt/broker/session_manager/mqtt_session_manager_remove",
+      "global_function_order": 55,
+      "linkage": "external",
+      "module_name": "session",
+      "source_path": "broker/session_manager.c"
+    },
+    {
+      "file_function_order": 4,
+      "file_generation_order": 6,
+      "file_trace_id": "mqtt/broker/session_manager",
+      "function_name": "mqtt_session_manager_get",
+      "function_trace_id": "mqtt/broker/session_manager/mqtt_session_manager_get",
+      "global_function_order": 56,
+      "linkage": "external",
+      "module_name": "session",
+      "source_path": "broker/session_manager.c"
+    },
+    {
+      "file_function_order": 5,
+      "file_generation_order": 6,
+      "file_trace_id": "mqtt/broker/session_manager",
+      "function_name": "ensure_cap",
+      "function_trace_id": "mqtt/broker/session_manager/ensure_cap",
+      "global_function_order": 57,
+      "linkage": "internal_static",
+      "module_name": "session",
+      "source_path": "broker/session_manager.c"
+    },
+    {
+      "file_function_order": 0,
+      "file_generation_order": 7,
+      "file_trace_id": "mqtt/topic/topic_tree",
+      "function_name": "mqtt_topic_tree_create",
+      "function_trace_id": "mqtt/topic/topic_tree/mqtt_topic_tree_create",
+      "global_function_order": 58,
+      "linkage": "external",
+      "module_name": "topic",
+      "source_path": "topic/topic_tree.c"
+    },
+    {
+      "file_function_order": 1,
+      "file_generation_order": 7,
+      "file_trace_id": "mqtt/topic/topic_tree",
+      "function_name": "mqtt_topic_tree_destroy",
+      "function_trace_id": "mqtt/topic/topic_tree/mqtt_topic_tree_destroy",
+      "global_function_order": 59,
+      "linkage": "external",
+      "module_name": "topic",
+      "source_path": "topic/topic_tree.c"
+    },
+    {
+      "file_function_order": 2,
+      "file_generation_order": 7,
+      "file_trace_id": "mqtt/topic/topic_tree",
+      "function_name": "mqtt_topic_tree_subscribe",
+      "function_trace_id": "mqtt/topic/topic_tree/mqtt_topic_tree_subscribe",
+      "global_function_order": 60,
+      "linkage": "external",
+      "module_name": "topic",
+      "source_path": "topic/topic_tree.c"
+    },
+    {
+      "file_function_order": 3,
+      "file_generation_order": 7,
+      "file_trace_id": "mqtt/topic/topic_tree",
+      "function_name": "mqtt_topic_tree_unsubscribe",
+      "function_trace_id": "mqtt/topic/topic_tree/mqtt_topic_tree_unsubscribe",
+      "global_function_order": 61,
+      "linkage": "external",
+      "module_name": "topic",
+      "source_path": "topic/topic_tree.c"
+    },
+    {
+      "file_function_order": 4,
+      "file_generation_order": 7,
+      "file_trace_id": "mqtt/topic/topic_tree",
+      "function_name": "mqtt_topic_tree_remove_session",
+      "function_trace_id": "mqtt/topic/topic_tree/mqtt_topic_tree_remove_session",
+      "global_function_order": 62,
+      "linkage": "external",
+      "module_name": "topic",
+      "source_path": "topic/topic_tree.c"
+    },
+    {
+      "file_function_order": 5,
+      "file_generation_order": 7,
+      "file_trace_id": "mqtt/topic/topic_tree",
+      "function_name": "mqtt_topic_tree_match_subscribers",
+      "function_trace_id": "mqtt/topic/topic_tree/mqtt_topic_tree_match_subscribers",
+      "global_function_order": 63,
+      "linkage": "external",
+      "module_name": "topic",
+      "source_path": "topic/topic_tree.c"
+    },
+    {
+      "file_function_order": 6,
+      "file_generation_order": 7,
+      "file_trace_id": "mqtt/topic/topic_tree",
+      "function_name": "mqtt_topic_match",
+      "function_trace_id": "mqtt/topic/topic_tree/mqtt_topic_match",
+      "global_function_order": 64,
+      "linkage": "external",
+      "module_name": "topic",
+      "source_path": "topic/topic_tree.c"
+    },
+    {
+      "file_function_order": 7,
+      "file_generation_order": 7,
+      "file_trace_id": "mqtt/topic/topic_tree",
+      "function_name": "ensure_entry_cap",
+      "function_trace_id": "mqtt/topic/topic_tree/ensure_entry_cap",
+      "global_function_order": 65,
+      "linkage": "internal_static",
+      "module_name": "topic",
+      "source_path": "topic/topic_tree.c"
+    },
+    {
+      "file_function_order": 8,
+      "file_generation_order": 7,
+      "file_trace_id": "mqtt/topic/topic_tree",
+      "function_name": "ensure_sid_cap",
+      "function_trace_id": "mqtt/topic/topic_tree/ensure_sid_cap",
+      "global_function_order": 66,
+      "linkage": "internal_static",
+      "module_name": "topic",
+      "source_path": "topic/topic_tree.c"
+    },
+    {
+      "file_function_order": 9,
+      "file_generation_order": 7,
+      "file_trace_id": "mqtt/topic/topic_tree",
+      "function_name": "find_entry",
+      "function_trace_id": "mqtt/topic/topic_tree/find_entry",
+      "global_function_order": 67,
+      "linkage": "internal_static",
+      "module_name": "topic",
+      "source_path": "topic/topic_tree.c"
+    },
+    {
+      "file_function_order": 10,
+      "file_generation_order": 7,
+      "file_trace_id": "mqtt/topic/topic_tree",
+      "function_name": "entry_has_sid",
+      "function_trace_id": "mqtt/topic/topic_tree/entry_has_sid",
+      "global_function_order": 68,
+      "linkage": "internal_static",
+      "module_name": "topic",
+      "source_path": "topic/topic_tree.c"
+    },
+    {
+      "file_function_order": 11,
+      "file_generation_order": 7,
+      "file_trace_id": "mqtt/topic/topic_tree",
+      "function_name": "entry_remove_sid",
+      "function_trace_id": "mqtt/topic/topic_tree/entry_remove_sid",
+      "global_function_order": 69,
+      "linkage": "internal_static",
+      "module_name": "topic",
+      "source_path": "topic/topic_tree.c"
+    },
+    {
+      "file_function_order": 12,
+      "file_generation_order": 7,
+      "file_trace_id": "mqtt/topic/topic_tree",
+      "function_name": "delete_entry",
+      "function_trace_id": "mqtt/topic/topic_tree/delete_entry",
+      "global_function_order": 70,
+      "linkage": "internal_static",
+      "module_name": "topic",
+      "source_path": "topic/topic_tree.c"
+    },
+    {
+      "file_function_order": 13,
+      "file_generation_order": 7,
+      "file_trace_id": "mqtt/topic/topic_tree",
+      "function_name": "next_level",
+      "function_trace_id": "mqtt/topic/topic_tree/next_level",
+      "global_function_order": 71,
+      "linkage": "internal_static",
+      "module_name": "topic",
+      "source_path": "topic/topic_tree.c"
+    },
+    {
+      "file_function_order": 0,
+      "file_generation_order": 8,
+      "file_trace_id": "mqtt/router/message_router",
+      "function_name": "mqtt_message_router_create",
+      "function_trace_id": "mqtt/router/message_router/mqtt_message_router_create",
+      "global_function_order": 72,
+      "linkage": "external",
+      "module_name": "router",
+      "source_path": "router/message_router.c"
+    },
+    {
+      "file_function_order": 1,
+      "file_generation_order": 8,
+      "file_trace_id": "mqtt/router/message_router",
+      "function_name": "mqtt_message_router_destroy",
+      "function_trace_id": "mqtt/router/message_router/mqtt_message_router_destroy",
+      "global_function_order": 73,
+      "linkage": "external",
+      "module_name": "router",
+      "source_path": "router/message_router.c"
+    },
+    {
+      "file_function_order": 2,
+      "file_generation_order": 8,
+      "file_trace_id": "mqtt/router/message_router",
+      "function_name": "mqtt_message_router_subscribe",
+      "function_trace_id": "mqtt/router/message_router/mqtt_message_router_subscribe",
+      "global_function_order": 74,
+      "linkage": "external",
+      "module_name": "router",
+      "source_path": "router/message_router.c"
+    },
+    {
+      "file_function_order": 3,
+      "file_generation_order": 8,
+      "file_trace_id": "mqtt/router/message_router",
+      "function_name": "mqtt_message_router_unsubscribe",
+      "function_trace_id": "mqtt/router/message_router/mqtt_message_router_unsubscribe",
+      "global_function_order": 75,
+      "linkage": "external",
+      "module_name": "router",
+      "source_path": "router/message_router.c"
+    },
+    {
+      "file_function_order": 4,
+      "file_generation_order": 8,
+      "file_trace_id": "mqtt/router/message_router",
+      "function_name": "mqtt_message_router_remove_session",
+      "function_trace_id": "mqtt/router/message_router/mqtt_message_router_remove_session",
+      "global_function_order": 76,
+      "linkage": "external",
+      "module_name": "router",
+      "source_path": "router/message_router.c"
+    },
+    {
+      "file_function_order": 5,
+      "file_generation_order": 8,
+      "file_trace_id": "mqtt/router/message_router",
+      "function_name": "mqtt_message_router_publish",
+      "function_trace_id": "mqtt/router/message_router/mqtt_message_router_publish",
+      "global_function_order": 77,
+      "linkage": "external",
+      "module_name": "router",
+      "source_path": "router/message_router.c"
+    },
+    {
+      "file_function_order": 0,
+      "file_generation_order": 9,
+      "file_trace_id": "mqtt/main",
+      "function_name": "main",
+      "function_trace_id": "mqtt/main/main",
+      "global_function_order": 78,
+      "linkage": "external",
+      "module_name": "broker_app",
+      "source_path": "main.c"
+    },
+    {
+      "file_function_order": 0,
+      "file_generation_order": 10,
+      "file_trace_id": "mqtt/broker/broker",
+      "function_name": "mqtt_broker_create",
+      "function_trace_id": "mqtt/broker/broker/mqtt_broker_create",
+      "global_function_order": 79,
+      "linkage": "external",
+      "module_name": "broker_app",
+      "source_path": "broker/broker.c"
+    },
+    {
+      "file_function_order": 1,
+      "file_generation_order": 10,
+      "file_trace_id": "mqtt/broker/broker",
+      "function_name": "mqtt_broker_destroy",
+      "function_trace_id": "mqtt/broker/broker/mqtt_broker_destroy",
+      "global_function_order": 80,
+      "linkage": "external",
+      "module_name": "broker_app",
+      "source_path": "broker/broker.c"
+    },
+    {
+      "file_function_order": 2,
+      "file_generation_order": 10,
+      "file_trace_id": "mqtt/broker/broker",
+      "function_name": "mqtt_broker_start",
+      "function_trace_id": "mqtt/broker/broker/mqtt_broker_start",
+      "global_function_order": 81,
+      "linkage": "external",
+      "module_name": "broker_app",
+      "source_path": "broker/broker.c"
+    },
+    {
+      "file_function_order": 3,
+      "file_generation_order": 10,
+      "file_trace_id": "mqtt/broker/broker",
+      "function_name": "mqtt_broker_run",
+      "function_trace_id": "mqtt/broker/broker/mqtt_broker_run",
+      "global_function_order": 82,
+      "linkage": "external",
+      "module_name": "broker_app",
+      "source_path": "broker/broker.c"
+    },
+    {
+      "file_function_order": 4,
+      "file_generation_order": 10,
+      "file_trace_id": "mqtt/broker/broker",
+      "function_name": "mqtt_broker_stop",
+      "function_trace_id": "mqtt/broker/broker/mqtt_broker_stop",
+      "global_function_order": 83,
+      "linkage": "external",
+      "module_name": "broker_app",
+      "source_path": "broker/broker.c"
+    },
+    {
+      "file_function_order": 5,
+      "file_generation_order": 10,
+      "file_trace_id": "mqtt/broker/broker",
+      "function_name": "handle_packet",
+      "function_trace_id": "mqtt/broker/broker/handle_packet",
+      "global_function_order": 84,
+      "linkage": "internal_static",
+      "module_name": "broker_app",
+      "source_path": "broker/broker.c"
+    },
+    {
+      "file_function_order": 6,
+      "file_generation_order": 10,
+      "file_trace_id": "mqtt/broker/broker",
+      "function_name": "on_packet",
+      "function_trace_id": "mqtt/broker/broker/on_packet",
+      "global_function_order": 85,
+      "linkage": "internal_static",
+      "module_name": "broker_app",
+      "source_path": "broker/broker.c"
+    },
+    {
+      "file_function_order": 7,
+      "file_generation_order": 10,
+      "file_trace_id": "mqtt/broker/broker",
+      "function_name": "on_accept_cb",
+      "function_trace_id": "mqtt/broker/broker/on_accept_cb",
+      "global_function_order": 86,
+      "linkage": "internal_static",
+      "module_name": "broker_app",
+      "source_path": "broker/broker.c"
+    },
+    {
+      "file_function_order": 8,
+      "file_generation_order": 10,
+      "file_trace_id": "mqtt/broker/broker",
+      "function_name": "on_close_cb",
+      "function_trace_id": "mqtt/broker/broker/on_close_cb",
+      "global_function_order": 87,
+      "linkage": "internal_static",
+      "module_name": "broker_app",
+      "source_path": "broker/broker.c"
+    },
+    {
+      "file_function_order": 9,
+      "file_generation_order": 10,
+      "file_trace_id": "mqtt/broker/broker",
+      "function_name": "on_data_cb",
+      "function_trace_id": "mqtt/broker/broker/on_data_cb",
+      "global_function_order": 88,
+      "linkage": "internal_static",
+      "module_name": "broker_app",
+      "source_path": "broker/broker.c"
+    }
+  ],
+  "header_files": [
+    "network/connection.h",
+    "network/tcp_server.h",
+    "protocol/mqtt_packet.h",
+    "protocol/mqtt_decoder.h",
+    "protocol/mqtt_encoder.h",
+    "broker/session.h",
+    "broker/session_manager.h",
+    "topic/topic_tree.h",
+    "router/message_router.h",
+    "broker/broker.h"
+  ],
+  "module_dependency_edges": [
+    {
+      "from_module": "session",
+      "to_module": "network"
+    },
+    {
+      "from_module": "router",
+      "to_module": "topic"
+    },
+    {
+      "from_module": "router",
+      "to_module": "session"
+    },
+    {
+      "from_module": "router",
+      "to_module": "protocol_codec"
+    },
+    {
+      "from_module": "broker_app",
+      "to_module": "network"
+    },
+    {
+      "from_module": "broker_app",
+      "to_module": "protocol_codec"
+    },
+    {
+      "from_module": "broker_app",
+      "to_module": "session"
+    },
+    {
+      "from_module": "broker_app",
+      "to_module": "router"
+    }
+  ],
+  "module_generation_order": [
+    "network",
+    "protocol_codec",
+    "session",
+    "topic",
+    "router",
+    "broker_app"
+  ],
+  "modules": [
+    {
+      "contains_file_trace_ids": [
+        "mqtt/network/connection",
+        "mqtt/network/tcp_server"
+      ],
+      "dependency_modules": [],
+      "generation_order": 0,
+      "module_name": "network"
+    },
+    {
+      "contains_file_trace_ids": [
+        "mqtt/protocol/mqtt_packet",
+        "mqtt/protocol/mqtt_decoder",
+        "mqtt/protocol/mqtt_encoder"
+      ],
+      "dependency_modules": [],
+      "generation_order": 1,
+      "module_name": "protocol_codec"
+    },
+    {
+      "contains_file_trace_ids": [
+        "mqtt/broker/session",
+        "mqtt/broker/session_manager"
+      ],
+      "dependency_modules": [
+        "network"
+      ],
+      "generation_order": 2,
+      "module_name": "session"
+    },
+    {
+      "contains_file_trace_ids": [
+        "mqtt/topic/topic_tree"
+      ],
+      "dependency_modules": [],
+      "generation_order": 3,
+      "module_name": "topic"
+    },
+    {
+      "contains_file_trace_ids": [
+        "mqtt/router/message_router"
+      ],
+      "dependency_modules": [
+        "topic",
+        "session",
+        "protocol_codec"
+      ],
+      "generation_order": 4,
+      "module_name": "router"
+    },
+    {
+      "contains_file_trace_ids": [
+        "mqtt/main",
+        "mqtt/broker/broker"
+      ],
+      "dependency_modules": [
+        "network",
+        "protocol_codec",
+        "session",
+        "router"
+      ],
+      "generation_order": 5,
+      "module_name": "broker_app"
+    }
+  ],
+  "schema_version": "spec_ablation_s2_project_graph/v1",
+  "source_files": [
+    "network/connection.c",
+    "network/tcp_server.c",
+    "protocol/mqtt_packet.c",
+    "protocol/mqtt_decoder.c",
+    "protocol/mqtt_encoder.c",
+    "broker/session.c",
+    "broker/session_manager.c",
+    "topic/topic_tree.c",
+    "router/message_router.c",
+    "main.c",
+    "broker/broker.c"
+  ],
+  "source_positions": [
+    {
+      "file_generation_order": 0,
+      "file_trace_id": "mqtt/network/connection",
+      "function_trace_ids": [
+        "mqtt/network/connection/mqtt_connection_create",
+        "mqtt/network/connection/mqtt_connection_destroy",
+        "mqtt/network/connection/mqtt_connection_fd",
+        "mqtt/network/connection/mqtt_connection_closed",
+        "mqtt/network/connection/mqtt_connection_peer",
+        "mqtt/network/connection/mqtt_connection_set_peer",
+        "mqtt/network/connection/mqtt_connection_read",
+        "mqtt/network/connection/mqtt_connection_flush",
+        "mqtt/network/connection/mqtt_connection_send",
+        "mqtt/network/connection/mqtt_connection_in_data",
+        "mqtt/network/connection/mqtt_connection_in_len",
+        "mqtt/network/connection/mqtt_connection_in_consume",
+        "mqtt/network/connection/mqtt_connection_want_write",
+        "mqtt/network/connection/mqtt_connection_close",
+        "mqtt/network/connection/ensure_in_cap"
+      ],
+      "module_generation_order": 0,
+      "module_name": "network",
+      "source_path": "network/connection.c"
+    },
+    {
+      "file_generation_order": 1,
+      "file_trace_id": "mqtt/network/tcp_server",
+      "function_trace_ids": [
+        "mqtt/network/tcp_server/mqtt_tcp_server_create",
+        "mqtt/network/tcp_server/mqtt_tcp_server_destroy",
+        "mqtt/network/tcp_server/mqtt_tcp_server_start",
+        "mqtt/network/tcp_server/mqtt_tcp_server_run",
+        "mqtt/network/tcp_server/mqtt_tcp_server_stop",
+        "mqtt/network/tcp_server/set_nonblocking",
+        "mqtt/network/tcp_server/sockaddr_to_string",
+        "mqtt/network/tcp_server/find_conn",
+        "mqtt/network/tcp_server/remove_conn",
+        "mqtt/network/tcp_server/close_connection",
+        "mqtt/network/tcp_server/update_interest",
+        "mqtt/network/tcp_server/setup_listen_socket",
+        "mqtt/network/tcp_server/setup_epoll",
+        "mqtt/network/tcp_server/accept_loop"
+      ],
+      "module_generation_order": 0,
+      "module_name": "network",
+      "source_path": "network/tcp_server.c"
+    },
+    {
+      "file_generation_order": 2,
+      "file_trace_id": "mqtt/protocol/mqtt_packet",
+      "function_trace_ids": [
+        "mqtt/protocol/mqtt_packet/mqtt_packet_free"
+      ],
+      "module_generation_order": 1,
+      "module_name": "protocol_codec",
+      "source_path": "protocol/mqtt_packet.c"
+    },
+    {
+      "file_generation_order": 3,
+      "file_trace_id": "mqtt/protocol/mqtt_decoder",
+      "function_trace_ids": [
+        "mqtt/protocol/mqtt_decoder/mqtt_decoder_feed",
+        "mqtt/protocol/mqtt_decoder/try_parse_remaining_length",
+        "mqtt/protocol/mqtt_decoder/read_u16",
+        "mqtt/protocol/mqtt_decoder/read_string",
+        "mqtt/protocol/mqtt_decoder/decode_one"
+      ],
+      "module_generation_order": 1,
+      "module_name": "protocol_codec",
+      "source_path": "protocol/mqtt_decoder.c"
+    },
+    {
+      "file_generation_order": 4,
+      "file_trace_id": "mqtt/protocol/mqtt_encoder",
+      "function_trace_ids": [
+        "mqtt/protocol/mqtt_encoder/mqtt_bytes_free",
+        "mqtt/protocol/mqtt_encoder/mqtt_encode_connack",
+        "mqtt/protocol/mqtt_encoder/mqtt_encode_suback",
+        "mqtt/protocol/mqtt_encoder/mqtt_encode_pingresp",
+        "mqtt/protocol/mqtt_encoder/mqtt_encode_publish_qos0",
+        "mqtt/protocol/mqtt_encoder/put_u16",
+        "mqtt/protocol/mqtt_encoder/remaining_length_bytes",
+        "mqtt/protocol/mqtt_encoder/put_remaining_length",
+        "mqtt/protocol/mqtt_encoder/make_bytes"
+      ],
+      "module_generation_order": 1,
+      "module_name": "protocol_codec",
+      "source_path": "protocol/mqtt_encoder.c"
+    },
+    {
+      "file_generation_order": 5,
+      "file_trace_id": "mqtt/broker/session",
+      "function_trace_ids": [
+        "mqtt/broker/session/mqtt_session_create",
+        "mqtt/broker/session/mqtt_session_destroy",
+        "mqtt/broker/session/mqtt_session_id",
+        "mqtt/broker/session/mqtt_session_connection",
+        "mqtt/broker/session/mqtt_session_connected",
+        "mqtt/broker/session/mqtt_session_client_id",
+        "mqtt/broker/session/mqtt_session_mark_connected",
+        "mqtt/broker/session/mqtt_session_send"
+      ],
+      "module_generation_order": 2,
+      "module_name": "session",
+      "source_path": "broker/session.c"
+    },
+    {
+      "file_generation_order": 6,
+      "file_trace_id": "mqtt/broker/session_manager",
+      "function_trace_ids": [
+        "mqtt/broker/session_manager/mqtt_session_manager_create",
+        "mqtt/broker/session_manager/mqtt_session_manager_destroy",
+        "mqtt/broker/session_manager/mqtt_session_manager_add",
+        "mqtt/broker/session_manager/mqtt_session_manager_remove",
+        "mqtt/broker/session_manager/mqtt_session_manager_get",
+        "mqtt/broker/session_manager/ensure_cap"
+      ],
+      "module_generation_order": 2,
+      "module_name": "session",
+      "source_path": "broker/session_manager.c"
+    },
+    {
+      "file_generation_order": 7,
+      "file_trace_id": "mqtt/topic/topic_tree",
+      "function_trace_ids": [
+        "mqtt/topic/topic_tree/mqtt_topic_tree_create",
+        "mqtt/topic/topic_tree/mqtt_topic_tree_destroy",
+        "mqtt/topic/topic_tree/mqtt_topic_tree_subscribe",
+        "mqtt/topic/topic_tree/mqtt_topic_tree_unsubscribe",
+        "mqtt/topic/topic_tree/mqtt_topic_tree_remove_session",
+        "mqtt/topic/topic_tree/mqtt_topic_tree_match_subscribers",
+        "mqtt/topic/topic_tree/mqtt_topic_match",
+        "mqtt/topic/topic_tree/ensure_entry_cap",
+        "mqtt/topic/topic_tree/ensure_sid_cap",
+        "mqtt/topic/topic_tree/find_entry",
+        "mqtt/topic/topic_tree/entry_has_sid",
+        "mqtt/topic/topic_tree/entry_remove_sid",
+        "mqtt/topic/topic_tree/delete_entry",
+        "mqtt/topic/topic_tree/next_level"
+      ],
+      "module_generation_order": 3,
+      "module_name": "topic",
+      "source_path": "topic/topic_tree.c"
+    },
+    {
+      "file_generation_order": 8,
+      "file_trace_id": "mqtt/router/message_router",
+      "function_trace_ids": [
+        "mqtt/router/message_router/mqtt_message_router_create",
+        "mqtt/router/message_router/mqtt_message_router_destroy",
+        "mqtt/router/message_router/mqtt_message_router_subscribe",
+        "mqtt/router/message_router/mqtt_message_router_unsubscribe",
+        "mqtt/router/message_router/mqtt_message_router_remove_session",
+        "mqtt/router/message_router/mqtt_message_router_publish"
+      ],
+      "module_generation_order": 4,
+      "module_name": "router",
+      "source_path": "router/message_router.c"
+    },
+    {
+      "file_generation_order": 9,
+      "file_trace_id": "mqtt/main",
+      "function_trace_ids": [
+        "mqtt/main/main"
+      ],
+      "module_generation_order": 5,
+      "module_name": "broker_app",
+      "source_path": "main.c"
+    },
+    {
+      "file_generation_order": 10,
+      "file_trace_id": "mqtt/broker/broker",
+      "function_trace_ids": [
+        "mqtt/broker/broker/mqtt_broker_create",
+        "mqtt/broker/broker/mqtt_broker_destroy",
+        "mqtt/broker/broker/mqtt_broker_start",
+        "mqtt/broker/broker/mqtt_broker_run",
+        "mqtt/broker/broker/mqtt_broker_stop",
+        "mqtt/broker/broker/handle_packet",
+        "mqtt/broker/broker/on_packet",
+        "mqtt/broker/broker/on_accept_cb",
+        "mqtt/broker/broker/on_close_cb",
+        "mqtt/broker/broker/on_data_cb"
+      ],
+      "module_generation_order": 5,
+      "module_name": "broker_app",
+      "source_path": "broker/broker.c"
+    }
+  ],
+  "visibility": "s2_coder_visible_project_graph"
+}

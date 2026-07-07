@@ -1,0 +1,12 @@
+#include <stdbool.h>
+#include <stddef.h>
+
+typedef struct mqtt_topic_tree mqtt_topic_tree_t;
+
+mqtt_topic_tree_t* mqtt_topic_tree_create(void);
+void mqtt_topic_tree_destroy(mqtt_topic_tree_t* t);
+void mqtt_topic_tree_subscribe(mqtt_topic_tree_t* t, int session_id, const char* filter);
+void mqtt_topic_tree_unsubscribe(mqtt_topic_tree_t* t, int session_id, const char* filter);
+void mqtt_topic_tree_remove_session(mqtt_topic_tree_t* t, int session_id);
+bool mqtt_topic_tree_match_subscribers(const mqtt_topic_tree_t* t, const char* topic, int** out_sids, size_t* out_count);
+bool mqtt_topic_match(const char* filter, const char* topic);

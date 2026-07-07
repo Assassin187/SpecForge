@@ -12,7 +12,7 @@
 
 ## 当前工作流程（PPT 版）
 
-`coder` 的端到端流程可以理解为：**加载 SPEC → 校验一致性 → 按模块生成工程 → 编译 → 按错误修复 → 编译成功后执行非阻断行为检查 → 输出 manifest 与日志**。使用 `--skip-repair` 时，生成完整工程和 Makefile 后直接结束，不执行项目编译、repair 或行为检查。
+`coder` 的端到端流程可以理解为：**发现并加载 SpecBundle → 校验规格与 rendered header → 按 `GENERATION_ORDER` 生成工程 → 编译 → 按编译错误修复 `.c` → 编译成功后执行非阻断行为检查 → 输出 manifest 与日志**。使用 `--skip-repair` 时，生成完整工程和 Makefile 后直接结束，不执行项目编译、repair 或行为检查。
 
 ```mermaid
 flowchart TD
@@ -21,14 +21,15 @@ flowchart TD
     C --> D[路径规范化<br/>../x -> x]
     D --> E[构建 SpecBundle<br/>protocol/modules/files/functions]
     E --> F[一致性校验<br/>trace/signature/dependency/order/type]
+    F --> F2[rendered header compile check<br/>检查 header lowering 是否自包含]
 
-    F -->|有 error| X[停止生成]
-    F -->|无 error| G[ProjectGenerator.prepare_output_dir]
+    F2 -->|有 error| X[停止生成]
+    F2 -->|无 error| G[ProjectGenerator.prepare_output_dir]
 
     G --> H[按 GENERATION_ORDER 遍历模块]
     H --> I[Header 本地生成<br/>HEADER.DATA + HEADER.INTERFACE]
-    H --> J[Source LLM 生成<br/>File Spec + Function Spec + 依赖 Header]
-    H --> K[main.c 本地生成]
+    H --> J[Source LLM 生成<br/>File Spec + Function Spec + canonical/dependency Header]
+    H --> K[main.c LLM 生成<br/>source-only entrypoint prompt]
 
     I --> L[写入 project_dir]
     J --> L
@@ -41,10 +42,21 @@ flowchart TD
     V --> O[写 run_manifest.json<br/>行为结果不改变生成成功状态]
     N -->|失败| P[抽取项目内 gcc error 文件]
     P -->|header 错误| X2[停止 repair<br/>记录 blocking header] 
-    P -->|source 错误| Q[LLM repair 普通 .c]
+    P -->|source 错误| Q[LLM repair 对应 .c<br/>含 main.c]
     Q --> N
     O --> R[输出工程 + _agent_logs]
 ```
+
+当前实现里，`coder` 不是一次性让模型生成整个项目，而是把 planning agent 输出的 protocol specs 降解为更稳定的文件级生成任务：
+
+1. `load_spec_bundle_from_root()` 在 `--spec-root` 下递归发现唯一的 `PROTOCOL_MODULE_SPEC`，并收集所有 `FILE_SPEC` / `FUNCTION_SPEC`。
+2. `normalize_repo_path()` 将 `../network/x.h`、`./x.c` 等路径归一化为项目内相对路径。
+3. `validate_rendered_headers_compile()` 在真正生成前先渲染并编译检查 deterministic headers，尽早暴露 header lowering、public type、signature 和 include 问题。
+4. `ProjectGenerator.generate()` 清空并重建 `--output-dir`，实际项目写入 `<output-dir>/<protocol_slug>/`，日志写入 `<output-dir>/_agent_logs/`。
+5. 每个模块先写 `.h`，再生成 `.c`。`.c` prompt 会携带 canonical header、dependency headers、Function Spec、Consistency Rules、TEST_VECTORS、FORBIDDEN_SYMBOLS、ACCESS_PATHS 和 callee return-value contracts。
+6. `main.c` 现在也走 LLM source generation，但使用 `build_main_source_prompt()` 增补 entrypoint 专用约束，重点约束 argv contract、create/start/run/destroy lifecycle 和失败退出码。
+7. Makefile 仍由本地确定性模板生成，目标二进制名来自协议 slug 和 role，例如 `mqtt_broker`、`http_server`、`coap_server`、`smtp_server`。
+8. repair 只改项目内可映射到 File Spec 的 `.c` 文件；deterministic `.h`、Makefile 不由 repair 改写。如果 gcc error 指向项目 header，流程停止并记录 `deterministic_header_compile_error`。
 
 ### 运行目录结构
 
@@ -72,8 +84,8 @@ agent/out/<protocol>_<role>_YYYYMMDD_HHMMSS/
 ```mermaid
 flowchart LR
     S[SPEC] --> H[.h 本地确定性生成]
-    S --> C[.c LLM 生成]
-    S --> M[Makefile/main.c 本地模板生成]
+    S --> C[.c LLM 生成<br/>含 main.c]
+    S --> M[Makefile 本地模板生成]
 
     H --> HP[快：不调用模型<br/>public type / include / signature]
     C --> CP[慢：调用模型<br/>函数逻辑实现]
@@ -83,12 +95,12 @@ flowchart LR
 | 产物 | 生成方式 | 主要输入 | 是否调用 LLM |
 | --- | --- | --- | --- |
 | `.h` | 本地确定性渲染 | `HEADER.DEPENDENCY` / `HEADER.DATA.TYPE_SPEC` / `HEADER.INTERFACE` | 否 |
-| 普通 `.c` | LLM 生成 | File Spec、Function Spec、已生成 header、依赖 header、Consistency Rules | 是 |
-| `main.c` | 本地模板生成 | broker/app 模块公开类型与 create/start/run/destroy 接口 | 否 |
+| 普通 `.c` | LLM 生成 | File Spec、Function Spec、canonical header、依赖 header、Consistency Rules、machine constraints | 是 |
+| `main.c` | LLM 生成 | Source-only File Spec、ENTRYPOINT Function Spec、argv/lifecycle contract、依赖 header | 是 |
 | `Makefile` | 本地模板生成 | `GENERATION_ORDER` 后的模块文件列表、协议角色 | 否 |
-| repair 文件 | LLM 修复 | 当前 `.c` 文件内容、压缩后的编译错误、canonical header、依赖 header | 是 |
+| repair 文件 | LLM 修复 | 当前 `.c` 文件内容、压缩后的编译错误、canonical header、依赖 header、machine constraints | 是 |
 
-> `.h`、`main.c` 和 Makefile 是本地确定性生成产物，不进入 LLM repair。若编译错误指向项目 header，`generate` 会停止 repair，并在 manifest 中记录 `deterministic_header_compile_error`，提示需要修复 specs 或 header lowering。
+> `.h` 和 Makefile 是本地确定性生成产物，不进入 LLM repair。`main.c` 是 source file，当前由 LLM 生成，也可以在编译错误指向 `main.c` 时进入 repair。若编译错误指向项目 header，`generate` 会停止 repair，并在 manifest 中记录 `deterministic_header_compile_error`，提示需要修复 specs 或 header lowering。
 
 > `generate` 的成功条件仅为最终编译成功。编译成功后会自动执行预设协议行为检查，并逐项记录到控制台、`behavior_verification.json` 和 manifest；行为检查失败不会触发 repair、不会覆盖 compile repair 状态，也不会改变 `generate` 的成功状态或退出码。
 
@@ -110,7 +122,7 @@ sequenceDiagram
     loop source files
         G->>S: 查 File Spec + Function Specs
         G->>FS: 读取依赖 header
-        G->>L: build_source_prompt()
+        G->>L: build_source_prompt()<br/>main.c 使用 build_main_source_prompt()
         L-->>G: 返回完整 .c 内容
         G->>FS: 写入 .c
     end

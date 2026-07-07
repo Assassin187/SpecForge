@@ -1,0 +1,28 @@
+{
+  "protocol": "mqtt",
+  "schema_version": "spec_ablation_view_set_manifest/v1",
+  "source_root": "specs-example/mqtt_specs",
+  "views": {
+    "s1": {
+      "counts": {
+        "files": 11,
+        "functions": 89,
+        "headers": 10
+      },
+      "root": "s1",
+      "transformation_hash": "ddc17494ff166e62d0421cb37730d90dae858a3072a6811bc234766656ec9280",
+      "transformation_manifest": "s1/transformation_manifest.json"
+    },
+    "s2": {
+      "counts": {
+        "files": 11,
+        "functions": 89,
+        "headers": 10,
+        "project_graphs": 1
+      },
+      "root": "s2",
+      "transformation_hash": "46e1a06296601f98a7c3bda73446dcdb7051350c9709a856280b51ebe96767df",
+      "transformation_manifest": "s2/transformation_manifest.json"
+    }
+  }
+}
