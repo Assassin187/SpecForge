@@ -368,7 +368,7 @@ LLM 参与：
 
 - 5.4c 按 module 补全 behavior/internal dependency contract；默认 batch size 为 `PlanningConfig.module_scoped_batch_sizes["implementation_plan_5_4c"] == 8`：
   - 写入 `behavior_contract`、`error_behavior`、`state_access`、`resource_access`、`internal_type_refs`、`service_requirements`。
-  - `behavior_contract` 显式保存 preconditions、postconditions、idempotent、thread_safety；这些字段由 Coder-Compatible Specs Compilation lowering 为 coder `CONTRACT`。
+  - `behavior_contract` 显式保存 preconditions、postconditions、idempotent、thread_safety；这些字段由 Coder-Compatible Specs Compilation 下沉到 function-level `LOGIC` / `EVENT` 字段。
   - `logic_kind=EVENT` 时必须同时提供完整 `event_contract`；否则 merger/fallback 保守降级为 `LOGIC`。
   - `service_requirements` 按 `external_runtime_service` / `cross_module_service` / `owned_responsibility` 分类；只有跨 module 服务进入 5.4e call contract planning。
   - 不允许修改 signature，也不直接生成 call edge。

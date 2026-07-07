@@ -85,6 +85,8 @@ from agent.planning.stages.implementation_plan_merger import (
 )
 from agent.planning.stages.layout_runtime_mapping import build_layout_runtime_mapping_report, validate_layout_runtime_mapping_report
 from agent.planning.stages.protocol_profile import build_protocol_profile
+from agent.planning.stages.specs_compiler import compile_spec_bundle
+from agent.planning.stages.coder_spec_lowering import lower_event_or_logic_for_coder
 from agent.planning.tests.current_flow_fixtures import (
     current_architecture_candidates,
     current_function_inventory_candidate,
@@ -199,6 +201,64 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
         self.assertIn("type_filling_candidate_prompt", plan_source)
         self.assertIn("function_annotation_candidate_prompt", plan_source)
         self.assertLess(plan_source.index("repair_function_inventory_symbols"), plan_source.index("function_signature_patch_prompt"))
+
+    def test_coder_spec_source_interface_omits_removed_contract_field(self) -> None:
+        function = _inventory_function("mqtt_router_start", "router")
+        function.update(
+            {
+                "file_id": "file:router",
+                "signature": {
+                    "name": "mqtt_router_start",
+                    "return_type": "int",
+                    "params": [{"name": "ctx", "type": "void *"}],
+                    "raw": "int mqtt_router_start(void *ctx)",
+                },
+                "behavior_contract": {
+                    "input": "ctx",
+                    "action": "start router runtime",
+                    "output": "0 on success",
+                    "preconditions": ["ctx is non-null"],
+                    "postconditions": ["router runtime is started on success"],
+                    "invariants_used": ["router ownership remains with caller"],
+                    "idempotent": False,
+                    "thread_safety": "single_thread_only",
+                },
+            }
+        )
+        plan = {
+            "protocol_name": "mqtt",
+            "module_artifacts": [{"module_id": "router", "role": "routing", "files": ["src/router/router.h", "src/router/router.c"], "artifacts": []}],
+            "file_layout": {
+                "files": [
+                    {
+                        "file_id": "file:router",
+                        "module_id": "router",
+                        "header_path": "src/router/router.h",
+                        "source_path": "src/router/router.c",
+                        "responsibility": "router implementation",
+                        "implements_function_ids": [function["function_id"]],
+                    }
+                ]
+            },
+            "function_contracts": [function],
+            "canonical_types": [],
+            "type_inventory": [],
+            "access_path_table": [],
+        }
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            manifest, _ = compile_spec_bundle(plan, Path(raw_tmp))
+            file_spec_path = next(Path(path) for path in manifest["file_spec_paths"] if path.endswith("router_spec.json"))
+            function_spec_path = next(Path(path) for path in manifest["function_spec_paths"] if path.endswith("mqtt_router_start_spec.json"))
+            file_spec = json.loads(file_spec_path.read_text())
+            function_spec = json.loads(function_spec_path.read_text())
+        self.assertTrue(file_spec["SOURCE"]["INTERFACE"])
+        for interface in file_spec["SOURCE"]["INTERFACE"]:
+            self.assertNotIn("CONTRACT", interface)
+        self.assertEqual(function_spec["LOGIC"]["PRECONDITION"], "ctx is non-null")
+        self.assertEqual(function_spec["LOGIC"]["POSTCONDITION"], "router runtime is started on success")
+        self.assertEqual(function_spec["LOGIC"]["THREAD_SAFETY"], "SINGLE_THREAD_ONLY")
+        self.assertFalse(function_spec["LOGIC"]["IDEMPOTENT"])
+        self.assertEqual(function_spec["LOGIC"]["INVARIANTS_USED"], ["router ownership remains with caller"])
 
     def _fixtures(self, tmp: Path):
         facts = ROOT / "agent" / "facts" / "gold_facts" / "mqtt_min" / "protocol_facts.json"
@@ -3867,6 +3927,30 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
         self.assertNotIn("create", {item["action"] for item in inherited_obligations})
         self.assertNotIn("mqtt_encode_*", inherited_names)
 
+        candidate = copy.deepcopy(result["candidate"])
+        candidate["unresolved_questions"] = [
+            {
+                "question_id": "unres:protocol_codec:mqtt_bytes_t_free_func",
+                "target_kind": "function",
+                "target_id": "mqtt_bytes_free",
+                "question": "Is there a defined function to free mqtt_bytes_t buffers?",
+                "unresolved_reason": "No function artifact named mqtt_bytes_free is present in the current or global module artifacts.",
+                "blocking": True,
+                "trace_ref_keys": ["decision:test:owned_buffer"],
+            }
+        ]
+        merged = merge_type_inventory(
+            {"protocol_name": "mqtt", "module_artifacts": [copy.deepcopy(module)], "type_inventory": [], "canonical_types": []},
+            candidate,
+        )
+        merged_module = merged["module_artifacts"][0]
+        function_artifacts = [artifact for artifact in merged_module["artifacts"] if artifact.get("kind") == "FUNC"]
+        self.assertIn("mqtt_bytes_free", {artifact["name"] for artifact in function_artifacts})
+        self.assertFalse(any(item.get("target_id") == "mqtt_bytes_free" for item in merged.get("unresolved_questions", [])))
+        function_space = build_function_planning_space(merged, merged_module)
+        free_seed = next(seed for seed in function_space["mandatory_function_seeds"] if seed["name"] == "mqtt_bytes_free")
+        self.assertEqual(free_seed["function_kind"], "resource_lifecycle")
+
     def test_type_function_reference_reconciliation_removes_dangling_encode_refs(self) -> None:
         type_item = {
             "type_id": "type:protocol_codec:mqtt_protocol_codec",
@@ -5140,6 +5224,14 @@ class ImplementationPlanStageCandidateTests(unittest.TestCase):
         merged_function = merged["function_contracts"][0]
         self.assertEqual(merged_function["logic_kind"], "EVENT")
         self.assertEqual(merged_function["coder_function_type"], "EVENT")
+        function_type, body_key, body = lower_event_or_logic_for_coder(merged_function)
+        self.assertEqual(function_type, "EVENT")
+        self.assertEqual(body_key, "EVENT")
+        self.assertEqual(body["PRECONDITION"], "connection is open; connection fd is readable")
+        self.assertEqual(body["POSTCONDITION"], "input buffer position advances; Error behavior: propagation=return_code; recovery=close_connection; return_policy=status_code")
+        self.assertEqual(body["THREAD_SAFETY"], "SINGLE_THREAD_ONLY")
+        self.assertFalse(body["IDEMPOTENT"])
+        self.assertEqual(body["INVARIANTS_USED"], ["connection fd ownership remains with network module"])
 
         patch_candidate["function_behavior_updates"][0]["contract"]["invariants_used"] = []
         self.assertTrue(_has(validate_function_behavior_contract_patch(patch_candidate, draft, {}), "behavior_missing_invariants"))

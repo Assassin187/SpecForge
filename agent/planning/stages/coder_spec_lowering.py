@@ -527,24 +527,51 @@ def lower_signature_for_coder(function: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _text_items(values: Any, default: str) -> list[dict[str, str]]:
-    items = values if isinstance(values, list) else [values] if str(values or "").strip() else []
-    result = [{"TEXT": str(item)} for item in items if str(item).strip()]
-    return result or [{"TEXT": default}]
+def _behavior_contract(function: dict[str, Any]) -> dict[str, Any]:
+    contract = function.get("behavior_contract")
+    return contract if isinstance(contract, dict) else {}
 
 
-def lower_contract_for_coder(function: dict[str, Any]) -> dict[str, Any]:
-    contract = function.get("behavior_contract", {}) if isinstance(function.get("behavior_contract"), dict) else {}
+def _joined_text(values: Any) -> str:
+    if isinstance(values, list):
+        return "; ".join(str(item).strip() for item in values if str(item).strip())
+    return str(values).strip()
+
+
+def _append_text(base: str, extra: str) -> str:
+    base = str(base).strip()
+    extra = str(extra).strip()
+    if base and extra:
+        return f"{base}; {extra}"
+    return base or extra
+
+
+def _thread_safety(function: dict[str, Any]) -> str:
+    value = str(_behavior_contract(function).get("thread_safety", "single_thread_only")).strip().upper()
+    return value or "SINGLE_THREAD_ONLY"
+
+
+def _postcondition_text(function: dict[str, Any]) -> str:
+    contract = _behavior_contract(function)
+    text = _joined_text(contract.get("postconditions", []))
     error_behavior = str(function.get("error_behavior", "")).strip()
-    postconditions = list(contract.get("postconditions", [])) if isinstance(contract.get("postconditions"), list) else []
     if error_behavior:
-        postconditions.append(f"Error behavior: {error_behavior}")
-    thread_safety = str(contract.get("thread_safety", "single_thread_only")).strip().upper()
+        text = _append_text(text, f"Error behavior: {error_behavior}")
+    return text or "Function preserves the documented module invariants and returns according to its signature."
+
+
+def _invariants_used(function: dict[str, Any]) -> list[str]:
+    values = _behavior_contract(function).get("invariants_used", [])
+    return [str(item) for item in values if str(item).strip()] if isinstance(values, list) else []
+
+
+def _contract_supplement(function: dict[str, Any], *, precondition: str = "") -> dict[str, Any]:
+    contract = _behavior_contract(function)
     return {
-        "PRECONDITION": _text_items(contract.get("preconditions", []), "Inputs must satisfy the function signature contract."),
-        "POSTCONDITION": _text_items(postconditions, "Function preserves the documented module invariants and returns according to its signature."),
+        "PRECONDITION": _append_text(precondition, _joined_text(contract.get("preconditions", []))) or "Inputs must satisfy the function signature contract.",
+        "POSTCONDITION": _postcondition_text(function),
         "IDEMPOTENT": bool(contract.get("idempotent", False)),
-        "THREAD_SAFETY": thread_safety or "SINGLE_THREAD_ONLY",
+        "THREAD_SAFETY": _thread_safety(function),
     }
 
 
@@ -563,9 +590,11 @@ def lower_event_or_logic_for_coder(function: dict[str, Any]) -> tuple[str, str, 
                 "STATE_CHANGE": str(contract.get("state_change", "")),
                 "RESPONSE": str(contract.get("response", "")),
                 "EVENT_TYPE": str(contract.get("event_type", "EVENT")),
+                "INVARIANTS_USED": _invariants_used(function),
+                **_contract_supplement(function, precondition=str(contract.get("precondition", ""))),
             },
         )
-    contract = function.get("behavior_contract", {}) if isinstance(function.get("behavior_contract"), dict) else {}
+    contract = _behavior_contract(function)
     return (
         function_type,
         "LOGIC",
@@ -573,7 +602,8 @@ def lower_event_or_logic_for_coder(function: dict[str, Any]) -> tuple[str, str, 
             "INPUT": str(contract.get("input", "Inputs are the C signature parameters.")),
             "ACTION": str(contract.get("action", function.get("purpose", ""))),
             "OUTPUT": str(contract.get("output", "Result is reflected by return value and documented side effects.")),
-            "INVARIANTS_USED": [str(item) for item in contract.get("invariants_used", [])] if isinstance(contract.get("invariants_used"), list) else [],
+            "INVARIANTS_USED": _invariants_used(function),
+            **_contract_supplement(function),
         },
     )
 

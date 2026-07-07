@@ -16,7 +16,6 @@ from .coder_spec_lowering import (
     is_public_interface_function,
     lower_access_paths_for_coder,
     lower_call_contract_for_coder,
-    lower_contract_for_coder,
     lower_canonical_type_to_header_data,
     lower_doc_ref,
     lower_event_or_logic_for_coder,
@@ -77,7 +76,6 @@ def _source_interface(function: dict[str, Any], trace_id: str, *, public: bool =
         "KIND": "FUNC",
         "FUNCTION_TYPE": normalize_function_type_for_coder(function),
         "ROLE": str(function.get("purpose", "")) or "Implemented function.",
-        "CONTRACT": lower_contract_for_coder(function),
         "VISIBILITY": "public" if public else "private",
     }
 

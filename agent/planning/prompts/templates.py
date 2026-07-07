@@ -132,7 +132,7 @@ STAGE_SEMANTIC_RULES = {
         "For every function, contract.action must be a coder-facing imperative summary of what the C function does, not a restatement of the function name.",
         "Every non-trivial contract.action must bind to at least one declared implementation object through state_access, resource_access, internal_type_refs, service_requirements, error_behavior.error_ids, signature params, or explicit refs such as field:<field_id>, state:<state_id>, access:<path>, fn:<function_id>, type:<type_id>, or error:<error_id>.",
         "If an action needs a field, helper, source data object, or cross-module service that is not declared in the scoped context, record it as an unresolved question or service_requirement instead of inventing prose-only behavior.",
-        "For exported=true or api_surface=public functions, contract.input, contract.action, contract.output, thread_safety, invariants_used, and error propagation/return policy must be complete enough for coder-facing SOURCE.INTERFACE and FUNCTION_SPEC lowering.",
+        "For exported=true or api_surface=public functions, contract.input, contract.action, contract.output, thread_safety, invariants_used, and error propagation/return policy must be complete enough for coder-facing FUNCTION_SPEC lowering.",
         "The current batch function signatures are complete context; use return types and parameters to derive contract.input, contract.output, failure paths, and resource/state effects.",
         "Do not emit behavior updates for non-batch functions.",
         "service_requirements may describe needed operations/capabilities but must not contain callee_function_id.",

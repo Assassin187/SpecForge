@@ -683,6 +683,58 @@ def _canonical_fields(fields: list[dict[str, Any]]) -> list[dict[str, Any]]:
     ]
 
 
+def _type_owns_releasable_data(type_item: dict[str, Any]) -> bool:
+    if str(type_item.get("kind", "")) in {"owned_buffer", "result_struct"}:
+        return True
+    for field in type_item.get("fields", []):
+        if not isinstance(field, dict):
+            continue
+        field_type = str(field.get("field_type", "")).lower()
+        if ("*" in field_type or "buffer" in field_type or "string" in field_type) and str(field.get("ownership", "")).upper() in {"OWNED", "TRANSFER"}:
+            return True
+    return False
+
+
+def _ensure_type_lifecycle_function_artifacts(plan: dict[str, Any]) -> None:
+    modules = {
+        str(module.get("module_id", "")): module
+        for module in plan.get("module_artifacts", [])
+        if isinstance(module, dict)
+    }
+    for type_item in plan.get("type_inventory", []):
+        if not isinstance(type_item, dict) or not _type_owns_releasable_data(type_item):
+            continue
+        module = modules.get(str(type_item.get("module_id", "")))
+        if module is None:
+            continue
+        module_caps = {str(cap) for cap in module.get("owned_capabilities", [])}
+        module_text = " ".join(str(module.get(key, "")) for key in ("module_id", "name", "role", "purpose")).lower()
+        if not (
+            module_caps & {"message_decode", "message_encode", "canonical_type_ownership"}
+            or any(word in module_text for word in ("codec", "decoder", "encoder", "serializer", "packet", "message"))
+        ):
+            continue
+        artifacts = module.setdefault("artifacts", [])
+        if not isinstance(artifacts, list):
+            artifacts = []
+            module["artifacts"] = artifacts
+        existing = {str(artifact.get("name", "")) for artifact in artifacts if isinstance(artifact, dict)}
+        lifecycle = type_item.get("lifecycle", {}) if isinstance(type_item.get("lifecycle"), dict) else {}
+        visibility = "public" if str(type_item.get("visibility", "")) == "public" else "internal"
+        for name in [str(item).strip() for key in ("freed_by", "destroyed_by") for item in lifecycle.get(key, [])]:
+            if not name or name in existing or not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", name):
+                continue
+            artifacts.append(
+                {
+                    "name": name,
+                    "kind": "FUNC",
+                    "role": f"Release owned data for {type_item.get('name', type_item.get('type_id', 'type'))}.",
+                    "visibility": visibility,
+                }
+            )
+            existing.add(name)
+
+
 def _is_opaque_backing_pair(left: dict[str, Any], right: dict[str, Any]) -> bool:
     kinds = {str(left.get("kind", "")), str(right.get("kind", ""))}
     if "opaque_handle" not in kinds or not kinds & {"internal_state", "struct"}:
@@ -738,7 +790,23 @@ def merge_type_inventory(draft: dict[str, Any], candidate: dict[str, Any]) -> di
                 }
             )
             existing_canonical_ids.add(type_id)
-    result.setdefault("unresolved_questions", []).extend(candidate.get("unresolved_questions", []))
+    _ensure_type_lifecycle_function_artifacts(result)
+    function_names = {
+        str(artifact.get("name", "")).strip()
+        for module in result.get("module_artifacts", [])
+        if isinstance(module, dict)
+        for artifact in module.get("artifacts", [])
+        if isinstance(artifact, dict) and str(artifact.get("kind", "")).upper() == "FUNC" and str(artifact.get("name", "")).strip()
+    }
+    result.setdefault("unresolved_questions", []).extend(
+        question
+        for question in candidate.get("unresolved_questions", [])
+        if not (
+            isinstance(question, dict)
+            and str(question.get("target_kind", "")) == "function"
+            and str(question.get("target_id", "")).strip() in function_names
+        )
+    )
     result.setdefault("accepted_stage_artifacts", []).append("5.3_type_data")
     return result
 

@@ -957,6 +957,8 @@ def build_type_planning_space(
 def _artifact_function_kind(name: str) -> tuple[str, str, str]:
     if name == "main":
         return "public_api", "ENTRYPOINT", "runtime_entrypoint"
+    if name.endswith(("_free", "_cleanup", "_release", "_close", "_deinit")):
+        return "resource_lifecycle", "ALGORITHM", "module_boundary_operation"
     if name.endswith(("_create", "_destroy", "_start", "_run", "_serve", "_stop")):
         role = "runtime_run" if name.endswith(("_run", "_serve")) else f"runtime_{name.rsplit('_', 1)[-1]}"
         return "resource_lifecycle", "ALGORITHM", role
@@ -1424,6 +1426,8 @@ def build_function_planning_space(
         if not name:
             continue
         kind, coder_type, public_role = _artifact_function_kind(name)
+        artifact_visibility = str(artifact.get("visibility", "public")).lower()
+        exported = artifact_visibility == "public"
         mandatory.append(
             _function_seed(
                 module_id=module_id,
@@ -1435,8 +1439,10 @@ def build_function_planning_space(
                 coder_function_type=coder_type,
                 purpose=str(artifact.get("role", "")) or f"Mandatory FUNC artifact {name}.",
                 capability_ids=owned_caps[:1],
-                exported=True,
-                public_api_role=public_role,
+                exported=exported,
+                public_api_role=public_role if exported else "",
+                visibility="public" if exported else "internal",
+                api_surface="public" if exported else "module_internal",
                 trace_ref_keys=_trace(module_artifact.get("source_fact_ids", []), artifact.get("doc_ref", []), _decision_ref("function_slot", module_id, "module_artifact", name)),
             )
         )
@@ -1450,9 +1456,13 @@ def build_function_planning_space(
         mandatory,
         owned_caps,
     )
+    mandatory_names = {str(seed.get("name", "")) for seed in mandatory}
     for obligation in derive_type_obligations(draft, module_artifact):
         names = [str(name) for name in obligation.get("required_function_names", []) if str(name).strip()]
         if not names:
+            continue
+        name = _obligation_function_name(protocol, module_id, obligation, names[0])
+        if name in mandatory_names:
             continue
         exported = str(obligation.get("visibility_hint", "")) == "public"
         kind = str(obligation.get("required_function_kind", "resource_lifecycle")) or "resource_lifecycle"
@@ -1462,7 +1472,7 @@ def build_function_planning_space(
                 seed_class="obligation",
                 source_kind="type_obligation",
                 source_id=str(obligation.get("obligation_id", "")),
-                name=_obligation_function_name(protocol, module_id, obligation, names[0]),
+                name=name,
                 function_kind=kind,
                 purpose=f"Satisfy type obligation {obligation.get('obligation_id')}: {obligation.get('reason')}",
                 capability_ids=owned_caps[:1],
