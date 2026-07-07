@@ -1,0 +1,23 @@
+#include <stdbool.h>
+
+typedef enum smtp_command_kind {
+    SMTP_CMD_HELO,
+    SMTP_CMD_EHLO,
+    SMTP_CMD_MAIL,
+    SMTP_CMD_RCPT,
+    SMTP_CMD_DATA,
+    SMTP_CMD_RSET,
+    SMTP_CMD_NOOP,
+    SMTP_CMD_QUIT,
+    SMTP_CMD_AUTH,
+    SMTP_CMD_VRFY,
+    SMTP_CMD_UNKNOWN,
+} smtp_command_kind_t;
+typedef struct smtp_command {
+    smtp_command_kind_t kind;
+    char arg[1024];
+    bool has_arg;
+} smtp_command_t;
+
+int smtp_command_parse(const char* line, smtp_command_t* out);
+const char* smtp_command_name(smtp_command_kind_t kind);

@@ -39,6 +39,7 @@ class ViewGeneratorTests(unittest.TestCase):
         transform_protocol("mqtt", cls.root / "mqtt", overwrite=True)
         cls.context = load_ablation_view_context(cls.root / "mqtt", view_name="s1")
         cls.s2_context = load_ablation_view_context(cls.root / "mqtt", view_name="s2")
+        cls.s3_context = load_ablation_view_context(cls.root / "mqtt", view_name="s3")
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -52,6 +53,7 @@ class ViewGeneratorTests(unittest.TestCase):
         self.assertEqual(len(self.context.function_blocks_by_trace), 89)
         self.assertEqual(len(self.context.headers_by_path), 10)
         self.assertIsNone(self.context.project_graph)
+        self.assertIsNone(self.context.interface_grounding)
 
     def test_specfs_projection_directory_can_be_used_as_view_root(self) -> None:
         context = load_ablation_view_context(self.root / "mqtt" / "s1" / "specfs_projection", view_name="s1")
@@ -111,6 +113,7 @@ class ViewGeneratorTests(unittest.TestCase):
     def test_s2_validate_loads_project_graph_without_falling_back_to_s1(self) -> None:
         self.assertEqual(self.s2_context.view_root, (self.root / "mqtt" / "s2").resolve())
         self.assertIsNotNone(self.s2_context.project_graph)
+        self.assertIsNone(self.s2_context.interface_grounding)
         self.assertEqual(self.s2_context.transformation_manifest["view"], "s2")
         self.assertIn("project_graph", self.s2_context.transformation_manifest["artifacts"])
 
@@ -119,6 +122,20 @@ class ViewGeneratorTests(unittest.TestCase):
             code = view_generator_main(["--view", "s2", "--view-root", str(self.root / "mqtt"), "validate"])
         self.assertEqual(code, 0)
         self.assertIn('"view": "s2"', stdout.getvalue())
+
+    def test_s3_validate_loads_project_graph_and_interface_grounding(self) -> None:
+        self.assertEqual(self.s3_context.view_root, (self.root / "mqtt" / "s3").resolve())
+        self.assertIsNotNone(self.s3_context.project_graph)
+        self.assertIsNotNone(self.s3_context.interface_grounding)
+        self.assertEqual(self.s3_context.transformation_manifest["view"], "s3")
+        self.assertIn("project_graph", self.s3_context.transformation_manifest["artifacts"])
+        self.assertIn("interface_grounding", self.s3_context.transformation_manifest["artifacts"])
+
+        stdout = io.StringIO()
+        with contextlib.redirect_stdout(stdout):
+            code = view_generator_main(["--view", "s3", "--view-root", str(self.root / "mqtt"), "validate"])
+        self.assertEqual(code, 0)
+        self.assertIn('"view": "s3"', stdout.getvalue())
 
     def test_s2_source_prompt_includes_project_graph_without_full_fields(self) -> None:
         file_spec = self.s2_context.source_bundle.file_specs_by_source_path["protocol/mqtt_decoder.c"]
@@ -162,11 +179,59 @@ class ViewGeneratorTests(unittest.TestCase):
         for term in prompt_forbidden_terms("s2"):
             self.assertNotIn(term, payload)
 
+    def test_s3_source_prompt_includes_graph_and_interface_grounding(self) -> None:
+        file_spec = self.s3_context.source_bundle.file_specs_by_source_path["protocol/mqtt_decoder.c"]
+        builder = ViewPromptBuilder(self.s3_context)
+        messages = builder.build_source_prompt(self.s3_context.source_bundle, self.s3_context.source_bundle.modules_in_order[0], file_spec, [], "/* canonical */", {})
+        payload = json.dumps(messages, ensure_ascii=False)
+
+        self.assertIn("Generate the full C source file `protocol/mqtt_decoder.c`", payload)
+        self.assertIn("S2 project graph context:", payload)
+        self.assertIn("S3 FILE interface grounding:", payload)
+        self.assertIn("HEADER.DATA.TYPE_SPEC", payload)
+        self.assertIn("HEADER.INTERFACE", payload)
+        self.assertIn("SOURCE.INTERFACE", payload)
+        self.assertIn("mqtt_connect_payload_t", payload)
+        self.assertIn("client_id", payload)
+        self.assertIn("keep_alive", payload)
+        self.assertIn("clean_session", payload)
+        self.assertIn("try_parse_remaining_length", payload)
+        for term in prompt_forbidden_terms("s3"):
+            self.assertNotIn(term, payload)
+
+    def test_s3_repair_prompt_has_graph_grounding_diagnostics_and_current_source(self) -> None:
+        file_spec = self.s3_context.source_bundle.file_specs_by_source_path["protocol/mqtt_decoder.c"]
+        builder = ViewPromptBuilder(self.s3_context)
+        messages = builder.build_repair_prompt(
+            self.s3_context.source_bundle,
+            self.s3_context.source_bundle.modules_in_order[0],
+            file_spec,
+            "protocol/mqtt_decoder.c",
+            "/* canonical */",
+            "int broken;",
+            "protocol/mqtt_decoder.c:1:1: error: broken",
+            {},
+        )
+        payload = json.dumps(messages, ensure_ascii=False)
+        self.assertIn("error: broken", payload)
+        self.assertIn("int broken;", payload)
+        self.assertIn("S2 project graph context:", payload)
+        self.assertIn("S3 FILE interface grounding:", payload)
+        self.assertIn("try_parse_remaining_length", payload)
+        self.assertIn("Do not edit headers, Makefile, or any other source file.", payload)
+        for term in prompt_forbidden_terms("s3"):
+            self.assertNotIn(term, payload)
+
     def test_fake_generation_uses_view_prompt_builder_and_writes_audit(self) -> None:
         from agent.coder.generation import ProjectGenerator
         from evaluation.spec_ablation.view_generator import PromptAudit
 
-        for context in (self.context, self.s2_context):
+        expected_boundaries = {
+            "s1": "s1_local_specfs",
+            "s2": "s2_project_graph_specfs",
+            "s3": "s3_interface_grounded_specfs",
+        }
+        for context in (self.context, self.s2_context, self.s3_context):
             with self.subTest(view=context.view_name), tempfile.TemporaryDirectory() as raw_tmp:
                 output_dir = Path(raw_tmp) / "out"
                 builder = ViewPromptBuilder(context)
@@ -189,8 +254,7 @@ class ViewGeneratorTests(unittest.TestCase):
                 audit_payload = json.loads(audit.path.read_text(encoding="utf-8"))
                 self.assertGreaterEqual(len(audit_payload), 1)
                 self.assertTrue(all(item["leakage_scan"]["status"] == "passed" for item in audit_payload))
-                expected_boundary = "s1_local_specfs" if context.view_name == "s1" else "s2_project_graph_specfs"
-                self.assertTrue(all(item["visible_boundary"] == expected_boundary for item in audit_payload))
+                self.assertTrue(all(item["visible_boundary"] == expected_boundaries[context.view_name] for item in audit_payload))
 
 
 if __name__ == "__main__":

@@ -1,0 +1,4 @@
+#include <stddef.h>
+
+int smtp_response_format(char* out, size_t out_len, int code, const char* text);
+int smtp_response_format_ehlo_caps(char* out, size_t out_len, const char* hostname, size_t max_size);

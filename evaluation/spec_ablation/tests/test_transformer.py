@@ -10,6 +10,7 @@ from evaluation.spec_ablation.configs import PROTOCOL_ORDER
 from evaluation.spec_ablation.transformer import (
     FORBIDDEN_VISIBLE_TERMS,
     S2_PROJECT_GRAPH_FORBIDDEN_TERMS,
+    S3_INTERFACE_GROUNDING_FORBIDDEN_TERMS,
     transform_many,
     transform_protocol,
 )
@@ -62,8 +63,8 @@ class TransformerTests(unittest.TestCase):
         for protocol in PROTOCOL_ORDER:
             with self.subTest(protocol=protocol):
                 index = _read_json(self.root / protocol / "view_set_manifest.json")
-                self.assertEqual(set(index["views"]), {"s1", "s2"})
-                for view in ("s1", "s2"):
+                self.assertEqual(set(index["views"]), {"s1", "s2", "s3"})
+                for view in ("s1", "s2", "s3"):
                     manifest = self._manifest(protocol, view)
                     self.assertEqual(manifest["view"], view)
                     self.assertEqual(manifest["validation"]["source_loader"]["status"], "passed")
@@ -78,6 +79,18 @@ class TransformerTests(unittest.TestCase):
                 self.assertEqual(self._manifest(protocol, "s2")["counts"]["project_graphs"], 1)
                 self.assertEqual(
                     self._manifest(protocol, "s2")["validation"]["s2_project_graph_leakage_scan"]["status"],
+                    "passed",
+                )
+                self.assertEqual(self._manifest(protocol, "s3")["counts"]["project_graphs"], 1)
+                self.assertEqual(self._manifest(protocol, "s3")["counts"]["interface_groundings"], 1)
+                self.assertIn("project_graph", self._manifest(protocol, "s3")["artifacts"])
+                self.assertIn("interface_grounding", self._manifest(protocol, "s3")["artifacts"])
+                self.assertEqual(
+                    self._manifest(protocol, "s3")["validation"]["s2_project_graph_leakage_scan"]["status"],
+                    "passed",
+                )
+                self.assertEqual(
+                    self._manifest(protocol, "s3")["validation"]["s3_interface_grounding_leakage_scan"]["status"],
                     "passed",
                 )
 
@@ -104,10 +117,47 @@ class TransformerTests(unittest.TestCase):
                 for term in S2_PROJECT_GRAPH_FORBIDDEN_TERMS:
                     self.assertNotIn(term, text)
 
+    def test_s3_interface_grounding_exposes_only_type_and_interface_fields(self) -> None:
+        manifest = self._manifest("mqtt", "s3")
+        artifact = manifest["artifacts"]["interface_grounding"]
+        path = self.root / "mqtt" / "s3" / artifact["artifact_path"]
+        grounding = _read_json(path)
+        text = path.read_text(encoding="utf-8")
+
+        self.assertEqual(grounding["visibility"], "s3_coder_visible_interface_grounding")
+        self.assertGreater(len(grounding["files"]), 0)
+        for term in S3_INTERFACE_GROUNDING_FORBIDDEN_TERMS:
+            self.assertNotIn(term, text)
+
+        type_specs = {
+            item["name"]: item
+            for file_item in grounding["files"]
+            for item in file_item.get("header_type_specs", [])
+        }
+        connect_payload = type_specs["mqtt_connect_payload_t"]
+        fields = {item["NAME"] for item in connect_payload["type_spec"]["FIELDS"]}
+        self.assertEqual(fields, {"client_id", "keep_alive", "clean_session"})
+        self.assertNotIn("will_topic", fields)
+        self.assertNotIn("username", fields)
+
+        signatures = {
+            item["name"]: item["signature"]
+            for file_item in grounding["files"]
+            for item in [*file_item.get("header_interfaces", []), *file_item.get("source_interfaces", [])]
+        }
+        self.assertEqual(
+            signatures["mqtt_tcp_server_create"],
+            "mqtt_tcp_server_t* mqtt_tcp_server_create(uint16_t port, mqtt_tcp_callbacks_t cb, void* user)",
+        )
+        self.assertEqual(
+            signatures["try_parse_remaining_length"],
+            "static bool try_parse_remaining_length(const uint8_t* buf, size_t buf_len, size_t start, remaining_length_t* out)",
+        )
+
     def test_function_artifacts_have_only_s1_sections_and_no_forbidden_terms(self) -> None:
         expected_tags = ["[PROMPT]", "[RELY]", "[GUARANTEE]", "[SPECIFICATION]"]
         for protocol in PROTOCOL_ORDER:
-            for view in ("s1", "s2"):
+            for view in ("s1", "s2", "s3"):
                 for path in (self.root / protocol / view / "specfs_projection" / "functions").rglob("*.spec"):
                     with self.subTest(protocol=protocol, view=view, path=path.name):
                         data = path.read_bytes()
@@ -120,7 +170,7 @@ class TransformerTests(unittest.TestCase):
 
     def test_header_artifacts_expose_declarations_without_specforge_fields(self) -> None:
         for protocol in PROTOCOL_ORDER:
-            for view in ("s1", "s2"):
+            for view in ("s1", "s2", "s3"):
                 for path in (self.root / protocol / view / "specfs_projection" / "headers").rglob("*.header"):
                     with self.subTest(protocol=protocol, view=view, path=path.name):
                         text = path.read_text(encoding="utf-8")
@@ -133,7 +183,7 @@ class TransformerTests(unittest.TestCase):
     def test_rely_declarations_do_not_render_duplicate_type_tags(self) -> None:
         pattern = r"typedef\s+(struct|union|enum)\s+(struct|union|enum)\b"
         for protocol in PROTOCOL_ORDER:
-            for view in ("s1", "s2"):
+            for view in ("s1", "s2", "s3"):
                 for path in (self.root / protocol / view / "specfs_projection" / "functions").rglob("*.spec"):
                     with self.subTest(protocol=protocol, view=view, path=path.name):
                         self.assertNotRegex(path.read_text(encoding="utf-8"), pattern)
@@ -152,7 +202,7 @@ class TransformerTests(unittest.TestCase):
 
     def test_execution_manifest_is_hidden_control_artifact(self) -> None:
         for protocol in PROTOCOL_ORDER:
-            for view in ("s1", "s2"):
+            for view in ("s1", "s2", "s3"):
                 with self.subTest(protocol=protocol, view=view):
                     manifest = _read_json(self.root / protocol / view / "execution_manifest.json")
                     self.assertEqual(manifest["view"], view)
@@ -178,6 +228,7 @@ class TransformerTests(unittest.TestCase):
             second = transform_protocol("mqtt", target, overwrite=True)
             self.assertEqual(first["views"]["s1"]["counts"], second["views"]["s1"]["counts"])
             self.assertEqual(first["views"]["s2"]["counts"], second["views"]["s2"]["counts"])
+            self.assertEqual(first["views"]["s3"]["counts"], second["views"]["s3"]["counts"])
 
 
 if __name__ == "__main__":

@@ -1,0 +1,1073 @@
+{
+  "files": [
+    {
+      "file_trace_id": "http/network/connection",
+      "header_interfaces": [
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "http_connection_create",
+          "role": "为已建立的 socket fd 创建连接对象并初始化缓冲区与队列状态",
+          "signature": "http_connection_t* http_connection_create(int fd)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "http_connection_destroy",
+          "role": "销毁连接对象并释放输入/输出缓冲区",
+          "signature": "void http_connection_destroy(http_connection_t* conn)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "http_connection_fd",
+          "role": "读取连接当前 fd；无效时返回 -1",
+          "signature": "int http_connection_fd(const http_connection_t* conn)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "http_connection_read",
+          "role": "非阻塞循环 recv 读取 socket 数据追加到输入缓冲，返回总读取字节数；EAGAIN 时若无已读数据返回 -2，错误返回 -1",
+          "signature": "int http_connection_read(http_connection_t* conn)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "http_connection_pop_line",
+          "role": "从输入缓冲提取一行（以 \\n 分隔，去除尾部 \\r），返回动态分配字符串；行不完整时返回 NULL，调用方负责 free",
+          "signature": "char* http_connection_pop_line(http_connection_t* conn)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "http_connection_pop_bytes",
+          "role": "从输入缓冲提取指定长度字节，返回动态分配缓冲区；数据不足时返回 NULL，调用方负责 free",
+          "signature": "char* http_connection_pop_bytes(http_connection_t* conn, size_t len)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "http_connection_buffered",
+          "role": "返回输入缓冲当前可读字节数；空指针返回 0",
+          "signature": "size_t http_connection_buffered(const http_connection_t* conn)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "http_connection_queue",
+          "role": "将原始字节追加到输出缓冲；len==0 时直接返回 0，失败返回 -1",
+          "signature": "int http_connection_queue(http_connection_t* conn, const void* data, size_t len)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "http_connection_queue_str",
+          "role": "将 C 字符串（通过 strlen 计算长度）委托 http_connection_queue 追加到输出缓冲",
+          "signature": "int http_connection_queue_str(http_connection_t* conn, const char* text)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "http_connection_flush",
+          "role": "非阻塞 send 刷写输出缓冲；返回 0=全部发送, 1=部分发送需重试 EPOLLOUT, -1=错误",
+          "signature": "int http_connection_flush(http_connection_t* conn)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "http_connection_has_pending",
+          "role": "判断 out_off < out_len 即存在待发送数据；空指针返回 false",
+          "signature": "bool http_connection_has_pending(const http_connection_t* conn)",
+          "visibility": "public"
+        }
+      ],
+      "header_path": "network/connection.h",
+      "header_type_specs": [],
+      "source_interfaces": [
+        {
+          "kind": "FUNC",
+          "name": "http_connection_create",
+          "role": "为已建立的 socket fd 分配并初始化连接对象，设置 fd、清零缓冲字段",
+          "signature": "http_connection_t* http_connection_create(int fd)",
+          "trace_id": "http/network/connection/http_connection_create",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "http_connection_destroy",
+          "role": "释放连接对象的输入/输出缓冲区并释放连接对象自身；空指针安全返回",
+          "signature": "void http_connection_destroy(http_connection_t* conn)",
+          "trace_id": "http/network/connection/http_connection_destroy",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "http_connection_fd",
+          "role": "返回连接的 socket fd；空指针或无效连接返回 -1",
+          "signature": "int http_connection_fd(const http_connection_t* conn)",
+          "trace_id": "http/network/connection/http_connection_fd",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "http_connection_read",
+          "role": "非阻塞循环 recv 读取 socket 数据并追加到输入缓冲；正确处理 EAGAIN/EINTR/对端关闭",
+          "signature": "int http_connection_read(http_connection_t* conn)",
+          "trace_id": "http/network/connection/http_connection_read",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "http_connection_pop_line",
+          "role": "从输入缓冲提取以 \\n 分隔的一行，去除尾部 \\r，动态分配返回；行不完整返回 NULL",
+          "signature": "char* http_connection_pop_line(http_connection_t* conn)",
+          "trace_id": "http/network/connection/http_connection_pop_line",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "http_connection_pop_bytes",
+          "role": "从输入缓冲提取指定长度的字节，动态分配返回；数据不足返回 NULL",
+          "signature": "char* http_connection_pop_bytes(http_connection_t* conn, size_t len)",
+          "trace_id": "http/network/connection/http_connection_pop_bytes",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "http_connection_buffered",
+          "role": "返回输入缓冲当前可读字节数；空指针返回 0",
+          "signature": "size_t http_connection_buffered(const http_connection_t* conn)",
+          "trace_id": "http/network/connection/http_connection_buffered",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "http_connection_queue",
+          "role": "将原始字节追加到输出缓冲队列；自动扩容",
+          "signature": "int http_connection_queue(http_connection_t* conn, const void* data, size_t len)",
+          "trace_id": "http/network/connection/http_connection_queue",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "http_connection_queue_str",
+          "role": "将 C 字符串通过 strlen 计算长度后委托 http_connection_queue 追加到输出缓冲",
+          "signature": "int http_connection_queue_str(http_connection_t* conn, const char* text)",
+          "trace_id": "http/network/connection/http_connection_queue_str",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "http_connection_flush",
+          "role": "非阻塞 send 刷写输出缓冲；全部发送返回 0，部分发送返回 1 通知上层注册 EPOLLOUT",
+          "signature": "int http_connection_flush(http_connection_t* conn)",
+          "trace_id": "http/network/connection/http_connection_flush",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "http_connection_has_pending",
+          "role": "判断连接是否存在待发送数据（out_off < out_len）",
+          "signature": "bool http_connection_has_pending(const http_connection_t* conn)",
+          "trace_id": "http/network/connection/http_connection_has_pending",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "ensure_cap",
+          "role": "缓冲扩容函数：从 4096 起倍增直到满足 needed 字节需求",
+          "signature": "static int ensure_cap(uint8_t** buf, size_t* cap, size_t needed)",
+          "trace_id": "http/network/connection/ensure_cap",
+          "visibility": "private"
+        }
+      ],
+      "source_path": "network/connection.c"
+    },
+    {
+      "file_trace_id": "http/network/tcp_server",
+      "header_interfaces": [
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "http_tcp_server_create",
+          "role": "分配 TCP server 对象，保存端口、回调与 user 指针，初始化 listen_fd/epoll_fd 为 -1",
+          "signature": "http_tcp_server_t* http_tcp_server_create(uint16_t port, http_tcp_callbacks_t callbacks, void* user)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "http_tcp_server_start",
+          "role": "创建非阻塞监听 socket、bind 端口、SO_REUSEADDR、创建 epoll 实例并注册监听 fd 的 EPOLLIN",
+          "signature": "int http_tcp_server_start(http_tcp_server_t* server)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "http_tcp_server_run",
+          "role": "运行 epoll 事件循环：epoll_wait 1s 超时，分派 listen_fd→accept_loop、client EPOLLIN/EPOLLOUT→on_event、EPOLLERR/HUP/RDHUP→close_client",
+          "signature": "int http_tcp_server_run(http_tcp_server_t* server)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "http_tcp_server_stop",
+          "role": "置 running=false 通知事件循环退出；空指针安全",
+          "signature": "void http_tcp_server_stop(http_tcp_server_t* server)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "http_tcp_server_destroy",
+          "role": "遍历关闭所有客户端连接、关闭 listen_fd 与 epoll_fd、释放 server；空指针安全",
+          "signature": "void http_tcp_server_destroy(http_tcp_server_t* server)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "http_tcp_server_update_interest",
+          "role": "更新 fd 的 epoll 监听事件：基础 EPOLLIN|EPOLLRDHUP，want_write 时追加 EPOLLOUT",
+          "signature": "int http_tcp_server_update_interest(http_tcp_server_t* server, int fd, bool want_write)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "http_tcp_server_close_client",
+          "role": "从 epoll 删除 fd、close socket、从客户端链表删除节点并触发 on_close 回调",
+          "signature": "int http_tcp_server_close_client(http_tcp_server_t* server, int fd)",
+          "visibility": "public"
+        }
+      ],
+      "header_path": "network/tcp_server.h",
+      "header_type_specs": [
+        {
+          "canonical_declaration": "typedef struct http_tcp_server http_tcp_server_t;",
+          "name": "http_tcp_server_t",
+          "role": "TCP server 不透明句柄，封装监听端口、epoll 句柄、运行标志与客户端连接链表",
+          "type_spec": {
+            "TYPE_KIND": "OPAQUE"
+          },
+          "visibility": "PUBLIC"
+        },
+        {
+          "canonical_declaration": "typedef void (*http_tcp_on_accept_fn)(void* user, int fd, const struct sockaddr_storage* peer, socklen_t peer_len);",
+          "name": "http_tcp_on_accept_fn",
+          "role": "新连接建立回调类型，通知上层创建会话与注册状态",
+          "type_spec": {
+            "CALLBACK_SIGNATURE": "void (*http_tcp_on_accept_fn)(void* user, int fd, const struct sockaddr_storage* peer, socklen_t peer_len)",
+            "TYPE_KIND": "CALLBACK"
+          },
+          "visibility": "PUBLIC"
+        },
+        {
+          "canonical_declaration": "typedef void (*http_tcp_on_event_fn)(void* user, int fd, uint32_t events);",
+          "name": "http_tcp_on_event_fn",
+          "role": "连接事件回调类型，通知上层 fd 的 EPOLLIN/EPOLLOUT 事件",
+          "type_spec": {
+            "CALLBACK_SIGNATURE": "void (*http_tcp_on_event_fn)(void* user, int fd, uint32_t events)",
+            "TYPE_KIND": "CALLBACK"
+          },
+          "visibility": "PUBLIC"
+        },
+        {
+          "canonical_declaration": "typedef void (*http_tcp_on_close_fn)(void* user, int fd);",
+          "name": "http_tcp_on_close_fn",
+          "role": "连接关闭回调类型，通知上层回收会话与路由关系",
+          "type_spec": {
+            "CALLBACK_SIGNATURE": "void (*http_tcp_on_close_fn)(void* user, int fd)",
+            "TYPE_KIND": "CALLBACK"
+          },
+          "visibility": "PUBLIC"
+        },
+        {
+          "canonical_declaration": "typedef struct http_tcp_callbacks {\n    http_tcp_on_accept_fn on_accept;\n    http_tcp_on_event_fn on_event;\n    http_tcp_on_close_fn on_close;\n} http_tcp_callbacks_t;",
+          "name": "http_tcp_callbacks_t",
+          "role": "TCP server 回调集合结构，包含 on_accept、on_event、on_close 三个事件回调",
+          "type_spec": {
+            "FIELDS": [
+              {
+                "NAME": "on_accept",
+                "ROLE": "新连接建立回调",
+                "TYPE": "http_tcp_on_accept_fn"
+              },
+              {
+                "NAME": "on_event",
+                "ROLE": "连接事件回调（EPOLLIN/EPOLLOUT）",
+                "TYPE": "http_tcp_on_event_fn"
+              },
+              {
+                "NAME": "on_close",
+                "ROLE": "连接关闭回调",
+                "TYPE": "http_tcp_on_close_fn"
+              }
+            ],
+            "TYPE_KIND": "STRUCT"
+          },
+          "visibility": "PUBLIC"
+        }
+      ],
+      "source_interfaces": [
+        {
+          "kind": "FUNC",
+          "name": "http_tcp_server_create",
+          "role": "calloc 分配 TCP server 对象，保存端口、回调、user 指针，初始化 listen_fd/epoll_fd 为 -1",
+          "signature": "http_tcp_server_t* http_tcp_server_create(uint16_t port, http_tcp_callbacks_t callbacks, void* user)",
+          "trace_id": "http/network/tcp_server/http_tcp_server_create",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "http_tcp_server_start",
+          "role": "创建监听 socket→epoll_create1→注册 listen_fd 的 EPOLLIN",
+          "signature": "int http_tcp_server_start(http_tcp_server_t* server)",
+          "trace_id": "http/network/tcp_server/http_tcp_server_start",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "http_tcp_server_run",
+          "role": "运行 epoll 事件循环：epoll_wait 1s 超时，分派 accept/read/write/close 事件",
+          "signature": "int http_tcp_server_run(http_tcp_server_t* server)",
+          "trace_id": "http/network/tcp_server/http_tcp_server_run",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "http_tcp_server_stop",
+          "role": "置 running=false 通知事件循环退出；空指针安全",
+          "signature": "void http_tcp_server_stop(http_tcp_server_t* server)",
+          "trace_id": "http/network/tcp_server/http_tcp_server_stop",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "http_tcp_server_destroy",
+          "role": "关闭所有客户端连接、关闭 listen_fd 与 epoll_fd、释放 server；空指针安全",
+          "signature": "void http_tcp_server_destroy(http_tcp_server_t* server)",
+          "trace_id": "http/network/tcp_server/http_tcp_server_destroy",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "http_tcp_server_update_interest",
+          "role": "更新 fd 的 epoll 监听事件（基础 EPOLLIN|EPOLLRDHUP，按需追加 EPOLLOUT）",
+          "signature": "int http_tcp_server_update_interest(http_tcp_server_t* server, int fd, bool want_write)",
+          "trace_id": "http/network/tcp_server/http_tcp_server_update_interest",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "http_tcp_server_close_client",
+          "role": "从 epoll 删除 fd、close socket、从链表删除节点并触发 on_close 回调",
+          "signature": "int http_tcp_server_close_client(http_tcp_server_t* server, int fd)",
+          "trace_id": "http/network/tcp_server/http_tcp_server_close_client",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "set_nonblocking",
+          "role": "通过 fcntl F_GETFL/F_SETFL 为 fd 设置 O_NONBLOCK 标志",
+          "signature": "static bool set_nonblocking(int fd)",
+          "trace_id": "http/network/tcp_server/set_nonblocking",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "find_client",
+          "role": "在 TCP server 的客户端单向链表中按 fd 查找节点",
+          "signature": "static http_client_node_t* find_client(http_tcp_server_t* server, int fd)",
+          "trace_id": "http/network/tcp_server/find_client",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "add_client",
+          "role": "为已 accept 的 fd 分配客户端节点并注册到 epoll（EPOLLIN|EPOLLRDHUP）",
+          "signature": "static int add_client(http_tcp_server_t* server, int fd)",
+          "trace_id": "http/network/tcp_server/add_client",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "remove_client_node",
+          "role": "从 TCP server 客户端链表中按 fd 删除并释放节点",
+          "signature": "static void remove_client_node(http_tcp_server_t* server, int fd)",
+          "trace_id": "http/network/tcp_server/remove_client_node",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "setup_listener",
+          "role": "创建非阻塞 IPv4 TCP 监听 socket：socket→SO_REUSEADDR→set_nonblocking→bind→listen(128)",
+          "signature": "static int setup_listener(http_tcp_server_t* server)",
+          "trace_id": "http/network/tcp_server/setup_listener",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "accept_loop",
+          "role": "批量 accept 新连接并完成非阻塞设置、epoll 注册与 on_accept 回调",
+          "signature": "static void accept_loop(http_tcp_server_t* server)",
+          "trace_id": "http/network/tcp_server/accept_loop",
+          "visibility": "private"
+        }
+      ],
+      "source_path": "network/tcp_server.c"
+    },
+    {
+      "file_trace_id": "http/protocol/http_request",
+      "header_interfaces": [
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "http_request_init",
+          "role": "memset 清零整个请求结构体；空指针安全返回",
+          "signature": "void http_request_init(http_request_t* req)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "http_request_free",
+          "role": "释放请求 body 动态内存并复位 body=NULL/body_len=0；空指针安全返回",
+          "signature": "void http_request_free(http_request_t* req)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "http_request_parse",
+          "role": "从连接输入缓冲解析 HTTP/1.1 请求行、头部与正文；返回 0=完成, 1=需要更多数据, -1=解析错误",
+          "signature": "int http_request_parse(http_request_t* req, http_connection_t* conn)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "http_request_header",
+          "role": "按名称索引请求头部值，大小写不敏感匹配（strcasecmp）；未找到返回 NULL",
+          "signature": "const char* http_request_header(const http_request_t* req, const char* name)",
+          "visibility": "public"
+        }
+      ],
+      "header_path": "protocol/http_request.h",
+      "header_type_specs": [
+        {
+          "canonical_declaration": "typedef enum http_method {\n    HTTP_GET = 0,\n    HTTP_HEAD = 1,\n    HTTP_POST = 2,\n    HTTP_UNKNOWN = 3,\n} http_method_t;",
+          "name": "http_method_t",
+          "role": "HTTP 请求方法枚举，标识 GET/HEAD/POST/UNKNOWN 四种方法类型",
+          "type_spec": {
+            "ENUM_VALUES": [
+              {
+                "NAME": "HTTP_GET",
+                "ROLE": "GET 请求方法",
+                "VALUE": 0
+              },
+              {
+                "NAME": "HTTP_HEAD",
+                "ROLE": "HEAD 请求方法",
+                "VALUE": 1
+              },
+              {
+                "NAME": "HTTP_POST",
+                "ROLE": "POST 请求方法",
+                "VALUE": 2
+              },
+              {
+                "NAME": "HTTP_UNKNOWN",
+                "ROLE": "未知/不支持的方法",
+                "VALUE": 3
+              }
+            ],
+            "TYPE_KIND": "ENUM"
+          },
+          "visibility": "PUBLIC"
+        },
+        {
+          "canonical_declaration": "typedef struct http_header {\n    char name[HTTP_MAX_HEADER_NAME];\n    char value[HTTP_MAX_HEADER_VALUE];\n} http_header_t;",
+          "name": "http_header_t",
+          "role": "HTTP 头部键值对结构，包含 name[HTTP_MAX_HEADER_NAME] 与 value[HTTP_MAX_HEADER_VALUE]",
+          "type_spec": {
+            "FIELDS": [
+              {
+                "ARRAY_LEN": "HTTP_MAX_HEADER_NAME",
+                "NAME": "name",
+                "ROLE": "头部名称，最多 256 字节",
+                "TYPE": "char"
+              },
+              {
+                "ARRAY_LEN": "HTTP_MAX_HEADER_VALUE",
+                "NAME": "value",
+                "ROLE": "头部值，最多 4096 字节",
+                "TYPE": "char"
+              }
+            ],
+            "TYPE_KIND": "STRUCT"
+          },
+          "visibility": "PUBLIC"
+        },
+        {
+          "canonical_declaration": "typedef struct http_request {\n    http_method_t method;\n    char uri[HTTP_MAX_URI];\n    http_header_t headers[HTTP_MAX_HEADERS];\n    size_t header_count;\n    char* body;\n    size_t body_len;\n} http_request_t;",
+          "name": "http_request_t",
+          "role": "HTTP 请求结构体，包含方法、URI、头部数组、动态 body 指针与长度信息",
+          "type_spec": {
+            "FIELDS": [
+              {
+                "NAME": "method",
+                "ROLE": "HTTP 请求方法（GET/HEAD/POST/UNKNOWN）",
+                "TYPE": "http_method_t"
+              },
+              {
+                "ARRAY_LEN": "HTTP_MAX_URI",
+                "NAME": "uri",
+                "ROLE": "请求 URI，最多 2048 字节",
+                "TYPE": "char"
+              },
+              {
+                "ARRAY_LEN": "HTTP_MAX_HEADERS",
+                "NAME": "headers",
+                "ROLE": "请求头部数组，最多 64 个键值对",
+                "TYPE": "http_header_t"
+              },
+              {
+                "NAME": "header_count",
+                "ROLE": "实际解析到的头部数量",
+                "TYPE": "size_t"
+              },
+              {
+                "NAME": "body",
+                "ROLE": "请求正文，堆分配可空指针；由 http_request_parse 分配，http_request_free 释放",
+                "TYPE": "char*"
+              },
+              {
+                "NAME": "body_len",
+                "ROLE": "请求正文字节长度；body 为 NULL 时为 0",
+                "TYPE": "size_t"
+              }
+            ],
+            "TYPE_KIND": "STRUCT"
+          },
+          "visibility": "PUBLIC"
+        }
+      ],
+      "source_interfaces": [
+        {
+          "kind": "FUNC",
+          "name": "http_request_init",
+          "role": "memset 清零整个 http_request_t 结构体；空指针安全返回",
+          "signature": "void http_request_init(http_request_t* req)",
+          "trace_id": "http/protocol/http_request/http_request_init",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "http_request_free",
+          "role": "释放 body 动态内存并复位 body=NULL/body_len=0；空指针安全",
+          "signature": "void http_request_free(http_request_t* req)",
+          "trace_id": "http/protocol/http_request/http_request_free",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "http_request_parse",
+          "role": "从连接输入缓冲解析完整 HTTP/1.1 请求：请求行→头部→正文；返回 0/1/-1",
+          "signature": "int http_request_parse(http_request_t* req, http_connection_t* conn)",
+          "trace_id": "http/protocol/http_request/http_request_parse",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "http_request_header",
+          "role": "按名称（大小写不敏感）在已解析头部中查找值；未找到返回 NULL",
+          "signature": "const char* http_request_header(const http_request_t* req, const char* name)",
+          "trace_id": "http/protocol/http_request/http_request_header",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "parse_method",
+          "role": "将方法字符串映射为 http_method_t 枚举：GET→HTTP_GET, HEAD→HTTP_HEAD, POST→HTTP_POST，其他→HTTP_UNKNOWN",
+          "signature": "static http_method_t parse_method(const char* s)",
+          "trace_id": "http/protocol/http_request/parse_method",
+          "visibility": "private"
+        }
+      ],
+      "source_path": "protocol/http_request.c"
+    },
+    {
+      "file_trace_id": "http/protocol/http_response",
+      "header_interfaces": [
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "http_status_text",
+          "role": "将 HTTP 状态码映射为 RFC 标准状态文本；支持 200/201/400/403/404/405/413/500/501，其他返回 \"Unknown\"",
+          "signature": "const char* http_status_text(int code)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "http_response_send",
+          "role": "构建完整 HTTP/1.1 响应：状态行→Date→Server→Content-Length→Connection:close→可选 extra_headers→空白行→可选正文；extra_headers 为 NULL 终止的完整 \"Name: value\" header line 字符串数组，每项必须包含冒号；body_len 表示 advertised Content-Length，不仅是实际写出的 body 字节数",
+          "signature": "int http_response_send(http_connection_t* conn, int status, const char** extra_headers, const void* body, size_t body_len)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "http_response_send_html",
+          "role": "便捷函数：vsnprintf 格式化内容→snprintf 包装为 HTML→设置 Content-Type→委托 http_response_send 发送",
+          "signature": "int http_response_send_html(http_connection_t* conn, int status, const char* title, const char* fmt, ...)",
+          "visibility": "public"
+        }
+      ],
+      "header_path": "protocol/http_response.h",
+      "header_type_specs": [],
+      "source_interfaces": [
+        {
+          "kind": "FUNC",
+          "name": "http_status_text",
+          "role": "将 HTTP 状态码映射为 RFC 标准状态文本；未知码返回 Unknown",
+          "signature": "const char* http_status_text(int code)",
+          "trace_id": "http/protocol/http_response/http_status_text",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "http_response_send",
+          "role": "构建完整 HTTP/1.1 响应并排队到连接输出缓冲：状态行→Date→Server→Content-Length→Connection:close→可选完整 header line 数组 extra_headers→空白行→可选正文；body_len 始终用于 Content-Length",
+          "signature": "int http_response_send(http_connection_t* conn, int status, const char** extra_headers, const void* body, size_t body_len)",
+          "trace_id": "http/protocol/http_response/http_response_send",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "http_response_send_html",
+          "role": "将 printf 风格格式化字符串包装为 text/html 响应并发送",
+          "signature": "int http_response_send_html(http_connection_t* conn, int status, const char* title, const char* fmt, ...)",
+          "trace_id": "http/protocol/http_response/http_response_send_html",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "queuefv",
+          "role": "静态辅助：vsnprintf 格式化到栈缓冲后委托 http_connection_queue_str",
+          "signature": "static int queuefv(http_connection_t* conn, const char* fmt, ...)",
+          "trace_id": "http/protocol/http_response/queuefv",
+          "visibility": "private"
+        }
+      ],
+      "source_path": "protocol/http_response.c"
+    },
+    {
+      "file_trace_id": "http/resource/file_ops",
+      "header_interfaces": [
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "http_mime_by_ext",
+          "role": "根据文件路径扩展名（strrchr 查找 '.'）在 24 条目 MIME 表中匹配，未匹配返回 application/octet-stream",
+          "signature": "const char* http_mime_by_ext(const char* path)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "http_resolve_path",
+          "role": "将 root_dir+uri_path 规范化为 canonical 绝对路径，使用 canonical path 与目录边界判断验证结果位于 document root 内，不得使用普通字符串前缀判断；missing leaf 仅在 canonical parent 安全时返回 0，目录遍历/root escape 返回 -1+EACCES",
+          "signature": "int http_resolve_path(const char* root_dir, const char* uri_path, char* out_abs, size_t out_len)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "http_stat_path",
+          "role": "对路径执行 stat；返回 0=普通文件(S_ISREG), 1=目录(S_ISDIR), -1=不存在/无权限",
+          "signature": "int http_stat_path(const char* abs_path)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "http_read_file",
+          "role": "fopen rb→fseek/ftell 获取大小→malloc→fread 读取→通过 out_data/out_len 输出；调用方负责 free(*out_data)，失败返回 -1",
+          "signature": "int http_read_file(const char* abs_path, char** out_data, size_t* out_len)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "http_dir_listing_html",
+          "role": "opendir→readdir 遍历→为每个条目调用 stat 获取大小→生成 HTML <pre> 列表；调用方负责 free 返回值，失败返回 NULL",
+          "signature": "char* http_dir_listing_html(const char* abs_dir, const char* uri_prefix)",
+          "visibility": "public"
+        }
+      ],
+      "header_path": "resource/file_ops.h",
+      "header_type_specs": [],
+      "source_interfaces": [
+        {
+          "kind": "FUNC",
+          "name": "http_mime_by_ext",
+          "role": "根据文件路径扩展名在 24 条目 MIME 表中匹配；未匹配返回 application/octet-stream",
+          "signature": "const char* http_mime_by_ext(const char* path)",
+          "trace_id": "http/resource/file_ops/http_mime_by_ext",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "http_resolve_path",
+          "role": "规范化 root_dir+uri_path，并使用 canonical path 与目录边界判断验证结果位于 document root 内；每个 URI segment 只处理一次，root 内 missing leaf 在 canonical parent 安全时返回 0，目录遍历/root escape 返回 -1+EACCES",
+          "signature": "int http_resolve_path(const char* root_dir, const char* uri_path, char* out_abs, size_t out_len)",
+          "trace_id": "http/resource/file_ops/http_resolve_path",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "http_stat_path",
+          "role": "对路径执行 stat；返回 0=普通文件, 1=目录, -1=不存在/无权限",
+          "signature": "int http_stat_path(const char* abs_path)",
+          "trace_id": "http/resource/file_ops/http_stat_path",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "http_read_file",
+          "role": "以二进制方式读取整个文件到动态分配缓冲；调用方负责 free(*out_data)",
+          "signature": "int http_read_file(const char* abs_path, char** out_data, size_t* out_len)",
+          "trace_id": "http/resource/file_ops/http_read_file",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "http_dir_listing_html",
+          "role": "生成目录 HTML 列表页面：opendir→readdir→stat→格式化文件名/大小/目录标记；调用方负责 free",
+          "signature": "char* http_dir_listing_html(const char* abs_dir, const char* uri_prefix)",
+          "trace_id": "http/resource/file_ops/http_dir_listing_html",
+          "visibility": "public"
+        }
+      ],
+      "source_path": "resource/file_ops.c"
+    },
+    {
+      "file_trace_id": "http/main",
+      "header_interfaces": [],
+      "header_path": "",
+      "header_type_specs": [],
+      "source_interfaces": [
+        {
+          "kind": "FUNC",
+          "name": "parse_port",
+          "role": "strtol 解析端口字符串为 uint16_t；无效输入返回 0",
+          "signature": "static uint16_t parse_port(const char* s)",
+          "trace_id": "http/main/parse_port",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "main",
+          "role": "HTTP server 进程入口：解析参数→创建→启动→运行→销毁",
+          "signature": "int main(int argc, char** argv)",
+          "trace_id": "http/main/main",
+          "visibility": "public"
+        }
+      ],
+      "source_path": "main.c"
+    },
+    {
+      "file_trace_id": "http/server/http_server",
+      "header_interfaces": [
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "http_server_create",
+          "role": "创建 HTTP server：realpath 解析 root 目录→stat 验证目录存在→strncpy 保存 root→创建 TCP server 并绑定 on_accept/on_event/on_close 回调",
+          "signature": "http_server_t* http_server_create(uint16_t port, const char* root_dir)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "http_server_start",
+          "role": "委托 http_tcp_server_start 启动底层 TCP server",
+          "signature": "int http_server_start(http_server_t* server)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "http_server_run",
+          "role": "委托 http_tcp_server_run 进入事件循环",
+          "signature": "int http_server_run(http_server_t* server)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "http_server_stop",
+          "role": "委托 http_tcp_server_stop 停止事件循环",
+          "signature": "void http_server_stop(http_server_t* server)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "http_server_destroy",
+          "role": "遍历销毁所有活跃会话→停止并销毁 TCP server→释放 server 自身；空指针安全",
+          "signature": "void http_server_destroy(http_server_t* server)",
+          "visibility": "public"
+        }
+      ],
+      "header_path": "server/http_server.h",
+      "header_type_specs": [
+        {
+          "canonical_declaration": "typedef struct http_server http_server_t;",
+          "name": "http_server_t",
+          "role": "HTTP server 进程级对象不透明句柄，持有端口、root 目录、TCP server 与会话链表",
+          "type_spec": {
+            "TYPE_KIND": "OPAQUE"
+          },
+          "visibility": "PUBLIC"
+        }
+      ],
+      "source_interfaces": [
+        {
+          "kind": "FUNC",
+          "name": "find_session",
+          "role": "在 server 会话链表中按 fd 查找会话",
+          "signature": "static http_session_t* find_session(http_server_t* server, int fd)",
+          "trace_id": "http/server/http_server/find_session",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "remove_session",
+          "role": "从 server 会话链表中按 fd 删除并销毁会话",
+          "signature": "static void remove_session(http_server_t* server, int fd)",
+          "trace_id": "http/server/http_server/remove_session",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "add_session",
+          "role": "将新会话节点头插法加入 server 会话链表",
+          "signature": "static int add_session(http_server_t* server, http_session_t* session)",
+          "trace_id": "http/server/http_server/add_session",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "send_error",
+          "role": "发送 HTML 错误响应并注册写监听",
+          "signature": "static int send_error(http_server_t* server, http_session_t* session, int code)",
+          "trace_id": "http/server/http_server/send_error",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "flush_and_update",
+          "role": "刷写连接输出缓冲并根据剩余数据更新 epoll 写监听",
+          "signature": "static int flush_and_update(http_server_t* server, http_session_t* session)",
+          "trace_id": "http/server/http_server/flush_and_update",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "serve_file",
+          "role": "核心文件服务函数：resolve_path→stat→文件则读取并发送→目录则优先 index.html 否则列表→不存在则 404",
+          "signature": "static int serve_file(http_server_t* server, http_session_t* session, const http_request_t* req, bool head_only)",
+          "trace_id": "http/server/http_server/serve_file",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "handle_get",
+          "role": "GET 请求处理器：委托 serve_file(head_only=false)",
+          "signature": "static int handle_get(http_server_t* server, http_session_t* session, const http_request_t* req)",
+          "trace_id": "http/server/http_server/handle_get",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "handle_head",
+          "role": "HEAD 请求处理器：委托 serve_file(head_only=true)，仅发送头部不含正文",
+          "signature": "static int handle_head(http_server_t* server, http_session_t* session, const http_request_t* req)",
+          "trace_id": "http/server/http_server/handle_head",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "handle_post",
+          "role": "POST 请求处理器：resolve_path 确定目标→目录返回 405→fopen wb 写入 body→201 Created 响应",
+          "signature": "static int handle_post(http_server_t* server, http_session_t* session, const http_request_t* req)",
+          "trace_id": "http/server/http_server/handle_post",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "dispatch",
+          "role": "按请求方法分发到对应处理器：GET→handle_get, HEAD→handle_head, POST→handle_post, UNKNOWN→501",
+          "signature": "static int dispatch(http_server_t* server, http_session_t* session, const http_request_t* req)",
+          "trace_id": "http/server/http_server/dispatch",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "on_accept_cb",
+          "role": "TCP server 新连接回调：创建会话→加入链表→失败则关闭客户端",
+          "signature": "static void on_accept_cb(void* user, int fd, const struct sockaddr_storage* peer, socklen_t peer_len)",
+          "trace_id": "http/server/http_server/on_accept_cb",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "close_client",
+          "role": "关闭客户端连接：委托 http_tcp_server_close_client 关闭 fd 并清理",
+          "signature": "static void close_client(http_server_t* server, int fd)",
+          "trace_id": "http/server/http_server/close_client",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "on_event_cb",
+          "role": "TCP server 数据/写就绪事件回调：按事件类型分发到读/写/关闭处理",
+          "signature": "static void on_event_cb(void* user, int fd, uint32_t events)",
+          "trace_id": "http/server/http_server/on_event_cb",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "on_close_cb",
+          "role": "TCP server 连接关闭回调：从 server 链表移除会话",
+          "signature": "static void on_close_cb(void* user, int fd)",
+          "trace_id": "http/server/http_server/on_close_cb",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "http_server_create",
+          "role": "创建 HTTP server：realpath 解析 root→stat 验证目录→保存 root→创建 TCP server 并绑定回调",
+          "signature": "http_server_t* http_server_create(uint16_t port, const char* root_dir)",
+          "trace_id": "http/server/http_server/http_server_create",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "http_server_start",
+          "role": "委托 http_tcp_server_start 启动底层 TCP server",
+          "signature": "int http_server_start(http_server_t* server)",
+          "trace_id": "http/server/http_server/http_server_start",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "http_server_run",
+          "role": "委托 http_tcp_server_run 进入事件循环",
+          "signature": "int http_server_run(http_server_t* server)",
+          "trace_id": "http/server/http_server/http_server_run",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "http_server_stop",
+          "role": "委托 http_tcp_server_stop 停止事件循环",
+          "signature": "void http_server_stop(http_server_t* server)",
+          "trace_id": "http/server/http_server/http_server_stop",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "http_server_destroy",
+          "role": "遍历销毁所有活跃会话→停止并销毁 TCP server→释放 server；空指针安全",
+          "signature": "void http_server_destroy(http_server_t* server)",
+          "trace_id": "http/server/http_server/http_server_destroy",
+          "visibility": "public"
+        }
+      ],
+      "source_path": "server/http_server.c"
+    },
+    {
+      "file_trace_id": "http/server/http_session",
+      "header_interfaces": [
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "http_session_create",
+          "role": "calloc 分配会话→http_connection_create 创建连接对象；任一失败则清理并返回 NULL",
+          "signature": "http_session_t* http_session_create(int fd)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "http_session_destroy",
+          "role": "销毁底层连接对象并释放会话；空指针安全返回",
+          "signature": "void http_session_destroy(http_session_t* session)",
+          "visibility": "public"
+        }
+      ],
+      "header_path": "server/http_session.h",
+      "header_type_specs": [
+        {
+          "canonical_declaration": "typedef struct http_session {\n    int fd;\n    http_connection_t* conn;\n} http_session_t;",
+          "name": "http_session_t",
+          "role": "会话结构：关联 socket fd 与底层连接对象，用于请求-响应周期的上下文传递",
+          "type_spec": {
+            "FIELDS": [
+              {
+                "NAME": "fd",
+                "ROLE": "会话持有的 socket 文件描述符",
+                "TYPE": "int"
+              },
+              {
+                "NAME": "conn",
+                "ROLE": "指向底层 HTTP 连接对象的指针",
+                "TYPE": "http_connection_t*"
+              }
+            ],
+            "TYPE_KIND": "STRUCT"
+          },
+          "visibility": "PUBLIC"
+        }
+      ],
+      "source_interfaces": [
+        {
+          "kind": "FUNC",
+          "name": "http_session_create",
+          "role": "为已 accept 的 fd 分配会话对象并创建底层连接对象；任一失败清理并返回 NULL",
+          "signature": "http_session_t* http_session_create(int fd)",
+          "trace_id": "http/server/http_session/http_session_create",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "http_session_destroy",
+          "role": "销毁底层连接对象并释放会话；空指针安全",
+          "signature": "void http_session_destroy(http_session_t* session)",
+          "trace_id": "http/server/http_session/http_session_destroy",
+          "visibility": "public"
+        }
+      ],
+      "source_path": "server/http_session.c"
+    }
+  ],
+  "schema_version": "spec_ablation_s3_interface_grounding/v1",
+  "visibility": "s3_coder_visible_interface_grounding"
+}

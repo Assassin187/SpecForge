@@ -33,8 +33,14 @@ VIEW_SCHEMAS = {
         "manifest_schema": "spec_ablation_s2_transformation_manifest/v1",
         "execution_manifest_schema": "spec_ablation_s2_execution_manifest/v1",
     },
+    "s3": {
+        "transformer_version": "spec_ablation_s3_transformer/v1",
+        "manifest_schema": "spec_ablation_s3_transformation_manifest/v1",
+        "execution_manifest_schema": "spec_ablation_s3_execution_manifest/v1",
+    },
 }
 PROJECT_GRAPH_SCHEMA = "spec_ablation_s2_project_graph/v1"
+S3_INTERFACE_GROUNDING_SCHEMA = "spec_ablation_s3_interface_grounding/v1"
 
 FORBIDDEN_VISIBLE_TERMS: tuple[str, ...] = (
     "PROTOCOL_MODULE_SPEC",
@@ -62,6 +68,12 @@ S2_PROJECT_GRAPH_FORBIDDEN_TERMS: tuple[str, ...] = (
     "OWNERSHIP",
     "PUBLIC_SYMBOLS",
     "SCOPE",
+)
+
+S3_INTERFACE_GROUNDING_FORBIDDEN_TERMS: tuple[str, ...] = (
+    *FORBIDDEN_VISIBLE_TERMS,
+    "LOGIC",
+    "EVENT",
 )
 
 _LOCAL_DEPENDENCY_CATEGORIES = ("STRUCT", "FUNC", "VAR")
@@ -427,6 +439,16 @@ def _s2_project_graph_leakage_scan(path: Path) -> dict[str, Any]:
     }
 
 
+def _s3_interface_grounding_leakage_scan(path: Path) -> dict[str, Any]:
+    text = path.read_text(encoding="utf-8")
+    violations = [{"path": path.name, "term": term} for term in S3_INTERFACE_GROUNDING_FORBIDDEN_TERMS if term in text]
+    return {
+        "status": "passed" if not violations else "failed",
+        "forbidden_terms": list(S3_INTERFACE_GROUNDING_FORBIDDEN_TERMS),
+        "violations": violations,
+    }
+
+
 def _module_file_membership(bundle: SpecBundle) -> dict[str, str]:
     by_path: dict[str, FileSpec] = {}
     for file_spec in bundle.file_specs_by_trace.values():
@@ -585,6 +607,62 @@ def _s2_project_graph(bundle: SpecBundle, ordered_files: list[FileSpec]) -> dict
     }
 
 
+def _s3_interface_grounding(bundle: SpecBundle, ordered_files: list[FileSpec]) -> dict[str, Any]:
+    files: list[dict[str, Any]] = []
+    for file_spec in ordered_files:
+        header_type_specs: list[dict[str, Any]] = []
+        for item in file_spec.header_data:
+            type_spec = item.get("TYPE_SPEC")
+            if str(item.get("KIND", "")).upper() != "TYPE" or not isinstance(type_spec, dict):
+                continue
+            header_type_specs.append(
+                {
+                    "name": str(item.get("NAME", "")).strip(),
+                    "visibility": str(item.get("VISIBILITY", "")).strip(),
+                    "role": str(item.get("ROLE", "")).strip(),
+                    "type_spec": type_spec,
+                    "canonical_declaration": _render_single_data_item(file_spec, item),
+                }
+            )
+
+        files.append(
+            {
+                "file_trace_id": file_spec.trace_id,
+                "header_path": file_spec.header_path,
+                "source_path": file_spec.source_path,
+                "header_type_specs": header_type_specs,
+                "header_interfaces": [
+                    {
+                        "name": item.name,
+                        "kind": item.kind,
+                        "function_type": item.function_type.lower(),
+                        "role": item.role,
+                        "visibility": item.visibility,
+                        "signature": canonical_signature_for_header(bundle, file_spec, item),
+                    }
+                    for item in file_spec.header_interfaces
+                ],
+                "source_interfaces": [
+                    {
+                        "trace_id": item.trace_id,
+                        "name": item.name,
+                        "kind": item.kind,
+                        "role": item.role,
+                        "visibility": item.visibility,
+                        "signature": canonical_signature_for_source(bundle, item),
+                    }
+                    for item in file_spec.source_interfaces
+                ],
+            }
+        )
+
+    return {
+        "schema_version": S3_INTERFACE_GROUNDING_SCHEMA,
+        "visibility": "s3_coder_visible_interface_grounding",
+        "files": files,
+    }
+
+
 def _execution_manifest(
     config: ProtocolConfig,
     bundle: SpecBundle,
@@ -732,19 +810,33 @@ def _build_transformation(config: ProtocolConfig, root: Path, view_name: str) ->
         "rely_resolution": rely_resolutions,
     }
 
-    if view_name == "s2":
+    if view_name in {"s2", "s3"}:
         project_graph = _s2_project_graph(bundle, ordered_files)
         project_graph_artifact = specfs_root / "project_graph.json"
         _write_json(project_graph_artifact, project_graph)
         s2_project_graph_leakage = _s2_project_graph_leakage_scan(project_graph_artifact)
         if s2_project_graph_leakage["status"] != "passed":
-            raise TransformationError(f"S2 project graph leakage detected: {s2_project_graph_leakage['violations']}")
+            raise TransformationError(f"{view_name.upper()} project graph leakage detected: {s2_project_graph_leakage['violations']}")
         manifest["counts"]["project_graphs"] = 1
         manifest["artifacts"]["project_graph"] = {
             "artifact_path": project_graph_artifact.relative_to(root).as_posix(),
             "sha256": _sha256_bytes(project_graph_artifact.read_bytes()),
         }
         manifest["validation"]["s2_project_graph_leakage_scan"] = s2_project_graph_leakage
+
+    if view_name == "s3":
+        interface_grounding = _s3_interface_grounding(bundle, ordered_files)
+        interface_grounding_artifact = specfs_root / "interface_grounding.json"
+        _write_json(interface_grounding_artifact, interface_grounding)
+        s3_interface_grounding_leakage = _s3_interface_grounding_leakage_scan(interface_grounding_artifact)
+        if s3_interface_grounding_leakage["status"] != "passed":
+            raise TransformationError(f"S3 interface grounding leakage detected: {s3_interface_grounding_leakage['violations']}")
+        manifest["counts"]["interface_groundings"] = 1
+        manifest["artifacts"]["interface_grounding"] = {
+            "artifact_path": interface_grounding_artifact.relative_to(root).as_posix(),
+            "sha256": _sha256_bytes(interface_grounding_artifact.read_bytes()),
+        }
+        manifest["validation"]["s3_interface_grounding_leakage_scan"] = s3_interface_grounding_leakage
 
     manifest["hashes"]["output_payload_sha256"] = _tree_hash(root, exclude={"transformation_manifest.json"})
     manifest["transformation_hash"] = _sha256_text(_canonical_json(manifest))
@@ -858,9 +950,9 @@ def transform_many(
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Deterministically project Full-SpecForge specs to S1/S2 ablation views.")
+    parser = argparse.ArgumentParser(description="Deterministically project Full-SpecForge specs to S1/S2/S3 ablation views.")
     parser.add_argument("--protocol", action="append", default=[], help="Protocol(s) to transform: mqtt/http/coap/smtp/all")
-    parser.add_argument("--view", action="append", default=[], help="View(s) to transform: s1/s2/all")
+    parser.add_argument("--view", action="append", default=[], help="View(s) to transform: s1/s2/s3/all")
     parser.add_argument("--output", default=str(DEFAULT_OUTPUT_ROOT), help="Output root; protocol subdirectories are created under it")
     parser.add_argument("--overwrite", action="store_true", help="Replace selected view output directories")
     return parser

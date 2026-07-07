@@ -76,7 +76,7 @@ def default_output_dir(context: AblationViewContext, round_number: int = 1) -> P
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Generate code from SpecFS ablation specification views")
-    parser.add_argument("--view", default="s1", help="Ablation view to use: s1 or s2")
+    parser.add_argument("--view", default="s1", help="Ablation view to use: s1, s2, or s3")
     parser.add_argument("--view-root", required=True, help="Path to transformed view artifacts or its specfs_projection directory")
     parser.add_argument("--full-spec-root", default=None, help="Optional source oracle override for deterministic assembly")
     parser.add_argument("--output-dir", default=None)

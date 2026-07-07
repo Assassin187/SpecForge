@@ -1,0 +1,19 @@
+{
+  "protocol": "http",
+  "schema_version": "spec_ablation_view_set_manifest/v1",
+  "source_root": "specs-example/http_specs",
+  "views": {
+    "s3": {
+      "counts": {
+        "files": 8,
+        "functions": 62,
+        "headers": 7,
+        "interface_groundings": 1,
+        "project_graphs": 1
+      },
+      "root": "s3",
+      "transformation_hash": "d0033e1b02b1f136e6fc130b2f9134a7839db3d1e56c070d7fd52db20c7f8329",
+      "transformation_manifest": "s3/transformation_manifest.json"
+    }
+  }
+}

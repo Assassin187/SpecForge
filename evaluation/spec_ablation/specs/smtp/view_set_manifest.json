@@ -1,0 +1,19 @@
+{
+  "protocol": "smtp",
+  "schema_version": "spec_ablation_view_set_manifest/v1",
+  "source_root": "specs-example/smtp_specs",
+  "views": {
+    "s3": {
+      "counts": {
+        "files": 9,
+        "functions": 68,
+        "headers": 8,
+        "interface_groundings": 1,
+        "project_graphs": 1
+      },
+      "root": "s3",
+      "transformation_hash": "56ff069d11e13deba424dd025a7b6f816303eef7a112317aa40a27003b4d768d",
+      "transformation_manifest": "s3/transformation_manifest.json"
+    }
+  }
+}

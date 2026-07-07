@@ -1,0 +1,1348 @@
+{
+  "file_dependency_edges": [
+    {
+      "dependency_kind": "source",
+      "dependency_path": "network/connection.h",
+      "from_file_trace_id": "smtp/network/connection",
+      "to_file_trace_id": "smtp/network/connection"
+    },
+    {
+      "dependency_kind": "source",
+      "dependency_path": "network/tcp_server.h",
+      "from_file_trace_id": "smtp/network/tcp_server",
+      "to_file_trace_id": "smtp/network/tcp_server"
+    },
+    {
+      "dependency_kind": "source",
+      "dependency_path": "protocol/smtp_command.h",
+      "from_file_trace_id": "smtp/protocol_text/smtp_command",
+      "to_file_trace_id": "smtp/protocol_text/smtp_command"
+    },
+    {
+      "dependency_kind": "source",
+      "dependency_path": "protocol/smtp_response.h",
+      "from_file_trace_id": "smtp/protocol_text/smtp_response",
+      "to_file_trace_id": "smtp/protocol_text/smtp_response"
+    },
+    {
+      "dependency_kind": "source",
+      "dependency_path": "auth/smtp_auth.h",
+      "from_file_trace_id": "smtp/auth/smtp_auth",
+      "to_file_trace_id": "smtp/auth/smtp_auth"
+    },
+    {
+      "dependency_kind": "source",
+      "dependency_path": "storage/mail_store.h",
+      "from_file_trace_id": "smtp/storage/mail_store",
+      "to_file_trace_id": "smtp/storage/mail_store"
+    },
+    {
+      "dependency_kind": "header",
+      "dependency_path": "network/connection.h",
+      "from_file_trace_id": "smtp/session/smtp_session",
+      "to_file_trace_id": "smtp/network/connection"
+    },
+    {
+      "dependency_kind": "source",
+      "dependency_path": "server/smtp_session.h",
+      "from_file_trace_id": "smtp/session/smtp_session",
+      "to_file_trace_id": "smtp/session/smtp_session"
+    },
+    {
+      "dependency_kind": "source",
+      "dependency_path": "server/smtp_server.h",
+      "from_file_trace_id": "smtp/server_app/smtp_server",
+      "to_file_trace_id": "smtp/server_app/smtp_server"
+    },
+    {
+      "dependency_kind": "source",
+      "dependency_path": "auth/smtp_auth.h",
+      "from_file_trace_id": "smtp/server_app/smtp_server",
+      "to_file_trace_id": "smtp/auth/smtp_auth"
+    },
+    {
+      "dependency_kind": "source",
+      "dependency_path": "network/tcp_server.h",
+      "from_file_trace_id": "smtp/server_app/smtp_server",
+      "to_file_trace_id": "smtp/network/tcp_server"
+    },
+    {
+      "dependency_kind": "source",
+      "dependency_path": "protocol/smtp_command.h",
+      "from_file_trace_id": "smtp/server_app/smtp_server",
+      "to_file_trace_id": "smtp/protocol_text/smtp_command"
+    },
+    {
+      "dependency_kind": "source",
+      "dependency_path": "protocol/smtp_response.h",
+      "from_file_trace_id": "smtp/server_app/smtp_server",
+      "to_file_trace_id": "smtp/protocol_text/smtp_response"
+    },
+    {
+      "dependency_kind": "source",
+      "dependency_path": "storage/mail_store.h",
+      "from_file_trace_id": "smtp/server_app/smtp_server",
+      "to_file_trace_id": "smtp/storage/mail_store"
+    },
+    {
+      "dependency_kind": "source",
+      "dependency_path": "server/smtp_session.h",
+      "from_file_trace_id": "smtp/server_app/smtp_server",
+      "to_file_trace_id": "smtp/session/smtp_session"
+    },
+    {
+      "dependency_kind": "source",
+      "dependency_path": "server/smtp_server.h",
+      "from_file_trace_id": "smtp/main",
+      "to_file_trace_id": "smtp/server_app/smtp_server"
+    }
+  ],
+  "files": [
+    {
+      "contains_function_trace_ids": [
+        "smtp/network/connection/ensure_cap",
+        "smtp/network/connection/smtp_connection_create",
+        "smtp/network/connection/smtp_connection_destroy",
+        "smtp/network/connection/smtp_connection_fd",
+        "smtp/network/connection/smtp_connection_read",
+        "smtp/network/connection/smtp_connection_pop_line",
+        "smtp/network/connection/smtp_connection_queue",
+        "smtp/network/connection/smtp_connection_queue_str",
+        "smtp/network/connection/smtp_connection_has_pending",
+        "smtp/network/connection/smtp_connection_flush"
+      ],
+      "dependency_file_trace_ids": [
+        "smtp/network/connection"
+      ],
+      "file_trace_id": "smtp/network/connection",
+      "generation_order": 0,
+      "header_dependency_paths": [],
+      "header_path": "network/connection.h",
+      "module_name": "network",
+      "source_dependency_paths": [
+        "network/connection.h"
+      ],
+      "source_path": "network/connection.c"
+    },
+    {
+      "contains_function_trace_ids": [
+        "smtp/network/tcp_server/set_nonblocking",
+        "smtp/network/tcp_server/find_client",
+        "smtp/network/tcp_server/add_client",
+        "smtp/network/tcp_server/remove_client_node",
+        "smtp/network/tcp_server/smtp_tcp_server_close_client",
+        "smtp/network/tcp_server/smtp_tcp_server_create",
+        "smtp/network/tcp_server/smtp_tcp_server_update_interest",
+        "smtp/network/tcp_server/setup_listener",
+        "smtp/network/tcp_server/smtp_tcp_server_start",
+        "smtp/network/tcp_server/accept_loop",
+        "smtp/network/tcp_server/smtp_tcp_server_run",
+        "smtp/network/tcp_server/smtp_tcp_server_stop",
+        "smtp/network/tcp_server/smtp_tcp_server_destroy"
+      ],
+      "dependency_file_trace_ids": [
+        "smtp/network/tcp_server"
+      ],
+      "file_trace_id": "smtp/network/tcp_server",
+      "generation_order": 1,
+      "header_dependency_paths": [],
+      "header_path": "network/tcp_server.h",
+      "module_name": "network",
+      "source_dependency_paths": [
+        "network/tcp_server.h"
+      ],
+      "source_path": "network/tcp_server.c"
+    },
+    {
+      "contains_function_trace_ids": [
+        "smtp/protocol_text/smtp_command/parse_kind",
+        "smtp/protocol_text/smtp_command/smtp_command_parse",
+        "smtp/protocol_text/smtp_command/smtp_command_name"
+      ],
+      "dependency_file_trace_ids": [
+        "smtp/protocol_text/smtp_command"
+      ],
+      "file_trace_id": "smtp/protocol_text/smtp_command",
+      "generation_order": 2,
+      "header_dependency_paths": [],
+      "header_path": "protocol/smtp_command.h",
+      "module_name": "protocol_text",
+      "source_dependency_paths": [
+        "protocol/smtp_command.h"
+      ],
+      "source_path": "protocol/smtp_command.c"
+    },
+    {
+      "contains_function_trace_ids": [
+        "smtp/protocol_text/smtp_response/smtp_response_format",
+        "smtp/protocol_text/smtp_response/smtp_response_format_ehlo_caps"
+      ],
+      "dependency_file_trace_ids": [
+        "smtp/protocol_text/smtp_response"
+      ],
+      "file_trace_id": "smtp/protocol_text/smtp_response",
+      "generation_order": 3,
+      "header_dependency_paths": [],
+      "header_path": "protocol/smtp_response.h",
+      "module_name": "protocol_text",
+      "source_dependency_paths": [
+        "protocol/smtp_response.h"
+      ],
+      "source_path": "protocol/smtp_response.c"
+    },
+    {
+      "contains_function_trace_ids": [
+        "smtp/auth/smtp_auth/smtp_auth_default_user",
+        "smtp/auth/smtp_auth/smtp_auth_validate",
+        "smtp/auth/smtp_auth/b64_value",
+        "smtp/auth/smtp_auth/smtp_auth_decode_base64",
+        "smtp/auth/smtp_auth/smtp_auth_parse_plain_blob"
+      ],
+      "dependency_file_trace_ids": [
+        "smtp/auth/smtp_auth"
+      ],
+      "file_trace_id": "smtp/auth/smtp_auth",
+      "generation_order": 4,
+      "header_dependency_paths": [],
+      "header_path": "auth/smtp_auth.h",
+      "module_name": "auth",
+      "source_dependency_paths": [
+        "auth/smtp_auth.h"
+      ],
+      "source_path": "auth/smtp_auth.c"
+    },
+    {
+      "contains_function_trace_ids": [
+        "smtp/storage/mail_store/ensure_dir_recursive",
+        "smtp/storage/mail_store/write_all",
+        "smtp/storage/mail_store/smtp_mail_store_init",
+        "smtp/storage/mail_store/smtp_mail_store_write"
+      ],
+      "dependency_file_trace_ids": [
+        "smtp/storage/mail_store"
+      ],
+      "file_trace_id": "smtp/storage/mail_store",
+      "generation_order": 5,
+      "header_dependency_paths": [],
+      "header_path": "storage/mail_store.h",
+      "module_name": "storage",
+      "source_dependency_paths": [
+        "storage/mail_store.h"
+      ],
+      "source_path": "storage/mail_store.c"
+    },
+    {
+      "contains_function_trace_ids": [
+        "smtp/session/smtp_session/smtp_session_create",
+        "smtp/session/smtp_session/smtp_session_reset_transaction",
+        "smtp/session/smtp_session/smtp_session_reset_auth_exchange",
+        "smtp/session/smtp_session/smtp_session_destroy"
+      ],
+      "dependency_file_trace_ids": [
+        "smtp/network/connection",
+        "smtp/session/smtp_session"
+      ],
+      "file_trace_id": "smtp/session/smtp_session",
+      "generation_order": 6,
+      "header_dependency_paths": [
+        "network/connection.h"
+      ],
+      "header_path": "server/smtp_session.h",
+      "module_name": "session",
+      "source_dependency_paths": [
+        "server/smtp_session.h"
+      ],
+      "source_path": "server/smtp_session.c"
+    },
+    {
+      "contains_function_trace_ids": [
+        "smtp/server_app/smtp_server/find_session",
+        "smtp/server_app/smtp_server/add_session",
+        "smtp/server_app/smtp_server/remove_session",
+        "smtp/server_app/smtp_server/close_control",
+        "smtp/server_app/smtp_server/queue_raw",
+        "smtp/server_app/smtp_server/queue_code",
+        "smtp/server_app/smtp_server/flush_control_now",
+        "smtp/server_app/smtp_server/append_message_line",
+        "smtp/server_app/smtp_server/handle_data_line",
+        "smtp/server_app/smtp_server/parse_mailbox_arg",
+        "smtp/server_app/smtp_server/begin_login_auth",
+        "smtp/server_app/smtp_server/decode_b64_to_text",
+        "smtp/server_app/smtp_server/finish_auth_if_valid",
+        "smtp/server_app/smtp_server/handle_auth_continuation",
+        "smtp/server_app/smtp_server/ensure_ready_for_mail",
+        "smtp/server_app/smtp_server/handle_auth",
+        "smtp/server_app/smtp_server/handle_command",
+        "smtp/server_app/smtp_server/on_accept_cb",
+        "smtp/server_app/smtp_server/on_event_cb",
+        "smtp/server_app/smtp_server/on_close_cb",
+        "smtp/server_app/smtp_server/smtp_server_create",
+        "smtp/server_app/smtp_server/smtp_server_start",
+        "smtp/server_app/smtp_server/smtp_server_run",
+        "smtp/server_app/smtp_server/smtp_server_stop",
+        "smtp/server_app/smtp_server/smtp_server_destroy"
+      ],
+      "dependency_file_trace_ids": [
+        "smtp/server_app/smtp_server",
+        "smtp/auth/smtp_auth",
+        "smtp/network/tcp_server",
+        "smtp/protocol_text/smtp_command",
+        "smtp/protocol_text/smtp_response",
+        "smtp/storage/mail_store",
+        "smtp/session/smtp_session"
+      ],
+      "file_trace_id": "smtp/server_app/smtp_server",
+      "generation_order": 7,
+      "header_dependency_paths": [],
+      "header_path": "server/smtp_server.h",
+      "module_name": "server_app",
+      "source_dependency_paths": [
+        "server/smtp_server.h",
+        "auth/smtp_auth.h",
+        "network/tcp_server.h",
+        "protocol/smtp_command.h",
+        "protocol/smtp_response.h",
+        "storage/mail_store.h",
+        "server/smtp_session.h"
+      ],
+      "source_path": "server/smtp_server.c"
+    },
+    {
+      "contains_function_trace_ids": [
+        "smtp/main/parse_port",
+        "smtp/main/main"
+      ],
+      "dependency_file_trace_ids": [
+        "smtp/server_app/smtp_server"
+      ],
+      "file_trace_id": "smtp/main",
+      "generation_order": 8,
+      "header_dependency_paths": [],
+      "header_path": "",
+      "module_name": "server_app",
+      "source_dependency_paths": [
+        "server/smtp_server.h"
+      ],
+      "source_path": "main.c"
+    }
+  ],
+  "functions": [
+    {
+      "file_function_order": 0,
+      "file_generation_order": 0,
+      "file_trace_id": "smtp/network/connection",
+      "function_name": "ensure_cap",
+      "function_trace_id": "smtp/network/connection/ensure_cap",
+      "global_function_order": 0,
+      "linkage": "internal_static",
+      "module_name": "network",
+      "source_path": "network/connection.c"
+    },
+    {
+      "file_function_order": 1,
+      "file_generation_order": 0,
+      "file_trace_id": "smtp/network/connection",
+      "function_name": "smtp_connection_create",
+      "function_trace_id": "smtp/network/connection/smtp_connection_create",
+      "global_function_order": 1,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/connection.c"
+    },
+    {
+      "file_function_order": 2,
+      "file_generation_order": 0,
+      "file_trace_id": "smtp/network/connection",
+      "function_name": "smtp_connection_destroy",
+      "function_trace_id": "smtp/network/connection/smtp_connection_destroy",
+      "global_function_order": 2,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/connection.c"
+    },
+    {
+      "file_function_order": 3,
+      "file_generation_order": 0,
+      "file_trace_id": "smtp/network/connection",
+      "function_name": "smtp_connection_fd",
+      "function_trace_id": "smtp/network/connection/smtp_connection_fd",
+      "global_function_order": 3,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/connection.c"
+    },
+    {
+      "file_function_order": 4,
+      "file_generation_order": 0,
+      "file_trace_id": "smtp/network/connection",
+      "function_name": "smtp_connection_read",
+      "function_trace_id": "smtp/network/connection/smtp_connection_read",
+      "global_function_order": 4,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/connection.c"
+    },
+    {
+      "file_function_order": 5,
+      "file_generation_order": 0,
+      "file_trace_id": "smtp/network/connection",
+      "function_name": "smtp_connection_pop_line",
+      "function_trace_id": "smtp/network/connection/smtp_connection_pop_line",
+      "global_function_order": 5,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/connection.c"
+    },
+    {
+      "file_function_order": 6,
+      "file_generation_order": 0,
+      "file_trace_id": "smtp/network/connection",
+      "function_name": "smtp_connection_queue",
+      "function_trace_id": "smtp/network/connection/smtp_connection_queue",
+      "global_function_order": 6,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/connection.c"
+    },
+    {
+      "file_function_order": 7,
+      "file_generation_order": 0,
+      "file_trace_id": "smtp/network/connection",
+      "function_name": "smtp_connection_queue_str",
+      "function_trace_id": "smtp/network/connection/smtp_connection_queue_str",
+      "global_function_order": 7,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/connection.c"
+    },
+    {
+      "file_function_order": 8,
+      "file_generation_order": 0,
+      "file_trace_id": "smtp/network/connection",
+      "function_name": "smtp_connection_has_pending",
+      "function_trace_id": "smtp/network/connection/smtp_connection_has_pending",
+      "global_function_order": 8,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/connection.c"
+    },
+    {
+      "file_function_order": 9,
+      "file_generation_order": 0,
+      "file_trace_id": "smtp/network/connection",
+      "function_name": "smtp_connection_flush",
+      "function_trace_id": "smtp/network/connection/smtp_connection_flush",
+      "global_function_order": 9,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/connection.c"
+    },
+    {
+      "file_function_order": 0,
+      "file_generation_order": 1,
+      "file_trace_id": "smtp/network/tcp_server",
+      "function_name": "set_nonblocking",
+      "function_trace_id": "smtp/network/tcp_server/set_nonblocking",
+      "global_function_order": 10,
+      "linkage": "internal_static",
+      "module_name": "network",
+      "source_path": "network/tcp_server.c"
+    },
+    {
+      "file_function_order": 1,
+      "file_generation_order": 1,
+      "file_trace_id": "smtp/network/tcp_server",
+      "function_name": "find_client",
+      "function_trace_id": "smtp/network/tcp_server/find_client",
+      "global_function_order": 11,
+      "linkage": "internal_static",
+      "module_name": "network",
+      "source_path": "network/tcp_server.c"
+    },
+    {
+      "file_function_order": 2,
+      "file_generation_order": 1,
+      "file_trace_id": "smtp/network/tcp_server",
+      "function_name": "add_client",
+      "function_trace_id": "smtp/network/tcp_server/add_client",
+      "global_function_order": 12,
+      "linkage": "internal_static",
+      "module_name": "network",
+      "source_path": "network/tcp_server.c"
+    },
+    {
+      "file_function_order": 3,
+      "file_generation_order": 1,
+      "file_trace_id": "smtp/network/tcp_server",
+      "function_name": "remove_client_node",
+      "function_trace_id": "smtp/network/tcp_server/remove_client_node",
+      "global_function_order": 13,
+      "linkage": "internal_static",
+      "module_name": "network",
+      "source_path": "network/tcp_server.c"
+    },
+    {
+      "file_function_order": 4,
+      "file_generation_order": 1,
+      "file_trace_id": "smtp/network/tcp_server",
+      "function_name": "smtp_tcp_server_close_client",
+      "function_trace_id": "smtp/network/tcp_server/smtp_tcp_server_close_client",
+      "global_function_order": 14,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/tcp_server.c"
+    },
+    {
+      "file_function_order": 5,
+      "file_generation_order": 1,
+      "file_trace_id": "smtp/network/tcp_server",
+      "function_name": "smtp_tcp_server_create",
+      "function_trace_id": "smtp/network/tcp_server/smtp_tcp_server_create",
+      "global_function_order": 15,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/tcp_server.c"
+    },
+    {
+      "file_function_order": 6,
+      "file_generation_order": 1,
+      "file_trace_id": "smtp/network/tcp_server",
+      "function_name": "smtp_tcp_server_update_interest",
+      "function_trace_id": "smtp/network/tcp_server/smtp_tcp_server_update_interest",
+      "global_function_order": 16,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/tcp_server.c"
+    },
+    {
+      "file_function_order": 7,
+      "file_generation_order": 1,
+      "file_trace_id": "smtp/network/tcp_server",
+      "function_name": "setup_listener",
+      "function_trace_id": "smtp/network/tcp_server/setup_listener",
+      "global_function_order": 17,
+      "linkage": "internal_static",
+      "module_name": "network",
+      "source_path": "network/tcp_server.c"
+    },
+    {
+      "file_function_order": 8,
+      "file_generation_order": 1,
+      "file_trace_id": "smtp/network/tcp_server",
+      "function_name": "smtp_tcp_server_start",
+      "function_trace_id": "smtp/network/tcp_server/smtp_tcp_server_start",
+      "global_function_order": 18,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/tcp_server.c"
+    },
+    {
+      "file_function_order": 9,
+      "file_generation_order": 1,
+      "file_trace_id": "smtp/network/tcp_server",
+      "function_name": "accept_loop",
+      "function_trace_id": "smtp/network/tcp_server/accept_loop",
+      "global_function_order": 19,
+      "linkage": "internal_static",
+      "module_name": "network",
+      "source_path": "network/tcp_server.c"
+    },
+    {
+      "file_function_order": 10,
+      "file_generation_order": 1,
+      "file_trace_id": "smtp/network/tcp_server",
+      "function_name": "smtp_tcp_server_run",
+      "function_trace_id": "smtp/network/tcp_server/smtp_tcp_server_run",
+      "global_function_order": 20,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/tcp_server.c"
+    },
+    {
+      "file_function_order": 11,
+      "file_generation_order": 1,
+      "file_trace_id": "smtp/network/tcp_server",
+      "function_name": "smtp_tcp_server_stop",
+      "function_trace_id": "smtp/network/tcp_server/smtp_tcp_server_stop",
+      "global_function_order": 21,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/tcp_server.c"
+    },
+    {
+      "file_function_order": 12,
+      "file_generation_order": 1,
+      "file_trace_id": "smtp/network/tcp_server",
+      "function_name": "smtp_tcp_server_destroy",
+      "function_trace_id": "smtp/network/tcp_server/smtp_tcp_server_destroy",
+      "global_function_order": 22,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/tcp_server.c"
+    },
+    {
+      "file_function_order": 0,
+      "file_generation_order": 2,
+      "file_trace_id": "smtp/protocol_text/smtp_command",
+      "function_name": "parse_kind",
+      "function_trace_id": "smtp/protocol_text/smtp_command/parse_kind",
+      "global_function_order": 23,
+      "linkage": "internal_static",
+      "module_name": "protocol_text",
+      "source_path": "protocol/smtp_command.c"
+    },
+    {
+      "file_function_order": 1,
+      "file_generation_order": 2,
+      "file_trace_id": "smtp/protocol_text/smtp_command",
+      "function_name": "smtp_command_parse",
+      "function_trace_id": "smtp/protocol_text/smtp_command/smtp_command_parse",
+      "global_function_order": 24,
+      "linkage": "external",
+      "module_name": "protocol_text",
+      "source_path": "protocol/smtp_command.c"
+    },
+    {
+      "file_function_order": 2,
+      "file_generation_order": 2,
+      "file_trace_id": "smtp/protocol_text/smtp_command",
+      "function_name": "smtp_command_name",
+      "function_trace_id": "smtp/protocol_text/smtp_command/smtp_command_name",
+      "global_function_order": 25,
+      "linkage": "external",
+      "module_name": "protocol_text",
+      "source_path": "protocol/smtp_command.c"
+    },
+    {
+      "file_function_order": 0,
+      "file_generation_order": 3,
+      "file_trace_id": "smtp/protocol_text/smtp_response",
+      "function_name": "smtp_response_format",
+      "function_trace_id": "smtp/protocol_text/smtp_response/smtp_response_format",
+      "global_function_order": 26,
+      "linkage": "external",
+      "module_name": "protocol_text",
+      "source_path": "protocol/smtp_response.c"
+    },
+    {
+      "file_function_order": 1,
+      "file_generation_order": 3,
+      "file_trace_id": "smtp/protocol_text/smtp_response",
+      "function_name": "smtp_response_format_ehlo_caps",
+      "function_trace_id": "smtp/protocol_text/smtp_response/smtp_response_format_ehlo_caps",
+      "global_function_order": 27,
+      "linkage": "external",
+      "module_name": "protocol_text",
+      "source_path": "protocol/smtp_response.c"
+    },
+    {
+      "file_function_order": 0,
+      "file_generation_order": 4,
+      "file_trace_id": "smtp/auth/smtp_auth",
+      "function_name": "smtp_auth_default_user",
+      "function_trace_id": "smtp/auth/smtp_auth/smtp_auth_default_user",
+      "global_function_order": 28,
+      "linkage": "external",
+      "module_name": "auth",
+      "source_path": "auth/smtp_auth.c"
+    },
+    {
+      "file_function_order": 1,
+      "file_generation_order": 4,
+      "file_trace_id": "smtp/auth/smtp_auth",
+      "function_name": "smtp_auth_validate",
+      "function_trace_id": "smtp/auth/smtp_auth/smtp_auth_validate",
+      "global_function_order": 29,
+      "linkage": "external",
+      "module_name": "auth",
+      "source_path": "auth/smtp_auth.c"
+    },
+    {
+      "file_function_order": 2,
+      "file_generation_order": 4,
+      "file_trace_id": "smtp/auth/smtp_auth",
+      "function_name": "b64_value",
+      "function_trace_id": "smtp/auth/smtp_auth/b64_value",
+      "global_function_order": 30,
+      "linkage": "internal_static",
+      "module_name": "auth",
+      "source_path": "auth/smtp_auth.c"
+    },
+    {
+      "file_function_order": 3,
+      "file_generation_order": 4,
+      "file_trace_id": "smtp/auth/smtp_auth",
+      "function_name": "smtp_auth_decode_base64",
+      "function_trace_id": "smtp/auth/smtp_auth/smtp_auth_decode_base64",
+      "global_function_order": 31,
+      "linkage": "external",
+      "module_name": "auth",
+      "source_path": "auth/smtp_auth.c"
+    },
+    {
+      "file_function_order": 4,
+      "file_generation_order": 4,
+      "file_trace_id": "smtp/auth/smtp_auth",
+      "function_name": "smtp_auth_parse_plain_blob",
+      "function_trace_id": "smtp/auth/smtp_auth/smtp_auth_parse_plain_blob",
+      "global_function_order": 32,
+      "linkage": "external",
+      "module_name": "auth",
+      "source_path": "auth/smtp_auth.c"
+    },
+    {
+      "file_function_order": 0,
+      "file_generation_order": 5,
+      "file_trace_id": "smtp/storage/mail_store",
+      "function_name": "ensure_dir_recursive",
+      "function_trace_id": "smtp/storage/mail_store/ensure_dir_recursive",
+      "global_function_order": 33,
+      "linkage": "internal_static",
+      "module_name": "storage",
+      "source_path": "storage/mail_store.c"
+    },
+    {
+      "file_function_order": 1,
+      "file_generation_order": 5,
+      "file_trace_id": "smtp/storage/mail_store",
+      "function_name": "write_all",
+      "function_trace_id": "smtp/storage/mail_store/write_all",
+      "global_function_order": 34,
+      "linkage": "internal_static",
+      "module_name": "storage",
+      "source_path": "storage/mail_store.c"
+    },
+    {
+      "file_function_order": 2,
+      "file_generation_order": 5,
+      "file_trace_id": "smtp/storage/mail_store",
+      "function_name": "smtp_mail_store_init",
+      "function_trace_id": "smtp/storage/mail_store/smtp_mail_store_init",
+      "global_function_order": 35,
+      "linkage": "external",
+      "module_name": "storage",
+      "source_path": "storage/mail_store.c"
+    },
+    {
+      "file_function_order": 3,
+      "file_generation_order": 5,
+      "file_trace_id": "smtp/storage/mail_store",
+      "function_name": "smtp_mail_store_write",
+      "function_trace_id": "smtp/storage/mail_store/smtp_mail_store_write",
+      "global_function_order": 36,
+      "linkage": "external",
+      "module_name": "storage",
+      "source_path": "storage/mail_store.c"
+    },
+    {
+      "file_function_order": 0,
+      "file_generation_order": 6,
+      "file_trace_id": "smtp/session/smtp_session",
+      "function_name": "smtp_session_create",
+      "function_trace_id": "smtp/session/smtp_session/smtp_session_create",
+      "global_function_order": 37,
+      "linkage": "external",
+      "module_name": "session",
+      "source_path": "server/smtp_session.c"
+    },
+    {
+      "file_function_order": 1,
+      "file_generation_order": 6,
+      "file_trace_id": "smtp/session/smtp_session",
+      "function_name": "smtp_session_reset_transaction",
+      "function_trace_id": "smtp/session/smtp_session/smtp_session_reset_transaction",
+      "global_function_order": 38,
+      "linkage": "external",
+      "module_name": "session",
+      "source_path": "server/smtp_session.c"
+    },
+    {
+      "file_function_order": 2,
+      "file_generation_order": 6,
+      "file_trace_id": "smtp/session/smtp_session",
+      "function_name": "smtp_session_reset_auth_exchange",
+      "function_trace_id": "smtp/session/smtp_session/smtp_session_reset_auth_exchange",
+      "global_function_order": 39,
+      "linkage": "external",
+      "module_name": "session",
+      "source_path": "server/smtp_session.c"
+    },
+    {
+      "file_function_order": 3,
+      "file_generation_order": 6,
+      "file_trace_id": "smtp/session/smtp_session",
+      "function_name": "smtp_session_destroy",
+      "function_trace_id": "smtp/session/smtp_session/smtp_session_destroy",
+      "global_function_order": 40,
+      "linkage": "external",
+      "module_name": "session",
+      "source_path": "server/smtp_session.c"
+    },
+    {
+      "file_function_order": 0,
+      "file_generation_order": 7,
+      "file_trace_id": "smtp/server_app/smtp_server",
+      "function_name": "find_session",
+      "function_trace_id": "smtp/server_app/smtp_server/find_session",
+      "global_function_order": 41,
+      "linkage": "internal_static",
+      "module_name": "server_app",
+      "source_path": "server/smtp_server.c"
+    },
+    {
+      "file_function_order": 1,
+      "file_generation_order": 7,
+      "file_trace_id": "smtp/server_app/smtp_server",
+      "function_name": "add_session",
+      "function_trace_id": "smtp/server_app/smtp_server/add_session",
+      "global_function_order": 42,
+      "linkage": "internal_static",
+      "module_name": "server_app",
+      "source_path": "server/smtp_server.c"
+    },
+    {
+      "file_function_order": 2,
+      "file_generation_order": 7,
+      "file_trace_id": "smtp/server_app/smtp_server",
+      "function_name": "remove_session",
+      "function_trace_id": "smtp/server_app/smtp_server/remove_session",
+      "global_function_order": 43,
+      "linkage": "internal_static",
+      "module_name": "server_app",
+      "source_path": "server/smtp_server.c"
+    },
+    {
+      "file_function_order": 3,
+      "file_generation_order": 7,
+      "file_trace_id": "smtp/server_app/smtp_server",
+      "function_name": "close_control",
+      "function_trace_id": "smtp/server_app/smtp_server/close_control",
+      "global_function_order": 44,
+      "linkage": "internal_static",
+      "module_name": "server_app",
+      "source_path": "server/smtp_server.c"
+    },
+    {
+      "file_function_order": 4,
+      "file_generation_order": 7,
+      "file_trace_id": "smtp/server_app/smtp_server",
+      "function_name": "queue_raw",
+      "function_trace_id": "smtp/server_app/smtp_server/queue_raw",
+      "global_function_order": 45,
+      "linkage": "internal_static",
+      "module_name": "server_app",
+      "source_path": "server/smtp_server.c"
+    },
+    {
+      "file_function_order": 5,
+      "file_generation_order": 7,
+      "file_trace_id": "smtp/server_app/smtp_server",
+      "function_name": "queue_code",
+      "function_trace_id": "smtp/server_app/smtp_server/queue_code",
+      "global_function_order": 46,
+      "linkage": "internal_static",
+      "module_name": "server_app",
+      "source_path": "server/smtp_server.c"
+    },
+    {
+      "file_function_order": 6,
+      "file_generation_order": 7,
+      "file_trace_id": "smtp/server_app/smtp_server",
+      "function_name": "flush_control_now",
+      "function_trace_id": "smtp/server_app/smtp_server/flush_control_now",
+      "global_function_order": 47,
+      "linkage": "internal_static",
+      "module_name": "server_app",
+      "source_path": "server/smtp_server.c"
+    },
+    {
+      "file_function_order": 7,
+      "file_generation_order": 7,
+      "file_trace_id": "smtp/server_app/smtp_server",
+      "function_name": "append_message_line",
+      "function_trace_id": "smtp/server_app/smtp_server/append_message_line",
+      "global_function_order": 48,
+      "linkage": "internal_static",
+      "module_name": "server_app",
+      "source_path": "server/smtp_server.c"
+    },
+    {
+      "file_function_order": 8,
+      "file_generation_order": 7,
+      "file_trace_id": "smtp/server_app/smtp_server",
+      "function_name": "handle_data_line",
+      "function_trace_id": "smtp/server_app/smtp_server/handle_data_line",
+      "global_function_order": 49,
+      "linkage": "internal_static",
+      "module_name": "server_app",
+      "source_path": "server/smtp_server.c"
+    },
+    {
+      "file_function_order": 9,
+      "file_generation_order": 7,
+      "file_trace_id": "smtp/server_app/smtp_server",
+      "function_name": "parse_mailbox_arg",
+      "function_trace_id": "smtp/server_app/smtp_server/parse_mailbox_arg",
+      "global_function_order": 50,
+      "linkage": "internal_static",
+      "module_name": "server_app",
+      "source_path": "server/smtp_server.c"
+    },
+    {
+      "file_function_order": 10,
+      "file_generation_order": 7,
+      "file_trace_id": "smtp/server_app/smtp_server",
+      "function_name": "begin_login_auth",
+      "function_trace_id": "smtp/server_app/smtp_server/begin_login_auth",
+      "global_function_order": 51,
+      "linkage": "internal_static",
+      "module_name": "server_app",
+      "source_path": "server/smtp_server.c"
+    },
+    {
+      "file_function_order": 11,
+      "file_generation_order": 7,
+      "file_trace_id": "smtp/server_app/smtp_server",
+      "function_name": "decode_b64_to_text",
+      "function_trace_id": "smtp/server_app/smtp_server/decode_b64_to_text",
+      "global_function_order": 52,
+      "linkage": "internal_static",
+      "module_name": "server_app",
+      "source_path": "server/smtp_server.c"
+    },
+    {
+      "file_function_order": 12,
+      "file_generation_order": 7,
+      "file_trace_id": "smtp/server_app/smtp_server",
+      "function_name": "finish_auth_if_valid",
+      "function_trace_id": "smtp/server_app/smtp_server/finish_auth_if_valid",
+      "global_function_order": 53,
+      "linkage": "internal_static",
+      "module_name": "server_app",
+      "source_path": "server/smtp_server.c"
+    },
+    {
+      "file_function_order": 13,
+      "file_generation_order": 7,
+      "file_trace_id": "smtp/server_app/smtp_server",
+      "function_name": "handle_auth_continuation",
+      "function_trace_id": "smtp/server_app/smtp_server/handle_auth_continuation",
+      "global_function_order": 54,
+      "linkage": "internal_static",
+      "module_name": "server_app",
+      "source_path": "server/smtp_server.c"
+    },
+    {
+      "file_function_order": 14,
+      "file_generation_order": 7,
+      "file_trace_id": "smtp/server_app/smtp_server",
+      "function_name": "ensure_ready_for_mail",
+      "function_trace_id": "smtp/server_app/smtp_server/ensure_ready_for_mail",
+      "global_function_order": 55,
+      "linkage": "internal_static",
+      "module_name": "server_app",
+      "source_path": "server/smtp_server.c"
+    },
+    {
+      "file_function_order": 15,
+      "file_generation_order": 7,
+      "file_trace_id": "smtp/server_app/smtp_server",
+      "function_name": "handle_auth",
+      "function_trace_id": "smtp/server_app/smtp_server/handle_auth",
+      "global_function_order": 56,
+      "linkage": "internal_static",
+      "module_name": "server_app",
+      "source_path": "server/smtp_server.c"
+    },
+    {
+      "file_function_order": 16,
+      "file_generation_order": 7,
+      "file_trace_id": "smtp/server_app/smtp_server",
+      "function_name": "handle_command",
+      "function_trace_id": "smtp/server_app/smtp_server/handle_command",
+      "global_function_order": 57,
+      "linkage": "internal_static",
+      "module_name": "server_app",
+      "source_path": "server/smtp_server.c"
+    },
+    {
+      "file_function_order": 17,
+      "file_generation_order": 7,
+      "file_trace_id": "smtp/server_app/smtp_server",
+      "function_name": "on_accept_cb",
+      "function_trace_id": "smtp/server_app/smtp_server/on_accept_cb",
+      "global_function_order": 58,
+      "linkage": "internal_static",
+      "module_name": "server_app",
+      "source_path": "server/smtp_server.c"
+    },
+    {
+      "file_function_order": 18,
+      "file_generation_order": 7,
+      "file_trace_id": "smtp/server_app/smtp_server",
+      "function_name": "on_event_cb",
+      "function_trace_id": "smtp/server_app/smtp_server/on_event_cb",
+      "global_function_order": 59,
+      "linkage": "internal_static",
+      "module_name": "server_app",
+      "source_path": "server/smtp_server.c"
+    },
+    {
+      "file_function_order": 19,
+      "file_generation_order": 7,
+      "file_trace_id": "smtp/server_app/smtp_server",
+      "function_name": "on_close_cb",
+      "function_trace_id": "smtp/server_app/smtp_server/on_close_cb",
+      "global_function_order": 60,
+      "linkage": "internal_static",
+      "module_name": "server_app",
+      "source_path": "server/smtp_server.c"
+    },
+    {
+      "file_function_order": 20,
+      "file_generation_order": 7,
+      "file_trace_id": "smtp/server_app/smtp_server",
+      "function_name": "smtp_server_create",
+      "function_trace_id": "smtp/server_app/smtp_server/smtp_server_create",
+      "global_function_order": 61,
+      "linkage": "external",
+      "module_name": "server_app",
+      "source_path": "server/smtp_server.c"
+    },
+    {
+      "file_function_order": 21,
+      "file_generation_order": 7,
+      "file_trace_id": "smtp/server_app/smtp_server",
+      "function_name": "smtp_server_start",
+      "function_trace_id": "smtp/server_app/smtp_server/smtp_server_start",
+      "global_function_order": 62,
+      "linkage": "external",
+      "module_name": "server_app",
+      "source_path": "server/smtp_server.c"
+    },
+    {
+      "file_function_order": 22,
+      "file_generation_order": 7,
+      "file_trace_id": "smtp/server_app/smtp_server",
+      "function_name": "smtp_server_run",
+      "function_trace_id": "smtp/server_app/smtp_server/smtp_server_run",
+      "global_function_order": 63,
+      "linkage": "external",
+      "module_name": "server_app",
+      "source_path": "server/smtp_server.c"
+    },
+    {
+      "file_function_order": 23,
+      "file_generation_order": 7,
+      "file_trace_id": "smtp/server_app/smtp_server",
+      "function_name": "smtp_server_stop",
+      "function_trace_id": "smtp/server_app/smtp_server/smtp_server_stop",
+      "global_function_order": 64,
+      "linkage": "external",
+      "module_name": "server_app",
+      "source_path": "server/smtp_server.c"
+    },
+    {
+      "file_function_order": 24,
+      "file_generation_order": 7,
+      "file_trace_id": "smtp/server_app/smtp_server",
+      "function_name": "smtp_server_destroy",
+      "function_trace_id": "smtp/server_app/smtp_server/smtp_server_destroy",
+      "global_function_order": 65,
+      "linkage": "external",
+      "module_name": "server_app",
+      "source_path": "server/smtp_server.c"
+    },
+    {
+      "file_function_order": 0,
+      "file_generation_order": 8,
+      "file_trace_id": "smtp/main",
+      "function_name": "parse_port",
+      "function_trace_id": "smtp/main/parse_port",
+      "global_function_order": 66,
+      "linkage": "internal_static",
+      "module_name": "server_app",
+      "source_path": "main.c"
+    },
+    {
+      "file_function_order": 1,
+      "file_generation_order": 8,
+      "file_trace_id": "smtp/main",
+      "function_name": "main",
+      "function_trace_id": "smtp/main/main",
+      "global_function_order": 67,
+      "linkage": "internal",
+      "module_name": "server_app",
+      "source_path": "main.c"
+    }
+  ],
+  "header_files": [
+    "network/connection.h",
+    "network/tcp_server.h",
+    "protocol/smtp_command.h",
+    "protocol/smtp_response.h",
+    "auth/smtp_auth.h",
+    "storage/mail_store.h",
+    "server/smtp_session.h",
+    "server/smtp_server.h"
+  ],
+  "module_dependency_edges": [
+    {
+      "from_module": "session",
+      "to_module": "network"
+    },
+    {
+      "from_module": "server_app",
+      "to_module": "network"
+    },
+    {
+      "from_module": "server_app",
+      "to_module": "protocol_text"
+    },
+    {
+      "from_module": "server_app",
+      "to_module": "auth"
+    },
+    {
+      "from_module": "server_app",
+      "to_module": "storage"
+    },
+    {
+      "from_module": "server_app",
+      "to_module": "session"
+    }
+  ],
+  "module_generation_order": [
+    "network",
+    "protocol_text",
+    "auth",
+    "storage",
+    "session",
+    "server_app"
+  ],
+  "modules": [
+    {
+      "contains_file_trace_ids": [
+        "smtp/network/connection",
+        "smtp/network/tcp_server"
+      ],
+      "dependency_modules": [],
+      "generation_order": 0,
+      "module_name": "network"
+    },
+    {
+      "contains_file_trace_ids": [
+        "smtp/protocol_text/smtp_command",
+        "smtp/protocol_text/smtp_response"
+      ],
+      "dependency_modules": [],
+      "generation_order": 1,
+      "module_name": "protocol_text"
+    },
+    {
+      "contains_file_trace_ids": [
+        "smtp/auth/smtp_auth"
+      ],
+      "dependency_modules": [],
+      "generation_order": 2,
+      "module_name": "auth"
+    },
+    {
+      "contains_file_trace_ids": [
+        "smtp/storage/mail_store"
+      ],
+      "dependency_modules": [],
+      "generation_order": 3,
+      "module_name": "storage"
+    },
+    {
+      "contains_file_trace_ids": [
+        "smtp/session/smtp_session"
+      ],
+      "dependency_modules": [
+        "network"
+      ],
+      "generation_order": 4,
+      "module_name": "session"
+    },
+    {
+      "contains_file_trace_ids": [
+        "smtp/server_app/smtp_server",
+        "smtp/main"
+      ],
+      "dependency_modules": [
+        "network",
+        "protocol_text",
+        "auth",
+        "storage",
+        "session"
+      ],
+      "generation_order": 5,
+      "module_name": "server_app"
+    }
+  ],
+  "schema_version": "spec_ablation_s2_project_graph/v1",
+  "source_files": [
+    "network/connection.c",
+    "network/tcp_server.c",
+    "protocol/smtp_command.c",
+    "protocol/smtp_response.c",
+    "auth/smtp_auth.c",
+    "storage/mail_store.c",
+    "server/smtp_session.c",
+    "server/smtp_server.c",
+    "main.c"
+  ],
+  "source_positions": [
+    {
+      "file_generation_order": 0,
+      "file_trace_id": "smtp/network/connection",
+      "function_trace_ids": [
+        "smtp/network/connection/ensure_cap",
+        "smtp/network/connection/smtp_connection_create",
+        "smtp/network/connection/smtp_connection_destroy",
+        "smtp/network/connection/smtp_connection_fd",
+        "smtp/network/connection/smtp_connection_read",
+        "smtp/network/connection/smtp_connection_pop_line",
+        "smtp/network/connection/smtp_connection_queue",
+        "smtp/network/connection/smtp_connection_queue_str",
+        "smtp/network/connection/smtp_connection_has_pending",
+        "smtp/network/connection/smtp_connection_flush"
+      ],
+      "module_generation_order": 0,
+      "module_name": "network",
+      "source_path": "network/connection.c"
+    },
+    {
+      "file_generation_order": 1,
+      "file_trace_id": "smtp/network/tcp_server",
+      "function_trace_ids": [
+        "smtp/network/tcp_server/set_nonblocking",
+        "smtp/network/tcp_server/find_client",
+        "smtp/network/tcp_server/add_client",
+        "smtp/network/tcp_server/remove_client_node",
+        "smtp/network/tcp_server/smtp_tcp_server_close_client",
+        "smtp/network/tcp_server/smtp_tcp_server_create",
+        "smtp/network/tcp_server/smtp_tcp_server_update_interest",
+        "smtp/network/tcp_server/setup_listener",
+        "smtp/network/tcp_server/smtp_tcp_server_start",
+        "smtp/network/tcp_server/accept_loop",
+        "smtp/network/tcp_server/smtp_tcp_server_run",
+        "smtp/network/tcp_server/smtp_tcp_server_stop",
+        "smtp/network/tcp_server/smtp_tcp_server_destroy"
+      ],
+      "module_generation_order": 0,
+      "module_name": "network",
+      "source_path": "network/tcp_server.c"
+    },
+    {
+      "file_generation_order": 2,
+      "file_trace_id": "smtp/protocol_text/smtp_command",
+      "function_trace_ids": [
+        "smtp/protocol_text/smtp_command/parse_kind",
+        "smtp/protocol_text/smtp_command/smtp_command_parse",
+        "smtp/protocol_text/smtp_command/smtp_command_name"
+      ],
+      "module_generation_order": 1,
+      "module_name": "protocol_text",
+      "source_path": "protocol/smtp_command.c"
+    },
+    {
+      "file_generation_order": 3,
+      "file_trace_id": "smtp/protocol_text/smtp_response",
+      "function_trace_ids": [
+        "smtp/protocol_text/smtp_response/smtp_response_format",
+        "smtp/protocol_text/smtp_response/smtp_response_format_ehlo_caps"
+      ],
+      "module_generation_order": 1,
+      "module_name": "protocol_text",
+      "source_path": "protocol/smtp_response.c"
+    },
+    {
+      "file_generation_order": 4,
+      "file_trace_id": "smtp/auth/smtp_auth",
+      "function_trace_ids": [
+        "smtp/auth/smtp_auth/smtp_auth_default_user",
+        "smtp/auth/smtp_auth/smtp_auth_validate",
+        "smtp/auth/smtp_auth/b64_value",
+        "smtp/auth/smtp_auth/smtp_auth_decode_base64",
+        "smtp/auth/smtp_auth/smtp_auth_parse_plain_blob"
+      ],
+      "module_generation_order": 2,
+      "module_name": "auth",
+      "source_path": "auth/smtp_auth.c"
+    },
+    {
+      "file_generation_order": 5,
+      "file_trace_id": "smtp/storage/mail_store",
+      "function_trace_ids": [
+        "smtp/storage/mail_store/ensure_dir_recursive",
+        "smtp/storage/mail_store/write_all",
+        "smtp/storage/mail_store/smtp_mail_store_init",
+        "smtp/storage/mail_store/smtp_mail_store_write"
+      ],
+      "module_generation_order": 3,
+      "module_name": "storage",
+      "source_path": "storage/mail_store.c"
+    },
+    {
+      "file_generation_order": 6,
+      "file_trace_id": "smtp/session/smtp_session",
+      "function_trace_ids": [
+        "smtp/session/smtp_session/smtp_session_create",
+        "smtp/session/smtp_session/smtp_session_reset_transaction",
+        "smtp/session/smtp_session/smtp_session_reset_auth_exchange",
+        "smtp/session/smtp_session/smtp_session_destroy"
+      ],
+      "module_generation_order": 4,
+      "module_name": "session",
+      "source_path": "server/smtp_session.c"
+    },
+    {
+      "file_generation_order": 7,
+      "file_trace_id": "smtp/server_app/smtp_server",
+      "function_trace_ids": [
+        "smtp/server_app/smtp_server/find_session",
+        "smtp/server_app/smtp_server/add_session",
+        "smtp/server_app/smtp_server/remove_session",
+        "smtp/server_app/smtp_server/close_control",
+        "smtp/server_app/smtp_server/queue_raw",
+        "smtp/server_app/smtp_server/queue_code",
+        "smtp/server_app/smtp_server/flush_control_now",
+        "smtp/server_app/smtp_server/append_message_line",
+        "smtp/server_app/smtp_server/handle_data_line",
+        "smtp/server_app/smtp_server/parse_mailbox_arg",
+        "smtp/server_app/smtp_server/begin_login_auth",
+        "smtp/server_app/smtp_server/decode_b64_to_text",
+        "smtp/server_app/smtp_server/finish_auth_if_valid",
+        "smtp/server_app/smtp_server/handle_auth_continuation",
+        "smtp/server_app/smtp_server/ensure_ready_for_mail",
+        "smtp/server_app/smtp_server/handle_auth",
+        "smtp/server_app/smtp_server/handle_command",
+        "smtp/server_app/smtp_server/on_accept_cb",
+        "smtp/server_app/smtp_server/on_event_cb",
+        "smtp/server_app/smtp_server/on_close_cb",
+        "smtp/server_app/smtp_server/smtp_server_create",
+        "smtp/server_app/smtp_server/smtp_server_start",
+        "smtp/server_app/smtp_server/smtp_server_run",
+        "smtp/server_app/smtp_server/smtp_server_stop",
+        "smtp/server_app/smtp_server/smtp_server_destroy"
+      ],
+      "module_generation_order": 5,
+      "module_name": "server_app",
+      "source_path": "server/smtp_server.c"
+    },
+    {
+      "file_generation_order": 8,
+      "file_trace_id": "smtp/main",
+      "function_trace_ids": [
+        "smtp/main/parse_port",
+        "smtp/main/main"
+      ],
+      "module_generation_order": 5,
+      "module_name": "server_app",
+      "source_path": "main.c"
+    }
+  ],
+  "visibility": "s2_coder_visible_project_graph"
+}

@@ -23,6 +23,18 @@
       "root": "s2",
       "transformation_hash": "46e1a06296601f98a7c3bda73446dcdb7051350c9709a856280b51ebe96767df",
       "transformation_manifest": "s2/transformation_manifest.json"
+    },
+    "s3": {
+      "counts": {
+        "files": 11,
+        "functions": 89,
+        "headers": 10,
+        "interface_groundings": 1,
+        "project_graphs": 1
+      },
+      "root": "s3",
+      "transformation_hash": "cef8c0bb2a721f7d4c52840a22fdc4f2ee39f946a053bd2620dd4a207e561c49",
+      "transformation_manifest": "s3/transformation_manifest.json"
     }
   }
 }

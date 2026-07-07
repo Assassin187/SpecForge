@@ -1,0 +1,1224 @@
+{
+  "files": [
+    {
+      "file_trace_id": "coap/network/udp_server",
+      "header_interfaces": [
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "coap_endpoint_to_string",
+          "role": "将 IPv4/IPv6 peer endpoint 格式化为 host:port；非法参数返回空字符串",
+          "signature": "const char* coap_endpoint_to_string(const coap_endpoint_t* peer, char* buf, size_t buf_sz)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "coap_udp_server_create",
+          "role": "分配 UDP server，保存 port/callback/user，并初始化 fd 为 -1",
+          "signature": "coap_udp_server_t* coap_udp_server_create(uint16_t port, coap_udp_callbacks_t cb, void* user)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "coap_udp_server_destroy",
+          "role": "停止并释放 UDP server；空指针安全返回",
+          "signature": "void coap_udp_server_destroy(coap_udp_server_t* s)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "coap_udp_server_start",
+          "role": "创建非阻塞 IPv4 UDP socket，bind 端口，注册 EPOLLIN 并置 running=true",
+          "signature": "bool coap_udp_server_start(coap_udp_server_t* s)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "coap_udp_server_stop",
+          "role": "置 running=false，关闭 epoll fd 与 UDP fd，并将它们复位为 -1",
+          "signature": "void coap_udp_server_stop(coap_udp_server_t* s)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "coap_udp_server_sendto",
+          "role": "通过 server socket 向 peer 发送完整 datagram；EINTR 重试，EAGAIN/部分发送返回 false",
+          "signature": "bool coap_udp_server_sendto(coap_udp_server_t* s, const coap_endpoint_t* peer, const uint8_t* data, size_t len)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "event",
+          "kind": "FUNC",
+          "name": "coap_udp_server_run",
+          "role": "运行非阻塞 UDP epoll 事件循环，每个成功 recvfrom 的 datagram 立即回调上层",
+          "signature": "void coap_udp_server_run(coap_udp_server_t* s)",
+          "visibility": "public"
+        }
+      ],
+      "header_path": "network/udp_server.h",
+      "header_type_specs": [
+        {
+          "canonical_declaration": "typedef struct coap_endpoint {\n    struct sockaddr_storage addr;\n    socklen_t addr_len;\n} coap_endpoint_t;",
+          "name": "coap_endpoint_t",
+          "role": "UDP peer endpoint，保存 sockaddr_storage 与实际地址长度",
+          "type_spec": {
+            "FIELDS": [
+              {
+                "NAME": "addr",
+                "ROLE": "peer socket address",
+                "TYPE": "struct sockaddr_storage"
+              },
+              {
+                "NAME": "addr_len",
+                "ROLE": "addr 中有效地址长度",
+                "TYPE": "socklen_t"
+              }
+            ],
+            "TYPE_KIND": "STRUCT"
+          },
+          "visibility": "PUBLIC"
+        },
+        {
+          "canonical_declaration": "typedef void (*coap_udp_on_datagram_fn)(void* user, const coap_endpoint_t* peer, const uint8_t* data, size_t len);",
+          "name": "coap_udp_on_datagram_fn",
+          "role": "收到完整 UDP datagram 时通知上层的 callback 类型",
+          "type_spec": {
+            "CALLBACK_SIGNATURE": "void (*coap_udp_on_datagram_fn)(void* user, const coap_endpoint_t* peer, const uint8_t* data, size_t len)",
+            "TYPE_KIND": "CALLBACK"
+          },
+          "visibility": "PUBLIC"
+        },
+        {
+          "canonical_declaration": "typedef struct coap_udp_callbacks {\n    coap_udp_on_datagram_fn on_datagram;\n} coap_udp_callbacks_t;",
+          "name": "coap_udp_callbacks_t",
+          "role": "UDP runtime callback 集合",
+          "type_spec": {
+            "FIELDS": [
+              {
+                "NAME": "on_datagram",
+                "ROLE": "完整 datagram callback",
+                "TYPE": "coap_udp_on_datagram_fn"
+              }
+            ],
+            "TYPE_KIND": "STRUCT"
+          },
+          "visibility": "PUBLIC"
+        },
+        {
+          "canonical_declaration": "typedef struct coap_udp_server coap_udp_server_t;",
+          "name": "coap_udp_server_t",
+          "role": "UDP/epoll server 不透明句柄",
+          "type_spec": {
+            "TYPE_KIND": "OPAQUE"
+          },
+          "visibility": "PUBLIC"
+        }
+      ],
+      "source_interfaces": [
+        {
+          "kind": "FUNC",
+          "name": "set_nonblocking",
+          "role": "为 socket fd 追加 O_NONBLOCK flag",
+          "signature": "static bool set_nonblocking(int fd)",
+          "trace_id": "coap/network/udp_server/set_nonblocking",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "coap_endpoint_to_string",
+          "role": "将 IPv4/IPv6 peer endpoint 格式化为 host:port；非法参数返回空字符串",
+          "signature": "const char* coap_endpoint_to_string(const coap_endpoint_t* peer, char* buf, size_t buf_sz)",
+          "trace_id": "coap/network/udp_server/coap_endpoint_to_string",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "coap_udp_server_create",
+          "role": "分配 UDP server，保存 port/callback/user，并初始化 fd 为 -1",
+          "signature": "coap_udp_server_t* coap_udp_server_create(uint16_t port, coap_udp_callbacks_t cb, void* user)",
+          "trace_id": "coap/network/udp_server/coap_udp_server_create",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "coap_udp_server_destroy",
+          "role": "停止并释放 UDP server；空指针安全返回",
+          "signature": "void coap_udp_server_destroy(coap_udp_server_t* s)",
+          "trace_id": "coap/network/udp_server/coap_udp_server_destroy",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "coap_udp_server_start",
+          "role": "创建非阻塞 IPv4 UDP socket，bind 端口，注册 EPOLLIN 并置 running=true",
+          "signature": "bool coap_udp_server_start(coap_udp_server_t* s)",
+          "trace_id": "coap/network/udp_server/coap_udp_server_start",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "coap_udp_server_stop",
+          "role": "置 running=false，关闭 epoll fd 与 UDP fd，并将它们复位为 -1",
+          "signature": "void coap_udp_server_stop(coap_udp_server_t* s)",
+          "trace_id": "coap/network/udp_server/coap_udp_server_stop",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "coap_udp_server_sendto",
+          "role": "通过 server socket 向 peer 发送完整 datagram；EINTR 重试，EAGAIN/部分发送返回 false",
+          "signature": "bool coap_udp_server_sendto(coap_udp_server_t* s, const coap_endpoint_t* peer, const uint8_t* data, size_t len)",
+          "trace_id": "coap/network/udp_server/coap_udp_server_sendto",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "coap_udp_server_run",
+          "role": "运行非阻塞 UDP epoll 事件循环，每个成功 recvfrom 的 datagram 立即回调上层",
+          "signature": "void coap_udp_server_run(coap_udp_server_t* s)",
+          "trace_id": "coap/network/udp_server/coap_udp_server_run",
+          "visibility": "public"
+        }
+      ],
+      "source_path": "network/udp_server.c"
+    },
+    {
+      "file_trace_id": "coap/protocol/coap_message",
+      "header_interfaces": [
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "coap_message_init",
+          "role": "将 message 清零并设置 version=1；空指针安全返回",
+          "signature": "void coap_message_init(coap_message_t* msg)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "coap_message_reset",
+          "role": "释放所有 option value、option 数组和 payload，再恢复 version=1 的空 message",
+          "signature": "void coap_message_reset(coap_message_t* msg)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "coap_message_free",
+          "role": "通过 reset 释放 message 所有动态字段并恢复可复用空状态",
+          "signature": "void coap_message_free(coap_message_t* msg)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "coap_message_set_token",
+          "role": "校验 token_len<=8，记录长度并在 token 非空时复制 bytes",
+          "signature": "bool coap_message_set_token(coap_message_t* msg, const uint8_t* token, size_t token_len)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "coap_message_set_payload",
+          "role": "释放旧 payload；空数据清空 payload，否则分配并复制新 bytes",
+          "signature": "bool coap_message_set_payload(coap_message_t* msg, const uint8_t* data, size_t len)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "coap_message_set_payload_string",
+          "role": "将字符串内容作为不含 NUL 的 payload；NULL 表示空 payload",
+          "signature": "bool coap_message_set_payload_string(coap_message_t* msg, const char* s)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "coap_message_add_option",
+          "role": "扩展 option 数组并复制 option value，成功后递增 option_count",
+          "signature": "bool coap_message_add_option(coap_message_t* msg, uint16_t number, const uint8_t* value, size_t len)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "coap_message_add_option_string",
+          "role": "以字符串 bytes 添加 option；NULL 表示零长度 option",
+          "signature": "bool coap_message_add_option_string(coap_message_t* msg, uint16_t number, const char* s)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "coap_message_add_option_uint",
+          "role": "使用最短 big-endian unsigned integer encoding 添加 option；0 编码为零长度",
+          "signature": "bool coap_message_add_option_uint(coap_message_t* msg, uint16_t number, uint32_t value)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "coap_message_get_uint_option",
+          "role": "查找首个匹配 option，并将最长 4-byte big-endian value 解码为 uint32_t",
+          "signature": "bool coap_message_get_uint_option(const coap_message_t* msg, uint16_t number, uint32_t* out)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "coap_message_join_options",
+          "role": "按出现顺序连接匹配 option；无匹配返回新分配空字符串，调用方负责 free",
+          "signature": "char* coap_message_join_options(const coap_message_t* msg, uint16_t number, char sep)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "coap_make_code",
+          "role": "将 3-bit class 与 5-bit detail 合成为 CoAP code",
+          "signature": "uint8_t coap_make_code(uint8_t code_class, uint8_t detail)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "coap_code_class",
+          "role": "提取 CoAP code 的 3-bit class",
+          "signature": "uint8_t coap_code_class(uint8_t code)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "coap_code_detail",
+          "role": "提取 CoAP code 的 5-bit detail",
+          "signature": "uint8_t coap_code_detail(uint8_t code)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "coap_code_is_method",
+          "role": "判断 code 是否是 class 0 且 detail 为 GET/POST/PUT/DELETE",
+          "signature": "bool coap_code_is_method(uint8_t code)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "coap_bytes_free",
+          "role": "释放编码结果 data，并将 data/len 复位",
+          "signature": "void coap_bytes_free(coap_bytes_t* bytes)",
+          "visibility": "public"
+        }
+      ],
+      "header_path": "protocol/coap_message.h",
+      "header_type_specs": [
+        {
+          "canonical_declaration": "typedef enum coap_type {\n    COAP_TYPE_CON = 0,\n    COAP_TYPE_NON = 1,\n    COAP_TYPE_ACK = 2,\n    COAP_TYPE_RST = 3,\n} coap_type_t;",
+          "name": "coap_type_t",
+          "role": "CoAP message type",
+          "type_spec": {
+            "ENUM_VALUES": [
+              {
+                "NAME": "COAP_TYPE_CON",
+                "ROLE": "Confirmable",
+                "VALUE": 0
+              },
+              {
+                "NAME": "COAP_TYPE_NON",
+                "ROLE": "Non-confirmable",
+                "VALUE": 1
+              },
+              {
+                "NAME": "COAP_TYPE_ACK",
+                "ROLE": "Acknowledgement",
+                "VALUE": 2
+              },
+              {
+                "NAME": "COAP_TYPE_RST",
+                "ROLE": "Reset",
+                "VALUE": 3
+              }
+            ],
+            "TYPE_KIND": "ENUM"
+          },
+          "visibility": "PUBLIC"
+        },
+        {
+          "canonical_declaration": "typedef enum coap_method {\n    COAP_METHOD_GET = 1,\n    COAP_METHOD_POST = 2,\n    COAP_METHOD_PUT = 3,\n    COAP_METHOD_DELETE = 4,\n} coap_method_t;",
+          "name": "coap_method_t",
+          "role": "当前 server 支持的 request method code",
+          "type_spec": {
+            "ENUM_VALUES": [
+              {
+                "NAME": "COAP_METHOD_GET",
+                "ROLE": "GET",
+                "VALUE": 1
+              },
+              {
+                "NAME": "COAP_METHOD_POST",
+                "ROLE": "POST",
+                "VALUE": 2
+              },
+              {
+                "NAME": "COAP_METHOD_PUT",
+                "ROLE": "PUT",
+                "VALUE": 3
+              },
+              {
+                "NAME": "COAP_METHOD_DELETE",
+                "ROLE": "DELETE",
+                "VALUE": 4
+              }
+            ],
+            "TYPE_KIND": "ENUM"
+          },
+          "visibility": "PUBLIC"
+        },
+        {
+          "canonical_declaration": "typedef enum coap_option_number {\n    COAP_OPT_URI_PATH = 11,\n    COAP_OPT_CONTENT_FORMAT = 12,\n    COAP_OPT_URI_QUERY = 15,\n    COAP_OPT_ACCEPT = 17,\n} coap_option_number_t;",
+          "name": "coap_option_number_t",
+          "role": "当前实现识别的 option number",
+          "type_spec": {
+            "ENUM_VALUES": [
+              {
+                "NAME": "COAP_OPT_URI_PATH",
+                "ROLE": "Uri-Path",
+                "VALUE": 11
+              },
+              {
+                "NAME": "COAP_OPT_CONTENT_FORMAT",
+                "ROLE": "Content-Format",
+                "VALUE": 12
+              },
+              {
+                "NAME": "COAP_OPT_URI_QUERY",
+                "ROLE": "Uri-Query",
+                "VALUE": 15
+              },
+              {
+                "NAME": "COAP_OPT_ACCEPT",
+                "ROLE": "Accept",
+                "VALUE": 17
+              }
+            ],
+            "TYPE_KIND": "ENUM"
+          },
+          "visibility": "PUBLIC"
+        },
+        {
+          "canonical_declaration": "typedef enum coap_content_format {\n    COAP_FORMAT_TEXT_PLAIN = 0,\n    COAP_FORMAT_LINK_FORMAT = 40,\n    COAP_FORMAT_OCTET_STREAM = 42,\n    COAP_FORMAT_APPLICATION_JSON = 50,\n} coap_content_format_t;",
+          "name": "coap_content_format_t",
+          "role": "当前资源 handler 使用的 Content-Format 值",
+          "type_spec": {
+            "ENUM_VALUES": [
+              {
+                "NAME": "COAP_FORMAT_TEXT_PLAIN",
+                "ROLE": "text/plain",
+                "VALUE": 0
+              },
+              {
+                "NAME": "COAP_FORMAT_LINK_FORMAT",
+                "ROLE": "application/link-format",
+                "VALUE": 40
+              },
+              {
+                "NAME": "COAP_FORMAT_OCTET_STREAM",
+                "ROLE": "application/octet-stream",
+                "VALUE": 42
+              },
+              {
+                "NAME": "COAP_FORMAT_APPLICATION_JSON",
+                "ROLE": "application/json",
+                "VALUE": 50
+              }
+            ],
+            "TYPE_KIND": "ENUM"
+          },
+          "visibility": "PUBLIC"
+        },
+        {
+          "canonical_declaration": "typedef struct coap_option {\n    uint16_t number;\n    uint16_t length;\n    uint8_t* value;\n} coap_option_t;",
+          "name": "coap_option_t",
+          "role": "解码后的单个 CoAP option，持有 value 动态副本",
+          "type_spec": {
+            "FIELDS": [
+              {
+                "NAME": "number",
+                "ROLE": "绝对 option number",
+                "TYPE": "uint16_t"
+              },
+              {
+                "NAME": "length",
+                "ROLE": "value 长度",
+                "TYPE": "uint16_t"
+              },
+              {
+                "NAME": "value",
+                "ROLE": "动态分配的 option bytes",
+                "TYPE": "uint8_t*"
+              }
+            ],
+            "TYPE_KIND": "STRUCT"
+          },
+          "visibility": "PUBLIC"
+        },
+        {
+          "canonical_declaration": "typedef struct coap_message {\n    uint8_t version;\n    coap_type_t type;\n    uint8_t code;\n    uint16_t message_id;\n    uint8_t token_len;\n    uint8_t token[COAP_MAX_TOKEN_LEN];\n    coap_option_t* options;\n    size_t option_count;\n    uint8_t* payload;\n    size_t payload_len;\n} coap_message_t;",
+          "name": "coap_message_t",
+          "role": "统一 CoAP message 对象，保存 header、token、options 与 payload",
+          "type_spec": {
+            "FIELDS": [
+              {
+                "NAME": "version",
+                "ROLE": "CoAP version",
+                "TYPE": "uint8_t"
+              },
+              {
+                "NAME": "type",
+                "ROLE": "message type",
+                "TYPE": "coap_type_t"
+              },
+              {
+                "NAME": "code",
+                "ROLE": "method/response code",
+                "TYPE": "uint8_t"
+              },
+              {
+                "NAME": "message_id",
+                "ROLE": "Message ID",
+                "TYPE": "uint16_t"
+              },
+              {
+                "NAME": "token_len",
+                "ROLE": "token 有效长度",
+                "TYPE": "uint8_t"
+              },
+              {
+                "ARRAY_LEN": "COAP_MAX_TOKEN_LEN",
+                "NAME": "token",
+                "ROLE": "token bytes",
+                "TYPE": "uint8_t"
+              },
+              {
+                "NAME": "options",
+                "ROLE": "按 wire order 保存的动态 option 数组",
+                "TYPE": "coap_option_t*"
+              },
+              {
+                "NAME": "option_count",
+                "ROLE": "option 数量",
+                "TYPE": "size_t"
+              },
+              {
+                "NAME": "payload",
+                "ROLE": "动态 payload bytes",
+                "TYPE": "uint8_t*"
+              },
+              {
+                "NAME": "payload_len",
+                "ROLE": "payload 长度",
+                "TYPE": "size_t"
+              }
+            ],
+            "TYPE_KIND": "STRUCT"
+          },
+          "visibility": "PUBLIC"
+        },
+        {
+          "canonical_declaration": "typedef struct coap_bytes {\n    uint8_t* data;\n    size_t len;\n} coap_bytes_t;",
+          "name": "coap_bytes_t",
+          "role": "编码结果动态字节缓冲，由 coap_bytes_free 释放",
+          "type_spec": {
+            "FIELDS": [
+              {
+                "NAME": "data",
+                "ROLE": "动态编码 bytes",
+                "TYPE": "uint8_t*"
+              },
+              {
+                "NAME": "len",
+                "ROLE": "bytes 长度",
+                "TYPE": "size_t"
+              }
+            ],
+            "TYPE_KIND": "STRUCT"
+          },
+          "visibility": "PUBLIC"
+        }
+      ],
+      "source_interfaces": [
+        {
+          "kind": "FUNC",
+          "name": "xrealloc",
+          "role": "调用 realloc 调整内部动态数组容量",
+          "signature": "static void* xrealloc(void* p, size_t n)",
+          "trace_id": "coap/protocol/coap_message/xrealloc",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "coap_message_init",
+          "role": "将 message 清零并设置 version=1；空指针安全返回",
+          "signature": "void coap_message_init(coap_message_t* msg)",
+          "trace_id": "coap/protocol/coap_message/coap_message_init",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "coap_message_reset",
+          "role": "释放所有 option value、option 数组和 payload，再恢复 version=1 的空 message",
+          "signature": "void coap_message_reset(coap_message_t* msg)",
+          "trace_id": "coap/protocol/coap_message/coap_message_reset",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "coap_message_free",
+          "role": "通过 reset 释放 message 所有动态字段并恢复可复用空状态",
+          "signature": "void coap_message_free(coap_message_t* msg)",
+          "trace_id": "coap/protocol/coap_message/coap_message_free",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "coap_message_set_token",
+          "role": "校验 token_len<=8，记录长度并在 token 非空时复制 bytes",
+          "signature": "bool coap_message_set_token(coap_message_t* msg, const uint8_t* token, size_t token_len)",
+          "trace_id": "coap/protocol/coap_message/coap_message_set_token",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "coap_message_set_payload",
+          "role": "释放旧 payload；空数据清空 payload，否则分配并复制新 bytes",
+          "signature": "bool coap_message_set_payload(coap_message_t* msg, const uint8_t* data, size_t len)",
+          "trace_id": "coap/protocol/coap_message/coap_message_set_payload",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "coap_message_set_payload_string",
+          "role": "将字符串内容作为不含 NUL 的 payload；NULL 表示空 payload",
+          "signature": "bool coap_message_set_payload_string(coap_message_t* msg, const char* s)",
+          "trace_id": "coap/protocol/coap_message/coap_message_set_payload_string",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "coap_message_add_option",
+          "role": "扩展 option 数组并复制 option value，成功后递增 option_count",
+          "signature": "bool coap_message_add_option(coap_message_t* msg, uint16_t number, const uint8_t* value, size_t len)",
+          "trace_id": "coap/protocol/coap_message/coap_message_add_option",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "coap_message_add_option_string",
+          "role": "以字符串 bytes 添加 option；NULL 表示零长度 option",
+          "signature": "bool coap_message_add_option_string(coap_message_t* msg, uint16_t number, const char* s)",
+          "trace_id": "coap/protocol/coap_message/coap_message_add_option_string",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "coap_message_add_option_uint",
+          "role": "使用最短 big-endian unsigned integer encoding 添加 option；0 编码为零长度",
+          "signature": "bool coap_message_add_option_uint(coap_message_t* msg, uint16_t number, uint32_t value)",
+          "trace_id": "coap/protocol/coap_message/coap_message_add_option_uint",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "coap_message_get_uint_option",
+          "role": "查找首个匹配 option，并将最长 4-byte big-endian value 解码为 uint32_t",
+          "signature": "bool coap_message_get_uint_option(const coap_message_t* msg, uint16_t number, uint32_t* out)",
+          "trace_id": "coap/protocol/coap_message/coap_message_get_uint_option",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "coap_message_join_options",
+          "role": "按出现顺序连接匹配 option；无匹配返回新分配空字符串，调用方负责 free",
+          "signature": "char* coap_message_join_options(const coap_message_t* msg, uint16_t number, char sep)",
+          "trace_id": "coap/protocol/coap_message/coap_message_join_options",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "coap_make_code",
+          "role": "将 3-bit class 与 5-bit detail 合成为 CoAP code",
+          "signature": "uint8_t coap_make_code(uint8_t code_class, uint8_t detail)",
+          "trace_id": "coap/protocol/coap_message/coap_make_code",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "coap_code_class",
+          "role": "提取 CoAP code 的 3-bit class",
+          "signature": "uint8_t coap_code_class(uint8_t code)",
+          "trace_id": "coap/protocol/coap_message/coap_code_class",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "coap_code_detail",
+          "role": "提取 CoAP code 的 5-bit detail",
+          "signature": "uint8_t coap_code_detail(uint8_t code)",
+          "trace_id": "coap/protocol/coap_message/coap_code_detail",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "coap_code_is_method",
+          "role": "判断 code 是否是 class 0 且 detail 为 GET/POST/PUT/DELETE",
+          "signature": "bool coap_code_is_method(uint8_t code)",
+          "trace_id": "coap/protocol/coap_message/coap_code_is_method",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "coap_bytes_free",
+          "role": "释放编码结果 data，并将 data/len 复位",
+          "signature": "void coap_bytes_free(coap_bytes_t* bytes)",
+          "trace_id": "coap/protocol/coap_message/coap_bytes_free",
+          "visibility": "public"
+        }
+      ],
+      "source_path": "protocol/coap_message.c"
+    },
+    {
+      "file_trace_id": "coap/protocol/coap_codec",
+      "header_interfaces": [
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "coap_decode_message",
+          "role": "按单个 datagram 解码 4-byte header、token、ordered options、payload marker 与 payload；失败时释放 out",
+          "signature": "coap_decode_status_t coap_decode_message(const uint8_t* data, size_t len, coap_message_t* out)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "coap_encode_message",
+          "role": "计算完整 datagram 大小，编码 header/token/ordered options，并仅在 payload 非空时写入 0xff marker",
+          "signature": "bool coap_encode_message(const coap_message_t* msg, coap_bytes_t* out)",
+          "visibility": "public"
+        }
+      ],
+      "header_path": "protocol/coap_codec.h",
+      "header_type_specs": [
+        {
+          "canonical_declaration": "typedef enum coap_decode_status {\n    COAP_DECODE_OK = 0,\n    COAP_DECODE_INVALID = 1,\n    COAP_DECODE_TRUNCATED = 2,\n} coap_decode_status_t;",
+          "name": "coap_decode_status_t",
+          "role": "CoAP datagram 解码结果",
+          "type_spec": {
+            "ENUM_VALUES": [
+              {
+                "NAME": "COAP_DECODE_OK",
+                "ROLE": "解码成功",
+                "VALUE": 0
+              },
+              {
+                "NAME": "COAP_DECODE_INVALID",
+                "ROLE": "语义或保留编码无效",
+                "VALUE": 1
+              },
+              {
+                "NAME": "COAP_DECODE_TRUNCATED",
+                "ROLE": "输入长度不足",
+                "VALUE": 2
+              }
+            ],
+            "TYPE_KIND": "ENUM"
+          },
+          "visibility": "PUBLIC"
+        }
+      ],
+      "source_interfaces": [
+        {
+          "kind": "FUNC",
+          "name": "option_ext_len",
+          "role": "计算 option delta/length 使用的 extended byte 数",
+          "signature": "static size_t option_ext_len(uint16_t value)",
+          "trace_id": "coap/protocol/coap_codec/option_ext_len",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "encode_ext",
+          "role": "按 nibble 13/14 编码 extended value；nibble 15 返回 false",
+          "signature": "static bool encode_ext(uint16_t value, uint8_t nibble, uint8_t* out, size_t* out_len)",
+          "trace_id": "coap/protocol/coap_codec/encode_ext",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "encode_nibble",
+          "role": "将 option delta/length 映射为直接值、13 或 14 nibble",
+          "signature": "static uint8_t encode_nibble(uint16_t value)",
+          "trace_id": "coap/protocol/coap_codec/encode_nibble",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "decode_ext",
+          "role": "从 datagram 解码 nibble 与 extended bytes，并推进 offset；nibble 15 或截断失败",
+          "signature": "static bool decode_ext(const uint8_t* data, size_t len, size_t* off, uint8_t nibble, uint16_t* out_value)",
+          "trace_id": "coap/protocol/coap_codec/decode_ext",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "coap_decode_message",
+          "role": "按单个 datagram 解码 4-byte header、token、ordered options、payload marker 与 payload；失败时释放 out",
+          "signature": "coap_decode_status_t coap_decode_message(const uint8_t* data, size_t len, coap_message_t* out)",
+          "trace_id": "coap/protocol/coap_codec/coap_decode_message",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "coap_encode_message",
+          "role": "计算完整 datagram 大小，编码 header/token/ordered options，并仅在 payload 非空时写入 0xff marker",
+          "signature": "bool coap_encode_message(const coap_message_t* msg, coap_bytes_t* out)",
+          "trace_id": "coap/protocol/coap_codec/coap_encode_message",
+          "visibility": "public"
+        }
+      ],
+      "source_path": "protocol/coap_codec.c"
+    },
+    {
+      "file_trace_id": "coap/resource/resource_router",
+      "header_interfaces": [
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "coap_resource_router_create",
+          "role": "分配空 resource router",
+          "signature": "coap_resource_router_t* coap_resource_router_create(void)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "coap_resource_router_destroy",
+          "role": "释放每个 entry 的 path/attributes、entry 数组与 router",
+          "signature": "void coap_resource_router_destroy(coap_resource_router_t* router)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "coap_resource_router_add",
+          "role": "扩展 entry 数组并复制 path/attributes，保存匹配策略、method mask、handler 与 user",
+          "signature": "bool coap_resource_router_add(coap_resource_router_t* router, const char* path, bool prefix_match, uint32_t methods_mask, bool discoverable, const char* attributes, coap_resource_handler_fn handler, void* user)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "coap_resource_router_dispatch",
+          "role": "按注册顺序查找首个 path match；用 1u << req->method 检查 methods_mask，method 不允许时写 4.05，否则调用 handler；无 route 返回 false",
+          "signature": "bool coap_resource_router_dispatch(coap_resource_router_t* router, const coap_request_t* req, coap_message_t* resp)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "coap_resource_router_build_core_links",
+          "role": "按注册顺序为 discoverable entries 构造逗号分隔 link-format 字符串；调用方负责 free",
+          "signature": "char* coap_resource_router_build_core_links(const coap_resource_router_t* router)",
+          "visibility": "public"
+        }
+      ],
+      "header_path": "resource/resource_router.h",
+      "header_type_specs": [
+        {
+          "canonical_declaration": "typedef struct coap_request {\n    const coap_message_t* message;\n    coap_method_t method;\n    char* path;\n    char* query;\n    uint16_t content_format;\n    bool has_content_format;\n    uint16_t accept;\n    bool has_accept;\n} coap_request_t;",
+          "name": "coap_request_t",
+          "role": "从 decoded message 投影出的资源请求视图",
+          "type_spec": {
+            "FIELDS": [
+              {
+                "NAME": "message",
+                "ROLE": "原始 decoded message 借用指针",
+                "TYPE": "const coap_message_t*"
+              },
+              {
+                "NAME": "method",
+                "ROLE": "request method",
+                "TYPE": "coap_method_t"
+              },
+              {
+                "NAME": "path",
+                "ROLE": "动态 normalized URI path",
+                "TYPE": "char*"
+              },
+              {
+                "NAME": "query",
+                "ROLE": "动态 joined URI query",
+                "TYPE": "char*"
+              },
+              {
+                "NAME": "content_format",
+                "ROLE": "Content-Format value",
+                "TYPE": "uint16_t"
+              },
+              {
+                "NAME": "has_content_format",
+                "ROLE": "Content-Format 是否存在",
+                "TYPE": "bool"
+              },
+              {
+                "NAME": "accept",
+                "ROLE": "Accept value",
+                "TYPE": "uint16_t"
+              },
+              {
+                "NAME": "has_accept",
+                "ROLE": "Accept 是否存在",
+                "TYPE": "bool"
+              }
+            ],
+            "TYPE_KIND": "STRUCT"
+          },
+          "visibility": "PUBLIC"
+        },
+        {
+          "canonical_declaration": "typedef bool (*coap_resource_handler_fn)(void* user, const coap_request_t* req, coap_message_t* resp);",
+          "name": "coap_resource_handler_fn",
+          "role": "资源 handler callback 类型",
+          "type_spec": {
+            "CALLBACK_SIGNATURE": "bool (*coap_resource_handler_fn)(void* user, const coap_request_t* req, coap_message_t* resp)",
+            "TYPE_KIND": "CALLBACK"
+          },
+          "visibility": "PUBLIC"
+        },
+        {
+          "canonical_declaration": "typedef struct coap_resource_router coap_resource_router_t;",
+          "name": "coap_resource_router_t",
+          "role": "资源注册表与 dispatch 逻辑的不透明句柄",
+          "type_spec": {
+            "TYPE_KIND": "OPAQUE"
+          },
+          "visibility": "PUBLIC"
+        }
+      ],
+      "source_interfaces": [
+        {
+          "kind": "FUNC",
+          "name": "dup_string",
+          "role": "分配并复制 NUL-terminated 字符串；NULL 返回 NULL",
+          "signature": "static char* dup_string(const char* s)",
+          "trace_id": "coap/resource/resource_router/dup_string",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "path_matches",
+          "role": "执行 exact match 或 segment-boundary prefix match",
+          "signature": "static bool path_matches(const coap_resource_entry_t* e, const char* path)",
+          "trace_id": "coap/resource/resource_router/path_matches",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "coap_resource_router_create",
+          "role": "分配空 resource router",
+          "signature": "coap_resource_router_t* coap_resource_router_create(void)",
+          "trace_id": "coap/resource/resource_router/coap_resource_router_create",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "coap_resource_router_destroy",
+          "role": "释放每个 entry 的 path/attributes、entry 数组与 router",
+          "signature": "void coap_resource_router_destroy(coap_resource_router_t* router)",
+          "trace_id": "coap/resource/resource_router/coap_resource_router_destroy",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "coap_resource_router_add",
+          "role": "扩展 entry 数组并复制 path/attributes，保存匹配策略、method mask、handler 与 user",
+          "signature": "bool coap_resource_router_add(coap_resource_router_t* router, const char* path, bool prefix_match, uint32_t methods_mask, bool discoverable, const char* attributes, coap_resource_handler_fn handler, void* user)",
+          "trace_id": "coap/resource/resource_router/coap_resource_router_add",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "coap_resource_router_dispatch",
+          "role": "按注册顺序查找首个 path match；用 1u << req->method 检查 methods_mask，method 不允许时写 4.05，否则调用 handler；无 route 返回 false",
+          "signature": "bool coap_resource_router_dispatch(coap_resource_router_t* router, const coap_request_t* req, coap_message_t* resp)",
+          "trace_id": "coap/resource/resource_router/coap_resource_router_dispatch",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "coap_resource_router_build_core_links",
+          "role": "按注册顺序为 discoverable entries 构造逗号分隔 link-format 字符串；调用方负责 free",
+          "signature": "char* coap_resource_router_build_core_links(const coap_resource_router_t* router)",
+          "trace_id": "coap/resource/resource_router/coap_resource_router_build_core_links",
+          "visibility": "public"
+        }
+      ],
+      "source_path": "resource/resource_router.c"
+    },
+    {
+      "file_trace_id": "coap/main",
+      "header_interfaces": [],
+      "header_path": "",
+      "header_type_specs": [],
+      "source_interfaces": [
+        {
+          "kind": "FUNC",
+          "name": "main",
+          "role": "CoAP server 可执行程序入口，编排端口解析与 server 生命周期",
+          "signature": "int main(int argc, char** argv)",
+          "trace_id": "coap/main/main",
+          "visibility": "private"
+        }
+      ],
+      "source_path": "main.c"
+    },
+    {
+      "file_trace_id": "coap/server/coap_server",
+      "header_interfaces": [
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "coap_server_create",
+          "role": "创建 server、router 与 UDP runtime，并用 1u << COAP_METHOD_* bitset 注册 discovery/hello/echo/kv routes",
+          "signature": "coap_server_t* coap_server_create(uint16_t port)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "coap_server_destroy",
+          "role": "停止 server，销毁 UDP/router，释放全部 KV entries 与 server",
+          "signature": "void coap_server_destroy(coap_server_t* s)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "coap_server_start",
+          "role": "启动底层 UDP runtime",
+          "signature": "bool coap_server_start(coap_server_t* s)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "event",
+          "kind": "FUNC",
+          "name": "coap_server_run",
+          "role": "进入底层 UDP runtime 事件循环",
+          "signature": "void coap_server_run(coap_server_t* s)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "coap_server_stop",
+          "role": "停止底层 UDP runtime；空指针安全返回",
+          "signature": "void coap_server_stop(coap_server_t* s)",
+          "visibility": "public"
+        }
+      ],
+      "header_path": "server/coap_server.h",
+      "header_type_specs": [
+        {
+          "canonical_declaration": "typedef struct coap_server coap_server_t;",
+          "name": "coap_server_t",
+          "role": "CoAP server 进程级对象的不透明句柄",
+          "type_spec": {
+            "TYPE_KIND": "OPAQUE"
+          },
+          "visibility": "PUBLIC"
+        }
+      ],
+      "source_interfaces": [
+        {
+          "kind": "FUNC",
+          "name": "dup_string",
+          "role": "分配并复制 NUL-terminated 字符串；NULL 返回 NULL",
+          "signature": "static char* dup_string(const char* s)",
+          "trace_id": "coap/server/coap_server/dup_string",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "response_set_text",
+          "role": "设置 response code、Content-Format option 与字符串 payload",
+          "signature": "static bool response_set_text(coap_message_t* resp, uint8_t code, uint16_t format, const char* text)",
+          "trace_id": "coap/server/coap_server/response_set_text",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "response_set_bytes",
+          "role": "设置 response code、Content-Format option 与字节 payload",
+          "signature": "static bool response_set_bytes(coap_message_t* resp, uint8_t code, uint16_t format, const uint8_t* data, size_t len)",
+          "trace_id": "coap/server/coap_server/response_set_bytes",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "find_kv",
+          "role": "按 key 线性查找内存 KV entry；未命中返回 NULL",
+          "signature": "static kv_entry_t* find_kv(coap_server_t* s, const char* key)",
+          "trace_id": "coap/server/coap_server/find_kv",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "kv_put",
+          "role": "创建或更新 KV entry，复制 payload 与 Content-Format，并通过 created 报告是否新建",
+          "signature": "static bool kv_put(coap_server_t* s, const char* key, const uint8_t* value, size_t len, bool has_content_format, uint16_t content_format, bool* created)",
+          "trace_id": "coap/server/coap_server/kv_put",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "kv_delete",
+          "role": "删除匹配 KV entry，释放字段并压紧数组；未命中返回 false",
+          "signature": "static bool kv_delete(coap_server_t* s, const char* key)",
+          "trace_id": "coap/server/coap_server/kv_delete",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "handle_discovery",
+          "role": "处理 /.well-known/core discovery；Accept 存在且不是 COAP_FORMAT_LINK_FORMAT 时返回 4.06",
+          "signature": "static bool handle_discovery(void* user, const coap_request_t* req, coap_message_t* resp)",
+          "trace_id": "coap/server/coap_server/handle_discovery",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "handle_hello",
+          "role": "返回 hello greeting，并在 query 非空时使用 query-received 文本",
+          "signature": "static bool handle_hello(void* user, const coap_request_t* req, coap_message_t* resp)",
+          "trace_id": "coap/server/coap_server/handle_hello",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "handle_echo",
+          "role": "以 2.04 echo 请求 payload，保留 Content-Format 或默认 text/plain",
+          "signature": "static bool handle_echo(void* user, const coap_request_t* req, coap_message_t* resp)",
+          "trace_id": "coap/server/coap_server/handle_echo",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "handle_kv",
+          "role": "实现 /kv collection 与 /kv/<key> 的 list/create/update/read/delete 行为",
+          "signature": "static bool handle_kv(void* user, const coap_request_t* req, coap_message_t* resp)",
+          "trace_id": "coap/server/coap_server/handle_kv",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "setup_response_envelope",
+          "role": "初始化 response，CON 映射为 ACK、其他有效请求映射为 NON，并复制 Message ID 与 Token",
+          "signature": "static void setup_response_envelope(const coap_message_t* req, coap_message_t* resp)",
+          "trace_id": "coap/server/coap_server/setup_response_envelope",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "build_request_view",
+          "role": "从 method message 构造 normalized path、joined query 与 Content-Format/Accept 视图",
+          "signature": "static bool build_request_view(const coap_message_t* req, coap_request_t* out)",
+          "trace_id": "coap/server/coap_server/build_request_view",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "free_request_view",
+          "role": "释放 request view 的 path/query 并将指针复位",
+          "signature": "static void free_request_view(coap_request_t* req)",
+          "trace_id": "coap/server/coap_server/free_request_view",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "send_response",
+          "role": "编码 response 并通过 UDP sendto 发往原 peer，随后释放编码缓冲",
+          "signature": "static void send_response(coap_server_t* s, const coap_endpoint_t* peer, const coap_message_t* resp)",
+          "trace_id": "coap/server/coap_server/send_response",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "send_reset",
+          "role": "构造空 RST message 并发送到 peer",
+          "signature": "static void send_reset(coap_server_t* s, const coap_endpoint_t* peer, uint16_t message_id)",
+          "trace_id": "coap/server/coap_server/send_reset",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "on_datagram",
+          "role": "处理一个 UDP datagram：解码、malformed CON RST、non-method 静默忽略、资源 dispatch、回包与清理",
+          "signature": "static void on_datagram(void* user, const coap_endpoint_t* peer, const uint8_t* data, size_t len)",
+          "trace_id": "coap/server/coap_server/on_datagram",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "coap_server_create",
+          "role": "创建 server、router 与 UDP runtime，并用 1u << COAP_METHOD_* bitset 注册 discovery/hello/echo/kv routes",
+          "signature": "coap_server_t* coap_server_create(uint16_t port)",
+          "trace_id": "coap/server/coap_server/coap_server_create",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "coap_server_destroy",
+          "role": "停止 server，销毁 UDP/router，释放全部 KV entries 与 server",
+          "signature": "void coap_server_destroy(coap_server_t* s)",
+          "trace_id": "coap/server/coap_server/coap_server_destroy",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "coap_server_start",
+          "role": "启动底层 UDP runtime",
+          "signature": "bool coap_server_start(coap_server_t* s)",
+          "trace_id": "coap/server/coap_server/coap_server_start",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "coap_server_run",
+          "role": "进入底层 UDP runtime 事件循环",
+          "signature": "void coap_server_run(coap_server_t* s)",
+          "trace_id": "coap/server/coap_server/coap_server_run",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "coap_server_stop",
+          "role": "停止底层 UDP runtime；空指针安全返回",
+          "signature": "void coap_server_stop(coap_server_t* s)",
+          "trace_id": "coap/server/coap_server/coap_server_stop",
+          "visibility": "public"
+        }
+      ],
+      "source_path": "server/coap_server.c"
+    }
+  ],
+  "schema_version": "spec_ablation_s3_interface_grounding/v1",
+  "visibility": "s3_coder_visible_interface_grounding"
+}

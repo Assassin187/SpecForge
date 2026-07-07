@@ -1,0 +1,1231 @@
+{
+  "files": [
+    {
+      "file_trace_id": "smtp/network/connection",
+      "header_interfaces": [
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "smtp_connection_create",
+          "role": "为已建立 fd 创建 smtp_connection_t 并初始化缓冲状态",
+          "signature": "smtp_connection_t* smtp_connection_create(int fd)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "smtp_connection_destroy",
+          "role": "释放连接对象及输入/输出缓冲，但不主动 close fd",
+          "signature": "void smtp_connection_destroy(smtp_connection_t* conn)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "smtp_connection_fd",
+          "role": "读取连接 fd；conn 为 NULL 时返回 -1",
+          "signature": "int smtp_connection_fd(const smtp_connection_t* conn)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "smtp_connection_read",
+          "role": "从非阻塞 socket 尽可能读取字节追加到输入缓冲",
+          "signature": "int smtp_connection_read(smtp_connection_t* conn)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "smtp_connection_pop_line",
+          "role": "从输入缓冲弹出一行，去除结尾 LF 和可选 CR，返回调用方拥有的新字符串",
+          "signature": "char* smtp_connection_pop_line(smtp_connection_t* conn)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "smtp_connection_queue",
+          "role": "把待发送字节复制到输出缓冲队尾",
+          "signature": "int smtp_connection_queue(smtp_connection_t* conn, const void* data, size_t len)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "smtp_connection_queue_str",
+          "role": "将 NUL 结尾文本排入输出队列",
+          "signature": "int smtp_connection_queue_str(smtp_connection_t* conn, const char* text)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "smtp_connection_has_pending",
+          "role": "判断输出队列是否仍有未发送字节",
+          "signature": "bool smtp_connection_has_pending(const smtp_connection_t* conn)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "smtp_connection_flush",
+          "role": "尝试把输出缓冲剩余字节发送到 socket",
+          "signature": "int smtp_connection_flush(smtp_connection_t* conn)",
+          "visibility": "public"
+        }
+      ],
+      "header_path": "network/connection.h",
+      "header_type_specs": [
+        {
+          "canonical_declaration": "typedef struct smtp_connection smtp_connection_t;",
+          "name": "smtp_connection_t",
+          "role": "不透明连接句柄，隐藏 socket fd 与读写缓冲实现",
+          "type_spec": {
+            "TYPE_KIND": "OPAQUE"
+          },
+          "visibility": "PUBLIC"
+        }
+      ],
+      "source_interfaces": [
+        {
+          "kind": "FUNC",
+          "name": "ensure_cap",
+          "role": "确保动态字节缓冲容量至少达到 needed，按 4096 起步倍增",
+          "signature": "static int ensure_cap(uint8_t** buf, size_t* cap, size_t needed)",
+          "trace_id": "smtp/network/connection/ensure_cap",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "smtp_connection_create",
+          "role": "为已建立 fd 创建 smtp_connection_t 并初始化缓冲状态",
+          "signature": "smtp_connection_t* smtp_connection_create(int fd)",
+          "trace_id": "smtp/network/connection/smtp_connection_create",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "smtp_connection_destroy",
+          "role": "释放连接对象及输入/输出缓冲，但不主动 close fd",
+          "signature": "void smtp_connection_destroy(smtp_connection_t* conn)",
+          "trace_id": "smtp/network/connection/smtp_connection_destroy",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "smtp_connection_fd",
+          "role": "读取连接 fd；conn 为 NULL 时返回 -1",
+          "signature": "int smtp_connection_fd(const smtp_connection_t* conn)",
+          "trace_id": "smtp/network/connection/smtp_connection_fd",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "smtp_connection_read",
+          "role": "从非阻塞 socket 尽可能读取字节追加到输入缓冲",
+          "signature": "int smtp_connection_read(smtp_connection_t* conn)",
+          "trace_id": "smtp/network/connection/smtp_connection_read",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "smtp_connection_pop_line",
+          "role": "从输入缓冲弹出一行，去除结尾 LF 和可选 CR，返回调用方拥有的新字符串",
+          "signature": "char* smtp_connection_pop_line(smtp_connection_t* conn)",
+          "trace_id": "smtp/network/connection/smtp_connection_pop_line",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "smtp_connection_queue",
+          "role": "把待发送字节复制到输出缓冲队尾",
+          "signature": "int smtp_connection_queue(smtp_connection_t* conn, const void* data, size_t len)",
+          "trace_id": "smtp/network/connection/smtp_connection_queue",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "smtp_connection_queue_str",
+          "role": "将 NUL 结尾文本排入输出队列",
+          "signature": "int smtp_connection_queue_str(smtp_connection_t* conn, const char* text)",
+          "trace_id": "smtp/network/connection/smtp_connection_queue_str",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "smtp_connection_has_pending",
+          "role": "判断输出队列是否仍有未发送字节",
+          "signature": "bool smtp_connection_has_pending(const smtp_connection_t* conn)",
+          "trace_id": "smtp/network/connection/smtp_connection_has_pending",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "smtp_connection_flush",
+          "role": "尝试把输出缓冲剩余字节发送到 socket",
+          "signature": "int smtp_connection_flush(smtp_connection_t* conn)",
+          "trace_id": "smtp/network/connection/smtp_connection_flush",
+          "visibility": "public"
+        }
+      ],
+      "source_path": "network/connection.c"
+    },
+    {
+      "file_trace_id": "smtp/network/tcp_server",
+      "header_interfaces": [
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "smtp_tcp_server_close_client",
+          "role": "关闭客户端 fd、从 epoll/client 链表删除，并触发 on_close",
+          "signature": "int smtp_tcp_server_close_client(smtp_tcp_server_t* server, int fd)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "smtp_tcp_server_create",
+          "role": "创建 TCP server 运行时对象并记录端口、回调和 user 指针",
+          "signature": "smtp_tcp_server_t* smtp_tcp_server_create(uint16_t port, smtp_tcp_callbacks_t callbacks, void* user)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "smtp_tcp_server_update_interest",
+          "role": "按 want_write 修改客户端 epoll interest 中的 EPOLLOUT",
+          "signature": "int smtp_tcp_server_update_interest(smtp_tcp_server_t* server, int fd, bool want_write)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "smtp_tcp_server_start",
+          "role": "初始化监听 socket 和 epoll，并把 listen_fd 注册为 EPOLLIN",
+          "signature": "int smtp_tcp_server_start(smtp_tcp_server_t* server)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "event",
+          "kind": "FUNC",
+          "name": "smtp_tcp_server_run",
+          "role": "进入 epoll_wait 主事件循环并把内核事件转换为 SMTP_IO_* 回调",
+          "signature": "int smtp_tcp_server_run(smtp_tcp_server_t* server)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "smtp_tcp_server_stop",
+          "role": "请求停止事件循环",
+          "signature": "void smtp_tcp_server_stop(smtp_tcp_server_t* server)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "smtp_tcp_server_destroy",
+          "role": "关闭所有客户端、监听 fd、epoll fd 并释放 server",
+          "signature": "void smtp_tcp_server_destroy(smtp_tcp_server_t* server)",
+          "visibility": "public"
+        }
+      ],
+      "header_path": "network/tcp_server.h",
+      "header_type_specs": [
+        {
+          "canonical_declaration": "typedef struct smtp_tcp_server smtp_tcp_server_t;",
+          "name": "smtp_tcp_server_t",
+          "role": "不透明 TCP server 句柄，隐藏 listen/epoll/client 链表",
+          "type_spec": {
+            "TYPE_KIND": "OPAQUE"
+          },
+          "visibility": "PUBLIC"
+        },
+        {
+          "canonical_declaration": "typedef struct smtp_tcp_callbacks {\n    void (* on_accept)(void* user, int fd, const struct sockaddr_storage* peer, socklen_t peer_len);\n    void (* on_event)(void* user, int fd, uint32_t events);\n    void (* on_close)(void* user, int fd);\n} smtp_tcp_callbacks_t;",
+          "name": "smtp_tcp_callbacks_t",
+          "role": "TCP server 回调集合：accept/event/close 三类事件",
+          "type_spec": {
+            "FIELDS": [
+              {
+                "NAME": "on_accept)(void* user, int fd, const struct sockaddr_storage* peer, socklen_t peer_len)",
+                "ROLE": "新连接建立回调函数指针",
+                "TYPE": "void (*"
+              },
+              {
+                "NAME": "on_event)(void* user, int fd, uint32_t events)",
+                "ROLE": "连接可读/可写事件回调函数指针",
+                "TYPE": "void (*"
+              },
+              {
+                "NAME": "on_close)(void* user, int fd)",
+                "ROLE": "连接关闭回调函数指针",
+                "TYPE": "void (*"
+              }
+            ],
+            "TYPE_KIND": "STRUCT"
+          },
+          "visibility": "PUBLIC"
+        }
+      ],
+      "source_interfaces": [
+        {
+          "kind": "FUNC",
+          "name": "set_nonblocking",
+          "role": "给 fd 增加 O_NONBLOCK 标志",
+          "signature": "static int set_nonblocking(int fd)",
+          "trace_id": "smtp/network/tcp_server/set_nonblocking",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "find_client",
+          "role": "按 fd 在线性 client 链表中查找节点",
+          "signature": "static smtp_client_node_t* find_client(smtp_tcp_server_t* server, int fd)",
+          "trace_id": "smtp/network/tcp_server/find_client",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "add_client",
+          "role": "把 client fd 注册到 epoll 并插入 clients 链表",
+          "signature": "static int add_client(smtp_tcp_server_t* server, int fd)",
+          "trace_id": "smtp/network/tcp_server/add_client",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "remove_client_node",
+          "role": "从 clients 链表移除 fd 节点并释放节点内存",
+          "signature": "static void remove_client_node(smtp_tcp_server_t* server, int fd)",
+          "trace_id": "smtp/network/tcp_server/remove_client_node",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "smtp_tcp_server_close_client",
+          "role": "关闭客户端 fd、从 epoll/client 链表删除，并触发 on_close",
+          "signature": "int smtp_tcp_server_close_client(smtp_tcp_server_t* server, int fd)",
+          "trace_id": "smtp/network/tcp_server/smtp_tcp_server_close_client",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "smtp_tcp_server_create",
+          "role": "创建 TCP server 运行时对象并记录端口、回调和 user 指针",
+          "signature": "smtp_tcp_server_t* smtp_tcp_server_create(uint16_t port, smtp_tcp_callbacks_t callbacks, void* user)",
+          "trace_id": "smtp/network/tcp_server/smtp_tcp_server_create",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "smtp_tcp_server_update_interest",
+          "role": "按 want_write 修改客户端 epoll interest 中的 EPOLLOUT",
+          "signature": "int smtp_tcp_server_update_interest(smtp_tcp_server_t* server, int fd, bool want_write)",
+          "trace_id": "smtp/network/tcp_server/smtp_tcp_server_update_interest",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "setup_listener",
+          "role": "创建、设置非阻塞、bind 并 listen TCP socket",
+          "signature": "static int setup_listener(smtp_tcp_server_t* server)",
+          "trace_id": "smtp/network/tcp_server/setup_listener",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "smtp_tcp_server_start",
+          "role": "初始化监听 socket 和 epoll，并把 listen_fd 注册为 EPOLLIN",
+          "signature": "int smtp_tcp_server_start(smtp_tcp_server_t* server)",
+          "trace_id": "smtp/network/tcp_server/smtp_tcp_server_start",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "accept_loop",
+          "role": "循环 accept 所有待处理连接，设置非阻塞、加入 epoll 并触发 on_accept",
+          "signature": "static void accept_loop(smtp_tcp_server_t* server)",
+          "trace_id": "smtp/network/tcp_server/accept_loop",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "smtp_tcp_server_run",
+          "role": "进入 epoll_wait 主事件循环并把内核事件转换为 SMTP_IO_* 回调",
+          "signature": "int smtp_tcp_server_run(smtp_tcp_server_t* server)",
+          "trace_id": "smtp/network/tcp_server/smtp_tcp_server_run",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "smtp_tcp_server_stop",
+          "role": "请求停止事件循环",
+          "signature": "void smtp_tcp_server_stop(smtp_tcp_server_t* server)",
+          "trace_id": "smtp/network/tcp_server/smtp_tcp_server_stop",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "smtp_tcp_server_destroy",
+          "role": "关闭所有客户端、监听 fd、epoll fd 并释放 server",
+          "signature": "void smtp_tcp_server_destroy(smtp_tcp_server_t* server)",
+          "trace_id": "smtp/network/tcp_server/smtp_tcp_server_destroy",
+          "visibility": "public"
+        }
+      ],
+      "source_path": "network/tcp_server.c"
+    },
+    {
+      "file_trace_id": "smtp/protocol_text/smtp_command",
+      "header_interfaces": [
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "smtp_command_parse",
+          "role": "解析单行 SMTP 命令，跳过前导空白、verb 大写化、复制并右裁剪参数",
+          "signature": "int smtp_command_parse(const char* line, smtp_command_t* out)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "smtp_command_name",
+          "role": "把命令枚举转换为固定命令名字符串，未知值返回 UNKNOWN",
+          "signature": "const char* smtp_command_name(smtp_command_kind_t kind)",
+          "visibility": "public"
+        }
+      ],
+      "header_path": "protocol/smtp_command.h",
+      "header_type_specs": [
+        {
+          "canonical_declaration": "typedef enum smtp_command_kind {\n    SMTP_CMD_HELO,\n    SMTP_CMD_EHLO,\n    SMTP_CMD_MAIL,\n    SMTP_CMD_RCPT,\n    SMTP_CMD_DATA,\n    SMTP_CMD_RSET,\n    SMTP_CMD_NOOP,\n    SMTP_CMD_QUIT,\n    SMTP_CMD_AUTH,\n    SMTP_CMD_VRFY,\n    SMTP_CMD_UNKNOWN,\n} smtp_command_kind_t;",
+          "name": "smtp_command_kind_t",
+          "role": "SMTP 示例支持的命令枚举，UNKNOWN 表示未识别命令",
+          "type_spec": {
+            "ENUM_VALUES": [
+              {
+                "NAME": "SMTP_CMD_HELO",
+                "ROLE": "HELO greeting"
+              },
+              {
+                "NAME": "SMTP_CMD_EHLO",
+                "ROLE": "EHLO greeting with capabilities"
+              },
+              {
+                "NAME": "SMTP_CMD_MAIL",
+                "ROLE": "MAIL FROM transaction command"
+              },
+              {
+                "NAME": "SMTP_CMD_RCPT",
+                "ROLE": "RCPT TO transaction command"
+              },
+              {
+                "NAME": "SMTP_CMD_DATA",
+                "ROLE": "DATA command"
+              },
+              {
+                "NAME": "SMTP_CMD_RSET",
+                "ROLE": "RSET command"
+              },
+              {
+                "NAME": "SMTP_CMD_NOOP",
+                "ROLE": "NOOP command"
+              },
+              {
+                "NAME": "SMTP_CMD_QUIT",
+                "ROLE": "QUIT command"
+              },
+              {
+                "NAME": "SMTP_CMD_AUTH",
+                "ROLE": "AUTH command"
+              },
+              {
+                "NAME": "SMTP_CMD_VRFY",
+                "ROLE": "VRFY command"
+              },
+              {
+                "NAME": "SMTP_CMD_UNKNOWN",
+                "ROLE": "unknown command"
+              }
+            ],
+            "TYPE_KIND": "ENUM"
+          },
+          "visibility": "PUBLIC"
+        },
+        {
+          "canonical_declaration": "typedef struct smtp_command {\n    smtp_command_kind_t kind;\n    char arg[1024];\n    bool has_arg;\n} smtp_command_t;",
+          "name": "smtp_command_t",
+          "role": "解析后的 SMTP 命令对象",
+          "type_spec": {
+            "FIELDS": [
+              {
+                "NAME": "kind",
+                "ROLE": "解析出的命令类型",
+                "TYPE": "smtp_command_kind_t"
+              },
+              {
+                "ARRAY_LEN": "1024",
+                "NAME": "arg",
+                "ROLE": "去除首尾空白后的命令参数",
+                "TYPE": "char"
+              },
+              {
+                "NAME": "has_arg",
+                "ROLE": "是否存在非空参数",
+                "TYPE": "bool"
+              }
+            ],
+            "TYPE_KIND": "STRUCT"
+          },
+          "visibility": "PUBLIC"
+        }
+      ],
+      "source_interfaces": [
+        {
+          "kind": "FUNC",
+          "name": "parse_kind",
+          "role": "将大写命令 verb 映射为 smtp_command_kind_t，未命中返回 SMTP_CMD_UNKNOWN",
+          "signature": "static smtp_command_kind_t parse_kind(const char* cmd)",
+          "trace_id": "smtp/protocol_text/smtp_command/parse_kind",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "smtp_command_parse",
+          "role": "解析单行 SMTP 命令，跳过前导空白、verb 大写化、复制并右裁剪参数",
+          "signature": "int smtp_command_parse(const char* line, smtp_command_t* out)",
+          "trace_id": "smtp/protocol_text/smtp_command/smtp_command_parse",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "smtp_command_name",
+          "role": "把命令枚举转换为固定命令名字符串，未知值返回 UNKNOWN",
+          "signature": "const char* smtp_command_name(smtp_command_kind_t kind)",
+          "trace_id": "smtp/protocol_text/smtp_command/smtp_command_name",
+          "visibility": "public"
+        }
+      ],
+      "source_path": "protocol/smtp_command.c"
+    },
+    {
+      "file_trace_id": "smtp/protocol_text/smtp_response",
+      "header_interfaces": [
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "smtp_response_format",
+          "role": "格式化单行 SMTP 响应为 '<code> <text>\\r\\n'",
+          "signature": "int smtp_response_format(char* out, size_t out_len, int code, const char* text)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "smtp_response_format_ehlo_caps",
+          "role": "格式化 EHLO capability 多行响应，声明 AUTH LOGIN PLAIN、SIZE 和 8BITMIME",
+          "signature": "int smtp_response_format_ehlo_caps(char* out, size_t out_len, const char* hostname, size_t max_size)",
+          "visibility": "public"
+        }
+      ],
+      "header_path": "protocol/smtp_response.h",
+      "header_type_specs": [],
+      "source_interfaces": [
+        {
+          "kind": "FUNC",
+          "name": "smtp_response_format",
+          "role": "格式化单行 SMTP 响应为 '<code> <text>\\r\\n'",
+          "signature": "int smtp_response_format(char* out, size_t out_len, int code, const char* text)",
+          "trace_id": "smtp/protocol_text/smtp_response/smtp_response_format",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "smtp_response_format_ehlo_caps",
+          "role": "格式化 EHLO capability 多行响应，声明 AUTH LOGIN PLAIN、SIZE 和 8BITMIME",
+          "signature": "int smtp_response_format_ehlo_caps(char* out, size_t out_len, const char* hostname, size_t max_size)",
+          "trace_id": "smtp/protocol_text/smtp_response/smtp_response_format_ehlo_caps",
+          "visibility": "public"
+        }
+      ],
+      "source_path": "protocol/smtp_response.c"
+    },
+    {
+      "file_trace_id": "smtp/auth/smtp_auth",
+      "header_interfaces": [
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "smtp_auth_default_user",
+          "role": "返回内置测试用户名 smtpuser",
+          "signature": "const char* smtp_auth_default_user(void)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "smtp_auth_validate",
+          "role": "验证 user/pass 是否等于 smtpuser/smtppass",
+          "signature": "int smtp_auth_validate(const char* user, const char* pass)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "smtp_auth_decode_base64",
+          "role": "忽略空白并解码 base64 文本到 out 缓冲",
+          "signature": "int smtp_auth_decode_base64(const char* input, unsigned char* out, size_t out_cap, size_t* out_len)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "smtp_auth_parse_plain_blob",
+          "role": "解析 AUTH PLAIN blob：NUL、user、NUL、pass",
+          "signature": "int smtp_auth_parse_plain_blob(const unsigned char* blob, size_t blob_len, char* out_user, size_t out_user_len, char* out_pass, size_t out_pass_len)",
+          "visibility": "public"
+        }
+      ],
+      "header_path": "auth/smtp_auth.h",
+      "header_type_specs": [],
+      "source_interfaces": [
+        {
+          "kind": "FUNC",
+          "name": "smtp_auth_default_user",
+          "role": "返回内置测试用户名 smtpuser",
+          "signature": "const char* smtp_auth_default_user(void)",
+          "trace_id": "smtp/auth/smtp_auth/smtp_auth_default_user",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "smtp_auth_validate",
+          "role": "验证 user/pass 是否等于 smtpuser/smtppass",
+          "signature": "int smtp_auth_validate(const char* user, const char* pass)",
+          "trace_id": "smtp/auth/smtp_auth/smtp_auth_validate",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "b64_value",
+          "role": "把单个 base64 字符映射为 6-bit 值，'=' 返回 padding 标记",
+          "signature": "static int b64_value(char c)",
+          "trace_id": "smtp/auth/smtp_auth/b64_value",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "smtp_auth_decode_base64",
+          "role": "忽略空白并解码 base64 文本到 out 缓冲",
+          "signature": "int smtp_auth_decode_base64(const char* input, unsigned char* out, size_t out_cap, size_t* out_len)",
+          "trace_id": "smtp/auth/smtp_auth/smtp_auth_decode_base64",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "smtp_auth_parse_plain_blob",
+          "role": "解析 AUTH PLAIN blob：NUL、user、NUL、pass",
+          "signature": "int smtp_auth_parse_plain_blob(const unsigned char* blob, size_t blob_len, char* out_user, size_t out_user_len, char* out_pass, size_t out_pass_len)",
+          "trace_id": "smtp/auth/smtp_auth/smtp_auth_parse_plain_blob",
+          "visibility": "public"
+        }
+      ],
+      "source_path": "auth/smtp_auth.c"
+    },
+    {
+      "file_trace_id": "smtp/storage/mail_store",
+      "header_interfaces": [
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "smtp_mail_store_init",
+          "role": "初始化邮件根目录，等价调用 ensure_dir_recursive",
+          "signature": "int smtp_mail_store_init(const char* root_dir)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "smtp_mail_store_write",
+          "role": "生成唯一 .eml 文件并写入 envelope headers、空行和 DATA 内容",
+          "signature": "int smtp_mail_store_write(const char* root_dir, const smtp_mail_t* mail, char* out_path, size_t out_path_len)",
+          "visibility": "public"
+        }
+      ],
+      "header_path": "storage/mail_store.h",
+      "header_type_specs": [
+        {
+          "canonical_declaration": "typedef struct smtp_mail {\n    const char* helo_name;\n    const char* auth_user;\n    const char* mail_from;\n    const char* const* rcpt_to;\n    size_t rcpt_count;\n    const char* data;\n    size_t data_len;\n} smtp_mail_t;",
+          "name": "smtp_mail_t",
+          "role": "待落盘邮件视图，包含 envelope 信息和原始 DATA 内容",
+          "type_spec": {
+            "FIELDS": [
+              {
+                "NAME": "helo_name",
+                "ROLE": "HELO/EHLO 名称，可为 NULL",
+                "TYPE": "const char*"
+              },
+              {
+                "NAME": "auth_user",
+                "ROLE": "认证用户名，可为空",
+                "TYPE": "const char*"
+              },
+              {
+                "NAME": "mail_from",
+                "ROLE": "MAIL FROM 地址，必填",
+                "TYPE": "const char*"
+              },
+              {
+                "NAME": "rcpt_to",
+                "ROLE": "RCPT TO 地址数组，必填",
+                "TYPE": "const char* const*"
+              },
+              {
+                "NAME": "rcpt_count",
+                "ROLE": "收件人数",
+                "TYPE": "size_t"
+              },
+              {
+                "NAME": "data",
+                "ROLE": "DATA 内容，必填",
+                "TYPE": "const char*"
+              },
+              {
+                "NAME": "data_len",
+                "ROLE": "DATA 内容长度",
+                "TYPE": "size_t"
+              }
+            ],
+            "TYPE_KIND": "STRUCT"
+          },
+          "visibility": "PUBLIC"
+        }
+      ],
+      "source_interfaces": [
+        {
+          "kind": "FUNC",
+          "name": "ensure_dir_recursive",
+          "role": "递归创建 root_dir 路径中的各级目录",
+          "signature": "static int ensure_dir_recursive(const char* path)",
+          "trace_id": "smtp/storage/mail_store/ensure_dir_recursive",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "write_all",
+          "role": "处理 EINTR 并完整写出 len 字节",
+          "signature": "static int write_all(int fd, const void* data, size_t len)",
+          "trace_id": "smtp/storage/mail_store/write_all",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "smtp_mail_store_init",
+          "role": "初始化邮件根目录，等价调用 ensure_dir_recursive",
+          "signature": "int smtp_mail_store_init(const char* root_dir)",
+          "trace_id": "smtp/storage/mail_store/smtp_mail_store_init",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "smtp_mail_store_write",
+          "role": "生成唯一 .eml 文件并写入 envelope headers、空行和 DATA 内容",
+          "signature": "int smtp_mail_store_write(const char* root_dir, const smtp_mail_t* mail, char* out_path, size_t out_path_len)",
+          "trace_id": "smtp/storage/mail_store/smtp_mail_store_write",
+          "visibility": "public"
+        }
+      ],
+      "source_path": "storage/mail_store.c"
+    },
+    {
+      "file_trace_id": "smtp/session/smtp_session",
+      "header_interfaces": [
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "smtp_session_create",
+          "role": "创建 session 并为 control_fd 创建 smtp_connection_t",
+          "signature": "smtp_session_t* smtp_session_create(int control_fd)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "smtp_session_reset_transaction",
+          "role": "清空 MAIL/RCPT/DATA transaction 状态，不影响 greeting/authenticated",
+          "signature": "void smtp_session_reset_transaction(smtp_session_t* session)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "smtp_session_reset_auth_exchange",
+          "role": "清空 AUTH continuation 状态和 LOGIN 暂存用户名",
+          "signature": "void smtp_session_reset_auth_exchange(smtp_session_t* session)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "smtp_session_destroy",
+          "role": "销毁 session 及其 smtp_connection_t",
+          "signature": "void smtp_session_destroy(smtp_session_t* session)",
+          "visibility": "public"
+        }
+      ],
+      "header_path": "server/smtp_session.h",
+      "header_type_specs": [
+        {
+          "canonical_declaration": "typedef enum smtp_auth_state {\n    SMTP_AUTH_STATE_NONE = 0,\n    SMTP_AUTH_STATE_LOGIN_WAIT_USER,\n    SMTP_AUTH_STATE_LOGIN_WAIT_PASS,\n    SMTP_AUTH_STATE_PLAIN_WAIT_BLOB,\n} smtp_auth_state_t;",
+          "name": "smtp_auth_state_t",
+          "role": "AUTH LOGIN/PLAIN continuation 状态机",
+          "type_spec": {
+            "ENUM_VALUES": [
+              {
+                "NAME": "SMTP_AUTH_STATE_NONE",
+                "ROLE": "无认证 continuation",
+                "VALUE": 0
+              },
+              {
+                "NAME": "SMTP_AUTH_STATE_LOGIN_WAIT_USER",
+                "ROLE": "等待 AUTH LOGIN username"
+              },
+              {
+                "NAME": "SMTP_AUTH_STATE_LOGIN_WAIT_PASS",
+                "ROLE": "等待 AUTH LOGIN password"
+              },
+              {
+                "NAME": "SMTP_AUTH_STATE_PLAIN_WAIT_BLOB",
+                "ROLE": "等待 AUTH PLAIN blob"
+              }
+            ],
+            "TYPE_KIND": "ENUM"
+          },
+          "visibility": "PUBLIC"
+        },
+        {
+          "canonical_declaration": "typedef struct smtp_session {\n    int control_fd;\n    smtp_connection_t* conn;\n    bool greeted;\n    bool authenticated;\n    char helo_name[256];\n    char auth_user[256];\n    smtp_auth_state_t auth_state;\n    char auth_login_user[256];\n    char mail_from[512];\n    bool has_mail_from;\n    char rcpt_to[SMTP_MAX_RECIPIENTS][512];\n    size_t rcpt_count;\n    bool in_data_mode;\n    char message_buf[SMTP_MAX_MESSAGE_SIZE + 1];\n    size_t message_len;\n    bool message_too_large;\n} smtp_session_t;",
+          "name": "smtp_session_t",
+          "role": "公开 session 结构体，server handler 直接读写其状态字段",
+          "type_spec": {
+            "FIELDS": [
+              {
+                "NAME": "control_fd",
+                "ROLE": "控制连接 fd",
+                "TYPE": "int"
+              },
+              {
+                "NAME": "conn",
+                "ROLE": "连接对象",
+                "TYPE": "smtp_connection_t*"
+              },
+              {
+                "NAME": "greeted",
+                "ROLE": "是否已收到 HELO/EHLO",
+                "TYPE": "bool"
+              },
+              {
+                "NAME": "authenticated",
+                "ROLE": "是否认证成功",
+                "TYPE": "bool"
+              },
+              {
+                "ARRAY_LEN": "256",
+                "NAME": "helo_name",
+                "ROLE": "HELO/EHLO 参数",
+                "TYPE": "char"
+              },
+              {
+                "ARRAY_LEN": "256",
+                "NAME": "auth_user",
+                "ROLE": "认证用户名",
+                "TYPE": "char"
+              },
+              {
+                "NAME": "auth_state",
+                "ROLE": "AUTH continuation 状态",
+                "TYPE": "smtp_auth_state_t"
+              },
+              {
+                "ARRAY_LEN": "256",
+                "NAME": "auth_login_user",
+                "ROLE": "AUTH LOGIN 暂存用户名",
+                "TYPE": "char"
+              },
+              {
+                "ARRAY_LEN": "512",
+                "NAME": "mail_from",
+                "ROLE": "MAIL FROM 地址",
+                "TYPE": "char"
+              },
+              {
+                "NAME": "has_mail_from",
+                "ROLE": "是否已有 MAIL FROM",
+                "TYPE": "bool"
+              },
+              {
+                "ARRAY_LEN": "SMTP_MAX_RECIPIENTS][512",
+                "NAME": "rcpt_to",
+                "ROLE": "RCPT TO 地址二维数组",
+                "TYPE": "char"
+              },
+              {
+                "NAME": "rcpt_count",
+                "ROLE": "当前收件人数",
+                "TYPE": "size_t"
+              },
+              {
+                "NAME": "in_data_mode",
+                "ROLE": "是否处于 DATA mode",
+                "TYPE": "bool"
+              },
+              {
+                "ARRAY_LEN": "SMTP_MAX_MESSAGE_SIZE + 1",
+                "NAME": "message_buf",
+                "ROLE": "DATA 内容缓冲",
+                "TYPE": "char"
+              },
+              {
+                "NAME": "message_len",
+                "ROLE": "DATA 当前长度",
+                "TYPE": "size_t"
+              },
+              {
+                "NAME": "message_too_large",
+                "ROLE": "DATA 是否超限",
+                "TYPE": "bool"
+              }
+            ],
+            "TYPE_KIND": "STRUCT"
+          },
+          "visibility": "PUBLIC"
+        }
+      ],
+      "source_interfaces": [
+        {
+          "kind": "FUNC",
+          "name": "smtp_session_create",
+          "role": "创建 session 并为 control_fd 创建 smtp_connection_t",
+          "signature": "smtp_session_t* smtp_session_create(int control_fd)",
+          "trace_id": "smtp/session/smtp_session/smtp_session_create",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "smtp_session_reset_transaction",
+          "role": "清空 MAIL/RCPT/DATA transaction 状态，不影响 greeting/authenticated",
+          "signature": "void smtp_session_reset_transaction(smtp_session_t* session)",
+          "trace_id": "smtp/session/smtp_session/smtp_session_reset_transaction",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "smtp_session_reset_auth_exchange",
+          "role": "清空 AUTH continuation 状态和 LOGIN 暂存用户名",
+          "signature": "void smtp_session_reset_auth_exchange(smtp_session_t* session)",
+          "trace_id": "smtp/session/smtp_session/smtp_session_reset_auth_exchange",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "smtp_session_destroy",
+          "role": "销毁 session 及其 smtp_connection_t",
+          "signature": "void smtp_session_destroy(smtp_session_t* session)",
+          "trace_id": "smtp/session/smtp_session/smtp_session_destroy",
+          "visibility": "public"
+        }
+      ],
+      "source_path": "server/smtp_session.c"
+    },
+    {
+      "file_trace_id": "smtp/server_app/smtp_server",
+      "header_interfaces": [
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "smtp_server_create",
+          "role": "创建 SMTP server，初始化 mail_root、TCP callbacks 和底层 TCP server",
+          "signature": "smtp_server_t* smtp_server_create(uint16_t port, const char* mail_root)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "smtp_server_start",
+          "role": "启动底层 TCP server 监听",
+          "signature": "int smtp_server_start(smtp_server_t* server)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "event",
+          "kind": "FUNC",
+          "name": "smtp_server_run",
+          "role": "进入底层 TCP server 事件循环",
+          "signature": "int smtp_server_run(smtp_server_t* server)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "smtp_server_stop",
+          "role": "请求底层 TCP server 停止事件循环",
+          "signature": "void smtp_server_stop(smtp_server_t* server)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "smtp_server_destroy",
+          "role": "销毁所有 session、底层 TCP server 和 server 对象",
+          "signature": "void smtp_server_destroy(smtp_server_t* server)",
+          "visibility": "public"
+        }
+      ],
+      "header_path": "server/smtp_server.h",
+      "header_type_specs": [
+        {
+          "canonical_declaration": "typedef struct smtp_server smtp_server_t;",
+          "name": "smtp_server_t",
+          "role": "不透明 SMTP server 句柄，隐藏端口、hostname、mail_root、tcp 和 session 链表",
+          "type_spec": {
+            "TYPE_KIND": "OPAQUE"
+          },
+          "visibility": "PUBLIC"
+        }
+      ],
+      "source_interfaces": [
+        {
+          "kind": "FUNC",
+          "name": "find_session",
+          "role": "按 control_fd 在 server session 链表中查找 session",
+          "signature": "static smtp_session_t* find_session(smtp_server_t* server, int fd)",
+          "trace_id": "smtp/server_app/smtp_server/find_session",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "add_session",
+          "role": "把新 session 头插到 server session 链表",
+          "signature": "static int add_session(smtp_server_t* server, smtp_session_t* session)",
+          "trace_id": "smtp/server_app/smtp_server/add_session",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "remove_session",
+          "role": "按 fd 移除并销毁 session 链表节点",
+          "signature": "static void remove_session(smtp_server_t* server, int fd)",
+          "trace_id": "smtp/server_app/smtp_server/remove_session",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "close_control",
+          "role": "委托 TCP server 关闭 session 控制连接",
+          "signature": "static void close_control(smtp_server_t* server, smtp_session_t* session)",
+          "trace_id": "smtp/server_app/smtp_server/close_control",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "queue_raw",
+          "role": "把原始响应文本排入连接输出队列并订阅写事件",
+          "signature": "static int queue_raw(smtp_server_t* server, smtp_session_t* session, const char* text)",
+          "trace_id": "smtp/server_app/smtp_server/queue_raw",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "queue_code",
+          "role": "格式化 SMTP 响应码行并排队发送",
+          "signature": "static int queue_code(smtp_server_t* server, smtp_session_t* session, int code, const char* text)",
+          "trace_id": "smtp/server_app/smtp_server/queue_code",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "flush_control_now",
+          "role": "立即 flush session 输出队列并根据 pending 状态更新写兴趣",
+          "signature": "static int flush_control_now(smtp_server_t* server, smtp_session_t* session)",
+          "trace_id": "smtp/server_app/smtp_server/flush_control_now",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "append_message_line",
+          "role": "向 DATA 缓冲追加一行，处理 dot-stuffing 并追加 CRLF",
+          "signature": "static int append_message_line(smtp_session_t* session, const char* raw_line)",
+          "trace_id": "smtp/server_app/smtp_server/append_message_line",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "handle_data_line",
+          "role": "处理 DATA mode 中的行：非终止行追加，'.' 终止并尝试落盘",
+          "signature": "static void handle_data_line(smtp_server_t* server, smtp_session_t* session, const char* line)",
+          "trace_id": "smtp/server_app/smtp_server/handle_data_line",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "parse_mailbox_arg",
+          "role": "解析 MAIL FROM:/RCPT TO: 参数，支持尖括号地址和非空白地址",
+          "signature": "static int parse_mailbox_arg(const char* arg, const char* key, char* out, size_t out_len)",
+          "trace_id": "smtp/server_app/smtp_server/parse_mailbox_arg",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "begin_login_auth",
+          "role": "进入 AUTH LOGIN username continuation 并发送 username challenge",
+          "signature": "static void begin_login_auth(smtp_server_t* server, smtp_session_t* session)",
+          "trace_id": "smtp/server_app/smtp_server/begin_login_auth",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "decode_b64_to_text",
+          "role": "把 base64 文本解码为 NUL 结尾字符串，拒绝空结果或溢出",
+          "signature": "static int decode_b64_to_text(const char* b64, char* out, size_t out_len)",
+          "trace_id": "smtp/server_app/smtp_server/decode_b64_to_text",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "finish_auth_if_valid",
+          "role": "验证凭据并设置 authenticated/auth_user，发送 235 或 535，最后清理 AUTH continuation",
+          "signature": "static void finish_auth_if_valid(smtp_server_t* server, smtp_session_t* session, const char* user, const char* pass)",
+          "trace_id": "smtp/server_app/smtp_server/finish_auth_if_valid",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "handle_auth_continuation",
+          "role": "处理 AUTH LOGIN/PLAIN 的后续 base64 行",
+          "signature": "static void handle_auth_continuation(smtp_server_t* server, smtp_session_t* session, const char* line)",
+          "trace_id": "smtp/server_app/smtp_server/handle_auth_continuation",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "ensure_ready_for_mail",
+          "role": "检查 MAIL/RCPT/DATA 前置条件：必须已 greeting 且已认证",
+          "signature": "static int ensure_ready_for_mail(smtp_server_t* server, smtp_session_t* session)",
+          "trace_id": "smtp/server_app/smtp_server/ensure_ready_for_mail",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "handle_auth",
+          "role": "处理 AUTH 命令，支持 LOGIN 和 PLAIN，可带 initial response 或进入 continuation",
+          "signature": "static void handle_auth(smtp_server_t* server, smtp_session_t* session, const smtp_command_t* cmd)",
+          "trace_id": "smtp/server_app/smtp_server/handle_auth",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "handle_command",
+          "role": "按 smtp_command_t.kind 分发 SMTP 命令并维护 greeting/auth/transaction/DATA 状态",
+          "signature": "static void handle_command(smtp_server_t* server, smtp_session_t* session, const smtp_command_t* cmd)",
+          "trace_id": "smtp/server_app/smtp_server/handle_command",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "on_accept_cb",
+          "role": "TCP accept 回调：创建 session、加入链表并发送 220 greeting",
+          "signature": "static void on_accept_cb(void* user, int fd, const struct sockaddr_storage* peer, socklen_t peer_len)",
+          "trace_id": "smtp/server_app/smtp_server/on_accept_cb",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "on_event_cb",
+          "role": "TCP event 回调：处理可写 flush、可读 read/pop_line，并分派 DATA/AUTH/command",
+          "signature": "static void on_event_cb(void* user, int fd, uint32_t events)",
+          "trace_id": "smtp/server_app/smtp_server/on_event_cb",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "on_close_cb",
+          "role": "TCP close 回调：从 server session 链表移除 fd 对应 session",
+          "signature": "static void on_close_cb(void* user, int fd)",
+          "trace_id": "smtp/server_app/smtp_server/on_close_cb",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "smtp_server_create",
+          "role": "创建 SMTP server，初始化 mail_root、TCP callbacks 和底层 TCP server",
+          "signature": "smtp_server_t* smtp_server_create(uint16_t port, const char* mail_root)",
+          "trace_id": "smtp/server_app/smtp_server/smtp_server_create",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "smtp_server_start",
+          "role": "启动底层 TCP server 监听",
+          "signature": "int smtp_server_start(smtp_server_t* server)",
+          "trace_id": "smtp/server_app/smtp_server/smtp_server_start",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "smtp_server_run",
+          "role": "进入底层 TCP server 事件循环",
+          "signature": "int smtp_server_run(smtp_server_t* server)",
+          "trace_id": "smtp/server_app/smtp_server/smtp_server_run",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "smtp_server_stop",
+          "role": "请求底层 TCP server 停止事件循环",
+          "signature": "void smtp_server_stop(smtp_server_t* server)",
+          "trace_id": "smtp/server_app/smtp_server/smtp_server_stop",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "smtp_server_destroy",
+          "role": "销毁所有 session、底层 TCP server 和 server 对象",
+          "signature": "void smtp_server_destroy(smtp_server_t* server)",
+          "trace_id": "smtp/server_app/smtp_server/smtp_server_destroy",
+          "visibility": "public"
+        }
+      ],
+      "source_path": "server/smtp_server.c"
+    },
+    {
+      "file_trace_id": "smtp/main",
+      "header_interfaces": [],
+      "header_path": "",
+      "header_type_specs": [],
+      "source_interfaces": [
+        {
+          "kind": "FUNC",
+          "name": "parse_port",
+          "role": "解析命令行端口字符串，接受 1..65535，非法返回 0",
+          "signature": "static uint16_t parse_port(const char* s)",
+          "trace_id": "smtp/main/parse_port",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "main",
+          "role": "SMTP server 可执行程序入口，负责默认配置、参数解析与 server 生命周期编排",
+          "signature": "int main(int argc, char** argv)",
+          "trace_id": "smtp/main/main",
+          "visibility": "private"
+        }
+      ],
+      "source_path": "main.c"
+    }
+  ],
+  "schema_version": "spec_ablation_s3_interface_grounding/v1",
+  "visibility": "s3_coder_visible_interface_grounding"
+}

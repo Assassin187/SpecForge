@@ -1,0 +1,27 @@
+[PROMPT]
+Implement function `http_connection_destroy`. Responsibility: 释放连接对象的输入/输出缓冲区并释放连接对象自身；空指针安全返回
+
+[RELY]
+None.
+
+[GUARANTEE]
+```c
+void http_connection_destroy(http_connection_t* conn);
+```
+
+[SPECIFICATION]
+**Pre-Condition**:
+- 输入参数：conn(http_connection_t*，可为 NULL，OWNED)。
+
+**Post-Condition**:
+- 通过副作用释放内存。
+
+**Invariant**:
+- 仅面向单线程事件循环或单线程调用路径；跨线程访问必须由上层同步。
+- 函数可能分配资源、消费缓冲、修改链表、写文件或更新网络状态，不承诺幂等。
+- 调用方必须遵守 SIGNATURE.PARAMS 中的 NULLABLE 与 OWNERSHIP 约束。
+- 维护 conn->in_buf：通过 free 释放输入缓冲
+- 维护 conn->out_buf：通过 free 释放输出缓冲
+
+**System Algorithm**:
+- 检查 conn 非空后依次 free(in_buf)、free(out_buf)、free(conn)。

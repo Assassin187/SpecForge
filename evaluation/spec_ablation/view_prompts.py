@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import Any
 
@@ -39,6 +40,8 @@ class ViewPromptBuilder:
             return build_s1_source_prompt(self.context, file_spec, generated_header)
         if self.context.view_name == "s2":
             return build_s2_source_prompt(self.context, file_spec, generated_header)
+        if self.context.view_name == "s3":
+            return build_s3_source_prompt(self.context, file_spec, generated_header)
         raise UnsupportedViewError(f"unsupported ablation view '{self.context.view_name}'")
 
     def build_main_source_prompt(
@@ -74,6 +77,15 @@ class ViewPromptBuilder:
             )
         if self.context.view_name == "s2":
             return build_s2_repair_prompt(
+                self.context,
+                file_spec,
+                target_path,
+                canonical_header,
+                current_content,
+                compile_errors,
+            )
+        if self.context.view_name == "s3":
+            return build_s3_repair_prompt(
                 self.context,
                 file_spec,
                 target_path,
@@ -254,6 +266,98 @@ def _render_s2_project_graph(context: AblationViewContext, file_spec: FileSpec) 
     )
 
 
+def _interface_files_by_key(grounding: dict[str, Any], key: str) -> dict[str, dict[str, Any]]:
+    return {
+        str(item.get(key, "")): item
+        for item in grounding.get("files", [])
+        if isinstance(item, dict) and str(item.get(key, "")).strip()
+    }
+
+
+def _format_type_spec(item: dict[str, Any]) -> list[str]:
+    lines = [
+        f"- {item.get('name', '')} [{item.get('visibility', '')}]",
+        f"  role: {item.get('role', '')}",
+    ]
+    declaration = str(item.get("canonical_declaration", "")).strip()
+    if declaration:
+        lines.extend(["  canonical declaration:", f"```c\n{declaration}\n```"])
+    type_spec = item.get("type_spec", {})
+    if isinstance(type_spec, dict):
+        lines.extend(["  TYPE_SPEC:", "```json"])
+        lines.append(json.dumps(type_spec, ensure_ascii=False, sort_keys=True, indent=2))
+        lines.append("```")
+    return lines
+
+
+def _format_interface_item(item: dict[str, Any], *, include_trace: bool = False) -> str:
+    trace = f" <{item.get('trace_id', '')}>" if include_trace and item.get("trace_id") else ""
+    return (
+        f"- {item.get('name', '')}{trace} [{item.get('visibility', '')}/{item.get('kind', '')}] "
+        f"{item.get('signature', '')}\n"
+        f"  role: {item.get('role', '')}"
+    )
+
+
+def _render_s3_interface_grounding(context: AblationViewContext, file_spec: FileSpec) -> str:
+    grounding = context.interface_grounding
+    if grounding is None:
+        raise UnsupportedViewError("view 's3' requires a loaded interface_grounding artifact")
+
+    by_header = _interface_files_by_key(grounding, "header_path")
+    by_source = _interface_files_by_key(grounding, "source_path")
+    header_paths = list(dict.fromkeys(
+        path
+        for path in [file_spec.header_path, *file_spec.header_dependencies, *file_spec.source_dependencies]
+        if path
+    ))
+
+    lines: list[str] = ["HEADER.DATA.TYPE_SPEC:"]
+    for header_path in header_paths:
+        item = by_header.get(header_path)
+        if not item:
+            continue
+        type_specs = [value for value in item.get("header_type_specs", []) if isinstance(value, dict)]
+        if not type_specs:
+            continue
+        lines.append(f"### {header_path}")
+        for type_item in type_specs:
+            lines.extend(_format_type_spec(type_item))
+    if len(lines) == 1:
+        lines.append("- None.")
+
+    lines.extend(["", "HEADER.INTERFACE:"])
+    header_interface_count = 0
+    for header_path in header_paths:
+        item = by_header.get(header_path)
+        if not item:
+            continue
+        interfaces = [value for value in item.get("header_interfaces", []) if isinstance(value, dict)]
+        if not interfaces:
+            continue
+        lines.append(f"### {header_path}")
+        for interface in interfaces:
+            lines.append(_format_interface_item(interface))
+            header_interface_count += 1
+    if header_interface_count == 0:
+        lines.append("- None.")
+
+    lines.extend(["", "SOURCE.INTERFACE:"])
+    current = by_source.get(file_spec.source_path)
+    source_interfaces = [
+        value
+        for value in (current or {}).get("source_interfaces", [])
+        if isinstance(value, dict)
+    ]
+    if source_interfaces:
+        lines.append(f"### {file_spec.source_path}")
+        lines.extend(_format_interface_item(item, include_trace=True) for item in source_interfaces)
+    else:
+        lines.append("- None.")
+
+    return "\n".join(lines)
+
+
 def build_s1_source_prompt(
     context: AblationViewContext,
     file_spec: FileSpec,
@@ -366,6 +470,71 @@ def build_s2_repair_prompt(
             "- Preserve all public function signatures exactly.\n"
             "- Do not edit headers, Makefile, or any other source file.\n"
             "- Use the S2 project graph only for module/file/function structure, dependency visibility, linkage, and generation order.\n"
+            "- Keep behavior aligned with the local SpecFS blocks and canonical headers.",
+        ]
+    )
+    return [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": content}]
+
+
+def build_s3_source_prompt(
+    context: AblationViewContext,
+    file_spec: FileSpec,
+    generated_header: str,
+) -> list[dict[str, str]]:
+    primary_include = (
+        f'- Include "{file_spec.header_path}" as the primary project include.'
+        if file_spec.header_path
+        else "- This target has no paired public header; include the available project headers needed by the local SpecFS blocks."
+    )
+    content = "\n\n".join(
+        [
+            f"Generate the full C source file `{file_spec.source_path}`.",
+            _section("Canonical header content:", generated_header),
+            _section("Available raw header declarations:", _local_headers(context, file_spec)),
+            _section("S2 project graph context:", _render_s2_project_graph(context, file_spec)),
+            _section("S3 FILE interface grounding:", _render_s3_interface_grounding(context, file_spec)),
+            _section("Local SpecFS function blocks for this target:", _local_specfs_blocks(context, file_spec)),
+            "Requirements:\n"
+            f"{primary_include}\n"
+            "- Implement every function described in the local SpecFS blocks for this target.\n"
+            "- Match each [GUARANTEE] signature exactly.\n"
+            "- Use the S2 project graph only for module/file/function structure, dependency visibility, linkage, and generation order.\n"
+            "- Use S3 FILE interface grounding only for canonical type layouts, public function signatures, and source-local function signatures.\n"
+            "- Do not infer wire mapping, call contracts, forbidden symbols, or test behavior from the S3 interface grounding.\n"
+            "- Keep public APIs compatible with the canonical headers.\n"
+            "- Include required standard/POSIX headers for library and system calls.\n"
+            "- Output only the complete C source file content.",
+        ]
+    )
+    return [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": content}]
+
+
+def build_s3_repair_prompt(
+    context: AblationViewContext,
+    file_spec: FileSpec,
+    target_path: str,
+    canonical_header: str,
+    current_content: str,
+    compile_errors: str,
+) -> list[dict[str, str]]:
+    if target_path != file_spec.source_path or not target_path.endswith(".c"):
+        raise ValueError(f"repair target must be the source path for a .c file: {target_path}")
+    content = "\n\n".join(
+        [
+            f"Repair the source file `{target_path}` so the project compiles.",
+            _section("Compiler diagnostics:", compile_errors),
+            _section("Canonical header content:", canonical_header),
+            _section("Available raw header declarations:", _local_headers(context, file_spec)),
+            _section("S2 project graph context:", _render_s2_project_graph(context, file_spec)),
+            _section("S3 FILE interface grounding:", _render_s3_interface_grounding(context, file_spec)),
+            _section("Local SpecFS function blocks for this target:", _local_specfs_blocks(context, file_spec)),
+            _section("Current source file content:", current_content),
+            "Requirements:\n"
+            "- Output only the full corrected C source file content.\n"
+            "- Preserve all public function signatures exactly.\n"
+            "- Do not edit headers, Makefile, or any other source file.\n"
+            "- Use the S2 project graph only for module/file/function structure, dependency visibility, linkage, and generation order.\n"
+            "- Use S3 FILE interface grounding only for canonical type layouts and function signatures.\n"
             "- Keep behavior aligned with the local SpecFS blocks and canonical headers.",
         ]
     )

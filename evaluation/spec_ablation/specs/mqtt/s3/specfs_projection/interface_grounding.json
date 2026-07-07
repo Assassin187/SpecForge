@@ -1,0 +1,1604 @@
+{
+  "files": [
+    {
+      "file_trace_id": "mqtt/network/connection",
+      "header_interfaces": [
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "mqtt_connection_create",
+          "role": "为已建立的 socket fd 创建连接对象并初始化缓冲区与队列状态",
+          "signature": "mqtt_connection_t* mqtt_connection_create(int fd)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "mqtt_connection_destroy",
+          "role": "销毁连接对象并释放输入缓冲、输出队列和 peer 字符串资源",
+          "signature": "void mqtt_connection_destroy(mqtt_connection_t* c)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "mqtt_connection_fd",
+          "role": "读取连接当前 fd；连接无效时返回 -1",
+          "signature": "int mqtt_connection_fd(const mqtt_connection_t* c)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "mqtt_connection_closed",
+          "role": "读取连接是否已关闭的状态标志",
+          "signature": "bool mqtt_connection_closed(const mqtt_connection_t* c)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "mqtt_connection_peer",
+          "role": "读取连接对端地址字符串，未设置时返回空字符串",
+          "signature": "const char* mqtt_connection_peer(const mqtt_connection_t* c)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "mqtt_connection_set_peer",
+          "role": "更新连接对端地址字符串，内部复制并接管旧值释放",
+          "signature": "void mqtt_connection_set_peer(mqtt_connection_t* c, const char* peer)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "mqtt_connection_read",
+          "role": "从 socket 非阻塞读取数据并追加到内部输入缓冲，同时反馈对端关闭状态",
+          "signature": "bool mqtt_connection_read(mqtt_connection_t* c, bool* peer_closed)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "mqtt_connection_flush",
+          "role": "尝试将输出队列中的待发数据刷写到 socket",
+          "signature": "bool mqtt_connection_flush(mqtt_connection_t* c)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "mqtt_connection_send",
+          "role": "将待发送字节复制入输出队列，等待 flush 实际发送",
+          "signature": "void mqtt_connection_send(mqtt_connection_t* c, const uint8_t* data, size_t len)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "mqtt_connection_in_data",
+          "role": "返回内部输入缓冲首地址供解码器读取",
+          "signature": "uint8_t* mqtt_connection_in_data(mqtt_connection_t* c)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "mqtt_connection_in_len",
+          "role": "返回当前输入缓冲可读字节数",
+          "signature": "size_t mqtt_connection_in_len(const mqtt_connection_t* c)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "mqtt_connection_in_consume",
+          "role": "消费输入缓冲前缀字节并维护剩余数据连续性",
+          "signature": "void mqtt_connection_in_consume(mqtt_connection_t* c, size_t n)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "mqtt_connection_want_write",
+          "role": "判断连接是否存在待发送输出块",
+          "signature": "bool mqtt_connection_want_write(const mqtt_connection_t* c)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "mqtt_connection_close",
+          "role": "关闭底层 fd 并将连接标记为 closed，支持重复调用",
+          "signature": "void mqtt_connection_close(mqtt_connection_t* c)",
+          "visibility": "public"
+        }
+      ],
+      "header_path": "network/connection.h",
+      "header_type_specs": [],
+      "source_interfaces": [
+        {
+          "kind": "FUNC",
+          "name": "mqtt_connection_create",
+          "role": "分配并初始化连接对象，设置 fd/缓冲/队列/peer 的初始状态",
+          "signature": "mqtt_connection_t* mqtt_connection_create(int fd)",
+          "trace_id": "mqtt/network/connection/mqtt_connection_create",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "mqtt_connection_destroy",
+          "role": "先关闭连接，再释放输入缓冲、输出链表和 peer，最终释放对象",
+          "signature": "void mqtt_connection_destroy(mqtt_connection_t* c)",
+          "trace_id": "mqtt/network/connection/mqtt_connection_destroy",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "mqtt_connection_fd",
+          "role": "返回连接 fd；对象为空时返回 -1",
+          "signature": "int mqtt_connection_fd(const mqtt_connection_t* c)",
+          "trace_id": "mqtt/network/connection/mqtt_connection_fd",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "mqtt_connection_closed",
+          "role": "返回连接关闭状态；空对象视为已关闭",
+          "signature": "bool mqtt_connection_closed(const mqtt_connection_t* c)",
+          "trace_id": "mqtt/network/connection/mqtt_connection_closed",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "mqtt_connection_peer",
+          "role": "返回 peer 字符串视图；空对象或未设置时返回空字符串",
+          "signature": "const char* mqtt_connection_peer(const mqtt_connection_t* c)",
+          "trace_id": "mqtt/network/connection/mqtt_connection_peer",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "mqtt_connection_set_peer",
+          "role": "原子更新 peer 字符串：释放旧值并在新值非空时复制保存",
+          "signature": "void mqtt_connection_set_peer(mqtt_connection_t* c, const char* peer)",
+          "trace_id": "mqtt/network/connection/mqtt_connection_set_peer",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "mqtt_connection_read",
+          "role": "循环 recv 拉取字节到内部输入缓冲，正确处理 EAGAIN/EINTR/对端关闭/错误分支；不得使用 zero-length recv 或 MSG_PEEK 判断关闭",
+          "signature": "bool mqtt_connection_read(mqtt_connection_t* c, bool* peer_closed)",
+          "trace_id": "mqtt/network/connection/mqtt_connection_read",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "mqtt_connection_flush",
+          "role": "按队列顺序 send 待发数据并推进偏移，发送完成后弹出并释放块节点",
+          "signature": "bool mqtt_connection_flush(mqtt_connection_t* c)",
+          "trace_id": "mqtt/network/connection/mqtt_connection_flush",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "mqtt_connection_send",
+          "role": "拷贝输入数据生成 out_chunk 并追加到发送队列尾部",
+          "signature": "void mqtt_connection_send(mqtt_connection_t* c, const uint8_t* data, size_t len)",
+          "trace_id": "mqtt/network/connection/mqtt_connection_send",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "mqtt_connection_in_data",
+          "role": "返回输入缓冲指针，供上层按协议解析",
+          "signature": "uint8_t* mqtt_connection_in_data(mqtt_connection_t* c)",
+          "trace_id": "mqtt/network/connection/mqtt_connection_in_data",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "mqtt_connection_in_len",
+          "role": "返回输入缓冲长度（已读未消费）",
+          "signature": "size_t mqtt_connection_in_len(const mqtt_connection_t* c)",
+          "trace_id": "mqtt/network/connection/mqtt_connection_in_len",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "mqtt_connection_in_consume",
+          "role": "消费前 n 字节；全量消费则置零，部分消费则 memmove 紧缩缓冲",
+          "signature": "void mqtt_connection_in_consume(mqtt_connection_t* c, size_t n)",
+          "trace_id": "mqtt/network/connection/mqtt_connection_in_consume",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "mqtt_connection_want_write",
+          "role": "根据 out_head 是否为空判断是否需要监听/执行写事件",
+          "signature": "bool mqtt_connection_want_write(const mqtt_connection_t* c)",
+          "trace_id": "mqtt/network/connection/mqtt_connection_want_write",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "mqtt_connection_close",
+          "role": "在未关闭时关闭 fd 并置 fd=-1、closed=true，保证幂等",
+          "signature": "void mqtt_connection_close(mqtt_connection_t* c)",
+          "trace_id": "mqtt/network/connection/mqtt_connection_close",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "ensure_in_cap",
+          "role": "输入缓冲扩容函数：按倍增策略确保 in_data 可容纳指定字节数",
+          "signature": "static bool ensure_in_cap(mqtt_connection_t* c, size_t need)",
+          "trace_id": "mqtt/network/connection/ensure_in_cap",
+          "visibility": "private"
+        }
+      ],
+      "source_path": "network/connection.c"
+    },
+    {
+      "file_trace_id": "mqtt/network/tcp_server",
+      "header_interfaces": [
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "mqtt_tcp_server_create",
+          "role": "创建 TCP 服务器对象并保存端口、回调与用户上下文",
+          "signature": "mqtt_tcp_server_t* mqtt_tcp_server_create(uint16_t port, mqtt_tcp_callbacks_t cb, void* user)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "mqtt_tcp_server_destroy",
+          "role": "销毁 TCP 服务器对象，内部先 stop 再释放实例",
+          "signature": "void mqtt_tcp_server_destroy(mqtt_tcp_server_t* s)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "mqtt_tcp_server_start",
+          "role": "创建监听 socket 与 epoll 实例并进入可运行状态",
+          "signature": "bool mqtt_tcp_server_start(mqtt_tcp_server_t* s)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "mqtt_tcp_server_run",
+          "role": "执行 epoll 事件循环，分发 accept/read/write/close 处理流程",
+          "signature": "void mqtt_tcp_server_run(mqtt_tcp_server_t* s)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "mqtt_tcp_server_stop",
+          "role": "停止事件循环并关闭所有连接、epoll fd 与监听 fd",
+          "signature": "void mqtt_tcp_server_stop(mqtt_tcp_server_t* s)",
+          "visibility": "public"
+        }
+      ],
+      "header_path": "network/tcp_server.h",
+      "header_type_specs": [
+        {
+          "canonical_declaration": "typedef struct mqtt_tcp_server mqtt_tcp_server_t;",
+          "name": "mqtt_tcp_server_t",
+          "role": "TCP 服务器不透明句柄，封装监听端口、epoll 句柄、运行标志与连接链表",
+          "type_spec": {
+            "TYPE_KIND": "OPAQUE"
+          },
+          "visibility": "PUBLIC"
+        },
+        {
+          "canonical_declaration": "typedef void (*mqtt_tcp_on_accept_fn)(void* user, mqtt_connection_t* c);",
+          "name": "mqtt_tcp_on_accept_fn",
+          "role": "新连接建立回调类型，通知上层创建会话与注册状态",
+          "type_spec": {
+            "CALLBACK_SIGNATURE": "void (*mqtt_tcp_on_accept_fn)(void* user, mqtt_connection_t* c)",
+            "TYPE_KIND": "CALLBACK"
+          },
+          "visibility": "PUBLIC"
+        },
+        {
+          "canonical_declaration": "typedef void (*mqtt_tcp_on_data_fn)(void* user, mqtt_connection_t* c);",
+          "name": "mqtt_tcp_on_data_fn",
+          "role": "连接收到数据回调类型，通知上层执行解码与业务处理",
+          "type_spec": {
+            "CALLBACK_SIGNATURE": "void (*mqtt_tcp_on_data_fn)(void* user, mqtt_connection_t* c)",
+            "TYPE_KIND": "CALLBACK"
+          },
+          "visibility": "PUBLIC"
+        },
+        {
+          "canonical_declaration": "typedef void (*mqtt_tcp_on_close_fn)(void* user, mqtt_connection_t* c);",
+          "name": "mqtt_tcp_on_close_fn",
+          "role": "连接关闭回调类型，通知上层回收会话与路由关系",
+          "type_spec": {
+            "CALLBACK_SIGNATURE": "void (*mqtt_tcp_on_close_fn)(void* user, mqtt_connection_t* c)",
+            "TYPE_KIND": "CALLBACK"
+          },
+          "visibility": "PUBLIC"
+        },
+        {
+          "canonical_declaration": "typedef struct mqtt_tcp_callbacks {\n    mqtt_tcp_on_accept_fn on_accept;\n    mqtt_tcp_on_data_fn on_data;\n    mqtt_tcp_on_close_fn on_close;\n} mqtt_tcp_callbacks_t;",
+          "name": "mqtt_tcp_callbacks_t",
+          "role": "TCP server 回调集合结构，包含 on_accept、on_data、on_close 三个事件回调",
+          "type_spec": {
+            "FIELDS": [
+              {
+                "NAME": "on_accept",
+                "ROLE": "新连接建立回调",
+                "TYPE": "mqtt_tcp_on_accept_fn"
+              },
+              {
+                "NAME": "on_data",
+                "ROLE": "连接收到数据回调",
+                "TYPE": "mqtt_tcp_on_data_fn"
+              },
+              {
+                "NAME": "on_close",
+                "ROLE": "连接关闭回调",
+                "TYPE": "mqtt_tcp_on_close_fn"
+              }
+            ],
+            "TYPE_KIND": "STRUCT"
+          },
+          "visibility": "PUBLIC"
+        }
+      ],
+      "source_interfaces": [
+        {
+          "kind": "FUNC",
+          "name": "mqtt_tcp_server_create",
+          "role": "分配服务器对象并初始化端口、回调、user、fd=-1 与空连接链表",
+          "signature": "mqtt_tcp_server_t* mqtt_tcp_server_create(uint16_t port, mqtt_tcp_callbacks_t cb, void* user)",
+          "trace_id": "mqtt/network/tcp_server/mqtt_tcp_server_create",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "mqtt_tcp_server_destroy",
+          "role": "安全销毁服务器：调用 stop 清理运行资源后释放对象",
+          "signature": "void mqtt_tcp_server_destroy(mqtt_tcp_server_t* s)",
+          "trace_id": "mqtt/network/tcp_server/mqtt_tcp_server_destroy",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "mqtt_tcp_server_start",
+          "role": "按监听 socket→epoll 的顺序初始化网络资源，成功后置 running=true",
+          "signature": "bool mqtt_tcp_server_start(mqtt_tcp_server_t* s)",
+          "trace_id": "mqtt/network/tcp_server/mqtt_tcp_server_start",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "mqtt_tcp_server_run",
+          "role": "在运行态循环 epoll_wait，处理监听事件、连接读写与错误关闭，并推进待写队列",
+          "signature": "void mqtt_tcp_server_run(mqtt_tcp_server_t* s)",
+          "trace_id": "mqtt/network/tcp_server/mqtt_tcp_server_run",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "mqtt_tcp_server_stop",
+          "role": "置 running=false，逐个关闭连接并释放 epoll/listen fd，支持重复调用",
+          "signature": "void mqtt_tcp_server_stop(mqtt_tcp_server_t* s)",
+          "trace_id": "mqtt/network/tcp_server/mqtt_tcp_server_stop",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "set_nonblocking",
+          "role": "设置 fd 为非阻塞模式的通用辅助函数",
+          "signature": "static bool set_nonblocking(int fd)",
+          "trace_id": "mqtt/network/tcp_server/set_nonblocking",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "sockaddr_to_string",
+          "role": "将 IPv4 sockaddr 转换为 ip:port 字符串",
+          "signature": "static char* sockaddr_to_string(const struct sockaddr_in* addr)",
+          "trace_id": "mqtt/network/tcp_server/sockaddr_to_string",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "find_conn",
+          "role": "按 fd 在连接链表中查找对应连接对象",
+          "signature": "static mqtt_connection_t* find_conn(mqtt_tcp_server_t* s, int fd)",
+          "trace_id": "mqtt/network/tcp_server/find_conn",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "remove_conn",
+          "role": "按 fd 从链表中摘除并销毁连接节点",
+          "signature": "static void remove_conn(mqtt_tcp_server_t* s, int fd)",
+          "trace_id": "mqtt/network/tcp_server/remove_conn",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "close_connection",
+          "role": "统一连接关闭流程：epoll 删除、触发 on_close 回调、再移除连接",
+          "signature": "static void close_connection(mqtt_tcp_server_t* s, mqtt_connection_t* c)",
+          "trace_id": "mqtt/network/tcp_server/close_connection",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "update_interest",
+          "role": "根据连接是否有待发数据更新 epoll 关注事件（EPOLLIN/EPOLLOUT）",
+          "signature": "static void update_interest(mqtt_tcp_server_t* s, mqtt_connection_t* c)",
+          "trace_id": "mqtt/network/tcp_server/update_interest",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "setup_listen_socket",
+          "role": "创建并配置监听 socket（SO_REUSEADDR、非阻塞、bind、listen）",
+          "signature": "static bool setup_listen_socket(mqtt_tcp_server_t* s)",
+          "trace_id": "mqtt/network/tcp_server/setup_listen_socket",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "setup_epoll",
+          "role": "创建 epoll 实例并注册监听 fd 的 EPOLLIN 事件",
+          "signature": "static bool setup_epoll(mqtt_tcp_server_t* s)",
+          "trace_id": "mqtt/network/tcp_server/setup_epoll",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "accept_loop",
+          "role": "批量 accept 新连接并完成非阻塞设置、连接对象创建、epoll 注册与 on_accept 回调",
+          "signature": "static void accept_loop(mqtt_tcp_server_t* s)",
+          "trace_id": "mqtt/network/tcp_server/accept_loop",
+          "visibility": "private"
+        }
+      ],
+      "source_path": "network/tcp_server.c"
+    },
+    {
+      "file_trace_id": "mqtt/protocol/mqtt_packet",
+      "header_interfaces": [
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "mqtt_packet_free",
+          "role": "按类型释放 mqtt_packet_t 内部动态内存并复位类型",
+          "signature": "void mqtt_packet_free(mqtt_packet_t* p)",
+          "visibility": "public"
+        }
+      ],
+      "header_path": "protocol/mqtt_packet.h",
+      "header_type_specs": [
+        {
+          "canonical_declaration": "typedef enum mqtt_packet_type {\n    MQTT_PKT_RESERVED = 0,\n    MQTT_PKT_CONNECT = 1,\n    MQTT_PKT_CONNACK = 2,\n    MQTT_PKT_PUBLISH = 3,\n    MQTT_PKT_SUBSCRIBE = 8,\n    MQTT_PKT_SUBACK = 9,\n    MQTT_PKT_PINGREQ = 12,\n    MQTT_PKT_PINGRESP = 13,\n    MQTT_PKT_DISCONNECT = 14,\n} mqtt_packet_type_t;",
+          "name": "mqtt_packet_type_t",
+          "role": "MQTT 报文类型枚举，标识 CONNECT/PUBLISH/SUBSCRIBE/PING 等控制报文类别",
+          "type_spec": {
+            "ENUM_VALUES": [
+              {
+                "NAME": "MQTT_PKT_RESERVED",
+                "ROLE": "保留/未初始化类型",
+                "VALUE": 0
+              },
+              {
+                "NAME": "MQTT_PKT_CONNECT",
+                "ROLE": "CONNECT 控制报文",
+                "VALUE": 1
+              },
+              {
+                "NAME": "MQTT_PKT_CONNACK",
+                "ROLE": "CONNACK 控制报文",
+                "VALUE": 2
+              },
+              {
+                "NAME": "MQTT_PKT_PUBLISH",
+                "ROLE": "PUBLISH 控制报文",
+                "VALUE": 3
+              },
+              {
+                "NAME": "MQTT_PKT_SUBSCRIBE",
+                "ROLE": "SUBSCRIBE 控制报文",
+                "VALUE": 8
+              },
+              {
+                "NAME": "MQTT_PKT_SUBACK",
+                "ROLE": "SUBACK 控制报文",
+                "VALUE": 9
+              },
+              {
+                "NAME": "MQTT_PKT_PINGREQ",
+                "ROLE": "PINGREQ 控制报文",
+                "VALUE": 12
+              },
+              {
+                "NAME": "MQTT_PKT_PINGRESP",
+                "ROLE": "PINGRESP 控制报文",
+                "VALUE": 13
+              },
+              {
+                "NAME": "MQTT_PKT_DISCONNECT",
+                "ROLE": "DISCONNECT 控制报文",
+                "VALUE": 14
+              }
+            ],
+            "TYPE_KIND": "ENUM"
+          },
+          "visibility": "PUBLIC"
+        },
+        {
+          "canonical_declaration": "typedef struct mqtt_connect_payload {\n    char* client_id;\n    uint16_t keep_alive;\n    bool clean_session;\n} mqtt_connect_payload_t;",
+          "name": "mqtt_connect_payload_t",
+          "role": "CONNECT 报文载荷结构，包含 client_id、keep_alive 与 clean_session",
+          "type_spec": {
+            "FIELDS": [
+              {
+                "NAME": "client_id",
+                "ROLE": "客户端 ID 字符串",
+                "TYPE": "char*"
+              },
+              {
+                "NAME": "keep_alive",
+                "ROLE": "Keep Alive 秒数",
+                "TYPE": "uint16_t"
+              },
+              {
+                "NAME": "clean_session",
+                "ROLE": "Clean Session 标志",
+                "TYPE": "bool"
+              }
+            ],
+            "TYPE_KIND": "STRUCT"
+          },
+          "visibility": "PUBLIC"
+        },
+        {
+          "canonical_declaration": "typedef struct mqtt_publish_payload {\n    char* topic_name;\n    uint8_t* payload;\n    size_t payload_len;\n    uint8_t qos;\n    bool retain;\n    bool dup;\n    bool has_packet_id;\n    uint16_t packet_id;\n} mqtt_publish_payload_t;",
+          "name": "mqtt_publish_payload_t",
+          "role": "PUBLISH 报文载荷结构，包含主题、payload、QoS/retain/dup 与 packet_id 信息",
+          "type_spec": {
+            "FIELDS": [
+              {
+                "NAME": "topic_name",
+                "ROLE": "主题名",
+                "TYPE": "char*"
+              },
+              {
+                "NAME": "payload",
+                "ROLE": "消息载荷字节",
+                "TYPE": "uint8_t*"
+              },
+              {
+                "NAME": "payload_len",
+                "ROLE": "消息载荷长度",
+                "TYPE": "size_t"
+              },
+              {
+                "NAME": "qos",
+                "ROLE": "QoS 等级",
+                "TYPE": "uint8_t"
+              },
+              {
+                "NAME": "retain",
+                "ROLE": "Retain 标志",
+                "TYPE": "bool"
+              },
+              {
+                "NAME": "dup",
+                "ROLE": "DUP 标志",
+                "TYPE": "bool"
+              },
+              {
+                "NAME": "has_packet_id",
+                "ROLE": "是否携带 packet_id",
+                "TYPE": "bool"
+              },
+              {
+                "NAME": "packet_id",
+                "ROLE": "QoS>0 时使用的报文 ID",
+                "TYPE": "uint16_t"
+              }
+            ],
+            "TYPE_KIND": "STRUCT"
+          },
+          "visibility": "PUBLIC"
+        },
+        {
+          "canonical_declaration": "typedef struct mqtt_subscribe_topic {\n    char* filter;\n    uint8_t qos;\n} mqtt_subscribe_topic_t;",
+          "name": "mqtt_subscribe_topic_t",
+          "role": "SUBSCRIBE 单个主题项结构，包含过滤器与请求 QoS",
+          "type_spec": {
+            "FIELDS": [
+              {
+                "NAME": "filter",
+                "ROLE": "订阅过滤器",
+                "TYPE": "char*"
+              },
+              {
+                "NAME": "qos",
+                "ROLE": "请求 QoS",
+                "TYPE": "uint8_t"
+              }
+            ],
+            "TYPE_KIND": "STRUCT"
+          },
+          "visibility": "PUBLIC"
+        },
+        {
+          "canonical_declaration": "typedef struct mqtt_subscribe_payload {\n    uint16_t packet_id;\n    mqtt_subscribe_topic_t* topics;\n    size_t topic_count;\n} mqtt_subscribe_payload_t;",
+          "name": "mqtt_subscribe_payload_t",
+          "role": "SUBSCRIBE 报文载荷结构，包含 packet_id 与订阅主题数组",
+          "type_spec": {
+            "FIELDS": [
+              {
+                "NAME": "packet_id",
+                "ROLE": "订阅报文 ID",
+                "TYPE": "uint16_t"
+              },
+              {
+                "NAME": "topics",
+                "ROLE": "订阅主题数组",
+                "TYPE": "mqtt_subscribe_topic_t*"
+              },
+              {
+                "NAME": "topic_count",
+                "ROLE": "订阅主题数量",
+                "TYPE": "size_t"
+              }
+            ],
+            "TYPE_KIND": "STRUCT"
+          },
+          "visibility": "PUBLIC"
+        },
+        {
+          "canonical_declaration": "typedef struct mqtt_packet {\n    mqtt_packet_type_t type;\n    union {\n        mqtt_connect_payload_t connect;\n        mqtt_publish_payload_t publish;\n        mqtt_subscribe_payload_t subscribe;\n    } v;\n} mqtt_packet_t;",
+          "name": "mqtt_packet_t",
+          "role": "统一 MQTT 报文结构，使用 type + union 表达不同报文载荷",
+          "type_spec": {
+            "FIELDS": [
+              {
+                "NAME": "type",
+                "ROLE": "报文类型",
+                "TYPE": "mqtt_packet_type_t"
+              },
+              {
+                "NAME": "v",
+                "ROLE": "按 type 选择的载荷 union",
+                "TYPE": "union",
+                "TYPE_SPEC": {
+                  "TYPE_KIND": "UNION",
+                  "VARIANTS": [
+                    {
+                      "NAME": "connect",
+                      "ROLE": "CONNECT 载荷，访问路径 mqtt_packet_t.v.connect",
+                      "TYPE": "mqtt_connect_payload_t"
+                    },
+                    {
+                      "NAME": "publish",
+                      "ROLE": "PUBLISH 载荷，访问路径 mqtt_packet_t.v.publish",
+                      "TYPE": "mqtt_publish_payload_t"
+                    },
+                    {
+                      "NAME": "subscribe",
+                      "ROLE": "SUBSCRIBE 载荷，访问路径 mqtt_packet_t.v.subscribe",
+                      "TYPE": "mqtt_subscribe_payload_t"
+                    }
+                  ]
+                }
+              }
+            ],
+            "TYPE_KIND": "STRUCT"
+          },
+          "visibility": "PUBLIC"
+        }
+      ],
+      "source_interfaces": [
+        {
+          "kind": "FUNC",
+          "name": "mqtt_packet_free",
+          "role": "针对 CONNECT/PUBLISH/SUBSCRIBE 分支释放字符串与数组，最后将类型置为 RESERVED",
+          "signature": "void mqtt_packet_free(mqtt_packet_t* p)",
+          "trace_id": "mqtt/protocol/mqtt_packet/mqtt_packet_free",
+          "visibility": "public"
+        }
+      ],
+      "source_path": "protocol/mqtt_packet.c"
+    },
+    {
+      "file_trace_id": "mqtt/protocol/mqtt_decoder",
+      "header_interfaces": [
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "mqtt_decoder_feed",
+          "role": "增量解码入口：消费输入缓冲中完整报文并逐个回调上层处理",
+          "signature": "bool mqtt_decoder_feed(const uint8_t* buffer, size_t buffer_len, size_t* out_consumed, mqtt_on_packet_fn on_packet, void* user)",
+          "visibility": "public"
+        }
+      ],
+      "header_path": "protocol/mqtt_decoder.h",
+      "header_type_specs": [
+        {
+          "canonical_declaration": "typedef void (*mqtt_on_packet_fn)(void* user, const mqtt_packet_t* pkt);",
+          "name": "mqtt_on_packet_fn",
+          "role": "解码成功后上报单个 mqtt_packet_t 的回调函数类型",
+          "type_spec": {
+            "CALLBACK_SIGNATURE": "void (*mqtt_on_packet_fn)(void* user, const mqtt_packet_t* pkt)",
+            "TYPE_KIND": "CALLBACK"
+          },
+          "visibility": "PUBLIC"
+        }
+      ],
+      "source_interfaces": [
+        {
+          "kind": "FUNC",
+          "name": "mqtt_decoder_feed",
+          "role": "循环解析输入缓冲中的完整报文，回调后释放临时报文并通过 out_consumed 返回可消费字节数",
+          "signature": "bool mqtt_decoder_feed(const uint8_t* buffer, size_t buffer_len, size_t* out_consumed, mqtt_on_packet_fn on_packet, void* user)",
+          "trace_id": "mqtt/protocol/mqtt_decoder/mqtt_decoder_feed",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "try_parse_remaining_length",
+          "role": "解析 MQTT 可变长 Remaining Length 字段，处理最多 4 字节编码约束",
+          "signature": "static bool try_parse_remaining_length(const uint8_t* buf, size_t buf_len, size_t start, remaining_length_t* out)",
+          "trace_id": "mqtt/protocol/mqtt_decoder/try_parse_remaining_length",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "read_u16",
+          "role": "从报文体按网络字节序读取 uint16 并推进游标",
+          "signature": "static bool read_u16(const uint8_t* body, size_t body_len, size_t* pos, uint16_t* out)",
+          "trace_id": "mqtt/protocol/mqtt_decoder/read_u16",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "read_string",
+          "role": "读取 MQTT 长度前缀字符串并分配以 \u0000 结尾的新内存",
+          "signature": "static bool read_string(const uint8_t* body, size_t body_len, size_t* pos, char** out)",
+          "trace_id": "mqtt/protocol/mqtt_decoder/read_string",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "decode_one",
+          "role": "按报文类型解码单个 MQTT 报文体并填充 mqtt_packet_t",
+          "signature": "static bool decode_one(uint8_t header1, const uint8_t* body, size_t body_len, mqtt_packet_t* out)",
+          "trace_id": "mqtt/protocol/mqtt_decoder/decode_one",
+          "visibility": "private"
+        }
+      ],
+      "source_path": "protocol/mqtt_decoder.c"
+    },
+    {
+      "file_trace_id": "mqtt/protocol/mqtt_encoder",
+      "header_interfaces": [
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "mqtt_bytes_free",
+          "role": "释放 mqtt_bytes_t 持有的动态缓冲并重置长度",
+          "signature": "void mqtt_bytes_free(mqtt_bytes_t* b)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "mqtt_encode_connack",
+          "role": "编码 MQTT CONNACK 报文",
+          "signature": "mqtt_bytes_t mqtt_encode_connack(bool session_present, uint8_t return_code)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "mqtt_encode_suback",
+          "role": "编码 MQTT SUBACK 报文并携带返回码列表",
+          "signature": "mqtt_bytes_t mqtt_encode_suback(uint16_t packet_id, const uint8_t* return_codes, size_t return_code_count)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "mqtt_encode_pingresp",
+          "role": "编码 MQTT PINGRESP 报文",
+          "signature": "mqtt_bytes_t mqtt_encode_pingresp(void)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "mqtt_encode_publish_qos0",
+          "role": "编码 MQTT PUBLISH(QoS0) 报文用于消息转发",
+          "signature": "mqtt_bytes_t mqtt_encode_publish_qos0(const char* topic_name, const uint8_t* payload, size_t payload_len, bool retain)",
+          "visibility": "public"
+        }
+      ],
+      "header_path": "protocol/mqtt_encoder.h",
+      "header_type_specs": [
+        {
+          "canonical_declaration": "typedef struct mqtt_bytes {\n    uint8_t* data;\n    size_t len;\n} mqtt_bytes_t;",
+          "name": "mqtt_bytes_t",
+          "role": "编码结果字节缓冲结构，包含动态分配的 data 指针与 len 长度，由 mqtt_bytes_free 释放",
+          "type_spec": {
+            "FIELDS": [
+              {
+                "NAME": "data",
+                "ROLE": "动态分配的字节缓冲",
+                "TYPE": "uint8_t*"
+              },
+              {
+                "NAME": "len",
+                "ROLE": "字节缓冲长度",
+                "TYPE": "size_t"
+              }
+            ],
+            "TYPE_KIND": "STRUCT"
+          },
+          "visibility": "PUBLIC"
+        }
+      ],
+      "source_interfaces": [
+        {
+          "kind": "FUNC",
+          "name": "mqtt_bytes_free",
+          "role": "释放编码函数返回的字节缓冲，避免内存泄漏",
+          "signature": "void mqtt_bytes_free(mqtt_bytes_t* b)",
+          "trace_id": "mqtt/protocol/mqtt_encoder/mqtt_bytes_free",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "mqtt_encode_connack",
+          "role": "构造固定头+可变头的 CONNACK 二进制报文",
+          "signature": "mqtt_bytes_t mqtt_encode_connack(bool session_present, uint8_t return_code)",
+          "trace_id": "mqtt/protocol/mqtt_encoder/mqtt_encode_connack",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "mqtt_encode_suback",
+          "role": "构造 SUBACK 报文并写入 packet_id 与返回码 payload",
+          "signature": "mqtt_bytes_t mqtt_encode_suback(uint16_t packet_id, const uint8_t* return_codes, size_t return_code_count)",
+          "trace_id": "mqtt/protocol/mqtt_encoder/mqtt_encode_suback",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "mqtt_encode_pingresp",
+          "role": "构造固定两字节 PINGRESP 报文",
+          "signature": "mqtt_bytes_t mqtt_encode_pingresp(void)",
+          "trace_id": "mqtt/protocol/mqtt_encoder/mqtt_encode_pingresp",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "mqtt_encode_publish_qos0",
+          "role": "根据主题、payload 与 retain 标志构造 QoS0 PUBLISH 报文",
+          "signature": "mqtt_bytes_t mqtt_encode_publish_qos0(const char* topic_name, const uint8_t* payload, size_t payload_len, bool retain)",
+          "trace_id": "mqtt/protocol/mqtt_encoder/mqtt_encode_publish_qos0",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "put_u16",
+          "role": "按网络字节序写入 16 位无符号整数并推进写游标",
+          "signature": "static void put_u16(uint8_t* out, size_t* pos, uint16_t v)",
+          "trace_id": "mqtt/protocol/mqtt_encoder/put_u16",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "remaining_length_bytes",
+          "role": "计算 Remaining Length 采用 MQTT 可变长编码所需字节数",
+          "signature": "static size_t remaining_length_bytes(size_t len)",
+          "trace_id": "mqtt/protocol/mqtt_encoder/remaining_length_bytes",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "put_remaining_length",
+          "role": "将 Remaining Length 按 MQTT 规则写入输出缓冲",
+          "signature": "static void put_remaining_length(uint8_t* out, size_t* pos, size_t len)",
+          "trace_id": "mqtt/protocol/mqtt_encoder/put_remaining_length",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "make_bytes",
+          "role": "分配指定长度的 mqtt_bytes_t 缓冲包装对象",
+          "signature": "static mqtt_bytes_t make_bytes(size_t len)",
+          "trace_id": "mqtt/protocol/mqtt_encoder/make_bytes",
+          "visibility": "private"
+        }
+      ],
+      "source_path": "protocol/mqtt_encoder.c"
+    },
+    {
+      "file_trace_id": "mqtt/broker/session",
+      "header_interfaces": [
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "mqtt_session_create",
+          "role": "基于连接对象创建会话并初始化为未连接的默认状态",
+          "signature": "mqtt_session_t* mqtt_session_create(mqtt_connection_t* conn)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "mqtt_session_destroy",
+          "role": "释放会话持有的 client_id 字符串和会话对象本身",
+          "signature": "void mqtt_session_destroy(mqtt_session_t* s)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "mqtt_session_id",
+          "role": "返回会话对应连接的 fd 作为 session_id，不可用时返回 -1",
+          "signature": "int mqtt_session_id(const mqtt_session_t* s)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "mqtt_session_connection",
+          "role": "读取会话绑定的底层连接指针，供上层进行网络操作",
+          "signature": "mqtt_connection_t* mqtt_session_connection(const mqtt_session_t* s)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "mqtt_session_connected",
+          "role": "读取会话是否已完成 CONNECT 握手的标志位",
+          "signature": "bool mqtt_session_connected(const mqtt_session_t* s)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "mqtt_session_client_id",
+          "role": "读取会话 client_id，未设置时返回空字符串以避免 NULL 传播",
+          "signature": "const char* mqtt_session_client_id(const mqtt_session_t* s)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "mqtt_session_mark_connected",
+          "role": "在 CONNECT 成功后写入连接状态与协商参数，并更新 client_id 副本",
+          "signature": "void mqtt_session_mark_connected(mqtt_session_t* s, const char* client_id, bool clean_session, uint16_t keep_alive)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "mqtt_session_send",
+          "role": "通过会话绑定连接发送编码后的 MQTT 二进制数据",
+          "signature": "void mqtt_session_send(mqtt_session_t* s, const uint8_t* data, size_t len)",
+          "visibility": "public"
+        }
+      ],
+      "header_path": "broker/session.h",
+      "header_type_specs": [],
+      "source_interfaces": [
+        {
+          "kind": "FUNC",
+          "name": "mqtt_session_create",
+          "role": "校验连接并分配会话对象，设置 connected=false、client_id=NULL、clean_session=true、keep_alive=0",
+          "signature": "mqtt_session_t* mqtt_session_create(mqtt_connection_t* conn)",
+          "trace_id": "mqtt/broker/session/mqtt_session_create",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "mqtt_session_destroy",
+          "role": "安全销毁会话：先释放动态 client_id，再释放会话内存",
+          "signature": "void mqtt_session_destroy(mqtt_session_t* s)",
+          "trace_id": "mqtt/broker/session/mqtt_session_destroy",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "mqtt_session_id",
+          "role": "从会话连接读取 fd 作为会话 ID；会话或连接为空时返回 -1",
+          "signature": "int mqtt_session_id(const mqtt_session_t* s)",
+          "trace_id": "mqtt/broker/session/mqtt_session_id",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "mqtt_session_connection",
+          "role": "返回会话关联连接，供 broker 侧进行收发与关闭操作",
+          "signature": "mqtt_connection_t* mqtt_session_connection(const mqtt_session_t* s)",
+          "trace_id": "mqtt/broker/session/mqtt_session_connection",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "mqtt_session_connected",
+          "role": "读取 connected 标志位，判断该会话是否已处于可处理业务报文状态",
+          "signature": "bool mqtt_session_connected(const mqtt_session_t* s)",
+          "trace_id": "mqtt/broker/session/mqtt_session_connected",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "mqtt_session_client_id",
+          "role": "返回会话 client_id 的稳定字符串视图，空值场景统一返回 \"\"",
+          "signature": "const char* mqtt_session_client_id(const mqtt_session_t* s)",
+          "trace_id": "mqtt/broker/session/mqtt_session_client_id",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "mqtt_session_mark_connected",
+          "role": "将会话置为已连接并写入 CONNECT 参数，必要时复制新的 client_id",
+          "signature": "void mqtt_session_mark_connected(mqtt_session_t* s, const char* client_id, bool clean_session, uint16_t keep_alive)",
+          "trace_id": "mqtt/broker/session/mqtt_session_mark_connected",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "mqtt_session_send",
+          "role": "在参数有效时透传调用 mqtt_connection_send 发送数据帧",
+          "signature": "void mqtt_session_send(mqtt_session_t* s, const uint8_t* data, size_t len)",
+          "trace_id": "mqtt/broker/session/mqtt_session_send",
+          "visibility": "public"
+        }
+      ],
+      "source_path": "broker/session.c"
+    },
+    {
+      "file_trace_id": "mqtt/broker/session_manager",
+      "header_interfaces": [
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "mqtt_session_manager_create",
+          "role": "创建空会话管理器，初始 count/cap/sessions 均为零值",
+          "signature": "mqtt_session_manager_t* mqtt_session_manager_create(void)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "mqtt_session_manager_destroy",
+          "role": "销毁会话管理器并释放其持有的全部会话对象与数组内存",
+          "signature": "void mqtt_session_manager_destroy(mqtt_session_manager_t* m)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "mqtt_session_manager_add",
+          "role": "按 session_id 插入会话：已存在则替换，否则扩容后追加",
+          "signature": "void mqtt_session_manager_add(mqtt_session_manager_t* m, mqtt_session_t* s)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "mqtt_session_manager_remove",
+          "role": "按 session_id 删除会话并回收内存，使用末尾覆盖保持数组紧凑",
+          "signature": "void mqtt_session_manager_remove(mqtt_session_manager_t* m, int session_id)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "mqtt_session_manager_get",
+          "role": "按 session_id 线性查找并返回会话指针，未命中返回 NULL",
+          "signature": "mqtt_session_t* mqtt_session_manager_get(mqtt_session_manager_t* m, int session_id)",
+          "visibility": "public"
+        }
+      ],
+      "header_path": "broker/session_manager.h",
+      "header_type_specs": [],
+      "source_interfaces": [
+        {
+          "kind": "FUNC",
+          "name": "mqtt_session_manager_create",
+          "role": "分配并返回零初始化的会话管理器对象",
+          "signature": "mqtt_session_manager_t* mqtt_session_manager_create(void)",
+          "trace_id": "mqtt/broker/session_manager/mqtt_session_manager_create",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "mqtt_session_manager_destroy",
+          "role": "遍历销毁所有会话后释放数组和管理器对象",
+          "signature": "void mqtt_session_manager_destroy(mqtt_session_manager_t* m)",
+          "trace_id": "mqtt/broker/session_manager/mqtt_session_manager_destroy",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "mqtt_session_manager_add",
+          "role": "处理会话新增/替换逻辑，并在需要时扩容数组；扩容失败时销毁待加入会话",
+          "signature": "void mqtt_session_manager_add(mqtt_session_manager_t* m, mqtt_session_t* s)",
+          "trace_id": "mqtt/broker/session_manager/mqtt_session_manager_add",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "mqtt_session_manager_remove",
+          "role": "定位并删除指定会话，采用末元素前移方式 O(1) 收缩有效区间",
+          "signature": "void mqtt_session_manager_remove(mqtt_session_manager_t* m, int session_id)",
+          "trace_id": "mqtt/broker/session_manager/mqtt_session_manager_remove",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "mqtt_session_manager_get",
+          "role": "遍历会话数组并按 session_id 返回匹配会话",
+          "signature": "mqtt_session_t* mqtt_session_manager_get(mqtt_session_manager_t* m, int session_id)",
+          "trace_id": "mqtt/broker/session_manager/mqtt_session_manager_get",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "ensure_cap",
+          "role": "容量保障函数：按倍增策略扩容 sessions 数组以容纳目标数量",
+          "signature": "static void ensure_cap(mqtt_session_manager_t* m, size_t need)",
+          "trace_id": "mqtt/broker/session_manager/ensure_cap",
+          "visibility": "private"
+        }
+      ],
+      "source_path": "broker/session_manager.c"
+    },
+    {
+      "file_trace_id": "mqtt/topic/topic_tree",
+      "header_interfaces": [
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "mqtt_topic_tree_create",
+          "role": "创建空主题树容器",
+          "signature": "mqtt_topic_tree_t* mqtt_topic_tree_create(void)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "mqtt_topic_tree_destroy",
+          "role": "销毁主题树及所有订阅条目资源",
+          "signature": "void mqtt_topic_tree_destroy(mqtt_topic_tree_t* t)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "mqtt_topic_tree_subscribe",
+          "role": "为指定 filter 追加会话订阅关系（去重）",
+          "signature": "void mqtt_topic_tree_subscribe(mqtt_topic_tree_t* t, int session_id, const char* filter)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "mqtt_topic_tree_unsubscribe",
+          "role": "删除指定 filter 上的会话订阅关系",
+          "signature": "void mqtt_topic_tree_unsubscribe(mqtt_topic_tree_t* t, int session_id, const char* filter)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "mqtt_topic_tree_remove_session",
+          "role": "从所有 filter 中移除指定会话",
+          "signature": "void mqtt_topic_tree_remove_session(mqtt_topic_tree_t* t, int session_id)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "mqtt_topic_tree_match_subscribers",
+          "role": "按 topic 匹配所有订阅者并输出去重后的会话列表",
+          "signature": "bool mqtt_topic_tree_match_subscribers(const mqtt_topic_tree_t* t, const char* topic, int** out_sids, size_t* out_count)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "mqtt_topic_match",
+          "role": "按 MQTT +/# 规则判断 filter 与 topic 是否匹配",
+          "signature": "bool mqtt_topic_match(const char* filter, const char* topic)",
+          "visibility": "public"
+        }
+      ],
+      "header_path": "topic/topic_tree.h",
+      "header_type_specs": [],
+      "source_interfaces": [
+        {
+          "kind": "FUNC",
+          "name": "mqtt_topic_tree_create",
+          "role": "分配并返回零初始化主题树对象",
+          "signature": "mqtt_topic_tree_t* mqtt_topic_tree_create(void)",
+          "trace_id": "mqtt/topic/topic_tree/mqtt_topic_tree_create",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "mqtt_topic_tree_destroy",
+          "role": "释放所有 filter 条目及其会话数组后销毁主题树",
+          "signature": "void mqtt_topic_tree_destroy(mqtt_topic_tree_t* t)",
+          "trace_id": "mqtt/topic/topic_tree/mqtt_topic_tree_destroy",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "mqtt_topic_tree_subscribe",
+          "role": "查找或创建 filter 条目后追加 session_id（保证不重复）",
+          "signature": "void mqtt_topic_tree_subscribe(mqtt_topic_tree_t* t, int session_id, const char* filter)",
+          "trace_id": "mqtt/topic/topic_tree/mqtt_topic_tree_subscribe",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "mqtt_topic_tree_unsubscribe",
+          "role": "从指定 filter 删除 session_id；空条目自动删除",
+          "signature": "void mqtt_topic_tree_unsubscribe(mqtt_topic_tree_t* t, int session_id, const char* filter)",
+          "trace_id": "mqtt/topic/topic_tree/mqtt_topic_tree_unsubscribe",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "mqtt_topic_tree_remove_session",
+          "role": "遍历所有条目移除 session_id，并清理空条目",
+          "signature": "void mqtt_topic_tree_remove_session(mqtt_topic_tree_t* t, int session_id)",
+          "trace_id": "mqtt/topic/topic_tree/mqtt_topic_tree_remove_session",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "mqtt_topic_tree_match_subscribers",
+          "role": "遍历匹配 filter，聚合并去重输出订阅者 session_id 列表",
+          "signature": "bool mqtt_topic_tree_match_subscribers(const mqtt_topic_tree_t* t, const char* topic, int** out_sids, size_t* out_count)",
+          "trace_id": "mqtt/topic/topic_tree/mqtt_topic_tree_match_subscribers",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "mqtt_topic_match",
+          "role": "逐层比较过滤器与主题，必须同时支持 exact filter、+ 单层通配与 # 末尾多层通配匹配",
+          "signature": "bool mqtt_topic_match(const char* filter, const char* topic)",
+          "trace_id": "mqtt/topic/topic_tree/mqtt_topic_match",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "ensure_entry_cap",
+          "role": "扩容主题树条目数组以容纳更多 filter",
+          "signature": "static void ensure_entry_cap(mqtt_topic_tree_t* t, size_t need)",
+          "trace_id": "mqtt/topic/topic_tree/ensure_entry_cap",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "ensure_sid_cap",
+          "role": "扩容单条 filter 的会话 ID 数组",
+          "signature": "static void ensure_sid_cap(filter_entry_t* e, size_t need)",
+          "trace_id": "mqtt/topic/topic_tree/ensure_sid_cap",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "find_entry",
+          "role": "按过滤器字符串查找条目索引",
+          "signature": "static ssize_t find_entry(const mqtt_topic_tree_t* t, const char* filter)",
+          "trace_id": "mqtt/topic/topic_tree/find_entry",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "entry_has_sid",
+          "role": "判断条目是否已包含指定 session_id",
+          "signature": "static bool entry_has_sid(const filter_entry_t* e, int sid)",
+          "trace_id": "mqtt/topic/topic_tree/entry_has_sid",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "entry_remove_sid",
+          "role": "从条目中删除指定 session_id（末尾覆盖）",
+          "signature": "static void entry_remove_sid(filter_entry_t* e, int sid)",
+          "trace_id": "mqtt/topic/topic_tree/entry_remove_sid",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "delete_entry",
+          "role": "删除指定条目并释放其资源（末尾覆盖收缩）",
+          "signature": "static void delete_entry(mqtt_topic_tree_t* t, size_t idx)",
+          "trace_id": "mqtt/topic/topic_tree/delete_entry",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "next_level",
+          "role": "按 / 分隔提取主题层级分段并推进读取位置；不得使用越界 sentinel，结束状态必须由 out_done 表达",
+          "signature": "static bool next_level(const char* s, size_t s_len, size_t* io_pos, const char** out_start, size_t* out_len, bool* out_done)",
+          "trace_id": "mqtt/topic/topic_tree/next_level",
+          "visibility": "private"
+        }
+      ],
+      "source_path": "topic/topic_tree.c"
+    },
+    {
+      "file_trace_id": "mqtt/router/message_router",
+      "header_interfaces": [
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "mqtt_message_router_create",
+          "role": "创建路由器并初始化主题树（会话管理器为非拥有引用）",
+          "signature": "mqtt_message_router_t* mqtt_message_router_create(mqtt_session_manager_t* sessions)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "mqtt_message_router_destroy",
+          "role": "销毁路由器并释放内部主题树",
+          "signature": "void mqtt_message_router_destroy(mqtt_message_router_t* r)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "mqtt_message_router_subscribe",
+          "role": "将会话订阅关系写入主题树",
+          "signature": "void mqtt_message_router_subscribe(mqtt_message_router_t* r, int session_id, const char* filter)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "mqtt_message_router_unsubscribe",
+          "role": "从主题树移除会话的指定订阅关系",
+          "signature": "void mqtt_message_router_unsubscribe(mqtt_message_router_t* r, int session_id, const char* filter)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "mqtt_message_router_remove_session",
+          "role": "移除会话在主题树中的所有订阅痕迹",
+          "signature": "void mqtt_message_router_remove_session(mqtt_message_router_t* r, int session_id)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "mqtt_message_router_publish",
+          "role": "按主题匹配订阅者并向命中会话转发 PUBLISH(QoS0)",
+          "signature": "void mqtt_message_router_publish(mqtt_message_router_t* r, int from_session_id, const mqtt_publish_payload_t* publish)",
+          "visibility": "public"
+        }
+      ],
+      "header_path": "router/message_router.h",
+      "header_type_specs": [],
+      "source_interfaces": [
+        {
+          "kind": "FUNC",
+          "name": "mqtt_message_router_create",
+          "role": "校验 sessions 后创建路由器并分配 topic_tree，失败时回滚资源",
+          "signature": "mqtt_message_router_t* mqtt_message_router_create(mqtt_session_manager_t* sessions)",
+          "trace_id": "mqtt/router/message_router/mqtt_message_router_create",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "mqtt_message_router_destroy",
+          "role": "销毁 topic_tree 后释放路由器对象",
+          "signature": "void mqtt_message_router_destroy(mqtt_message_router_t* r)",
+          "trace_id": "mqtt/router/message_router/mqtt_message_router_destroy",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "mqtt_message_router_subscribe",
+          "role": "调用 topic_tree_subscribe 建立 filter->session_id 映射",
+          "signature": "void mqtt_message_router_subscribe(mqtt_message_router_t* r, int session_id, const char* filter)",
+          "trace_id": "mqtt/router/message_router/mqtt_message_router_subscribe",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "mqtt_message_router_unsubscribe",
+          "role": "调用 topic_tree_unsubscribe 删除指定订阅关系",
+          "signature": "void mqtt_message_router_unsubscribe(mqtt_message_router_t* r, int session_id, const char* filter)",
+          "trace_id": "mqtt/router/message_router/mqtt_message_router_unsubscribe",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "mqtt_message_router_remove_session",
+          "role": "调用 topic_tree_remove_session 清理会话所有订阅",
+          "signature": "void mqtt_message_router_remove_session(mqtt_message_router_t* r, int session_id)",
+          "trace_id": "mqtt/router/message_router/mqtt_message_router_remove_session",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "mqtt_message_router_publish",
+          "role": "匹配订阅者列表后编码 PUBLISH 并逐个调用 mqtt_session_send 转发",
+          "signature": "void mqtt_message_router_publish(mqtt_message_router_t* r, int from_session_id, const mqtt_publish_payload_t* publish)",
+          "trace_id": "mqtt/router/message_router/mqtt_message_router_publish",
+          "visibility": "public"
+        }
+      ],
+      "source_path": "router/message_router.c"
+    },
+    {
+      "file_trace_id": "mqtt/main",
+      "header_interfaces": [],
+      "header_path": "",
+      "header_type_specs": [],
+      "source_interfaces": [
+        {
+          "kind": "FUNC",
+          "name": "main",
+          "role": "Broker 可执行程序入口：解析端口、创建 broker、启动监听、运行事件循环并最终释放 broker",
+          "signature": "int main(int argc, char** argv)",
+          "trace_id": "mqtt/main/main",
+          "visibility": "public"
+        }
+      ],
+      "source_path": "main.c"
+    },
+    {
+      "file_trace_id": "mqtt/broker/broker",
+      "header_interfaces": [
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "mqtt_broker_create",
+          "role": "创建并初始化 Broker 运行时上下文，绑定端口并注册 accept/data/close 回调",
+          "signature": "mqtt_broker_t* mqtt_broker_create(uint16_t port)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "mqtt_broker_destroy",
+          "role": "销毁 Broker 及其所有依赖对象，负责停止服务并释放会话与路由资源",
+          "signature": "void mqtt_broker_destroy(mqtt_broker_t* b)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "mqtt_broker_start",
+          "role": "启动底层 TCP 监听服务，使 Broker 开始接收客户端连接",
+          "signature": "bool mqtt_broker_start(mqtt_broker_t* b)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "event_handler",
+          "kind": "FUNC",
+          "name": "mqtt_broker_run",
+          "role": "进入 TCP 事件循环并持续分发连接、收包、断开等网络事件",
+          "signature": "void mqtt_broker_run(mqtt_broker_t* b)",
+          "visibility": "public"
+        },
+        {
+          "function_type": "algorithm",
+          "kind": "FUNC",
+          "name": "mqtt_broker_stop",
+          "role": "停止底层 TCP 监听/事件循环，触发 Broker 进入可回收状态",
+          "signature": "void mqtt_broker_stop(mqtt_broker_t* b)",
+          "visibility": "public"
+        }
+      ],
+      "header_path": "broker/broker.h",
+      "header_type_specs": [],
+      "source_interfaces": [
+        {
+          "kind": "FUNC",
+          "name": "mqtt_broker_create",
+          "role": "构建 Broker 运行时对象并完成会话管理器、路由器与 TCP 服务器的级联初始化",
+          "signature": "mqtt_broker_t* mqtt_broker_create(uint16_t port)",
+          "trace_id": "mqtt/broker/broker/mqtt_broker_create",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "mqtt_broker_destroy",
+          "role": "按停止服务→销毁网络层→销毁路由→销毁会话的顺序释放 Broker 全部资源",
+          "signature": "void mqtt_broker_destroy(mqtt_broker_t* b)",
+          "trace_id": "mqtt/broker/broker/mqtt_broker_destroy",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "mqtt_broker_start",
+          "role": "校验 Broker/Server 后启动监听，返回底层 TCP 服务器启动结果",
+          "signature": "bool mqtt_broker_start(mqtt_broker_t* b)",
+          "trace_id": "mqtt/broker/broker/mqtt_broker_start",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "mqtt_broker_run",
+          "role": "进入底层 TCP 事件循环，持续处理网络事件直到被停止",
+          "signature": "void mqtt_broker_run(mqtt_broker_t* b)",
+          "trace_id": "mqtt/broker/broker/mqtt_broker_run",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "mqtt_broker_stop",
+          "role": "在对象有效时请求停止底层 TCP 服务器，允许重复调用而不破坏状态",
+          "signature": "void mqtt_broker_stop(mqtt_broker_t* b)",
+          "trace_id": "mqtt/broker/broker/mqtt_broker_stop",
+          "visibility": "public"
+        },
+        {
+          "kind": "FUNC",
+          "name": "handle_packet",
+          "role": "按 MQTT 报文类型执行业务分发：CONNECT/SUBSCRIBE/PUBLISH/PINGREQ/DISCONNECT",
+          "signature": "static void handle_packet(mqtt_broker_t* b, mqtt_session_t* sess, const mqtt_packet_t* pkt)",
+          "trace_id": "mqtt/broker/broker/handle_packet",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "on_packet",
+          "role": "解码器回调适配层：校验上下文后将报文委托给 handle_packet",
+          "signature": "static void on_packet(void* user, const mqtt_packet_t* pkt)",
+          "trace_id": "mqtt/broker/broker/on_packet",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "on_accept_cb",
+          "role": "新连接回调：为连接创建 Session 并注册到会话管理器",
+          "signature": "static void on_accept_cb(void* user, mqtt_connection_t* c)",
+          "trace_id": "mqtt/broker/broker/on_accept_cb",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "on_close_cb",
+          "role": "连接关闭回调：按 fd 移除会话并清理路由订阅关系",
+          "signature": "static void on_close_cb(void* user, mqtt_connection_t* c)",
+          "trace_id": "mqtt/broker/broker/on_close_cb",
+          "visibility": "private"
+        },
+        {
+          "kind": "FUNC",
+          "name": "on_data_cb",
+          "role": "收包回调：拉取连接输入缓冲、驱动解码并按已消费字节推进缓冲区",
+          "signature": "static void on_data_cb(void* user, mqtt_connection_t* c)",
+          "trace_id": "mqtt/broker/broker/on_data_cb",
+          "visibility": "private"
+        }
+      ],
+      "source_path": "broker/broker.c"
+    }
+  ],
+  "schema_version": "spec_ablation_s3_interface_grounding/v1",
+  "visibility": "s3_coder_visible_interface_grounding"
+}

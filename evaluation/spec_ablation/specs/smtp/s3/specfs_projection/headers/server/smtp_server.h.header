@@ -1,0 +1,9 @@
+#include <stdint.h>
+
+typedef struct smtp_server smtp_server_t;
+
+smtp_server_t* smtp_server_create(uint16_t port, const char* mail_root);
+int smtp_server_start(smtp_server_t* server);
+int smtp_server_run(smtp_server_t* server);
+void smtp_server_stop(smtp_server_t* server);
+void smtp_server_destroy(smtp_server_t* server);

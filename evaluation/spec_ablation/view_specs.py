@@ -10,10 +10,14 @@ from agent.coder.models import SpecBundle
 from agent.coder.specs import load_spec_bundle_from_root, normalize_repo_path
 
 from .configs import REPO_ROOT
-from .transformer import FORBIDDEN_VISIBLE_TERMS, S2_PROJECT_GRAPH_FORBIDDEN_TERMS
+from .transformer import (
+    FORBIDDEN_VISIBLE_TERMS,
+    S2_PROJECT_GRAPH_FORBIDDEN_TERMS,
+    S3_INTERFACE_GROUNDING_FORBIDDEN_TERMS,
+)
 
 
-SUPPORTED_VIEWS = {"s1", "s2"}
+SUPPORTED_VIEWS = {"s1", "s2", "s3"}
 
 S1_PROMPT_FORBIDDEN_TERMS: tuple[str, ...] = (
     *FORBIDDEN_VISIBLE_TERMS,
@@ -38,6 +42,12 @@ S2_PROMPT_FORBIDDEN_TERMS: tuple[str, ...] = (
     "Consistency rules",
 )
 
+S3_PROMPT_FORBIDDEN_TERMS: tuple[str, ...] = (
+    *S3_INTERFACE_GROUNDING_FORBIDDEN_TERMS,
+    "Machine-readable constraints",
+    "Consistency rules",
+)
+
 PROMPT_FORBIDDEN_TERMS = S1_PROMPT_FORBIDDEN_TERMS
 
 
@@ -47,6 +57,8 @@ def prompt_forbidden_terms(view_name: str) -> tuple[str, ...]:
         return S1_PROMPT_FORBIDDEN_TERMS
     if normalized == "s2":
         return S2_PROMPT_FORBIDDEN_TERMS
+    if normalized == "s3":
+        return S3_PROMPT_FORBIDDEN_TERMS
     raise UnsupportedViewError(f"unsupported ablation view '{view_name}'")
 
 
@@ -56,6 +68,8 @@ def visible_boundary_name(view_name: str) -> str:
         return "s1_local_specfs"
     if normalized == "s2":
         return "s2_project_graph_specfs"
+    if normalized == "s3":
+        return "s3_interface_grounded_specfs"
     raise UnsupportedViewError(f"unsupported ablation view '{view_name}'")
 
 
@@ -77,6 +91,7 @@ class AblationViewContext:
     function_blocks_by_trace: dict[str, str]
     headers_by_path: dict[str, str]
     project_graph: dict[str, Any] | None = None
+    interface_grounding: dict[str, Any] | None = None
 
     def function_blocks_for_source(self, source_path: str) -> list[str]:
         source_path = normalize_repo_path(source_path)
@@ -176,7 +191,7 @@ def _load_project_graph(view_root: Path, manifest: dict[str, Any]) -> dict[str, 
     artifact_path = str(artifact.get("artifact_path", ""))
     expected_hash = str(artifact.get("sha256", ""))
     if not artifact_path:
-        raise ViewSpecError("S2 manifest is missing project_graph artifact")
+        raise ViewSpecError("manifest is missing project_graph artifact")
     path = view_root / artifact_path
     if not path.is_file():
         raise ViewSpecError(f"missing project graph artifact: {path}")
@@ -186,8 +201,27 @@ def _load_project_graph(view_root: Path, manifest: dict[str, Any]) -> dict[str, 
         raise ViewSpecError(f"project graph artifact hash mismatch: {path}")
     graph = json.loads(text)
     if graph.get("visibility") != "s2_coder_visible_project_graph":
-        raise ViewSpecError("S2 project graph has an unexpected visibility marker")
+        raise ViewSpecError("project graph has an unexpected visibility marker")
     return graph
+
+
+def _load_interface_grounding(view_root: Path, manifest: dict[str, Any]) -> dict[str, Any]:
+    artifact = manifest.get("artifacts", {}).get("interface_grounding", {})
+    artifact_path = str(artifact.get("artifact_path", ""))
+    expected_hash = str(artifact.get("sha256", ""))
+    if not artifact_path:
+        raise ViewSpecError("S3 manifest is missing interface_grounding artifact")
+    path = view_root / artifact_path
+    if not path.is_file():
+        raise ViewSpecError(f"missing interface grounding artifact: {path}")
+    text = path.read_text(encoding="utf-8")
+    _assert_no_visible_leakage(path, text, S3_INTERFACE_GROUNDING_FORBIDDEN_TERMS)
+    if expected_hash and sha256_text(text) != expected_hash:
+        raise ViewSpecError(f"interface grounding artifact hash mismatch: {path}")
+    grounding = json.loads(text)
+    if grounding.get("visibility") != "s3_coder_visible_interface_grounding":
+        raise ViewSpecError("S3 interface grounding has an unexpected visibility marker")
+    return grounding
 
 
 def _validate_execution_manifest(view_root: Path, execution_manifest: dict[str, Any]) -> None:
@@ -229,8 +263,10 @@ def load_ablation_view_context(
         raise ViewSpecError("transformation manifest leakage_scan did not pass")
     if transformation_manifest.get("validation", {}).get("source_loader", {}).get("status") != "passed":
         raise ViewSpecError("transformation manifest source_loader did not pass")
-    if normalized_view == "s2" and transformation_manifest.get("validation", {}).get("s2_project_graph_leakage_scan", {}).get("status") != "passed":
+    if normalized_view in {"s2", "s3"} and transformation_manifest.get("validation", {}).get("s2_project_graph_leakage_scan", {}).get("status") != "passed":
         raise ViewSpecError("transformation manifest s2_project_graph_leakage_scan did not pass")
+    if normalized_view == "s3" and transformation_manifest.get("validation", {}).get("s3_interface_grounding_leakage_scan", {}).get("status") != "passed":
+        raise ViewSpecError("transformation manifest s3_interface_grounding_leakage_scan did not pass")
     _validate_execution_manifest(root, execution_manifest)
 
     source_root = resolve_repo_path(full_spec_root or transformation_manifest.get("source_root", ""))
@@ -246,7 +282,8 @@ def load_ablation_view_context(
         raise ViewSpecError("function artifact count mismatch")
     if int(expected.get("headers", len(headers))) != len(headers):
         raise ViewSpecError("header artifact count mismatch")
-    project_graph = _load_project_graph(root, transformation_manifest) if normalized_view == "s2" else None
+    project_graph = _load_project_graph(root, transformation_manifest) if normalized_view in {"s2", "s3"} else None
+    interface_grounding = _load_interface_grounding(root, transformation_manifest) if normalized_view == "s3" else None
 
     return AblationViewContext(
         view_name=normalized_view,
@@ -257,4 +294,5 @@ def load_ablation_view_context(
         function_blocks_by_trace=function_blocks,
         headers_by_path=headers,
         project_graph=project_graph,
+        interface_grounding=interface_grounding,
     )

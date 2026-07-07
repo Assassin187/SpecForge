@@ -1,0 +1,1228 @@
+{
+  "file_dependency_edges": [
+    {
+      "dependency_kind": "source",
+      "dependency_path": "network/connection.h",
+      "from_file_trace_id": "http/network/connection",
+      "to_file_trace_id": "http/network/connection"
+    },
+    {
+      "dependency_kind": "source",
+      "dependency_path": "network/tcp_server.h",
+      "from_file_trace_id": "http/network/tcp_server",
+      "to_file_trace_id": "http/network/tcp_server"
+    },
+    {
+      "dependency_kind": "header",
+      "dependency_path": "network/connection.h",
+      "from_file_trace_id": "http/protocol/http_request",
+      "to_file_trace_id": "http/network/connection"
+    },
+    {
+      "dependency_kind": "source",
+      "dependency_path": "protocol/http_request.h",
+      "from_file_trace_id": "http/protocol/http_request",
+      "to_file_trace_id": "http/protocol/http_request"
+    },
+    {
+      "dependency_kind": "source",
+      "dependency_path": "network/connection.h",
+      "from_file_trace_id": "http/protocol/http_request",
+      "to_file_trace_id": "http/network/connection"
+    },
+    {
+      "dependency_kind": "header",
+      "dependency_path": "network/connection.h",
+      "from_file_trace_id": "http/protocol/http_response",
+      "to_file_trace_id": "http/network/connection"
+    },
+    {
+      "dependency_kind": "source",
+      "dependency_path": "protocol/http_response.h",
+      "from_file_trace_id": "http/protocol/http_response",
+      "to_file_trace_id": "http/protocol/http_response"
+    },
+    {
+      "dependency_kind": "source",
+      "dependency_path": "network/connection.h",
+      "from_file_trace_id": "http/protocol/http_response",
+      "to_file_trace_id": "http/network/connection"
+    },
+    {
+      "dependency_kind": "source",
+      "dependency_path": "resource/file_ops.h",
+      "from_file_trace_id": "http/resource/file_ops",
+      "to_file_trace_id": "http/resource/file_ops"
+    },
+    {
+      "dependency_kind": "source",
+      "dependency_path": "server/http_server.h",
+      "from_file_trace_id": "http/main",
+      "to_file_trace_id": "http/server/http_server"
+    },
+    {
+      "dependency_kind": "source",
+      "dependency_path": "server/http_server.h",
+      "from_file_trace_id": "http/server/http_server",
+      "to_file_trace_id": "http/server/http_server"
+    },
+    {
+      "dependency_kind": "source",
+      "dependency_path": "network/tcp_server.h",
+      "from_file_trace_id": "http/server/http_server",
+      "to_file_trace_id": "http/network/tcp_server"
+    },
+    {
+      "dependency_kind": "source",
+      "dependency_path": "protocol/http_request.h",
+      "from_file_trace_id": "http/server/http_server",
+      "to_file_trace_id": "http/protocol/http_request"
+    },
+    {
+      "dependency_kind": "source",
+      "dependency_path": "protocol/http_response.h",
+      "from_file_trace_id": "http/server/http_server",
+      "to_file_trace_id": "http/protocol/http_response"
+    },
+    {
+      "dependency_kind": "source",
+      "dependency_path": "resource/file_ops.h",
+      "from_file_trace_id": "http/server/http_server",
+      "to_file_trace_id": "http/resource/file_ops"
+    },
+    {
+      "dependency_kind": "source",
+      "dependency_path": "server/http_session.h",
+      "from_file_trace_id": "http/server/http_server",
+      "to_file_trace_id": "http/server/http_session"
+    },
+    {
+      "dependency_kind": "header",
+      "dependency_path": "network/connection.h",
+      "from_file_trace_id": "http/server/http_session",
+      "to_file_trace_id": "http/network/connection"
+    },
+    {
+      "dependency_kind": "source",
+      "dependency_path": "server/http_session.h",
+      "from_file_trace_id": "http/server/http_session",
+      "to_file_trace_id": "http/server/http_session"
+    }
+  ],
+  "files": [
+    {
+      "contains_function_trace_ids": [
+        "http/network/connection/http_connection_create",
+        "http/network/connection/http_connection_destroy",
+        "http/network/connection/http_connection_fd",
+        "http/network/connection/http_connection_read",
+        "http/network/connection/http_connection_pop_line",
+        "http/network/connection/http_connection_pop_bytes",
+        "http/network/connection/http_connection_buffered",
+        "http/network/connection/http_connection_queue",
+        "http/network/connection/http_connection_queue_str",
+        "http/network/connection/http_connection_flush",
+        "http/network/connection/http_connection_has_pending",
+        "http/network/connection/ensure_cap"
+      ],
+      "dependency_file_trace_ids": [
+        "http/network/connection"
+      ],
+      "file_trace_id": "http/network/connection",
+      "generation_order": 0,
+      "header_dependency_paths": [],
+      "header_path": "network/connection.h",
+      "module_name": "network",
+      "source_dependency_paths": [
+        "network/connection.h"
+      ],
+      "source_path": "network/connection.c"
+    },
+    {
+      "contains_function_trace_ids": [
+        "http/network/tcp_server/http_tcp_server_create",
+        "http/network/tcp_server/http_tcp_server_start",
+        "http/network/tcp_server/http_tcp_server_run",
+        "http/network/tcp_server/http_tcp_server_stop",
+        "http/network/tcp_server/http_tcp_server_destroy",
+        "http/network/tcp_server/http_tcp_server_update_interest",
+        "http/network/tcp_server/http_tcp_server_close_client",
+        "http/network/tcp_server/set_nonblocking",
+        "http/network/tcp_server/find_client",
+        "http/network/tcp_server/add_client",
+        "http/network/tcp_server/remove_client_node",
+        "http/network/tcp_server/setup_listener",
+        "http/network/tcp_server/accept_loop"
+      ],
+      "dependency_file_trace_ids": [
+        "http/network/tcp_server"
+      ],
+      "file_trace_id": "http/network/tcp_server",
+      "generation_order": 1,
+      "header_dependency_paths": [],
+      "header_path": "network/tcp_server.h",
+      "module_name": "network",
+      "source_dependency_paths": [
+        "network/tcp_server.h"
+      ],
+      "source_path": "network/tcp_server.c"
+    },
+    {
+      "contains_function_trace_ids": [
+        "http/protocol/http_request/http_request_init",
+        "http/protocol/http_request/http_request_free",
+        "http/protocol/http_request/http_request_parse",
+        "http/protocol/http_request/http_request_header",
+        "http/protocol/http_request/parse_method"
+      ],
+      "dependency_file_trace_ids": [
+        "http/network/connection",
+        "http/protocol/http_request"
+      ],
+      "file_trace_id": "http/protocol/http_request",
+      "generation_order": 2,
+      "header_dependency_paths": [
+        "network/connection.h"
+      ],
+      "header_path": "protocol/http_request.h",
+      "module_name": "protocol",
+      "source_dependency_paths": [
+        "protocol/http_request.h",
+        "network/connection.h"
+      ],
+      "source_path": "protocol/http_request.c"
+    },
+    {
+      "contains_function_trace_ids": [
+        "http/protocol/http_response/http_status_text",
+        "http/protocol/http_response/http_response_send",
+        "http/protocol/http_response/http_response_send_html",
+        "http/protocol/http_response/queuefv"
+      ],
+      "dependency_file_trace_ids": [
+        "http/network/connection",
+        "http/protocol/http_response"
+      ],
+      "file_trace_id": "http/protocol/http_response",
+      "generation_order": 3,
+      "header_dependency_paths": [
+        "network/connection.h"
+      ],
+      "header_path": "protocol/http_response.h",
+      "module_name": "protocol",
+      "source_dependency_paths": [
+        "protocol/http_response.h",
+        "network/connection.h"
+      ],
+      "source_path": "protocol/http_response.c"
+    },
+    {
+      "contains_function_trace_ids": [
+        "http/resource/file_ops/http_mime_by_ext",
+        "http/resource/file_ops/http_resolve_path",
+        "http/resource/file_ops/http_stat_path",
+        "http/resource/file_ops/http_read_file",
+        "http/resource/file_ops/http_dir_listing_html"
+      ],
+      "dependency_file_trace_ids": [
+        "http/resource/file_ops"
+      ],
+      "file_trace_id": "http/resource/file_ops",
+      "generation_order": 4,
+      "header_dependency_paths": [],
+      "header_path": "resource/file_ops.h",
+      "module_name": "resource",
+      "source_dependency_paths": [
+        "resource/file_ops.h"
+      ],
+      "source_path": "resource/file_ops.c"
+    },
+    {
+      "contains_function_trace_ids": [
+        "http/main/parse_port",
+        "http/main/main"
+      ],
+      "dependency_file_trace_ids": [
+        "http/server/http_server"
+      ],
+      "file_trace_id": "http/main",
+      "generation_order": 5,
+      "header_dependency_paths": [],
+      "header_path": "",
+      "module_name": "server_app",
+      "source_dependency_paths": [
+        "server/http_server.h"
+      ],
+      "source_path": "main.c"
+    },
+    {
+      "contains_function_trace_ids": [
+        "http/server/http_server/find_session",
+        "http/server/http_server/remove_session",
+        "http/server/http_server/add_session",
+        "http/server/http_server/send_error",
+        "http/server/http_server/flush_and_update",
+        "http/server/http_server/serve_file",
+        "http/server/http_server/handle_get",
+        "http/server/http_server/handle_head",
+        "http/server/http_server/handle_post",
+        "http/server/http_server/dispatch",
+        "http/server/http_server/on_accept_cb",
+        "http/server/http_server/close_client",
+        "http/server/http_server/on_event_cb",
+        "http/server/http_server/on_close_cb",
+        "http/server/http_server/http_server_create",
+        "http/server/http_server/http_server_start",
+        "http/server/http_server/http_server_run",
+        "http/server/http_server/http_server_stop",
+        "http/server/http_server/http_server_destroy"
+      ],
+      "dependency_file_trace_ids": [
+        "http/server/http_server",
+        "http/network/tcp_server",
+        "http/protocol/http_request",
+        "http/protocol/http_response",
+        "http/resource/file_ops",
+        "http/server/http_session"
+      ],
+      "file_trace_id": "http/server/http_server",
+      "generation_order": 6,
+      "header_dependency_paths": [],
+      "header_path": "server/http_server.h",
+      "module_name": "server_app",
+      "source_dependency_paths": [
+        "server/http_server.h",
+        "network/tcp_server.h",
+        "protocol/http_request.h",
+        "protocol/http_response.h",
+        "resource/file_ops.h",
+        "server/http_session.h"
+      ],
+      "source_path": "server/http_server.c"
+    },
+    {
+      "contains_function_trace_ids": [
+        "http/server/http_session/http_session_create",
+        "http/server/http_session/http_session_destroy"
+      ],
+      "dependency_file_trace_ids": [
+        "http/network/connection",
+        "http/server/http_session"
+      ],
+      "file_trace_id": "http/server/http_session",
+      "generation_order": 7,
+      "header_dependency_paths": [
+        "network/connection.h"
+      ],
+      "header_path": "server/http_session.h",
+      "module_name": "server_app",
+      "source_dependency_paths": [
+        "server/http_session.h"
+      ],
+      "source_path": "server/http_session.c"
+    }
+  ],
+  "functions": [
+    {
+      "file_function_order": 0,
+      "file_generation_order": 0,
+      "file_trace_id": "http/network/connection",
+      "function_name": "http_connection_create",
+      "function_trace_id": "http/network/connection/http_connection_create",
+      "global_function_order": 0,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/connection.c"
+    },
+    {
+      "file_function_order": 1,
+      "file_generation_order": 0,
+      "file_trace_id": "http/network/connection",
+      "function_name": "http_connection_destroy",
+      "function_trace_id": "http/network/connection/http_connection_destroy",
+      "global_function_order": 1,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/connection.c"
+    },
+    {
+      "file_function_order": 2,
+      "file_generation_order": 0,
+      "file_trace_id": "http/network/connection",
+      "function_name": "http_connection_fd",
+      "function_trace_id": "http/network/connection/http_connection_fd",
+      "global_function_order": 2,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/connection.c"
+    },
+    {
+      "file_function_order": 3,
+      "file_generation_order": 0,
+      "file_trace_id": "http/network/connection",
+      "function_name": "http_connection_read",
+      "function_trace_id": "http/network/connection/http_connection_read",
+      "global_function_order": 3,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/connection.c"
+    },
+    {
+      "file_function_order": 4,
+      "file_generation_order": 0,
+      "file_trace_id": "http/network/connection",
+      "function_name": "http_connection_pop_line",
+      "function_trace_id": "http/network/connection/http_connection_pop_line",
+      "global_function_order": 4,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/connection.c"
+    },
+    {
+      "file_function_order": 5,
+      "file_generation_order": 0,
+      "file_trace_id": "http/network/connection",
+      "function_name": "http_connection_pop_bytes",
+      "function_trace_id": "http/network/connection/http_connection_pop_bytes",
+      "global_function_order": 5,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/connection.c"
+    },
+    {
+      "file_function_order": 6,
+      "file_generation_order": 0,
+      "file_trace_id": "http/network/connection",
+      "function_name": "http_connection_buffered",
+      "function_trace_id": "http/network/connection/http_connection_buffered",
+      "global_function_order": 6,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/connection.c"
+    },
+    {
+      "file_function_order": 7,
+      "file_generation_order": 0,
+      "file_trace_id": "http/network/connection",
+      "function_name": "http_connection_queue",
+      "function_trace_id": "http/network/connection/http_connection_queue",
+      "global_function_order": 7,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/connection.c"
+    },
+    {
+      "file_function_order": 8,
+      "file_generation_order": 0,
+      "file_trace_id": "http/network/connection",
+      "function_name": "http_connection_queue_str",
+      "function_trace_id": "http/network/connection/http_connection_queue_str",
+      "global_function_order": 8,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/connection.c"
+    },
+    {
+      "file_function_order": 9,
+      "file_generation_order": 0,
+      "file_trace_id": "http/network/connection",
+      "function_name": "http_connection_flush",
+      "function_trace_id": "http/network/connection/http_connection_flush",
+      "global_function_order": 9,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/connection.c"
+    },
+    {
+      "file_function_order": 10,
+      "file_generation_order": 0,
+      "file_trace_id": "http/network/connection",
+      "function_name": "http_connection_has_pending",
+      "function_trace_id": "http/network/connection/http_connection_has_pending",
+      "global_function_order": 10,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/connection.c"
+    },
+    {
+      "file_function_order": 11,
+      "file_generation_order": 0,
+      "file_trace_id": "http/network/connection",
+      "function_name": "ensure_cap",
+      "function_trace_id": "http/network/connection/ensure_cap",
+      "global_function_order": 11,
+      "linkage": "internal_static",
+      "module_name": "network",
+      "source_path": "network/connection.c"
+    },
+    {
+      "file_function_order": 0,
+      "file_generation_order": 1,
+      "file_trace_id": "http/network/tcp_server",
+      "function_name": "http_tcp_server_create",
+      "function_trace_id": "http/network/tcp_server/http_tcp_server_create",
+      "global_function_order": 12,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/tcp_server.c"
+    },
+    {
+      "file_function_order": 1,
+      "file_generation_order": 1,
+      "file_trace_id": "http/network/tcp_server",
+      "function_name": "http_tcp_server_start",
+      "function_trace_id": "http/network/tcp_server/http_tcp_server_start",
+      "global_function_order": 13,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/tcp_server.c"
+    },
+    {
+      "file_function_order": 2,
+      "file_generation_order": 1,
+      "file_trace_id": "http/network/tcp_server",
+      "function_name": "http_tcp_server_run",
+      "function_trace_id": "http/network/tcp_server/http_tcp_server_run",
+      "global_function_order": 14,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/tcp_server.c"
+    },
+    {
+      "file_function_order": 3,
+      "file_generation_order": 1,
+      "file_trace_id": "http/network/tcp_server",
+      "function_name": "http_tcp_server_stop",
+      "function_trace_id": "http/network/tcp_server/http_tcp_server_stop",
+      "global_function_order": 15,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/tcp_server.c"
+    },
+    {
+      "file_function_order": 4,
+      "file_generation_order": 1,
+      "file_trace_id": "http/network/tcp_server",
+      "function_name": "http_tcp_server_destroy",
+      "function_trace_id": "http/network/tcp_server/http_tcp_server_destroy",
+      "global_function_order": 16,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/tcp_server.c"
+    },
+    {
+      "file_function_order": 5,
+      "file_generation_order": 1,
+      "file_trace_id": "http/network/tcp_server",
+      "function_name": "http_tcp_server_update_interest",
+      "function_trace_id": "http/network/tcp_server/http_tcp_server_update_interest",
+      "global_function_order": 17,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/tcp_server.c"
+    },
+    {
+      "file_function_order": 6,
+      "file_generation_order": 1,
+      "file_trace_id": "http/network/tcp_server",
+      "function_name": "http_tcp_server_close_client",
+      "function_trace_id": "http/network/tcp_server/http_tcp_server_close_client",
+      "global_function_order": 18,
+      "linkage": "external",
+      "module_name": "network",
+      "source_path": "network/tcp_server.c"
+    },
+    {
+      "file_function_order": 7,
+      "file_generation_order": 1,
+      "file_trace_id": "http/network/tcp_server",
+      "function_name": "set_nonblocking",
+      "function_trace_id": "http/network/tcp_server/set_nonblocking",
+      "global_function_order": 19,
+      "linkage": "internal_static",
+      "module_name": "network",
+      "source_path": "network/tcp_server.c"
+    },
+    {
+      "file_function_order": 8,
+      "file_generation_order": 1,
+      "file_trace_id": "http/network/tcp_server",
+      "function_name": "find_client",
+      "function_trace_id": "http/network/tcp_server/find_client",
+      "global_function_order": 20,
+      "linkage": "internal_static",
+      "module_name": "network",
+      "source_path": "network/tcp_server.c"
+    },
+    {
+      "file_function_order": 9,
+      "file_generation_order": 1,
+      "file_trace_id": "http/network/tcp_server",
+      "function_name": "add_client",
+      "function_trace_id": "http/network/tcp_server/add_client",
+      "global_function_order": 21,
+      "linkage": "internal_static",
+      "module_name": "network",
+      "source_path": "network/tcp_server.c"
+    },
+    {
+      "file_function_order": 10,
+      "file_generation_order": 1,
+      "file_trace_id": "http/network/tcp_server",
+      "function_name": "remove_client_node",
+      "function_trace_id": "http/network/tcp_server/remove_client_node",
+      "global_function_order": 22,
+      "linkage": "internal_static",
+      "module_name": "network",
+      "source_path": "network/tcp_server.c"
+    },
+    {
+      "file_function_order": 11,
+      "file_generation_order": 1,
+      "file_trace_id": "http/network/tcp_server",
+      "function_name": "setup_listener",
+      "function_trace_id": "http/network/tcp_server/setup_listener",
+      "global_function_order": 23,
+      "linkage": "internal_static",
+      "module_name": "network",
+      "source_path": "network/tcp_server.c"
+    },
+    {
+      "file_function_order": 12,
+      "file_generation_order": 1,
+      "file_trace_id": "http/network/tcp_server",
+      "function_name": "accept_loop",
+      "function_trace_id": "http/network/tcp_server/accept_loop",
+      "global_function_order": 24,
+      "linkage": "internal_static",
+      "module_name": "network",
+      "source_path": "network/tcp_server.c"
+    },
+    {
+      "file_function_order": 0,
+      "file_generation_order": 2,
+      "file_trace_id": "http/protocol/http_request",
+      "function_name": "http_request_init",
+      "function_trace_id": "http/protocol/http_request/http_request_init",
+      "global_function_order": 25,
+      "linkage": "external",
+      "module_name": "protocol",
+      "source_path": "protocol/http_request.c"
+    },
+    {
+      "file_function_order": 1,
+      "file_generation_order": 2,
+      "file_trace_id": "http/protocol/http_request",
+      "function_name": "http_request_free",
+      "function_trace_id": "http/protocol/http_request/http_request_free",
+      "global_function_order": 26,
+      "linkage": "external",
+      "module_name": "protocol",
+      "source_path": "protocol/http_request.c"
+    },
+    {
+      "file_function_order": 2,
+      "file_generation_order": 2,
+      "file_trace_id": "http/protocol/http_request",
+      "function_name": "http_request_parse",
+      "function_trace_id": "http/protocol/http_request/http_request_parse",
+      "global_function_order": 27,
+      "linkage": "external",
+      "module_name": "protocol",
+      "source_path": "protocol/http_request.c"
+    },
+    {
+      "file_function_order": 3,
+      "file_generation_order": 2,
+      "file_trace_id": "http/protocol/http_request",
+      "function_name": "http_request_header",
+      "function_trace_id": "http/protocol/http_request/http_request_header",
+      "global_function_order": 28,
+      "linkage": "external",
+      "module_name": "protocol",
+      "source_path": "protocol/http_request.c"
+    },
+    {
+      "file_function_order": 4,
+      "file_generation_order": 2,
+      "file_trace_id": "http/protocol/http_request",
+      "function_name": "parse_method",
+      "function_trace_id": "http/protocol/http_request/parse_method",
+      "global_function_order": 29,
+      "linkage": "internal_static",
+      "module_name": "protocol",
+      "source_path": "protocol/http_request.c"
+    },
+    {
+      "file_function_order": 0,
+      "file_generation_order": 3,
+      "file_trace_id": "http/protocol/http_response",
+      "function_name": "http_status_text",
+      "function_trace_id": "http/protocol/http_response/http_status_text",
+      "global_function_order": 30,
+      "linkage": "external",
+      "module_name": "protocol",
+      "source_path": "protocol/http_response.c"
+    },
+    {
+      "file_function_order": 1,
+      "file_generation_order": 3,
+      "file_trace_id": "http/protocol/http_response",
+      "function_name": "http_response_send",
+      "function_trace_id": "http/protocol/http_response/http_response_send",
+      "global_function_order": 31,
+      "linkage": "external",
+      "module_name": "protocol",
+      "source_path": "protocol/http_response.c"
+    },
+    {
+      "file_function_order": 2,
+      "file_generation_order": 3,
+      "file_trace_id": "http/protocol/http_response",
+      "function_name": "http_response_send_html",
+      "function_trace_id": "http/protocol/http_response/http_response_send_html",
+      "global_function_order": 32,
+      "linkage": "external",
+      "module_name": "protocol",
+      "source_path": "protocol/http_response.c"
+    },
+    {
+      "file_function_order": 3,
+      "file_generation_order": 3,
+      "file_trace_id": "http/protocol/http_response",
+      "function_name": "queuefv",
+      "function_trace_id": "http/protocol/http_response/queuefv",
+      "global_function_order": 33,
+      "linkage": "internal_static",
+      "module_name": "protocol",
+      "source_path": "protocol/http_response.c"
+    },
+    {
+      "file_function_order": 0,
+      "file_generation_order": 4,
+      "file_trace_id": "http/resource/file_ops",
+      "function_name": "http_mime_by_ext",
+      "function_trace_id": "http/resource/file_ops/http_mime_by_ext",
+      "global_function_order": 34,
+      "linkage": "external",
+      "module_name": "resource",
+      "source_path": "resource/file_ops.c"
+    },
+    {
+      "file_function_order": 1,
+      "file_generation_order": 4,
+      "file_trace_id": "http/resource/file_ops",
+      "function_name": "http_resolve_path",
+      "function_trace_id": "http/resource/file_ops/http_resolve_path",
+      "global_function_order": 35,
+      "linkage": "external",
+      "module_name": "resource",
+      "source_path": "resource/file_ops.c"
+    },
+    {
+      "file_function_order": 2,
+      "file_generation_order": 4,
+      "file_trace_id": "http/resource/file_ops",
+      "function_name": "http_stat_path",
+      "function_trace_id": "http/resource/file_ops/http_stat_path",
+      "global_function_order": 36,
+      "linkage": "external",
+      "module_name": "resource",
+      "source_path": "resource/file_ops.c"
+    },
+    {
+      "file_function_order": 3,
+      "file_generation_order": 4,
+      "file_trace_id": "http/resource/file_ops",
+      "function_name": "http_read_file",
+      "function_trace_id": "http/resource/file_ops/http_read_file",
+      "global_function_order": 37,
+      "linkage": "external",
+      "module_name": "resource",
+      "source_path": "resource/file_ops.c"
+    },
+    {
+      "file_function_order": 4,
+      "file_generation_order": 4,
+      "file_trace_id": "http/resource/file_ops",
+      "function_name": "http_dir_listing_html",
+      "function_trace_id": "http/resource/file_ops/http_dir_listing_html",
+      "global_function_order": 38,
+      "linkage": "external",
+      "module_name": "resource",
+      "source_path": "resource/file_ops.c"
+    },
+    {
+      "file_function_order": 0,
+      "file_generation_order": 5,
+      "file_trace_id": "http/main",
+      "function_name": "parse_port",
+      "function_trace_id": "http/main/parse_port",
+      "global_function_order": 39,
+      "linkage": "internal_static",
+      "module_name": "server_app",
+      "source_path": "main.c"
+    },
+    {
+      "file_function_order": 1,
+      "file_generation_order": 5,
+      "file_trace_id": "http/main",
+      "function_name": "main",
+      "function_trace_id": "http/main/main",
+      "global_function_order": 40,
+      "linkage": "external",
+      "module_name": "server_app",
+      "source_path": "main.c"
+    },
+    {
+      "file_function_order": 0,
+      "file_generation_order": 6,
+      "file_trace_id": "http/server/http_server",
+      "function_name": "find_session",
+      "function_trace_id": "http/server/http_server/find_session",
+      "global_function_order": 41,
+      "linkage": "internal_static",
+      "module_name": "server_app",
+      "source_path": "server/http_server.c"
+    },
+    {
+      "file_function_order": 1,
+      "file_generation_order": 6,
+      "file_trace_id": "http/server/http_server",
+      "function_name": "remove_session",
+      "function_trace_id": "http/server/http_server/remove_session",
+      "global_function_order": 42,
+      "linkage": "internal_static",
+      "module_name": "server_app",
+      "source_path": "server/http_server.c"
+    },
+    {
+      "file_function_order": 2,
+      "file_generation_order": 6,
+      "file_trace_id": "http/server/http_server",
+      "function_name": "add_session",
+      "function_trace_id": "http/server/http_server/add_session",
+      "global_function_order": 43,
+      "linkage": "internal_static",
+      "module_name": "server_app",
+      "source_path": "server/http_server.c"
+    },
+    {
+      "file_function_order": 3,
+      "file_generation_order": 6,
+      "file_trace_id": "http/server/http_server",
+      "function_name": "send_error",
+      "function_trace_id": "http/server/http_server/send_error",
+      "global_function_order": 44,
+      "linkage": "internal_static",
+      "module_name": "server_app",
+      "source_path": "server/http_server.c"
+    },
+    {
+      "file_function_order": 4,
+      "file_generation_order": 6,
+      "file_trace_id": "http/server/http_server",
+      "function_name": "flush_and_update",
+      "function_trace_id": "http/server/http_server/flush_and_update",
+      "global_function_order": 45,
+      "linkage": "internal_static",
+      "module_name": "server_app",
+      "source_path": "server/http_server.c"
+    },
+    {
+      "file_function_order": 5,
+      "file_generation_order": 6,
+      "file_trace_id": "http/server/http_server",
+      "function_name": "serve_file",
+      "function_trace_id": "http/server/http_server/serve_file",
+      "global_function_order": 46,
+      "linkage": "internal_static",
+      "module_name": "server_app",
+      "source_path": "server/http_server.c"
+    },
+    {
+      "file_function_order": 6,
+      "file_generation_order": 6,
+      "file_trace_id": "http/server/http_server",
+      "function_name": "handle_get",
+      "function_trace_id": "http/server/http_server/handle_get",
+      "global_function_order": 47,
+      "linkage": "internal_static",
+      "module_name": "server_app",
+      "source_path": "server/http_server.c"
+    },
+    {
+      "file_function_order": 7,
+      "file_generation_order": 6,
+      "file_trace_id": "http/server/http_server",
+      "function_name": "handle_head",
+      "function_trace_id": "http/server/http_server/handle_head",
+      "global_function_order": 48,
+      "linkage": "internal_static",
+      "module_name": "server_app",
+      "source_path": "server/http_server.c"
+    },
+    {
+      "file_function_order": 8,
+      "file_generation_order": 6,
+      "file_trace_id": "http/server/http_server",
+      "function_name": "handle_post",
+      "function_trace_id": "http/server/http_server/handle_post",
+      "global_function_order": 49,
+      "linkage": "internal_static",
+      "module_name": "server_app",
+      "source_path": "server/http_server.c"
+    },
+    {
+      "file_function_order": 9,
+      "file_generation_order": 6,
+      "file_trace_id": "http/server/http_server",
+      "function_name": "dispatch",
+      "function_trace_id": "http/server/http_server/dispatch",
+      "global_function_order": 50,
+      "linkage": "internal_static",
+      "module_name": "server_app",
+      "source_path": "server/http_server.c"
+    },
+    {
+      "file_function_order": 10,
+      "file_generation_order": 6,
+      "file_trace_id": "http/server/http_server",
+      "function_name": "on_accept_cb",
+      "function_trace_id": "http/server/http_server/on_accept_cb",
+      "global_function_order": 51,
+      "linkage": "internal_static",
+      "module_name": "server_app",
+      "source_path": "server/http_server.c"
+    },
+    {
+      "file_function_order": 11,
+      "file_generation_order": 6,
+      "file_trace_id": "http/server/http_server",
+      "function_name": "close_client",
+      "function_trace_id": "http/server/http_server/close_client",
+      "global_function_order": 52,
+      "linkage": "internal_static",
+      "module_name": "server_app",
+      "source_path": "server/http_server.c"
+    },
+    {
+      "file_function_order": 12,
+      "file_generation_order": 6,
+      "file_trace_id": "http/server/http_server",
+      "function_name": "on_event_cb",
+      "function_trace_id": "http/server/http_server/on_event_cb",
+      "global_function_order": 53,
+      "linkage": "internal_static",
+      "module_name": "server_app",
+      "source_path": "server/http_server.c"
+    },
+    {
+      "file_function_order": 13,
+      "file_generation_order": 6,
+      "file_trace_id": "http/server/http_server",
+      "function_name": "on_close_cb",
+      "function_trace_id": "http/server/http_server/on_close_cb",
+      "global_function_order": 54,
+      "linkage": "internal_static",
+      "module_name": "server_app",
+      "source_path": "server/http_server.c"
+    },
+    {
+      "file_function_order": 14,
+      "file_generation_order": 6,
+      "file_trace_id": "http/server/http_server",
+      "function_name": "http_server_create",
+      "function_trace_id": "http/server/http_server/http_server_create",
+      "global_function_order": 55,
+      "linkage": "external",
+      "module_name": "server_app",
+      "source_path": "server/http_server.c"
+    },
+    {
+      "file_function_order": 15,
+      "file_generation_order": 6,
+      "file_trace_id": "http/server/http_server",
+      "function_name": "http_server_start",
+      "function_trace_id": "http/server/http_server/http_server_start",
+      "global_function_order": 56,
+      "linkage": "external",
+      "module_name": "server_app",
+      "source_path": "server/http_server.c"
+    },
+    {
+      "file_function_order": 16,
+      "file_generation_order": 6,
+      "file_trace_id": "http/server/http_server",
+      "function_name": "http_server_run",
+      "function_trace_id": "http/server/http_server/http_server_run",
+      "global_function_order": 57,
+      "linkage": "external",
+      "module_name": "server_app",
+      "source_path": "server/http_server.c"
+    },
+    {
+      "file_function_order": 17,
+      "file_generation_order": 6,
+      "file_trace_id": "http/server/http_server",
+      "function_name": "http_server_stop",
+      "function_trace_id": "http/server/http_server/http_server_stop",
+      "global_function_order": 58,
+      "linkage": "external",
+      "module_name": "server_app",
+      "source_path": "server/http_server.c"
+    },
+    {
+      "file_function_order": 18,
+      "file_generation_order": 6,
+      "file_trace_id": "http/server/http_server",
+      "function_name": "http_server_destroy",
+      "function_trace_id": "http/server/http_server/http_server_destroy",
+      "global_function_order": 59,
+      "linkage": "external",
+      "module_name": "server_app",
+      "source_path": "server/http_server.c"
+    },
+    {
+      "file_function_order": 0,
+      "file_generation_order": 7,
+      "file_trace_id": "http/server/http_session",
+      "function_name": "http_session_create",
+      "function_trace_id": "http/server/http_session/http_session_create",
+      "global_function_order": 60,
+      "linkage": "external",
+      "module_name": "server_app",
+      "source_path": "server/http_session.c"
+    },
+    {
+      "file_function_order": 1,
+      "file_generation_order": 7,
+      "file_trace_id": "http/server/http_session",
+      "function_name": "http_session_destroy",
+      "function_trace_id": "http/server/http_session/http_session_destroy",
+      "global_function_order": 61,
+      "linkage": "external",
+      "module_name": "server_app",
+      "source_path": "server/http_session.c"
+    }
+  ],
+  "header_files": [
+    "network/connection.h",
+    "network/tcp_server.h",
+    "protocol/http_request.h",
+    "protocol/http_response.h",
+    "resource/file_ops.h",
+    "server/http_server.h",
+    "server/http_session.h"
+  ],
+  "module_dependency_edges": [
+    {
+      "from_module": "server_app",
+      "to_module": "network"
+    },
+    {
+      "from_module": "server_app",
+      "to_module": "protocol"
+    },
+    {
+      "from_module": "server_app",
+      "to_module": "resource"
+    }
+  ],
+  "module_generation_order": [
+    "network",
+    "protocol",
+    "resource",
+    "server_app"
+  ],
+  "modules": [
+    {
+      "contains_file_trace_ids": [
+        "http/network/connection",
+        "http/network/tcp_server"
+      ],
+      "dependency_modules": [],
+      "generation_order": 0,
+      "module_name": "network"
+    },
+    {
+      "contains_file_trace_ids": [
+        "http/protocol/http_request",
+        "http/protocol/http_response"
+      ],
+      "dependency_modules": [],
+      "generation_order": 1,
+      "module_name": "protocol"
+    },
+    {
+      "contains_file_trace_ids": [
+        "http/resource/file_ops"
+      ],
+      "dependency_modules": [],
+      "generation_order": 2,
+      "module_name": "resource"
+    },
+    {
+      "contains_file_trace_ids": [
+        "http/main",
+        "http/server/http_server",
+        "http/server/http_session"
+      ],
+      "dependency_modules": [
+        "network",
+        "protocol",
+        "resource"
+      ],
+      "generation_order": 3,
+      "module_name": "server_app"
+    }
+  ],
+  "schema_version": "spec_ablation_s2_project_graph/v1",
+  "source_files": [
+    "network/connection.c",
+    "network/tcp_server.c",
+    "protocol/http_request.c",
+    "protocol/http_response.c",
+    "resource/file_ops.c",
+    "main.c",
+    "server/http_server.c",
+    "server/http_session.c"
+  ],
+  "source_positions": [
+    {
+      "file_generation_order": 0,
+      "file_trace_id": "http/network/connection",
+      "function_trace_ids": [
+        "http/network/connection/http_connection_create",
+        "http/network/connection/http_connection_destroy",
+        "http/network/connection/http_connection_fd",
+        "http/network/connection/http_connection_read",
+        "http/network/connection/http_connection_pop_line",
+        "http/network/connection/http_connection_pop_bytes",
+        "http/network/connection/http_connection_buffered",
+        "http/network/connection/http_connection_queue",
+        "http/network/connection/http_connection_queue_str",
+        "http/network/connection/http_connection_flush",
+        "http/network/connection/http_connection_has_pending",
+        "http/network/connection/ensure_cap"
+      ],
+      "module_generation_order": 0,
+      "module_name": "network",
+      "source_path": "network/connection.c"
+    },
+    {
+      "file_generation_order": 1,
+      "file_trace_id": "http/network/tcp_server",
+      "function_trace_ids": [
+        "http/network/tcp_server/http_tcp_server_create",
+        "http/network/tcp_server/http_tcp_server_start",
+        "http/network/tcp_server/http_tcp_server_run",
+        "http/network/tcp_server/http_tcp_server_stop",
+        "http/network/tcp_server/http_tcp_server_destroy",
+        "http/network/tcp_server/http_tcp_server_update_interest",
+        "http/network/tcp_server/http_tcp_server_close_client",
+        "http/network/tcp_server/set_nonblocking",
+        "http/network/tcp_server/find_client",
+        "http/network/tcp_server/add_client",
+        "http/network/tcp_server/remove_client_node",
+        "http/network/tcp_server/setup_listener",
+        "http/network/tcp_server/accept_loop"
+      ],
+      "module_generation_order": 0,
+      "module_name": "network",
+      "source_path": "network/tcp_server.c"
+    },
+    {
+      "file_generation_order": 2,
+      "file_trace_id": "http/protocol/http_request",
+      "function_trace_ids": [
+        "http/protocol/http_request/http_request_init",
+        "http/protocol/http_request/http_request_free",
+        "http/protocol/http_request/http_request_parse",
+        "http/protocol/http_request/http_request_header",
+        "http/protocol/http_request/parse_method"
+      ],
+      "module_generation_order": 1,
+      "module_name": "protocol",
+      "source_path": "protocol/http_request.c"
+    },
+    {
+      "file_generation_order": 3,
+      "file_trace_id": "http/protocol/http_response",
+      "function_trace_ids": [
+        "http/protocol/http_response/http_status_text",
+        "http/protocol/http_response/http_response_send",
+        "http/protocol/http_response/http_response_send_html",
+        "http/protocol/http_response/queuefv"
+      ],
+      "module_generation_order": 1,
+      "module_name": "protocol",
+      "source_path": "protocol/http_response.c"
+    },
+    {
+      "file_generation_order": 4,
+      "file_trace_id": "http/resource/file_ops",
+      "function_trace_ids": [
+        "http/resource/file_ops/http_mime_by_ext",
+        "http/resource/file_ops/http_resolve_path",
+        "http/resource/file_ops/http_stat_path",
+        "http/resource/file_ops/http_read_file",
+        "http/resource/file_ops/http_dir_listing_html"
+      ],
+      "module_generation_order": 2,
+      "module_name": "resource",
+      "source_path": "resource/file_ops.c"
+    },
+    {
+      "file_generation_order": 5,
+      "file_trace_id": "http/main",
+      "function_trace_ids": [
+        "http/main/parse_port",
+        "http/main/main"
+      ],
+      "module_generation_order": 3,
+      "module_name": "server_app",
+      "source_path": "main.c"
+    },
+    {
+      "file_generation_order": 6,
+      "file_trace_id": "http/server/http_server",
+      "function_trace_ids": [
+        "http/server/http_server/find_session",
+        "http/server/http_server/remove_session",
+        "http/server/http_server/add_session",
+        "http/server/http_server/send_error",
+        "http/server/http_server/flush_and_update",
+        "http/server/http_server/serve_file",
+        "http/server/http_server/handle_get",
+        "http/server/http_server/handle_head",
+        "http/server/http_server/handle_post",
+        "http/server/http_server/dispatch",
+        "http/server/http_server/on_accept_cb",
+        "http/server/http_server/close_client",
+        "http/server/http_server/on_event_cb",
+        "http/server/http_server/on_close_cb",
+        "http/server/http_server/http_server_create",
+        "http/server/http_server/http_server_start",
+        "http/server/http_server/http_server_run",
+        "http/server/http_server/http_server_stop",
+        "http/server/http_server/http_server_destroy"
+      ],
+      "module_generation_order": 3,
+      "module_name": "server_app",
+      "source_path": "server/http_server.c"
+    },
+    {
+      "file_generation_order": 7,
+      "file_trace_id": "http/server/http_session",
+      "function_trace_ids": [
+        "http/server/http_session/http_session_create",
+        "http/server/http_session/http_session_destroy"
+      ],
+      "module_generation_order": 3,
+      "module_name": "server_app",
+      "source_path": "server/http_session.c"
+    }
+  ],
+  "visibility": "s2_coder_visible_project_graph"
+}

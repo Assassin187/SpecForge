@@ -1,0 +1,19 @@
+{
+  "protocol": "coap",
+  "schema_version": "spec_ablation_view_set_manifest/v1",
+  "source_root": "specs-example/coap_specs",
+  "views": {
+    "s3": {
+      "counts": {
+        "files": 6,
+        "functions": 60,
+        "headers": 5,
+        "interface_groundings": 1,
+        "project_graphs": 1
+      },
+      "root": "s3",
+      "transformation_hash": "8365155cd03f9c665f7c831227b4a7343b8a06aa4b4686f2f8e237993c6d28aa",
+      "transformation_manifest": "s3/transformation_manifest.json"
+    }
+  }
+}
