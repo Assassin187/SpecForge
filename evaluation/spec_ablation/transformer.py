@@ -84,6 +84,22 @@ def _ensure_semicolon(value: str) -> str:
     return stripped if stripped.endswith(";") else f"{stripped};"
 
 
+def _sanitize_text(value: str) -> str:
+    return (
+        value.replace("\x00", r"\0")
+        .replace("\x01", r"\x01")
+        .replace("\x02", r"\x02")
+        .replace("\x03", r"\x03")
+        .replace("\x04", r"\x04")
+        .replace("\x05", r"\x05")
+        .replace("\x06", r"\x06")
+        .replace("\x07", r"\a")
+        .replace("\x08", r"\b")
+        .replace("\x0b", r"\v")
+        .replace("\x0c", r"\f")
+    )
+
+
 def _trace_parent(trace_id: str) -> str:
     return trace_id.rsplit("/", 1)[0] if "/" in trace_id else ""
 
@@ -342,7 +358,7 @@ def _function_projection(
 
 def _render_function_spec(blocks: dict[str, str]) -> str:
     ordered = ("PROMPT", "RELY", "GUARANTEE", "SPECIFICATION")
-    return "\n\n".join(f"[{name}]\n{blocks[name].strip()}" for name in ordered) + "\n"
+    return "\n\n".join(f"[{name}]\n{_sanitize_text(blocks[name].strip())}" for name in ordered) + "\n"
 
 
 def _specfs_header(rendered_header: str) -> str:

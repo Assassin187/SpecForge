@@ -1,0 +1,552 @@
+{
+  "note": "This manifest is evaluator control data and must not be inserted into S1 generation or repair prompts.",
+  "protocol": "mqtt",
+  "schema_version": "spec_ablation_s1_execution_manifest/v1",
+  "sources": [
+    {
+      "file_trace_id": "mqtt/network/connection",
+      "functions": [
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/network/connection/mqtt_connection_create.spec",
+          "name": "mqtt_connection_create",
+          "trace_id": "mqtt/network/connection/mqtt_connection_create"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/network/connection/mqtt_connection_destroy.spec",
+          "name": "mqtt_connection_destroy",
+          "trace_id": "mqtt/network/connection/mqtt_connection_destroy"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/network/connection/mqtt_connection_fd.spec",
+          "name": "mqtt_connection_fd",
+          "trace_id": "mqtt/network/connection/mqtt_connection_fd"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/network/connection/mqtt_connection_closed.spec",
+          "name": "mqtt_connection_closed",
+          "trace_id": "mqtt/network/connection/mqtt_connection_closed"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/network/connection/mqtt_connection_peer.spec",
+          "name": "mqtt_connection_peer",
+          "trace_id": "mqtt/network/connection/mqtt_connection_peer"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/network/connection/mqtt_connection_set_peer.spec",
+          "name": "mqtt_connection_set_peer",
+          "trace_id": "mqtt/network/connection/mqtt_connection_set_peer"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/network/connection/mqtt_connection_read.spec",
+          "name": "mqtt_connection_read",
+          "trace_id": "mqtt/network/connection/mqtt_connection_read"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/network/connection/mqtt_connection_flush.spec",
+          "name": "mqtt_connection_flush",
+          "trace_id": "mqtt/network/connection/mqtt_connection_flush"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/network/connection/mqtt_connection_send.spec",
+          "name": "mqtt_connection_send",
+          "trace_id": "mqtt/network/connection/mqtt_connection_send"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/network/connection/mqtt_connection_in_data.spec",
+          "name": "mqtt_connection_in_data",
+          "trace_id": "mqtt/network/connection/mqtt_connection_in_data"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/network/connection/mqtt_connection_in_len.spec",
+          "name": "mqtt_connection_in_len",
+          "trace_id": "mqtt/network/connection/mqtt_connection_in_len"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/network/connection/mqtt_connection_in_consume.spec",
+          "name": "mqtt_connection_in_consume",
+          "trace_id": "mqtt/network/connection/mqtt_connection_in_consume"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/network/connection/mqtt_connection_want_write.spec",
+          "name": "mqtt_connection_want_write",
+          "trace_id": "mqtt/network/connection/mqtt_connection_want_write"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/network/connection/mqtt_connection_close.spec",
+          "name": "mqtt_connection_close",
+          "trace_id": "mqtt/network/connection/mqtt_connection_close"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/network/connection/ensure_in_cap.spec",
+          "name": "ensure_in_cap",
+          "trace_id": "mqtt/network/connection/ensure_in_cap"
+        }
+      ],
+      "header_artifact": "specfs_projection/headers/network/connection.h.header",
+      "header_path": "network/connection.h",
+      "order": 0,
+      "source_path": "network/connection.c"
+    },
+    {
+      "file_trace_id": "mqtt/network/tcp_server",
+      "functions": [
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/network/tcp_server/mqtt_tcp_server_create.spec",
+          "name": "mqtt_tcp_server_create",
+          "trace_id": "mqtt/network/tcp_server/mqtt_tcp_server_create"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/network/tcp_server/mqtt_tcp_server_destroy.spec",
+          "name": "mqtt_tcp_server_destroy",
+          "trace_id": "mqtt/network/tcp_server/mqtt_tcp_server_destroy"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/network/tcp_server/mqtt_tcp_server_start.spec",
+          "name": "mqtt_tcp_server_start",
+          "trace_id": "mqtt/network/tcp_server/mqtt_tcp_server_start"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/network/tcp_server/mqtt_tcp_server_run.spec",
+          "name": "mqtt_tcp_server_run",
+          "trace_id": "mqtt/network/tcp_server/mqtt_tcp_server_run"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/network/tcp_server/mqtt_tcp_server_stop.spec",
+          "name": "mqtt_tcp_server_stop",
+          "trace_id": "mqtt/network/tcp_server/mqtt_tcp_server_stop"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/network/tcp_server/set_nonblocking.spec",
+          "name": "set_nonblocking",
+          "trace_id": "mqtt/network/tcp_server/set_nonblocking"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/network/tcp_server/sockaddr_to_string.spec",
+          "name": "sockaddr_to_string",
+          "trace_id": "mqtt/network/tcp_server/sockaddr_to_string"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/network/tcp_server/find_conn.spec",
+          "name": "find_conn",
+          "trace_id": "mqtt/network/tcp_server/find_conn"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/network/tcp_server/remove_conn.spec",
+          "name": "remove_conn",
+          "trace_id": "mqtt/network/tcp_server/remove_conn"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/network/tcp_server/close_connection.spec",
+          "name": "close_connection",
+          "trace_id": "mqtt/network/tcp_server/close_connection"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/network/tcp_server/update_interest.spec",
+          "name": "update_interest",
+          "trace_id": "mqtt/network/tcp_server/update_interest"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/network/tcp_server/setup_listen_socket.spec",
+          "name": "setup_listen_socket",
+          "trace_id": "mqtt/network/tcp_server/setup_listen_socket"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/network/tcp_server/setup_epoll.spec",
+          "name": "setup_epoll",
+          "trace_id": "mqtt/network/tcp_server/setup_epoll"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/network/tcp_server/accept_loop.spec",
+          "name": "accept_loop",
+          "trace_id": "mqtt/network/tcp_server/accept_loop"
+        }
+      ],
+      "header_artifact": "specfs_projection/headers/network/tcp_server.h.header",
+      "header_path": "network/tcp_server.h",
+      "order": 1,
+      "source_path": "network/tcp_server.c"
+    },
+    {
+      "file_trace_id": "mqtt/protocol/mqtt_packet",
+      "functions": [
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/protocol/mqtt_packet/mqtt_packet_free.spec",
+          "name": "mqtt_packet_free",
+          "trace_id": "mqtt/protocol/mqtt_packet/mqtt_packet_free"
+        }
+      ],
+      "header_artifact": "specfs_projection/headers/protocol/mqtt_packet.h.header",
+      "header_path": "protocol/mqtt_packet.h",
+      "order": 2,
+      "source_path": "protocol/mqtt_packet.c"
+    },
+    {
+      "file_trace_id": "mqtt/protocol/mqtt_decoder",
+      "functions": [
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/protocol/mqtt_decoder/mqtt_decoder_feed.spec",
+          "name": "mqtt_decoder_feed",
+          "trace_id": "mqtt/protocol/mqtt_decoder/mqtt_decoder_feed"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/protocol/mqtt_decoder/try_parse_remaining_length.spec",
+          "name": "try_parse_remaining_length",
+          "trace_id": "mqtt/protocol/mqtt_decoder/try_parse_remaining_length"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/protocol/mqtt_decoder/read_u16.spec",
+          "name": "read_u16",
+          "trace_id": "mqtt/protocol/mqtt_decoder/read_u16"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/protocol/mqtt_decoder/read_string.spec",
+          "name": "read_string",
+          "trace_id": "mqtt/protocol/mqtt_decoder/read_string"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/protocol/mqtt_decoder/decode_one.spec",
+          "name": "decode_one",
+          "trace_id": "mqtt/protocol/mqtt_decoder/decode_one"
+        }
+      ],
+      "header_artifact": "specfs_projection/headers/protocol/mqtt_decoder.h.header",
+      "header_path": "protocol/mqtt_decoder.h",
+      "order": 3,
+      "source_path": "protocol/mqtt_decoder.c"
+    },
+    {
+      "file_trace_id": "mqtt/protocol/mqtt_encoder",
+      "functions": [
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/protocol/mqtt_encoder/mqtt_bytes_free.spec",
+          "name": "mqtt_bytes_free",
+          "trace_id": "mqtt/protocol/mqtt_encoder/mqtt_bytes_free"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/protocol/mqtt_encoder/mqtt_encode_connack.spec",
+          "name": "mqtt_encode_connack",
+          "trace_id": "mqtt/protocol/mqtt_encoder/mqtt_encode_connack"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/protocol/mqtt_encoder/mqtt_encode_suback.spec",
+          "name": "mqtt_encode_suback",
+          "trace_id": "mqtt/protocol/mqtt_encoder/mqtt_encode_suback"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/protocol/mqtt_encoder/mqtt_encode_pingresp.spec",
+          "name": "mqtt_encode_pingresp",
+          "trace_id": "mqtt/protocol/mqtt_encoder/mqtt_encode_pingresp"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/protocol/mqtt_encoder/mqtt_encode_publish_qos0.spec",
+          "name": "mqtt_encode_publish_qos0",
+          "trace_id": "mqtt/protocol/mqtt_encoder/mqtt_encode_publish_qos0"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/protocol/mqtt_encoder/put_u16.spec",
+          "name": "put_u16",
+          "trace_id": "mqtt/protocol/mqtt_encoder/put_u16"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/protocol/mqtt_encoder/remaining_length_bytes.spec",
+          "name": "remaining_length_bytes",
+          "trace_id": "mqtt/protocol/mqtt_encoder/remaining_length_bytes"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/protocol/mqtt_encoder/put_remaining_length.spec",
+          "name": "put_remaining_length",
+          "trace_id": "mqtt/protocol/mqtt_encoder/put_remaining_length"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/protocol/mqtt_encoder/make_bytes.spec",
+          "name": "make_bytes",
+          "trace_id": "mqtt/protocol/mqtt_encoder/make_bytes"
+        }
+      ],
+      "header_artifact": "specfs_projection/headers/protocol/mqtt_encoder.h.header",
+      "header_path": "protocol/mqtt_encoder.h",
+      "order": 4,
+      "source_path": "protocol/mqtt_encoder.c"
+    },
+    {
+      "file_trace_id": "mqtt/broker/session",
+      "functions": [
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/broker/session/mqtt_session_create.spec",
+          "name": "mqtt_session_create",
+          "trace_id": "mqtt/broker/session/mqtt_session_create"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/broker/session/mqtt_session_destroy.spec",
+          "name": "mqtt_session_destroy",
+          "trace_id": "mqtt/broker/session/mqtt_session_destroy"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/broker/session/mqtt_session_id.spec",
+          "name": "mqtt_session_id",
+          "trace_id": "mqtt/broker/session/mqtt_session_id"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/broker/session/mqtt_session_connection.spec",
+          "name": "mqtt_session_connection",
+          "trace_id": "mqtt/broker/session/mqtt_session_connection"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/broker/session/mqtt_session_connected.spec",
+          "name": "mqtt_session_connected",
+          "trace_id": "mqtt/broker/session/mqtt_session_connected"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/broker/session/mqtt_session_client_id.spec",
+          "name": "mqtt_session_client_id",
+          "trace_id": "mqtt/broker/session/mqtt_session_client_id"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/broker/session/mqtt_session_mark_connected.spec",
+          "name": "mqtt_session_mark_connected",
+          "trace_id": "mqtt/broker/session/mqtt_session_mark_connected"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/broker/session/mqtt_session_send.spec",
+          "name": "mqtt_session_send",
+          "trace_id": "mqtt/broker/session/mqtt_session_send"
+        }
+      ],
+      "header_artifact": "specfs_projection/headers/broker/session.h.header",
+      "header_path": "broker/session.h",
+      "order": 5,
+      "source_path": "broker/session.c"
+    },
+    {
+      "file_trace_id": "mqtt/broker/session_manager",
+      "functions": [
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/broker/session_manager/mqtt_session_manager_create.spec",
+          "name": "mqtt_session_manager_create",
+          "trace_id": "mqtt/broker/session_manager/mqtt_session_manager_create"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/broker/session_manager/mqtt_session_manager_destroy.spec",
+          "name": "mqtt_session_manager_destroy",
+          "trace_id": "mqtt/broker/session_manager/mqtt_session_manager_destroy"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/broker/session_manager/mqtt_session_manager_add.spec",
+          "name": "mqtt_session_manager_add",
+          "trace_id": "mqtt/broker/session_manager/mqtt_session_manager_add"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/broker/session_manager/mqtt_session_manager_remove.spec",
+          "name": "mqtt_session_manager_remove",
+          "trace_id": "mqtt/broker/session_manager/mqtt_session_manager_remove"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/broker/session_manager/mqtt_session_manager_get.spec",
+          "name": "mqtt_session_manager_get",
+          "trace_id": "mqtt/broker/session_manager/mqtt_session_manager_get"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/broker/session_manager/ensure_cap.spec",
+          "name": "ensure_cap",
+          "trace_id": "mqtt/broker/session_manager/ensure_cap"
+        }
+      ],
+      "header_artifact": "specfs_projection/headers/broker/session_manager.h.header",
+      "header_path": "broker/session_manager.h",
+      "order": 6,
+      "source_path": "broker/session_manager.c"
+    },
+    {
+      "file_trace_id": "mqtt/topic/topic_tree",
+      "functions": [
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/topic/topic_tree/mqtt_topic_tree_create.spec",
+          "name": "mqtt_topic_tree_create",
+          "trace_id": "mqtt/topic/topic_tree/mqtt_topic_tree_create"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/topic/topic_tree/mqtt_topic_tree_destroy.spec",
+          "name": "mqtt_topic_tree_destroy",
+          "trace_id": "mqtt/topic/topic_tree/mqtt_topic_tree_destroy"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/topic/topic_tree/mqtt_topic_tree_subscribe.spec",
+          "name": "mqtt_topic_tree_subscribe",
+          "trace_id": "mqtt/topic/topic_tree/mqtt_topic_tree_subscribe"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/topic/topic_tree/mqtt_topic_tree_unsubscribe.spec",
+          "name": "mqtt_topic_tree_unsubscribe",
+          "trace_id": "mqtt/topic/topic_tree/mqtt_topic_tree_unsubscribe"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/topic/topic_tree/mqtt_topic_tree_remove_session.spec",
+          "name": "mqtt_topic_tree_remove_session",
+          "trace_id": "mqtt/topic/topic_tree/mqtt_topic_tree_remove_session"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/topic/topic_tree/mqtt_topic_tree_match_subscribers.spec",
+          "name": "mqtt_topic_tree_match_subscribers",
+          "trace_id": "mqtt/topic/topic_tree/mqtt_topic_tree_match_subscribers"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/topic/topic_tree/mqtt_topic_match.spec",
+          "name": "mqtt_topic_match",
+          "trace_id": "mqtt/topic/topic_tree/mqtt_topic_match"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/topic/topic_tree/ensure_entry_cap.spec",
+          "name": "ensure_entry_cap",
+          "trace_id": "mqtt/topic/topic_tree/ensure_entry_cap"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/topic/topic_tree/ensure_sid_cap.spec",
+          "name": "ensure_sid_cap",
+          "trace_id": "mqtt/topic/topic_tree/ensure_sid_cap"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/topic/topic_tree/find_entry.spec",
+          "name": "find_entry",
+          "trace_id": "mqtt/topic/topic_tree/find_entry"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/topic/topic_tree/entry_has_sid.spec",
+          "name": "entry_has_sid",
+          "trace_id": "mqtt/topic/topic_tree/entry_has_sid"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/topic/topic_tree/entry_remove_sid.spec",
+          "name": "entry_remove_sid",
+          "trace_id": "mqtt/topic/topic_tree/entry_remove_sid"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/topic/topic_tree/delete_entry.spec",
+          "name": "delete_entry",
+          "trace_id": "mqtt/topic/topic_tree/delete_entry"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/topic/topic_tree/next_level.spec",
+          "name": "next_level",
+          "trace_id": "mqtt/topic/topic_tree/next_level"
+        }
+      ],
+      "header_artifact": "specfs_projection/headers/topic/topic_tree.h.header",
+      "header_path": "topic/topic_tree.h",
+      "order": 7,
+      "source_path": "topic/topic_tree.c"
+    },
+    {
+      "file_trace_id": "mqtt/router/message_router",
+      "functions": [
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/router/message_router/mqtt_message_router_create.spec",
+          "name": "mqtt_message_router_create",
+          "trace_id": "mqtt/router/message_router/mqtt_message_router_create"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/router/message_router/mqtt_message_router_destroy.spec",
+          "name": "mqtt_message_router_destroy",
+          "trace_id": "mqtt/router/message_router/mqtt_message_router_destroy"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/router/message_router/mqtt_message_router_subscribe.spec",
+          "name": "mqtt_message_router_subscribe",
+          "trace_id": "mqtt/router/message_router/mqtt_message_router_subscribe"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/router/message_router/mqtt_message_router_unsubscribe.spec",
+          "name": "mqtt_message_router_unsubscribe",
+          "trace_id": "mqtt/router/message_router/mqtt_message_router_unsubscribe"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/router/message_router/mqtt_message_router_remove_session.spec",
+          "name": "mqtt_message_router_remove_session",
+          "trace_id": "mqtt/router/message_router/mqtt_message_router_remove_session"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/router/message_router/mqtt_message_router_publish.spec",
+          "name": "mqtt_message_router_publish",
+          "trace_id": "mqtt/router/message_router/mqtt_message_router_publish"
+        }
+      ],
+      "header_artifact": "specfs_projection/headers/router/message_router.h.header",
+      "header_path": "router/message_router.h",
+      "order": 8,
+      "source_path": "router/message_router.c"
+    },
+    {
+      "file_trace_id": "mqtt/main",
+      "functions": [
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/main/main.spec",
+          "name": "main",
+          "trace_id": "mqtt/main/main"
+        }
+      ],
+      "header_artifact": "",
+      "header_path": "",
+      "order": 9,
+      "source_path": "main.c"
+    },
+    {
+      "file_trace_id": "mqtt/broker/broker",
+      "functions": [
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/broker/broker/mqtt_broker_create.spec",
+          "name": "mqtt_broker_create",
+          "trace_id": "mqtt/broker/broker/mqtt_broker_create"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/broker/broker/mqtt_broker_destroy.spec",
+          "name": "mqtt_broker_destroy",
+          "trace_id": "mqtt/broker/broker/mqtt_broker_destroy"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/broker/broker/mqtt_broker_start.spec",
+          "name": "mqtt_broker_start",
+          "trace_id": "mqtt/broker/broker/mqtt_broker_start"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/broker/broker/mqtt_broker_run.spec",
+          "name": "mqtt_broker_run",
+          "trace_id": "mqtt/broker/broker/mqtt_broker_run"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/broker/broker/mqtt_broker_stop.spec",
+          "name": "mqtt_broker_stop",
+          "trace_id": "mqtt/broker/broker/mqtt_broker_stop"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/broker/broker/handle_packet.spec",
+          "name": "handle_packet",
+          "trace_id": "mqtt/broker/broker/handle_packet"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/broker/broker/on_packet.spec",
+          "name": "on_packet",
+          "trace_id": "mqtt/broker/broker/on_packet"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/broker/broker/on_accept_cb.spec",
+          "name": "on_accept_cb",
+          "trace_id": "mqtt/broker/broker/on_accept_cb"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/broker/broker/on_close_cb.spec",
+          "name": "on_close_cb",
+          "trace_id": "mqtt/broker/broker/on_close_cb"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/mqtt/broker/broker/on_data_cb.spec",
+          "name": "on_data_cb",
+          "trace_id": "mqtt/broker/broker/on_data_cb"
+        }
+      ],
+      "header_artifact": "specfs_projection/headers/broker/broker.h.header",
+      "header_path": "broker/broker.h",
+      "order": 10,
+      "source_path": "broker/broker.c"
+    }
+  ],
+  "visibility": "hidden_evaluator_only"
+}

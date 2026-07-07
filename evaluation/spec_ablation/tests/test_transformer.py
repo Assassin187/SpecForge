@@ -69,7 +69,9 @@ class TransformerTests(unittest.TestCase):
         for protocol in PROTOCOL_ORDER:
             for path in (self.root / protocol / "specfs_projection" / "functions").rglob("*.spec"):
                 with self.subTest(protocol=protocol, path=path.name):
-                    text = path.read_text(encoding="utf-8")
+                    data = path.read_bytes()
+                    self.assertNotIn(b"\x00", data)
+                    text = data.decode("utf-8")
                     tags = [line.strip() for line in text.splitlines() if line.startswith("[") and line.endswith("]")]
                     self.assertEqual(tags, expected_tags)
                     for term in FORBIDDEN_VISIBLE_TERMS:
