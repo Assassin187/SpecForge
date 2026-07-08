@@ -36,11 +36,11 @@ S1_PROMPT_FORBIDDEN_TERMS: tuple[str, ...] = (
     "Consistency rules",
 )
 
-S2_PROMPT_FORBIDDEN_TERMS: tuple[str, ...] = (
-    *S2_PROJECT_GRAPH_FORBIDDEN_TERMS,
-    "Machine-readable constraints",
-    "Consistency rules",
-)
+S2_LOCAL_PROMPT_ALLOWED_TERMS = {"DATA", "INTERFACE", "NULLABLE", "OWNERSHIP", "PARAMS", "ROLE"}
+
+S2_PROMPT_FORBIDDEN_TERMS: tuple[str, ...] = tuple(
+    term for term in S2_PROJECT_GRAPH_FORBIDDEN_TERMS if term not in S2_LOCAL_PROMPT_ALLOWED_TERMS
+) + ("Machine-readable constraints", "Consistency rules")
 
 S3_PROMPT_FORBIDDEN_TERMS: tuple[str, ...] = (
     *S3_INTERFACE_GROUNDING_FORBIDDEN_TERMS,

@@ -1,0 +1,9 @@
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
+const char* http_mime_by_ext(const char* path);
+int http_resolve_path(const char* root_dir, const char* uri_path, char* out_abs, size_t out_len);
+int http_stat_path(const char* abs_path);
+int http_read_file(const char* abs_path, char** out_data, size_t* out_len);
+char* http_dir_listing_html(const char* abs_dir, const char* uri_prefix);

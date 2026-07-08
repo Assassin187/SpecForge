@@ -5,210 +5,210 @@
       {
         "artifact_path": "specfs_projection/functions/http/network/connection/http_connection_create.spec",
         "name": "http_connection_create",
-        "sha256": "556319c154da8660655ed73c28d8ba23fac3e811adefb09c9234f61d96f21afc",
+        "sha256": "fee3c0218f0d944658a0a7085d4a1d9da6c047513fa648fcdd29a0bf3d344071",
         "source_path": "network/connection.c",
         "trace_id": "http/network/connection/http_connection_create"
       },
       {
         "artifact_path": "specfs_projection/functions/http/network/connection/http_connection_destroy.spec",
         "name": "http_connection_destroy",
-        "sha256": "f5a867387f37d4480f6b6b547ce590daa2561911d734fe7f7614712ca062cbc6",
+        "sha256": "cdbb20c6838d69318c81a5730b720e9eed353bf884f81530bad9ce97a6a15aaf",
         "source_path": "network/connection.c",
         "trace_id": "http/network/connection/http_connection_destroy"
       },
       {
         "artifact_path": "specfs_projection/functions/http/network/connection/http_connection_fd.spec",
         "name": "http_connection_fd",
-        "sha256": "ada79d075ec44c5895019844034d23dd0f525794173299bc911b020d363c6168",
+        "sha256": "40a49692a21d3d1448e40247c5b2313378a565d5422a2c796e83ee46718a21a2",
         "source_path": "network/connection.c",
         "trace_id": "http/network/connection/http_connection_fd"
       },
       {
         "artifact_path": "specfs_projection/functions/http/network/connection/http_connection_read.spec",
         "name": "http_connection_read",
-        "sha256": "9e3c060995fa891451a0ff444c1a452977ded95dfa3a561293fc9bf81d2d52d3",
+        "sha256": "51f4938584aa6ca840877d81f056414c35a7eaf04801165eb84846cc97323f78",
         "source_path": "network/connection.c",
         "trace_id": "http/network/connection/http_connection_read"
       },
       {
         "artifact_path": "specfs_projection/functions/http/network/connection/http_connection_pop_line.spec",
         "name": "http_connection_pop_line",
-        "sha256": "d5e84a3e9f555c54932305e6613ff9103e65079513f28389b4f970fb119fd266",
+        "sha256": "15e734363bb1a87dcf1d07afb4319894af5852a0bbef348adc0586cd75310a5b",
         "source_path": "network/connection.c",
         "trace_id": "http/network/connection/http_connection_pop_line"
       },
       {
         "artifact_path": "specfs_projection/functions/http/network/connection/http_connection_pop_bytes.spec",
         "name": "http_connection_pop_bytes",
-        "sha256": "6fad79e3d10a8328121d834868803f0d3ebe54f8cd59cf2d8a1d1ccf7cf5c522",
+        "sha256": "61fea6289a6ae242ba921da19b0826887ca42d94cc5e6e38b142d65d78d314f0",
         "source_path": "network/connection.c",
         "trace_id": "http/network/connection/http_connection_pop_bytes"
       },
       {
         "artifact_path": "specfs_projection/functions/http/network/connection/http_connection_buffered.spec",
         "name": "http_connection_buffered",
-        "sha256": "521882e015e3419141516729a068be149a953166ba6d0d8c0626ed6220306385",
+        "sha256": "68f4d55ce428978ed181d1526566c838e297ce52d07b99742eeff714aa9ceed3",
         "source_path": "network/connection.c",
         "trace_id": "http/network/connection/http_connection_buffered"
       },
       {
         "artifact_path": "specfs_projection/functions/http/network/connection/http_connection_queue.spec",
         "name": "http_connection_queue",
-        "sha256": "d580c28318c535b5e62bdc84c57901f801c76723d2e9e27f831fa16b7e9aecd3",
+        "sha256": "da489f1ae9acec923d72d9270c8c6c7816df313c7ac56abdb068e6f4364a6070",
         "source_path": "network/connection.c",
         "trace_id": "http/network/connection/http_connection_queue"
       },
       {
         "artifact_path": "specfs_projection/functions/http/network/connection/http_connection_queue_str.spec",
         "name": "http_connection_queue_str",
-        "sha256": "eccaea2389446bfd09e499902425b827d942359ab899425ccc66e25f516f3a1a",
+        "sha256": "87e85491ec2dd7e9b649685c41235a4d148103edceda3056fe0297d9895a18bd",
         "source_path": "network/connection.c",
         "trace_id": "http/network/connection/http_connection_queue_str"
       },
       {
         "artifact_path": "specfs_projection/functions/http/network/connection/http_connection_flush.spec",
         "name": "http_connection_flush",
-        "sha256": "1db285c46897e57e07f266c89c23176f4229b45ccd7c5f24c03dc6430cce0818",
+        "sha256": "8aad2cd0686053666a4ccd390f8836e1785b9ce459db0616f5df9d69544f5731",
         "source_path": "network/connection.c",
         "trace_id": "http/network/connection/http_connection_flush"
       },
       {
         "artifact_path": "specfs_projection/functions/http/network/connection/http_connection_has_pending.spec",
         "name": "http_connection_has_pending",
-        "sha256": "b899d7f2ba9cc108d3dd8aacd78e9380473c0e799147f24371e1091c8fb312f2",
+        "sha256": "aad62f159e8e2938e5d317f43c58f99c7a8c1741c61a4bfb0a216c825d41a00e",
         "source_path": "network/connection.c",
         "trace_id": "http/network/connection/http_connection_has_pending"
       },
       {
         "artifact_path": "specfs_projection/functions/http/network/connection/ensure_cap.spec",
         "name": "ensure_cap",
-        "sha256": "77279ca1917bda191dee4851932f4aa946b93aaed5f55d6fbc4fd2c258e9247b",
+        "sha256": "89128a3b5ac48e865cb7122d8c8b4d1cb3712bce117b5808a59aaac004f35d6a",
         "source_path": "network/connection.c",
         "trace_id": "http/network/connection/ensure_cap"
       },
       {
         "artifact_path": "specfs_projection/functions/http/network/tcp_server/http_tcp_server_create.spec",
         "name": "http_tcp_server_create",
-        "sha256": "6756e680f6c69242820a672919db59e445dcd47bd8a051517c838871931420ef",
+        "sha256": "9b0999d34f228f86be4daa253e792348a562125cbbe8c9cdf3a2b8a4d22362ac",
         "source_path": "network/tcp_server.c",
         "trace_id": "http/network/tcp_server/http_tcp_server_create"
       },
       {
         "artifact_path": "specfs_projection/functions/http/network/tcp_server/http_tcp_server_start.spec",
         "name": "http_tcp_server_start",
-        "sha256": "4b86a6cf78453b5a1ef68e8f286e1ac853bf60d76e9b350444bd6a7ad9245773",
+        "sha256": "1a897c3e35d22b0cb1671842fc4ac434574a0c53527de26cdf507e7dae2c04ce",
         "source_path": "network/tcp_server.c",
         "trace_id": "http/network/tcp_server/http_tcp_server_start"
       },
       {
         "artifact_path": "specfs_projection/functions/http/network/tcp_server/http_tcp_server_run.spec",
         "name": "http_tcp_server_run",
-        "sha256": "37f14d1fdffb24ec04f905d3e34b0e5fde5a9612c2a27fda5acfe31a2e4fbe60",
+        "sha256": "ff99848030dd86b555592aaee477e4607d6c3474415716f90a7243ecfed87802",
         "source_path": "network/tcp_server.c",
         "trace_id": "http/network/tcp_server/http_tcp_server_run"
       },
       {
         "artifact_path": "specfs_projection/functions/http/network/tcp_server/http_tcp_server_stop.spec",
         "name": "http_tcp_server_stop",
-        "sha256": "4f3aa54a36445ea18d3cce715edf5915f37a84f38fdfe9a674945091259d2e46",
+        "sha256": "b6f79968216e62e8bee532d927183130e1ebef3e3c004d41cf9a46bf4f198925",
         "source_path": "network/tcp_server.c",
         "trace_id": "http/network/tcp_server/http_tcp_server_stop"
       },
       {
         "artifact_path": "specfs_projection/functions/http/network/tcp_server/http_tcp_server_destroy.spec",
         "name": "http_tcp_server_destroy",
-        "sha256": "8bac11610f448726e2eb1fa4f2d5939521bbdab9a89fc6630faf973eff79fb68",
+        "sha256": "e91dc41c64e68619e4316ee0acff21d0492ac8dfe0ccf280bbfc52152d2c94f7",
         "source_path": "network/tcp_server.c",
         "trace_id": "http/network/tcp_server/http_tcp_server_destroy"
       },
       {
         "artifact_path": "specfs_projection/functions/http/network/tcp_server/http_tcp_server_update_interest.spec",
         "name": "http_tcp_server_update_interest",
-        "sha256": "b4eb2199ad7a7ee3c515e1117533224db4f8093aaee0d96c48ce0783c461d168",
+        "sha256": "d0a8be2fb88a1c7553c03477d4999804409a8b693c8b5688ef7f3eaf728b4d52",
         "source_path": "network/tcp_server.c",
         "trace_id": "http/network/tcp_server/http_tcp_server_update_interest"
       },
       {
         "artifact_path": "specfs_projection/functions/http/network/tcp_server/http_tcp_server_close_client.spec",
         "name": "http_tcp_server_close_client",
-        "sha256": "59d6fb3ce4cb96a97bc547e1db573d790906e1f488a1f0855794765502c7a8d2",
+        "sha256": "7452023e546f02e67ee88f329e6206a6dc8879aca10d7b0bf309047b4254261b",
         "source_path": "network/tcp_server.c",
         "trace_id": "http/network/tcp_server/http_tcp_server_close_client"
       },
       {
         "artifact_path": "specfs_projection/functions/http/network/tcp_server/set_nonblocking.spec",
         "name": "set_nonblocking",
-        "sha256": "55b5bbeeb3ca665bd0be859dc2dac3f8a8a7fd272bc0e130ed103a77bbe4349f",
+        "sha256": "7f36ca6380206f94d31bb7aeb833f4f56aebbb2d3c9d171715ddf10eb7020aa3",
         "source_path": "network/tcp_server.c",
         "trace_id": "http/network/tcp_server/set_nonblocking"
       },
       {
         "artifact_path": "specfs_projection/functions/http/network/tcp_server/find_client.spec",
         "name": "find_client",
-        "sha256": "2139df1e11d797d6bf072bc3d372b6f33ae2336a87cc2488bc5d62f7131acfe4",
+        "sha256": "5beb1136464247246403a1ffda83443c23269ef9c67a042ecc2e96684ff8153d",
         "source_path": "network/tcp_server.c",
         "trace_id": "http/network/tcp_server/find_client"
       },
       {
         "artifact_path": "specfs_projection/functions/http/network/tcp_server/add_client.spec",
         "name": "add_client",
-        "sha256": "593bcfaf86f3df8cb4481f9440c212f905adde32229620a38fa1f0a6fd121d41",
+        "sha256": "f24ee41ae66c6cd55d159b6681fbc91bb3b0db35e6ee39546bb0b7c818201cff",
         "source_path": "network/tcp_server.c",
         "trace_id": "http/network/tcp_server/add_client"
       },
       {
         "artifact_path": "specfs_projection/functions/http/network/tcp_server/remove_client_node.spec",
         "name": "remove_client_node",
-        "sha256": "f2a03fdbdda5ac05d2a6acdc37c656107d355f625f8d6c47214830d8d567affd",
+        "sha256": "e727fe71dabd39e66f3bb0a4840256f8033beae6a04b1ca3aeedbba7c6947537",
         "source_path": "network/tcp_server.c",
         "trace_id": "http/network/tcp_server/remove_client_node"
       },
       {
         "artifact_path": "specfs_projection/functions/http/network/tcp_server/setup_listener.spec",
         "name": "setup_listener",
-        "sha256": "c09df00ccbb0b55399bdf7e22f0d8091076401efd5087e0d2971d21dd26f7639",
+        "sha256": "80fa92d644fc74ad7265434fefa0ecd70ed25cd04c655f77b30726a2df5d3ccf",
         "source_path": "network/tcp_server.c",
         "trace_id": "http/network/tcp_server/setup_listener"
       },
       {
         "artifact_path": "specfs_projection/functions/http/network/tcp_server/accept_loop.spec",
         "name": "accept_loop",
-        "sha256": "d1804f13646436e76c3a2ffda1da9fe01909812ff6f4ba49a73447635ed504aa",
+        "sha256": "fe50d36391976aaec3e46379ce69116c782e54e97516ef941471d4b7472f0bfd",
         "source_path": "network/tcp_server.c",
         "trace_id": "http/network/tcp_server/accept_loop"
       },
       {
         "artifact_path": "specfs_projection/functions/http/protocol/http_request/http_request_init.spec",
         "name": "http_request_init",
-        "sha256": "164595196aeba42b9aec2e9e93d984965e760195fde089456bbdbc79f4a1e6ae",
+        "sha256": "86b9c75efd1ab4183755a155920112502667f095289221b9ef934a247dcbf7c4",
         "source_path": "protocol/http_request.c",
         "trace_id": "http/protocol/http_request/http_request_init"
       },
       {
         "artifact_path": "specfs_projection/functions/http/protocol/http_request/http_request_free.spec",
         "name": "http_request_free",
-        "sha256": "5ddbe0a8c0d343faf7ce1087a2ff50d1a2c760173dc9f89ffc412c907322704c",
+        "sha256": "4f3a3e53d04f96ea3f4bcc165b1d41779f2395186d854c4d4938ff077b1bc46f",
         "source_path": "protocol/http_request.c",
         "trace_id": "http/protocol/http_request/http_request_free"
       },
       {
         "artifact_path": "specfs_projection/functions/http/protocol/http_request/http_request_parse.spec",
         "name": "http_request_parse",
-        "sha256": "692e522bc4059baf1826dfc8926b0c2f2babde85cb2cdaac1e291bdb8750e764",
+        "sha256": "186dec575d1e7526584cc7d3e0f20f18330b9d3d07c58804406f75522aa219a4",
         "source_path": "protocol/http_request.c",
         "trace_id": "http/protocol/http_request/http_request_parse"
       },
       {
         "artifact_path": "specfs_projection/functions/http/protocol/http_request/http_request_header.spec",
         "name": "http_request_header",
-        "sha256": "3af03bf4dc7732d074fa3d02073c658190119c25075c7888eff4a392a0ade8fc",
+        "sha256": "8e08e668595fa1ec31996d6b9e5917bd81721d13f8207c3a9e4a7aa17315c567",
         "source_path": "protocol/http_request.c",
         "trace_id": "http/protocol/http_request/http_request_header"
       },
       {
         "artifact_path": "specfs_projection/functions/http/protocol/http_request/parse_method.spec",
         "name": "parse_method",
-        "sha256": "206928fa8b6de9f2be2c0980e0d92849178e5c7c2b1c80a9235cca9436cbf6f4",
+        "sha256": "c0faae860295386cdcd17861395ed9018d8d7a69632697cc7fd0c4b14a0028dd",
         "source_path": "protocol/http_request.c",
         "trace_id": "http/protocol/http_request/parse_method"
       },
@@ -243,49 +243,49 @@
       {
         "artifact_path": "specfs_projection/functions/http/resource/file_ops/http_mime_by_ext.spec",
         "name": "http_mime_by_ext",
-        "sha256": "b996914cd2902f713e3fba159dbe99bdaec10e5ab9d1253a570a7e7618711483",
+        "sha256": "43de5cc9b159a508fa981e6f3395a6dc9596c87248d3f489fb0d089e536597f1",
         "source_path": "resource/file_ops.c",
         "trace_id": "http/resource/file_ops/http_mime_by_ext"
       },
       {
         "artifact_path": "specfs_projection/functions/http/resource/file_ops/http_resolve_path.spec",
         "name": "http_resolve_path",
-        "sha256": "1ae4971f2233c04408e49a2882ee6586112c2b10f1ee10cc688e9cd474919083",
+        "sha256": "c8b209f941eb4d2dad94cb1013c073b5a8dab43cd3ec4201742438727999164a",
         "source_path": "resource/file_ops.c",
         "trace_id": "http/resource/file_ops/http_resolve_path"
       },
       {
         "artifact_path": "specfs_projection/functions/http/resource/file_ops/http_stat_path.spec",
         "name": "http_stat_path",
-        "sha256": "bc78d276ac6e51e0302e4771d13e2dcb329e943cb8ed73d067eff454ab6965a5",
+        "sha256": "7fdbace3fff7733efde09fc383d4476a9e9fca3f4cf33544a5885bff4ed531a0",
         "source_path": "resource/file_ops.c",
         "trace_id": "http/resource/file_ops/http_stat_path"
       },
       {
         "artifact_path": "specfs_projection/functions/http/resource/file_ops/http_read_file.spec",
         "name": "http_read_file",
-        "sha256": "fe1798fbe596775ee3813bccafaabe0dd4e5202414252d5139735e422e3f5037",
+        "sha256": "23ba9b6d9931ccbe47632a112c7b5689cf34dc4097b344b5ac86fa5af7a68e8a",
         "source_path": "resource/file_ops.c",
         "trace_id": "http/resource/file_ops/http_read_file"
       },
       {
         "artifact_path": "specfs_projection/functions/http/resource/file_ops/http_dir_listing_html.spec",
         "name": "http_dir_listing_html",
-        "sha256": "396232ed5a0377615e66582dbbc21aecc76822c1a174c610cfa5b579e3c380ad",
+        "sha256": "696e13b3818c83e9687da7f4cad06bf8c44ac4cc33726e25a40b84eca2f6d499",
         "source_path": "resource/file_ops.c",
         "trace_id": "http/resource/file_ops/http_dir_listing_html"
       },
       {
         "artifact_path": "specfs_projection/functions/http/main/parse_port.spec",
         "name": "parse_port",
-        "sha256": "740ba11eb5ae6aae9e5c0564fa80f3faf16108df158cfec5b096f7be8b2d7b3f",
+        "sha256": "f82ec5d8fee2ef2dc46feb3e0c81421643d613d892cc1d5a5c67a3eb867646c4",
         "source_path": "main.c",
         "trace_id": "http/main/parse_port"
       },
       {
         "artifact_path": "specfs_projection/functions/http/main/main.spec",
         "name": "main",
-        "sha256": "8610e080f839295ee4ca522ff37bc4a21f2cf9177a86310bd67ca812d3af05c4",
+        "sha256": "1471da4159f46c8f7dcb15d9d912c84e33240827d16ef7a9c8a76f6326fab675",
         "source_path": "main.c",
         "trace_id": "http/main/main"
       },
@@ -491,7 +491,7 @@
     "project_graphs": 1
   },
   "hashes": {
-    "output_payload_sha256": "5d2e4ad161ebcdf85267c70b0814492126092739f5f5972aad866d70cbca7f77",
+    "output_payload_sha256": "0f5ac1691e6ed048caac6b37fd6830799c2f7439acf96ca4c4b569946f3018eb",
     "source_specs_tree_sha256": "edb086be22bfa6ec574a36428dfef63f85578bf9c4b7ba25016c5ea9664c1cfb"
   },
   "output_root": ".",
@@ -1604,8 +1604,8 @@
   ],
   "schema_version": "spec_ablation_s3_transformation_manifest/v1",
   "source_root": "specs-example/http_specs",
-  "transformation_hash": "d0033e1b02b1f136e6fc130b2f9134a7839db3d1e56c070d7fd52db20c7f8329",
-  "transformer_version": "spec_ablation_s3_transformer/v1",
+  "transformation_hash": "3e508a8afb22d3366e2ec39659317c1c2dfb6afb442ca3c521e23b25449b3318",
+  "transformer_version": "spec_ablation_s3_transformer/v2",
   "validation": {
     "leakage_scan": {
       "forbidden_terms": [

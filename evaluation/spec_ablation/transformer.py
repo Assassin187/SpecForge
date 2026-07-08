@@ -24,17 +24,17 @@ from .configs import DEFAULT_OUTPUT_ROOT, PROTOCOL_CONFIGS, ProtocolConfig, prot
 
 VIEW_SCHEMAS = {
     "s1": {
-        "transformer_version": "spec_ablation_s1_transformer/v1",
+        "transformer_version": "spec_ablation_s1_transformer/v2",
         "manifest_schema": "spec_ablation_s1_transformation_manifest/v1",
         "execution_manifest_schema": "spec_ablation_s1_execution_manifest/v1",
     },
     "s2": {
-        "transformer_version": "spec_ablation_s2_transformer/v1",
+        "transformer_version": "spec_ablation_s2_transformer/v2",
         "manifest_schema": "spec_ablation_s2_transformation_manifest/v1",
         "execution_manifest_schema": "spec_ablation_s2_execution_manifest/v1",
     },
     "s3": {
-        "transformer_version": "spec_ablation_s3_transformer/v1",
+        "transformer_version": "spec_ablation_s3_transformer/v2",
         "manifest_schema": "spec_ablation_s3_transformation_manifest/v1",
         "execution_manifest_schema": "spec_ablation_s3_execution_manifest/v1",
     },
@@ -77,6 +77,7 @@ S3_INTERFACE_GROUNDING_FORBIDDEN_TERMS: tuple[str, ...] = (
 )
 
 _LOCAL_DEPENDENCY_CATEGORIES = ("STRUCT", "FUNC", "VAR")
+_GENERIC_SIGNATURE_PARAMS_INVARIANT = "调用方必须遵守 SIGNATURE.PARAMS 中的 NULLABLE 与 OWNERSHIP 约束。"
 
 
 class TransformationError(RuntimeError):
@@ -323,7 +324,16 @@ def _format_specification(function_spec: FunctionSpec) -> str:
         precondition = str(body.get("INPUT", "")).strip()
         postcondition = str(body.get("OUTPUT", "")).strip()
         raw_invariants = body.get("INVARIANTS_USED", [])
-        invariants = "\n".join(f"- {item}" for item in raw_invariants if str(item).strip()) if isinstance(raw_invariants, list) else str(raw_invariants).strip()
+        if isinstance(raw_invariants, list):
+            invariants = "\n".join(
+                f"- {item}"
+                for item in raw_invariants
+                if str(item).strip() and str(item).strip() != _GENERIC_SIGNATURE_PARAMS_INVARIANT
+            )
+        else:
+            invariants = str(raw_invariants).strip()
+            if invariants == _GENERIC_SIGNATURE_PARAMS_INVARIANT:
+                invariants = ""
         action = str(body.get("ACTION", "")).strip()
 
     def bullet(value: str) -> str:

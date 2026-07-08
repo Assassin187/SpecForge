@@ -1,0 +1,363 @@
+{
+  "note": "This manifest is evaluator control data and must not be inserted into S1 generation or repair prompts.",
+  "protocol": "coap",
+  "schema_version": "spec_ablation_s1_execution_manifest/v1",
+  "sources": [
+    {
+      "file_trace_id": "coap/network/udp_server",
+      "functions": [
+        {
+          "artifact_path": "specfs_projection/functions/coap/network/udp_server/set_nonblocking.spec",
+          "name": "set_nonblocking",
+          "trace_id": "coap/network/udp_server/set_nonblocking"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/network/udp_server/coap_endpoint_to_string.spec",
+          "name": "coap_endpoint_to_string",
+          "trace_id": "coap/network/udp_server/coap_endpoint_to_string"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/network/udp_server/coap_udp_server_create.spec",
+          "name": "coap_udp_server_create",
+          "trace_id": "coap/network/udp_server/coap_udp_server_create"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/network/udp_server/coap_udp_server_destroy.spec",
+          "name": "coap_udp_server_destroy",
+          "trace_id": "coap/network/udp_server/coap_udp_server_destroy"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/network/udp_server/coap_udp_server_start.spec",
+          "name": "coap_udp_server_start",
+          "trace_id": "coap/network/udp_server/coap_udp_server_start"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/network/udp_server/coap_udp_server_stop.spec",
+          "name": "coap_udp_server_stop",
+          "trace_id": "coap/network/udp_server/coap_udp_server_stop"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/network/udp_server/coap_udp_server_sendto.spec",
+          "name": "coap_udp_server_sendto",
+          "trace_id": "coap/network/udp_server/coap_udp_server_sendto"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/network/udp_server/coap_udp_server_run.spec",
+          "name": "coap_udp_server_run",
+          "trace_id": "coap/network/udp_server/coap_udp_server_run"
+        }
+      ],
+      "header_artifact": "specfs_projection/headers/network/udp_server.h.header",
+      "header_path": "network/udp_server.h",
+      "order": 0,
+      "source_path": "network/udp_server.c"
+    },
+    {
+      "file_trace_id": "coap/protocol/coap_message",
+      "functions": [
+        {
+          "artifact_path": "specfs_projection/functions/coap/protocol/coap_message/xrealloc.spec",
+          "name": "xrealloc",
+          "trace_id": "coap/protocol/coap_message/xrealloc"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/protocol/coap_message/coap_message_init.spec",
+          "name": "coap_message_init",
+          "trace_id": "coap/protocol/coap_message/coap_message_init"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/protocol/coap_message/coap_message_reset.spec",
+          "name": "coap_message_reset",
+          "trace_id": "coap/protocol/coap_message/coap_message_reset"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/protocol/coap_message/coap_message_free.spec",
+          "name": "coap_message_free",
+          "trace_id": "coap/protocol/coap_message/coap_message_free"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/protocol/coap_message/coap_message_set_token.spec",
+          "name": "coap_message_set_token",
+          "trace_id": "coap/protocol/coap_message/coap_message_set_token"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/protocol/coap_message/coap_message_set_payload.spec",
+          "name": "coap_message_set_payload",
+          "trace_id": "coap/protocol/coap_message/coap_message_set_payload"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/protocol/coap_message/coap_message_set_payload_string.spec",
+          "name": "coap_message_set_payload_string",
+          "trace_id": "coap/protocol/coap_message/coap_message_set_payload_string"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/protocol/coap_message/coap_message_add_option.spec",
+          "name": "coap_message_add_option",
+          "trace_id": "coap/protocol/coap_message/coap_message_add_option"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/protocol/coap_message/coap_message_add_option_string.spec",
+          "name": "coap_message_add_option_string",
+          "trace_id": "coap/protocol/coap_message/coap_message_add_option_string"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/protocol/coap_message/coap_message_add_option_uint.spec",
+          "name": "coap_message_add_option_uint",
+          "trace_id": "coap/protocol/coap_message/coap_message_add_option_uint"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/protocol/coap_message/coap_message_get_uint_option.spec",
+          "name": "coap_message_get_uint_option",
+          "trace_id": "coap/protocol/coap_message/coap_message_get_uint_option"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/protocol/coap_message/coap_message_join_options.spec",
+          "name": "coap_message_join_options",
+          "trace_id": "coap/protocol/coap_message/coap_message_join_options"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/protocol/coap_message/coap_make_code.spec",
+          "name": "coap_make_code",
+          "trace_id": "coap/protocol/coap_message/coap_make_code"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/protocol/coap_message/coap_code_class.spec",
+          "name": "coap_code_class",
+          "trace_id": "coap/protocol/coap_message/coap_code_class"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/protocol/coap_message/coap_code_detail.spec",
+          "name": "coap_code_detail",
+          "trace_id": "coap/protocol/coap_message/coap_code_detail"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/protocol/coap_message/coap_code_is_method.spec",
+          "name": "coap_code_is_method",
+          "trace_id": "coap/protocol/coap_message/coap_code_is_method"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/protocol/coap_message/coap_bytes_free.spec",
+          "name": "coap_bytes_free",
+          "trace_id": "coap/protocol/coap_message/coap_bytes_free"
+        }
+      ],
+      "header_artifact": "specfs_projection/headers/protocol/coap_message.h.header",
+      "header_path": "protocol/coap_message.h",
+      "order": 1,
+      "source_path": "protocol/coap_message.c"
+    },
+    {
+      "file_trace_id": "coap/protocol/coap_codec",
+      "functions": [
+        {
+          "artifact_path": "specfs_projection/functions/coap/protocol/coap_codec/option_ext_len.spec",
+          "name": "option_ext_len",
+          "trace_id": "coap/protocol/coap_codec/option_ext_len"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/protocol/coap_codec/encode_ext.spec",
+          "name": "encode_ext",
+          "trace_id": "coap/protocol/coap_codec/encode_ext"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/protocol/coap_codec/encode_nibble.spec",
+          "name": "encode_nibble",
+          "trace_id": "coap/protocol/coap_codec/encode_nibble"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/protocol/coap_codec/decode_ext.spec",
+          "name": "decode_ext",
+          "trace_id": "coap/protocol/coap_codec/decode_ext"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/protocol/coap_codec/coap_decode_message.spec",
+          "name": "coap_decode_message",
+          "trace_id": "coap/protocol/coap_codec/coap_decode_message"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/protocol/coap_codec/coap_encode_message.spec",
+          "name": "coap_encode_message",
+          "trace_id": "coap/protocol/coap_codec/coap_encode_message"
+        }
+      ],
+      "header_artifact": "specfs_projection/headers/protocol/coap_codec.h.header",
+      "header_path": "protocol/coap_codec.h",
+      "order": 2,
+      "source_path": "protocol/coap_codec.c"
+    },
+    {
+      "file_trace_id": "coap/resource/resource_router",
+      "functions": [
+        {
+          "artifact_path": "specfs_projection/functions/coap/resource/resource_router/dup_string.spec",
+          "name": "dup_string",
+          "trace_id": "coap/resource/resource_router/dup_string"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/resource/resource_router/path_matches.spec",
+          "name": "path_matches",
+          "trace_id": "coap/resource/resource_router/path_matches"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/resource/resource_router/coap_resource_router_create.spec",
+          "name": "coap_resource_router_create",
+          "trace_id": "coap/resource/resource_router/coap_resource_router_create"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/resource/resource_router/coap_resource_router_destroy.spec",
+          "name": "coap_resource_router_destroy",
+          "trace_id": "coap/resource/resource_router/coap_resource_router_destroy"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/resource/resource_router/coap_resource_router_add.spec",
+          "name": "coap_resource_router_add",
+          "trace_id": "coap/resource/resource_router/coap_resource_router_add"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/resource/resource_router/coap_resource_router_dispatch.spec",
+          "name": "coap_resource_router_dispatch",
+          "trace_id": "coap/resource/resource_router/coap_resource_router_dispatch"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/resource/resource_router/coap_resource_router_build_core_links.spec",
+          "name": "coap_resource_router_build_core_links",
+          "trace_id": "coap/resource/resource_router/coap_resource_router_build_core_links"
+        }
+      ],
+      "header_artifact": "specfs_projection/headers/resource/resource_router.h.header",
+      "header_path": "resource/resource_router.h",
+      "order": 3,
+      "source_path": "resource/resource_router.c"
+    },
+    {
+      "file_trace_id": "coap/main",
+      "functions": [
+        {
+          "artifact_path": "specfs_projection/functions/coap/main/main.spec",
+          "name": "main",
+          "trace_id": "coap/main/main"
+        }
+      ],
+      "header_artifact": "",
+      "header_path": "",
+      "order": 4,
+      "source_path": "main.c"
+    },
+    {
+      "file_trace_id": "coap/server/coap_server",
+      "functions": [
+        {
+          "artifact_path": "specfs_projection/functions/coap/server/coap_server/dup_string.spec",
+          "name": "dup_string",
+          "trace_id": "coap/server/coap_server/dup_string"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/server/coap_server/response_set_text.spec",
+          "name": "response_set_text",
+          "trace_id": "coap/server/coap_server/response_set_text"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/server/coap_server/response_set_bytes.spec",
+          "name": "response_set_bytes",
+          "trace_id": "coap/server/coap_server/response_set_bytes"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/server/coap_server/find_kv.spec",
+          "name": "find_kv",
+          "trace_id": "coap/server/coap_server/find_kv"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/server/coap_server/kv_put.spec",
+          "name": "kv_put",
+          "trace_id": "coap/server/coap_server/kv_put"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/server/coap_server/kv_delete.spec",
+          "name": "kv_delete",
+          "trace_id": "coap/server/coap_server/kv_delete"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/server/coap_server/handle_discovery.spec",
+          "name": "handle_discovery",
+          "trace_id": "coap/server/coap_server/handle_discovery"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/server/coap_server/handle_hello.spec",
+          "name": "handle_hello",
+          "trace_id": "coap/server/coap_server/handle_hello"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/server/coap_server/handle_echo.spec",
+          "name": "handle_echo",
+          "trace_id": "coap/server/coap_server/handle_echo"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/server/coap_server/handle_kv.spec",
+          "name": "handle_kv",
+          "trace_id": "coap/server/coap_server/handle_kv"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/server/coap_server/setup_response_envelope.spec",
+          "name": "setup_response_envelope",
+          "trace_id": "coap/server/coap_server/setup_response_envelope"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/server/coap_server/build_request_view.spec",
+          "name": "build_request_view",
+          "trace_id": "coap/server/coap_server/build_request_view"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/server/coap_server/free_request_view.spec",
+          "name": "free_request_view",
+          "trace_id": "coap/server/coap_server/free_request_view"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/server/coap_server/send_response.spec",
+          "name": "send_response",
+          "trace_id": "coap/server/coap_server/send_response"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/server/coap_server/send_reset.spec",
+          "name": "send_reset",
+          "trace_id": "coap/server/coap_server/send_reset"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/server/coap_server/on_datagram.spec",
+          "name": "on_datagram",
+          "trace_id": "coap/server/coap_server/on_datagram"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/server/coap_server/coap_server_create.spec",
+          "name": "coap_server_create",
+          "trace_id": "coap/server/coap_server/coap_server_create"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/server/coap_server/coap_server_destroy.spec",
+          "name": "coap_server_destroy",
+          "trace_id": "coap/server/coap_server/coap_server_destroy"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/server/coap_server/coap_server_start.spec",
+          "name": "coap_server_start",
+          "trace_id": "coap/server/coap_server/coap_server_start"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/server/coap_server/coap_server_run.spec",
+          "name": "coap_server_run",
+          "trace_id": "coap/server/coap_server/coap_server_run"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/coap/server/coap_server/coap_server_stop.spec",
+          "name": "coap_server_stop",
+          "trace_id": "coap/server/coap_server/coap_server_stop"
+        }
+      ],
+      "header_artifact": "specfs_projection/headers/server/coap_server.h.header",
+      "header_path": "server/coap_server.h",
+      "order": 5,
+      "source_path": "server/coap_server.c"
+    }
+  ],
+  "view": "s1",
+  "visibility": "hidden_evaluator_only"
+}

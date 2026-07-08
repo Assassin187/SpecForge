@@ -3,6 +3,27 @@
   "schema_version": "spec_ablation_view_set_manifest/v1",
   "source_root": "specs-example/http_specs",
   "views": {
+    "s1": {
+      "counts": {
+        "files": 8,
+        "functions": 62,
+        "headers": 7
+      },
+      "root": "s1",
+      "transformation_hash": "b95abfb846a63566ff030eae1aff1a661a3467a35be383e67d043b854fc248cf",
+      "transformation_manifest": "s1/transformation_manifest.json"
+    },
+    "s2": {
+      "counts": {
+        "files": 8,
+        "functions": 62,
+        "headers": 7,
+        "project_graphs": 1
+      },
+      "root": "s2",
+      "transformation_hash": "3d8e10a416c35f2d5ba03746b2fc74b6612b567dfaded6dd2e13021392129035",
+      "transformation_manifest": "s2/transformation_manifest.json"
+    },
     "s3": {
       "counts": {
         "files": 8,
@@ -12,7 +33,7 @@
         "project_graphs": 1
       },
       "root": "s3",
-      "transformation_hash": "d0033e1b02b1f136e6fc130b2f9134a7839db3d1e56c070d7fd52db20c7f8329",
+      "transformation_hash": "3e508a8afb22d3366e2ec39659317c1c2dfb6afb442ca3c521e23b25449b3318",
       "transformation_manifest": "s3/transformation_manifest.json"
     }
   }

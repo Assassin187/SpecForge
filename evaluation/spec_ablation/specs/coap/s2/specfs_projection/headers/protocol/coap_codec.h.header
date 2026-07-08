@@ -1,0 +1,14 @@
+#include "protocol/coap_message.h"
+
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
+typedef enum coap_decode_status {
+    COAP_DECODE_OK = 0,
+    COAP_DECODE_INVALID = 1,
+    COAP_DECODE_TRUNCATED = 2,
+} coap_decode_status_t;
+
+coap_decode_status_t coap_decode_message(const uint8_t* data, size_t len, coap_message_t* out);
+bool coap_encode_message(const coap_message_t* msg, coap_bytes_t* out);

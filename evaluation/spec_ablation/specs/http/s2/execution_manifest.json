@@ -1,0 +1,391 @@
+{
+  "note": "This manifest is evaluator control data and must not be inserted into S2 generation or repair prompts.",
+  "protocol": "http",
+  "schema_version": "spec_ablation_s2_execution_manifest/v1",
+  "sources": [
+    {
+      "file_trace_id": "http/network/connection",
+      "functions": [
+        {
+          "artifact_path": "specfs_projection/functions/http/network/connection/http_connection_create.spec",
+          "name": "http_connection_create",
+          "trace_id": "http/network/connection/http_connection_create"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/network/connection/http_connection_destroy.spec",
+          "name": "http_connection_destroy",
+          "trace_id": "http/network/connection/http_connection_destroy"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/network/connection/http_connection_fd.spec",
+          "name": "http_connection_fd",
+          "trace_id": "http/network/connection/http_connection_fd"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/network/connection/http_connection_read.spec",
+          "name": "http_connection_read",
+          "trace_id": "http/network/connection/http_connection_read"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/network/connection/http_connection_pop_line.spec",
+          "name": "http_connection_pop_line",
+          "trace_id": "http/network/connection/http_connection_pop_line"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/network/connection/http_connection_pop_bytes.spec",
+          "name": "http_connection_pop_bytes",
+          "trace_id": "http/network/connection/http_connection_pop_bytes"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/network/connection/http_connection_buffered.spec",
+          "name": "http_connection_buffered",
+          "trace_id": "http/network/connection/http_connection_buffered"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/network/connection/http_connection_queue.spec",
+          "name": "http_connection_queue",
+          "trace_id": "http/network/connection/http_connection_queue"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/network/connection/http_connection_queue_str.spec",
+          "name": "http_connection_queue_str",
+          "trace_id": "http/network/connection/http_connection_queue_str"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/network/connection/http_connection_flush.spec",
+          "name": "http_connection_flush",
+          "trace_id": "http/network/connection/http_connection_flush"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/network/connection/http_connection_has_pending.spec",
+          "name": "http_connection_has_pending",
+          "trace_id": "http/network/connection/http_connection_has_pending"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/network/connection/ensure_cap.spec",
+          "name": "ensure_cap",
+          "trace_id": "http/network/connection/ensure_cap"
+        }
+      ],
+      "header_artifact": "specfs_projection/headers/network/connection.h.header",
+      "header_path": "network/connection.h",
+      "order": 0,
+      "source_path": "network/connection.c"
+    },
+    {
+      "file_trace_id": "http/network/tcp_server",
+      "functions": [
+        {
+          "artifact_path": "specfs_projection/functions/http/network/tcp_server/http_tcp_server_create.spec",
+          "name": "http_tcp_server_create",
+          "trace_id": "http/network/tcp_server/http_tcp_server_create"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/network/tcp_server/http_tcp_server_start.spec",
+          "name": "http_tcp_server_start",
+          "trace_id": "http/network/tcp_server/http_tcp_server_start"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/network/tcp_server/http_tcp_server_run.spec",
+          "name": "http_tcp_server_run",
+          "trace_id": "http/network/tcp_server/http_tcp_server_run"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/network/tcp_server/http_tcp_server_stop.spec",
+          "name": "http_tcp_server_stop",
+          "trace_id": "http/network/tcp_server/http_tcp_server_stop"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/network/tcp_server/http_tcp_server_destroy.spec",
+          "name": "http_tcp_server_destroy",
+          "trace_id": "http/network/tcp_server/http_tcp_server_destroy"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/network/tcp_server/http_tcp_server_update_interest.spec",
+          "name": "http_tcp_server_update_interest",
+          "trace_id": "http/network/tcp_server/http_tcp_server_update_interest"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/network/tcp_server/http_tcp_server_close_client.spec",
+          "name": "http_tcp_server_close_client",
+          "trace_id": "http/network/tcp_server/http_tcp_server_close_client"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/network/tcp_server/set_nonblocking.spec",
+          "name": "set_nonblocking",
+          "trace_id": "http/network/tcp_server/set_nonblocking"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/network/tcp_server/find_client.spec",
+          "name": "find_client",
+          "trace_id": "http/network/tcp_server/find_client"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/network/tcp_server/add_client.spec",
+          "name": "add_client",
+          "trace_id": "http/network/tcp_server/add_client"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/network/tcp_server/remove_client_node.spec",
+          "name": "remove_client_node",
+          "trace_id": "http/network/tcp_server/remove_client_node"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/network/tcp_server/setup_listener.spec",
+          "name": "setup_listener",
+          "trace_id": "http/network/tcp_server/setup_listener"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/network/tcp_server/accept_loop.spec",
+          "name": "accept_loop",
+          "trace_id": "http/network/tcp_server/accept_loop"
+        }
+      ],
+      "header_artifact": "specfs_projection/headers/network/tcp_server.h.header",
+      "header_path": "network/tcp_server.h",
+      "order": 1,
+      "source_path": "network/tcp_server.c"
+    },
+    {
+      "file_trace_id": "http/protocol/http_request",
+      "functions": [
+        {
+          "artifact_path": "specfs_projection/functions/http/protocol/http_request/http_request_init.spec",
+          "name": "http_request_init",
+          "trace_id": "http/protocol/http_request/http_request_init"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/protocol/http_request/http_request_free.spec",
+          "name": "http_request_free",
+          "trace_id": "http/protocol/http_request/http_request_free"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/protocol/http_request/http_request_parse.spec",
+          "name": "http_request_parse",
+          "trace_id": "http/protocol/http_request/http_request_parse"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/protocol/http_request/http_request_header.spec",
+          "name": "http_request_header",
+          "trace_id": "http/protocol/http_request/http_request_header"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/protocol/http_request/parse_method.spec",
+          "name": "parse_method",
+          "trace_id": "http/protocol/http_request/parse_method"
+        }
+      ],
+      "header_artifact": "specfs_projection/headers/protocol/http_request.h.header",
+      "header_path": "protocol/http_request.h",
+      "order": 2,
+      "source_path": "protocol/http_request.c"
+    },
+    {
+      "file_trace_id": "http/protocol/http_response",
+      "functions": [
+        {
+          "artifact_path": "specfs_projection/functions/http/protocol/http_response/http_status_text.spec",
+          "name": "http_status_text",
+          "trace_id": "http/protocol/http_response/http_status_text"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/protocol/http_response/http_response_send.spec",
+          "name": "http_response_send",
+          "trace_id": "http/protocol/http_response/http_response_send"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/protocol/http_response/http_response_send_html.spec",
+          "name": "http_response_send_html",
+          "trace_id": "http/protocol/http_response/http_response_send_html"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/protocol/http_response/queuefv.spec",
+          "name": "queuefv",
+          "trace_id": "http/protocol/http_response/queuefv"
+        }
+      ],
+      "header_artifact": "specfs_projection/headers/protocol/http_response.h.header",
+      "header_path": "protocol/http_response.h",
+      "order": 3,
+      "source_path": "protocol/http_response.c"
+    },
+    {
+      "file_trace_id": "http/resource/file_ops",
+      "functions": [
+        {
+          "artifact_path": "specfs_projection/functions/http/resource/file_ops/http_mime_by_ext.spec",
+          "name": "http_mime_by_ext",
+          "trace_id": "http/resource/file_ops/http_mime_by_ext"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/resource/file_ops/http_resolve_path.spec",
+          "name": "http_resolve_path",
+          "trace_id": "http/resource/file_ops/http_resolve_path"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/resource/file_ops/http_stat_path.spec",
+          "name": "http_stat_path",
+          "trace_id": "http/resource/file_ops/http_stat_path"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/resource/file_ops/http_read_file.spec",
+          "name": "http_read_file",
+          "trace_id": "http/resource/file_ops/http_read_file"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/resource/file_ops/http_dir_listing_html.spec",
+          "name": "http_dir_listing_html",
+          "trace_id": "http/resource/file_ops/http_dir_listing_html"
+        }
+      ],
+      "header_artifact": "specfs_projection/headers/resource/file_ops.h.header",
+      "header_path": "resource/file_ops.h",
+      "order": 4,
+      "source_path": "resource/file_ops.c"
+    },
+    {
+      "file_trace_id": "http/main",
+      "functions": [
+        {
+          "artifact_path": "specfs_projection/functions/http/main/parse_port.spec",
+          "name": "parse_port",
+          "trace_id": "http/main/parse_port"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/main/main.spec",
+          "name": "main",
+          "trace_id": "http/main/main"
+        }
+      ],
+      "header_artifact": "",
+      "header_path": "",
+      "order": 5,
+      "source_path": "main.c"
+    },
+    {
+      "file_trace_id": "http/server/http_server",
+      "functions": [
+        {
+          "artifact_path": "specfs_projection/functions/http/server/http_server/find_session.spec",
+          "name": "find_session",
+          "trace_id": "http/server/http_server/find_session"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/server/http_server/remove_session.spec",
+          "name": "remove_session",
+          "trace_id": "http/server/http_server/remove_session"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/server/http_server/add_session.spec",
+          "name": "add_session",
+          "trace_id": "http/server/http_server/add_session"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/server/http_server/send_error.spec",
+          "name": "send_error",
+          "trace_id": "http/server/http_server/send_error"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/server/http_server/flush_and_update.spec",
+          "name": "flush_and_update",
+          "trace_id": "http/server/http_server/flush_and_update"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/server/http_server/serve_file.spec",
+          "name": "serve_file",
+          "trace_id": "http/server/http_server/serve_file"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/server/http_server/handle_get.spec",
+          "name": "handle_get",
+          "trace_id": "http/server/http_server/handle_get"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/server/http_server/handle_head.spec",
+          "name": "handle_head",
+          "trace_id": "http/server/http_server/handle_head"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/server/http_server/handle_post.spec",
+          "name": "handle_post",
+          "trace_id": "http/server/http_server/handle_post"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/server/http_server/dispatch.spec",
+          "name": "dispatch",
+          "trace_id": "http/server/http_server/dispatch"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/server/http_server/on_accept_cb.spec",
+          "name": "on_accept_cb",
+          "trace_id": "http/server/http_server/on_accept_cb"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/server/http_server/close_client.spec",
+          "name": "close_client",
+          "trace_id": "http/server/http_server/close_client"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/server/http_server/on_event_cb.spec",
+          "name": "on_event_cb",
+          "trace_id": "http/server/http_server/on_event_cb"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/server/http_server/on_close_cb.spec",
+          "name": "on_close_cb",
+          "trace_id": "http/server/http_server/on_close_cb"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/server/http_server/http_server_create.spec",
+          "name": "http_server_create",
+          "trace_id": "http/server/http_server/http_server_create"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/server/http_server/http_server_start.spec",
+          "name": "http_server_start",
+          "trace_id": "http/server/http_server/http_server_start"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/server/http_server/http_server_run.spec",
+          "name": "http_server_run",
+          "trace_id": "http/server/http_server/http_server_run"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/server/http_server/http_server_stop.spec",
+          "name": "http_server_stop",
+          "trace_id": "http/server/http_server/http_server_stop"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/server/http_server/http_server_destroy.spec",
+          "name": "http_server_destroy",
+          "trace_id": "http/server/http_server/http_server_destroy"
+        }
+      ],
+      "header_artifact": "specfs_projection/headers/server/http_server.h.header",
+      "header_path": "server/http_server.h",
+      "order": 6,
+      "source_path": "server/http_server.c"
+    },
+    {
+      "file_trace_id": "http/server/http_session",
+      "functions": [
+        {
+          "artifact_path": "specfs_projection/functions/http/server/http_session/http_session_create.spec",
+          "name": "http_session_create",
+          "trace_id": "http/server/http_session/http_session_create"
+        },
+        {
+          "artifact_path": "specfs_projection/functions/http/server/http_session/http_session_destroy.spec",
+          "name": "http_session_destroy",
+          "trace_id": "http/server/http_session/http_session_destroy"
+        }
+      ],
+      "header_artifact": "specfs_projection/headers/server/http_session.h.header",
+      "header_path": "server/http_session.h",
+      "order": 7,
+      "source_path": "server/http_session.c"
+    }
+  ],
+  "view": "s2",
+  "visibility": "hidden_evaluator_only"
+}

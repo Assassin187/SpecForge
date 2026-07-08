@@ -1,0 +1,1655 @@
+{
+  "artifacts": {
+    "execution_manifest": "execution_manifest.json",
+    "functions": [
+      {
+        "artifact_path": "specfs_projection/functions/http/network/connection/http_connection_create.spec",
+        "name": "http_connection_create",
+        "sha256": "fee3c0218f0d944658a0a7085d4a1d9da6c047513fa648fcdd29a0bf3d344071",
+        "source_path": "network/connection.c",
+        "trace_id": "http/network/connection/http_connection_create"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/network/connection/http_connection_destroy.spec",
+        "name": "http_connection_destroy",
+        "sha256": "cdbb20c6838d69318c81a5730b720e9eed353bf884f81530bad9ce97a6a15aaf",
+        "source_path": "network/connection.c",
+        "trace_id": "http/network/connection/http_connection_destroy"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/network/connection/http_connection_fd.spec",
+        "name": "http_connection_fd",
+        "sha256": "40a49692a21d3d1448e40247c5b2313378a565d5422a2c796e83ee46718a21a2",
+        "source_path": "network/connection.c",
+        "trace_id": "http/network/connection/http_connection_fd"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/network/connection/http_connection_read.spec",
+        "name": "http_connection_read",
+        "sha256": "51f4938584aa6ca840877d81f056414c35a7eaf04801165eb84846cc97323f78",
+        "source_path": "network/connection.c",
+        "trace_id": "http/network/connection/http_connection_read"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/network/connection/http_connection_pop_line.spec",
+        "name": "http_connection_pop_line",
+        "sha256": "15e734363bb1a87dcf1d07afb4319894af5852a0bbef348adc0586cd75310a5b",
+        "source_path": "network/connection.c",
+        "trace_id": "http/network/connection/http_connection_pop_line"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/network/connection/http_connection_pop_bytes.spec",
+        "name": "http_connection_pop_bytes",
+        "sha256": "61fea6289a6ae242ba921da19b0826887ca42d94cc5e6e38b142d65d78d314f0",
+        "source_path": "network/connection.c",
+        "trace_id": "http/network/connection/http_connection_pop_bytes"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/network/connection/http_connection_buffered.spec",
+        "name": "http_connection_buffered",
+        "sha256": "68f4d55ce428978ed181d1526566c838e297ce52d07b99742eeff714aa9ceed3",
+        "source_path": "network/connection.c",
+        "trace_id": "http/network/connection/http_connection_buffered"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/network/connection/http_connection_queue.spec",
+        "name": "http_connection_queue",
+        "sha256": "da489f1ae9acec923d72d9270c8c6c7816df313c7ac56abdb068e6f4364a6070",
+        "source_path": "network/connection.c",
+        "trace_id": "http/network/connection/http_connection_queue"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/network/connection/http_connection_queue_str.spec",
+        "name": "http_connection_queue_str",
+        "sha256": "87e85491ec2dd7e9b649685c41235a4d148103edceda3056fe0297d9895a18bd",
+        "source_path": "network/connection.c",
+        "trace_id": "http/network/connection/http_connection_queue_str"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/network/connection/http_connection_flush.spec",
+        "name": "http_connection_flush",
+        "sha256": "8aad2cd0686053666a4ccd390f8836e1785b9ce459db0616f5df9d69544f5731",
+        "source_path": "network/connection.c",
+        "trace_id": "http/network/connection/http_connection_flush"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/network/connection/http_connection_has_pending.spec",
+        "name": "http_connection_has_pending",
+        "sha256": "aad62f159e8e2938e5d317f43c58f99c7a8c1741c61a4bfb0a216c825d41a00e",
+        "source_path": "network/connection.c",
+        "trace_id": "http/network/connection/http_connection_has_pending"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/network/connection/ensure_cap.spec",
+        "name": "ensure_cap",
+        "sha256": "89128a3b5ac48e865cb7122d8c8b4d1cb3712bce117b5808a59aaac004f35d6a",
+        "source_path": "network/connection.c",
+        "trace_id": "http/network/connection/ensure_cap"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/network/tcp_server/http_tcp_server_create.spec",
+        "name": "http_tcp_server_create",
+        "sha256": "9b0999d34f228f86be4daa253e792348a562125cbbe8c9cdf3a2b8a4d22362ac",
+        "source_path": "network/tcp_server.c",
+        "trace_id": "http/network/tcp_server/http_tcp_server_create"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/network/tcp_server/http_tcp_server_start.spec",
+        "name": "http_tcp_server_start",
+        "sha256": "1a897c3e35d22b0cb1671842fc4ac434574a0c53527de26cdf507e7dae2c04ce",
+        "source_path": "network/tcp_server.c",
+        "trace_id": "http/network/tcp_server/http_tcp_server_start"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/network/tcp_server/http_tcp_server_run.spec",
+        "name": "http_tcp_server_run",
+        "sha256": "ff99848030dd86b555592aaee477e4607d6c3474415716f90a7243ecfed87802",
+        "source_path": "network/tcp_server.c",
+        "trace_id": "http/network/tcp_server/http_tcp_server_run"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/network/tcp_server/http_tcp_server_stop.spec",
+        "name": "http_tcp_server_stop",
+        "sha256": "b6f79968216e62e8bee532d927183130e1ebef3e3c004d41cf9a46bf4f198925",
+        "source_path": "network/tcp_server.c",
+        "trace_id": "http/network/tcp_server/http_tcp_server_stop"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/network/tcp_server/http_tcp_server_destroy.spec",
+        "name": "http_tcp_server_destroy",
+        "sha256": "e91dc41c64e68619e4316ee0acff21d0492ac8dfe0ccf280bbfc52152d2c94f7",
+        "source_path": "network/tcp_server.c",
+        "trace_id": "http/network/tcp_server/http_tcp_server_destroy"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/network/tcp_server/http_tcp_server_update_interest.spec",
+        "name": "http_tcp_server_update_interest",
+        "sha256": "d0a8be2fb88a1c7553c03477d4999804409a8b693c8b5688ef7f3eaf728b4d52",
+        "source_path": "network/tcp_server.c",
+        "trace_id": "http/network/tcp_server/http_tcp_server_update_interest"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/network/tcp_server/http_tcp_server_close_client.spec",
+        "name": "http_tcp_server_close_client",
+        "sha256": "7452023e546f02e67ee88f329e6206a6dc8879aca10d7b0bf309047b4254261b",
+        "source_path": "network/tcp_server.c",
+        "trace_id": "http/network/tcp_server/http_tcp_server_close_client"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/network/tcp_server/set_nonblocking.spec",
+        "name": "set_nonblocking",
+        "sha256": "7f36ca6380206f94d31bb7aeb833f4f56aebbb2d3c9d171715ddf10eb7020aa3",
+        "source_path": "network/tcp_server.c",
+        "trace_id": "http/network/tcp_server/set_nonblocking"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/network/tcp_server/find_client.spec",
+        "name": "find_client",
+        "sha256": "5beb1136464247246403a1ffda83443c23269ef9c67a042ecc2e96684ff8153d",
+        "source_path": "network/tcp_server.c",
+        "trace_id": "http/network/tcp_server/find_client"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/network/tcp_server/add_client.spec",
+        "name": "add_client",
+        "sha256": "f24ee41ae66c6cd55d159b6681fbc91bb3b0db35e6ee39546bb0b7c818201cff",
+        "source_path": "network/tcp_server.c",
+        "trace_id": "http/network/tcp_server/add_client"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/network/tcp_server/remove_client_node.spec",
+        "name": "remove_client_node",
+        "sha256": "e727fe71dabd39e66f3bb0a4840256f8033beae6a04b1ca3aeedbba7c6947537",
+        "source_path": "network/tcp_server.c",
+        "trace_id": "http/network/tcp_server/remove_client_node"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/network/tcp_server/setup_listener.spec",
+        "name": "setup_listener",
+        "sha256": "80fa92d644fc74ad7265434fefa0ecd70ed25cd04c655f77b30726a2df5d3ccf",
+        "source_path": "network/tcp_server.c",
+        "trace_id": "http/network/tcp_server/setup_listener"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/network/tcp_server/accept_loop.spec",
+        "name": "accept_loop",
+        "sha256": "fe50d36391976aaec3e46379ce69116c782e54e97516ef941471d4b7472f0bfd",
+        "source_path": "network/tcp_server.c",
+        "trace_id": "http/network/tcp_server/accept_loop"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/protocol/http_request/http_request_init.spec",
+        "name": "http_request_init",
+        "sha256": "86b9c75efd1ab4183755a155920112502667f095289221b9ef934a247dcbf7c4",
+        "source_path": "protocol/http_request.c",
+        "trace_id": "http/protocol/http_request/http_request_init"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/protocol/http_request/http_request_free.spec",
+        "name": "http_request_free",
+        "sha256": "4f3a3e53d04f96ea3f4bcc165b1d41779f2395186d854c4d4938ff077b1bc46f",
+        "source_path": "protocol/http_request.c",
+        "trace_id": "http/protocol/http_request/http_request_free"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/protocol/http_request/http_request_parse.spec",
+        "name": "http_request_parse",
+        "sha256": "186dec575d1e7526584cc7d3e0f20f18330b9d3d07c58804406f75522aa219a4",
+        "source_path": "protocol/http_request.c",
+        "trace_id": "http/protocol/http_request/http_request_parse"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/protocol/http_request/http_request_header.spec",
+        "name": "http_request_header",
+        "sha256": "8e08e668595fa1ec31996d6b9e5917bd81721d13f8207c3a9e4a7aa17315c567",
+        "source_path": "protocol/http_request.c",
+        "trace_id": "http/protocol/http_request/http_request_header"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/protocol/http_request/parse_method.spec",
+        "name": "parse_method",
+        "sha256": "c0faae860295386cdcd17861395ed9018d8d7a69632697cc7fd0c4b14a0028dd",
+        "source_path": "protocol/http_request.c",
+        "trace_id": "http/protocol/http_request/parse_method"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/protocol/http_response/http_status_text.spec",
+        "name": "http_status_text",
+        "sha256": "ca6ce107511612bdd93dbd522cadead7dd8d2a08be80af32566b84e7eba1c362",
+        "source_path": "protocol/http_response.c",
+        "trace_id": "http/protocol/http_response/http_status_text"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/protocol/http_response/http_response_send.spec",
+        "name": "http_response_send",
+        "sha256": "b6ace18bea1d0ecd7a94f5c67409701aa93be7f31ac9e83109c5c5a450ac41a3",
+        "source_path": "protocol/http_response.c",
+        "trace_id": "http/protocol/http_response/http_response_send"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/protocol/http_response/http_response_send_html.spec",
+        "name": "http_response_send_html",
+        "sha256": "cf2b40eb055fafe0a254c540857b3b7523b89ed7c59c9e0831c837d2e2ac82f1",
+        "source_path": "protocol/http_response.c",
+        "trace_id": "http/protocol/http_response/http_response_send_html"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/protocol/http_response/queuefv.spec",
+        "name": "queuefv",
+        "sha256": "09f6c0adf4c8082c10060c2dacf1689b8f6d17531a082e6fa097b49d8d6afd83",
+        "source_path": "protocol/http_response.c",
+        "trace_id": "http/protocol/http_response/queuefv"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/resource/file_ops/http_mime_by_ext.spec",
+        "name": "http_mime_by_ext",
+        "sha256": "43de5cc9b159a508fa981e6f3395a6dc9596c87248d3f489fb0d089e536597f1",
+        "source_path": "resource/file_ops.c",
+        "trace_id": "http/resource/file_ops/http_mime_by_ext"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/resource/file_ops/http_resolve_path.spec",
+        "name": "http_resolve_path",
+        "sha256": "c8b209f941eb4d2dad94cb1013c073b5a8dab43cd3ec4201742438727999164a",
+        "source_path": "resource/file_ops.c",
+        "trace_id": "http/resource/file_ops/http_resolve_path"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/resource/file_ops/http_stat_path.spec",
+        "name": "http_stat_path",
+        "sha256": "7fdbace3fff7733efde09fc383d4476a9e9fca3f4cf33544a5885bff4ed531a0",
+        "source_path": "resource/file_ops.c",
+        "trace_id": "http/resource/file_ops/http_stat_path"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/resource/file_ops/http_read_file.spec",
+        "name": "http_read_file",
+        "sha256": "23ba9b6d9931ccbe47632a112c7b5689cf34dc4097b344b5ac86fa5af7a68e8a",
+        "source_path": "resource/file_ops.c",
+        "trace_id": "http/resource/file_ops/http_read_file"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/resource/file_ops/http_dir_listing_html.spec",
+        "name": "http_dir_listing_html",
+        "sha256": "696e13b3818c83e9687da7f4cad06bf8c44ac4cc33726e25a40b84eca2f6d499",
+        "source_path": "resource/file_ops.c",
+        "trace_id": "http/resource/file_ops/http_dir_listing_html"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/main/parse_port.spec",
+        "name": "parse_port",
+        "sha256": "f82ec5d8fee2ef2dc46feb3e0c81421643d613d892cc1d5a5c67a3eb867646c4",
+        "source_path": "main.c",
+        "trace_id": "http/main/parse_port"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/main/main.spec",
+        "name": "main",
+        "sha256": "1471da4159f46c8f7dcb15d9d912c84e33240827d16ef7a9c8a76f6326fab675",
+        "source_path": "main.c",
+        "trace_id": "http/main/main"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/server/http_server/find_session.spec",
+        "name": "find_session",
+        "sha256": "96d2ba6f4f28e570f2b11450ca03e263bb5f35a3b11c5689c8c2799c9f6d65af",
+        "source_path": "server/http_server.c",
+        "trace_id": "http/server/http_server/find_session"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/server/http_server/remove_session.spec",
+        "name": "remove_session",
+        "sha256": "85174ea0ec5ad1e87731be1ad8e1448d883e58f3a4f76d78da7e016c95a22c95",
+        "source_path": "server/http_server.c",
+        "trace_id": "http/server/http_server/remove_session"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/server/http_server/add_session.spec",
+        "name": "add_session",
+        "sha256": "55e26d29b79dbbcea0f546540a496ddc484306a86d28129c7ade03369e7169af",
+        "source_path": "server/http_server.c",
+        "trace_id": "http/server/http_server/add_session"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/server/http_server/send_error.spec",
+        "name": "send_error",
+        "sha256": "66cae821d6a2c00f029ccdd05eedf62606385c97719031dd355dc6f35e46cb57",
+        "source_path": "server/http_server.c",
+        "trace_id": "http/server/http_server/send_error"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/server/http_server/flush_and_update.spec",
+        "name": "flush_and_update",
+        "sha256": "5991bb0008eed2d5db8f40f1a3bb95161ed5e7a246784f3ad5703f13cafbc368",
+        "source_path": "server/http_server.c",
+        "trace_id": "http/server/http_server/flush_and_update"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/server/http_server/serve_file.spec",
+        "name": "serve_file",
+        "sha256": "b1ff0bad89135cecdd2faad1b13efdedfa2442610acffc5b26d2c8e08fa3afe1",
+        "source_path": "server/http_server.c",
+        "trace_id": "http/server/http_server/serve_file"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/server/http_server/handle_get.spec",
+        "name": "handle_get",
+        "sha256": "3851d7f5a610eeca2ade19d30e9081139e5f11417b6bb290e81c86d3f2acfa57",
+        "source_path": "server/http_server.c",
+        "trace_id": "http/server/http_server/handle_get"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/server/http_server/handle_head.spec",
+        "name": "handle_head",
+        "sha256": "fc80d67d38581eef869a277f758ec7adf02f1fa82b4dab3b684d8309850d3ee6",
+        "source_path": "server/http_server.c",
+        "trace_id": "http/server/http_server/handle_head"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/server/http_server/handle_post.spec",
+        "name": "handle_post",
+        "sha256": "11d897240616363022492a8ce68e644427a6164737617f0690e7445491123531",
+        "source_path": "server/http_server.c",
+        "trace_id": "http/server/http_server/handle_post"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/server/http_server/dispatch.spec",
+        "name": "dispatch",
+        "sha256": "00d3513ce7b51f21fb6c2f571b15e8ff04e730977ec6b1a5237d4c53896f3732",
+        "source_path": "server/http_server.c",
+        "trace_id": "http/server/http_server/dispatch"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/server/http_server/on_accept_cb.spec",
+        "name": "on_accept_cb",
+        "sha256": "60f2f8a3d14ea32e1676994c1338ef328428a4864dc0947fa1f651398526047d",
+        "source_path": "server/http_server.c",
+        "trace_id": "http/server/http_server/on_accept_cb"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/server/http_server/close_client.spec",
+        "name": "close_client",
+        "sha256": "e7a36d9afb0d2e54287f6a02ca37e355a20cfa41795351e75a3b40b0c6165eb9",
+        "source_path": "server/http_server.c",
+        "trace_id": "http/server/http_server/close_client"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/server/http_server/on_event_cb.spec",
+        "name": "on_event_cb",
+        "sha256": "f16b0796d21f57ce9791f9f278d0c73afa8e8ed7b19973cd36cfb2c0b620e141",
+        "source_path": "server/http_server.c",
+        "trace_id": "http/server/http_server/on_event_cb"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/server/http_server/on_close_cb.spec",
+        "name": "on_close_cb",
+        "sha256": "e49384a303e7097236f56ca80bacb247cad3b06b4246a598fa096bf7e4ca6c47",
+        "source_path": "server/http_server.c",
+        "trace_id": "http/server/http_server/on_close_cb"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/server/http_server/http_server_create.spec",
+        "name": "http_server_create",
+        "sha256": "a9270213d088794e0d876e581c7523c0f198578947d30957588951e93093d254",
+        "source_path": "server/http_server.c",
+        "trace_id": "http/server/http_server/http_server_create"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/server/http_server/http_server_start.spec",
+        "name": "http_server_start",
+        "sha256": "d1f3310e133bb45063e1efe9a27f423b088b901dd44efa44269b674b39bb938a",
+        "source_path": "server/http_server.c",
+        "trace_id": "http/server/http_server/http_server_start"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/server/http_server/http_server_run.spec",
+        "name": "http_server_run",
+        "sha256": "3662505c2e8c27f76f370344d24784a79db543ff1109620c8fe77a5499fe5852",
+        "source_path": "server/http_server.c",
+        "trace_id": "http/server/http_server/http_server_run"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/server/http_server/http_server_stop.spec",
+        "name": "http_server_stop",
+        "sha256": "09b77b93b58535dc528afb05604a24e0b31f7adc3f63d4f53dad764996c75558",
+        "source_path": "server/http_server.c",
+        "trace_id": "http/server/http_server/http_server_stop"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/server/http_server/http_server_destroy.spec",
+        "name": "http_server_destroy",
+        "sha256": "e686d62668104087ae4e1098d8be2bf0b2e85e1bacb9ab0de0bcf1aede20eae2",
+        "source_path": "server/http_server.c",
+        "trace_id": "http/server/http_server/http_server_destroy"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/server/http_session/http_session_create.spec",
+        "name": "http_session_create",
+        "sha256": "6832192a8fd924254ebbf49a56565ef50477c10521e4ff22291eb37b51e3c227",
+        "source_path": "server/http_session.c",
+        "trace_id": "http/server/http_session/http_session_create"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/http/server/http_session/http_session_destroy.spec",
+        "name": "http_session_destroy",
+        "sha256": "bcedf6ec354bc88aea7eb91d383ced8295a08bbc85b9db7720cb7376fdb93567",
+        "source_path": "server/http_session.c",
+        "trace_id": "http/server/http_session/http_session_destroy"
+      }
+    ],
+    "headers": [
+      {
+        "artifact_path": "specfs_projection/headers/network/connection.h.header",
+        "header_path": "network/connection.h",
+        "sha256": "3f2e8ea1f3da552648f1d3424ece5e7d83a2b565ed6ce9fd6c62eb7e36270d72"
+      },
+      {
+        "artifact_path": "specfs_projection/headers/network/tcp_server.h.header",
+        "header_path": "network/tcp_server.h",
+        "sha256": "91bfc31d513b88e0497fba99d62cefff87ead359d60e42f41a4fb8a670b4ec13"
+      },
+      {
+        "artifact_path": "specfs_projection/headers/protocol/http_request.h.header",
+        "header_path": "protocol/http_request.h",
+        "sha256": "3192a87b9a7aab1833844255699b1ff7f33259928cf0b6c51604f9cc35f22099"
+      },
+      {
+        "artifact_path": "specfs_projection/headers/protocol/http_response.h.header",
+        "header_path": "protocol/http_response.h",
+        "sha256": "3aa66e9f453dd7bc749b50b1774f06a834daa08e6ab5b95129139600f6311c61"
+      },
+      {
+        "artifact_path": "specfs_projection/headers/resource/file_ops.h.header",
+        "header_path": "resource/file_ops.h",
+        "sha256": "9aac3f9b710941dea39b64029e12181321058bdb95b3ec7b75495a50c9778d10"
+      },
+      {
+        "artifact_path": "specfs_projection/headers/server/http_server.h.header",
+        "header_path": "server/http_server.h",
+        "sha256": "fa2a48c36e261c7bf8f07fe1f67902cba47faa1a43574b308ad16877052d85ca"
+      },
+      {
+        "artifact_path": "specfs_projection/headers/server/http_session.h.header",
+        "header_path": "server/http_session.h",
+        "sha256": "df959dcc01e6fd0e4fc1c68d5ad5280e4e874bcfaf604dea25c689b955f7b694"
+      }
+    ],
+    "project_graph": {
+      "artifact_path": "specfs_projection/project_graph.json",
+      "sha256": "26208bd1c7c7bff14a49e585eda6b67eec2189fb9bca175e6cdfd40aad037534"
+    }
+  },
+  "counts": {
+    "files": 8,
+    "functions": 62,
+    "headers": 7,
+    "project_graphs": 1
+  },
+  "hashes": {
+    "output_payload_sha256": "7e2fcf9adad917f6a2374b0a8a6bbf35113629880a49ee9eafcb44292bd8a464",
+    "source_specs_tree_sha256": "edb086be22bfa6ec574a36428dfef63f85578bf9c4b7ba25016c5ea9664c1cfb"
+  },
+  "output_root": ".",
+  "protocol": "http",
+  "rely_resolution": [
+    {
+      "category": "STRUCT",
+      "name": "struct http_connection",
+      "provider_header_path": "network/connection.h",
+      "provider_trace_id": "http/network/connection",
+      "strategy": "same_parent",
+      "trace_id": "http/network/connection/http_connection_fd"
+    },
+    {
+      "category": "STRUCT",
+      "name": "struct http_connection",
+      "provider_header_path": "network/connection.h",
+      "provider_trace_id": "http/network/connection",
+      "strategy": "same_parent",
+      "trace_id": "http/network/connection/http_connection_read"
+    },
+    {
+      "category": "FUNC",
+      "name": "ensure_cap",
+      "provider_header_path": "network/connection.h",
+      "provider_trace_id": "http/network/connection",
+      "strategy": "same_parent",
+      "trace_id": "http/network/connection/http_connection_read"
+    },
+    {
+      "category": "FUNC",
+      "name": "recv",
+      "provider_header_path": "",
+      "provider_trace_id": "",
+      "strategy": "external_name_only",
+      "trace_id": "http/network/connection/http_connection_read"
+    },
+    {
+      "category": "STRUCT",
+      "name": "struct http_connection",
+      "provider_header_path": "network/connection.h",
+      "provider_trace_id": "http/network/connection",
+      "strategy": "same_parent",
+      "trace_id": "http/network/connection/http_connection_pop_line"
+    },
+    {
+      "category": "STRUCT",
+      "name": "struct http_connection",
+      "provider_header_path": "network/connection.h",
+      "provider_trace_id": "http/network/connection",
+      "strategy": "same_parent",
+      "trace_id": "http/network/connection/http_connection_pop_bytes"
+    },
+    {
+      "category": "STRUCT",
+      "name": "struct http_connection",
+      "provider_header_path": "network/connection.h",
+      "provider_trace_id": "http/network/connection",
+      "strategy": "same_parent",
+      "trace_id": "http/network/connection/http_connection_buffered"
+    },
+    {
+      "category": "STRUCT",
+      "name": "struct http_connection",
+      "provider_header_path": "network/connection.h",
+      "provider_trace_id": "http/network/connection",
+      "strategy": "same_parent",
+      "trace_id": "http/network/connection/http_connection_queue"
+    },
+    {
+      "category": "FUNC",
+      "name": "ensure_cap",
+      "provider_header_path": "network/connection.h",
+      "provider_trace_id": "http/network/connection",
+      "strategy": "same_parent",
+      "trace_id": "http/network/connection/http_connection_queue"
+    },
+    {
+      "category": "FUNC",
+      "name": "http_connection_queue",
+      "provider_header_path": "network/connection.h",
+      "provider_trace_id": "http/network/connection",
+      "strategy": "same_parent",
+      "trace_id": "http/network/connection/http_connection_queue_str"
+    },
+    {
+      "category": "STRUCT",
+      "name": "struct http_connection",
+      "provider_header_path": "network/connection.h",
+      "provider_trace_id": "http/network/connection",
+      "strategy": "same_parent",
+      "trace_id": "http/network/connection/http_connection_flush"
+    },
+    {
+      "category": "FUNC",
+      "name": "send",
+      "provider_header_path": "",
+      "provider_trace_id": "",
+      "strategy": "external_name_only",
+      "trace_id": "http/network/connection/http_connection_flush"
+    },
+    {
+      "category": "STRUCT",
+      "name": "struct http_connection",
+      "provider_header_path": "network/connection.h",
+      "provider_trace_id": "http/network/connection",
+      "strategy": "same_parent",
+      "trace_id": "http/network/connection/http_connection_has_pending"
+    },
+    {
+      "category": "STRUCT",
+      "name": "struct http_tcp_server",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "http/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "http/network/tcp_server/http_tcp_server_create"
+    },
+    {
+      "category": "STRUCT",
+      "name": "struct http_tcp_server",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "http/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "http/network/tcp_server/http_tcp_server_start"
+    },
+    {
+      "category": "FUNC",
+      "name": "setup_listener",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "http/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "http/network/tcp_server/http_tcp_server_start"
+    },
+    {
+      "category": "STRUCT",
+      "name": "struct http_tcp_server",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "http/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "http/network/tcp_server/http_tcp_server_run"
+    },
+    {
+      "category": "STRUCT",
+      "name": "http_client_node_t",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "http/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "http/network/tcp_server/http_tcp_server_run"
+    },
+    {
+      "category": "FUNC",
+      "name": "accept_loop",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "http/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "http/network/tcp_server/http_tcp_server_run"
+    },
+    {
+      "category": "FUNC",
+      "name": "find_client",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "http/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "http/network/tcp_server/http_tcp_server_run"
+    },
+    {
+      "category": "FUNC",
+      "name": "http_tcp_server_close_client",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "http/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "http/network/tcp_server/http_tcp_server_run"
+    },
+    {
+      "category": "STRUCT",
+      "name": "struct http_tcp_server",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "http/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "http/network/tcp_server/http_tcp_server_stop"
+    },
+    {
+      "category": "STRUCT",
+      "name": "struct http_tcp_server",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "http/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "http/network/tcp_server/http_tcp_server_destroy"
+    },
+    {
+      "category": "STRUCT",
+      "name": "http_client_node_t",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "http/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "http/network/tcp_server/http_tcp_server_destroy"
+    },
+    {
+      "category": "STRUCT",
+      "name": "struct http_tcp_server",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "http/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "http/network/tcp_server/http_tcp_server_update_interest"
+    },
+    {
+      "category": "STRUCT",
+      "name": "http_client_node_t",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "http/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "http/network/tcp_server/http_tcp_server_update_interest"
+    },
+    {
+      "category": "FUNC",
+      "name": "find_client",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "http/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "http/network/tcp_server/http_tcp_server_update_interest"
+    },
+    {
+      "category": "STRUCT",
+      "name": "struct http_tcp_server",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "http/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "http/network/tcp_server/http_tcp_server_close_client"
+    },
+    {
+      "category": "STRUCT",
+      "name": "http_client_node_t",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "http/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "http/network/tcp_server/http_tcp_server_close_client"
+    },
+    {
+      "category": "FUNC",
+      "name": "find_client",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "http/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "http/network/tcp_server/http_tcp_server_close_client"
+    },
+    {
+      "category": "FUNC",
+      "name": "remove_client_node",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "http/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "http/network/tcp_server/http_tcp_server_close_client"
+    },
+    {
+      "category": "STRUCT",
+      "name": "struct http_tcp_server",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "http/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "http/network/tcp_server/find_client"
+    },
+    {
+      "category": "STRUCT",
+      "name": "http_client_node_t",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "http/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "http/network/tcp_server/find_client"
+    },
+    {
+      "category": "STRUCT",
+      "name": "struct http_tcp_server",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "http/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "http/network/tcp_server/add_client"
+    },
+    {
+      "category": "STRUCT",
+      "name": "http_client_node_t",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "http/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "http/network/tcp_server/add_client"
+    },
+    {
+      "category": "STRUCT",
+      "name": "struct http_tcp_server",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "http/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "http/network/tcp_server/remove_client_node"
+    },
+    {
+      "category": "STRUCT",
+      "name": "http_client_node_t",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "http/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "http/network/tcp_server/remove_client_node"
+    },
+    {
+      "category": "STRUCT",
+      "name": "struct http_tcp_server",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "http/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "http/network/tcp_server/setup_listener"
+    },
+    {
+      "category": "FUNC",
+      "name": "set_nonblocking",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "http/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "http/network/tcp_server/setup_listener"
+    },
+    {
+      "category": "STRUCT",
+      "name": "struct http_tcp_server",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "http/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "http/network/tcp_server/accept_loop"
+    },
+    {
+      "category": "FUNC",
+      "name": "set_nonblocking",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "http/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "http/network/tcp_server/accept_loop"
+    },
+    {
+      "category": "FUNC",
+      "name": "add_client",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "http/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "http/network/tcp_server/accept_loop"
+    },
+    {
+      "category": "STRUCT",
+      "name": "http_request_t",
+      "provider_header_path": "protocol/http_request.h",
+      "provider_trace_id": "http/protocol/http_request",
+      "strategy": "same_parent",
+      "trace_id": "http/protocol/http_request/http_request_free"
+    },
+    {
+      "category": "STRUCT",
+      "name": "http_request_t",
+      "provider_header_path": "protocol/http_request.h",
+      "provider_trace_id": "http/protocol/http_request",
+      "strategy": "same_parent",
+      "trace_id": "http/protocol/http_request/http_request_parse"
+    },
+    {
+      "category": "STRUCT",
+      "name": "http_header_t",
+      "provider_header_path": "protocol/http_request.h",
+      "provider_trace_id": "http/protocol/http_request",
+      "strategy": "same_parent",
+      "trace_id": "http/protocol/http_request/http_request_parse"
+    },
+    {
+      "category": "FUNC",
+      "name": "http_connection_pop_line",
+      "provider_header_path": "network/connection.h",
+      "provider_trace_id": "http/network/connection",
+      "strategy": "dependency_provider",
+      "trace_id": "http/protocol/http_request/http_request_parse"
+    },
+    {
+      "category": "FUNC",
+      "name": "http_connection_buffered",
+      "provider_header_path": "network/connection.h",
+      "provider_trace_id": "http/network/connection",
+      "strategy": "dependency_provider",
+      "trace_id": "http/protocol/http_request/http_request_parse"
+    },
+    {
+      "category": "FUNC",
+      "name": "http_connection_pop_bytes",
+      "provider_header_path": "network/connection.h",
+      "provider_trace_id": "http/network/connection",
+      "strategy": "dependency_provider",
+      "trace_id": "http/protocol/http_request/http_request_parse"
+    },
+    {
+      "category": "FUNC",
+      "name": "parse_method",
+      "provider_header_path": "protocol/http_request.h",
+      "provider_trace_id": "http/protocol/http_request",
+      "strategy": "same_parent",
+      "trace_id": "http/protocol/http_request/http_request_parse"
+    },
+    {
+      "category": "FUNC",
+      "name": "http_request_header",
+      "provider_header_path": "protocol/http_request.h",
+      "provider_trace_id": "http/protocol/http_request",
+      "strategy": "same_parent",
+      "trace_id": "http/protocol/http_request/http_request_parse"
+    },
+    {
+      "category": "STRUCT",
+      "name": "http_request_t",
+      "provider_header_path": "protocol/http_request.h",
+      "provider_trace_id": "http/protocol/http_request",
+      "strategy": "same_parent",
+      "trace_id": "http/protocol/http_request/http_request_header"
+    },
+    {
+      "category": "STRUCT",
+      "name": "http_header_t",
+      "provider_header_path": "protocol/http_request.h",
+      "provider_trace_id": "http/protocol/http_request",
+      "strategy": "same_parent",
+      "trace_id": "http/protocol/http_request/http_request_header"
+    },
+    {
+      "category": "FUNC",
+      "name": "queuefv",
+      "provider_header_path": "protocol/http_response.h",
+      "provider_trace_id": "http/protocol/http_response",
+      "strategy": "same_parent",
+      "trace_id": "http/protocol/http_response/http_response_send"
+    },
+    {
+      "category": "FUNC",
+      "name": "http_status_text",
+      "provider_header_path": "protocol/http_response.h",
+      "provider_trace_id": "http/protocol/http_response",
+      "strategy": "same_parent",
+      "trace_id": "http/protocol/http_response/http_response_send"
+    },
+    {
+      "category": "FUNC",
+      "name": "http_connection_queue_str",
+      "provider_header_path": "network/connection.h",
+      "provider_trace_id": "http/network/connection",
+      "strategy": "dependency_provider",
+      "trace_id": "http/protocol/http_response/http_response_send"
+    },
+    {
+      "category": "FUNC",
+      "name": "http_connection_queue",
+      "provider_header_path": "network/connection.h",
+      "provider_trace_id": "http/network/connection",
+      "strategy": "dependency_provider",
+      "trace_id": "http/protocol/http_response/http_response_send"
+    },
+    {
+      "category": "FUNC",
+      "name": "http_response_send",
+      "provider_header_path": "protocol/http_response.h",
+      "provider_trace_id": "http/protocol/http_response",
+      "strategy": "same_parent",
+      "trace_id": "http/protocol/http_response/http_response_send_html"
+    },
+    {
+      "category": "FUNC",
+      "name": "http_connection_queue_str",
+      "provider_header_path": "network/connection.h",
+      "provider_trace_id": "http/network/connection",
+      "strategy": "dependency_provider",
+      "trace_id": "http/protocol/http_response/queuefv"
+    },
+    {
+      "category": "VAR",
+      "name": "mime_table",
+      "provider_header_path": "",
+      "provider_trace_id": "",
+      "strategy": "external_name_only",
+      "trace_id": "http/resource/file_ops/http_mime_by_ext"
+    },
+    {
+      "category": "FUNC",
+      "name": "parse_port",
+      "provider_header_path": "",
+      "provider_trace_id": "http/main",
+      "strategy": "same_parent",
+      "trace_id": "http/main/main"
+    },
+    {
+      "category": "FUNC",
+      "name": "http_server_create",
+      "provider_header_path": "server/http_server.h",
+      "provider_trace_id": "http/server/http_server",
+      "strategy": "dependency_provider",
+      "trace_id": "http/main/main"
+    },
+    {
+      "category": "FUNC",
+      "name": "http_server_start",
+      "provider_header_path": "server/http_server.h",
+      "provider_trace_id": "http/server/http_server",
+      "strategy": "dependency_provider",
+      "trace_id": "http/main/main"
+    },
+    {
+      "category": "FUNC",
+      "name": "http_server_run",
+      "provider_header_path": "server/http_server.h",
+      "provider_trace_id": "http/server/http_server",
+      "strategy": "dependency_provider",
+      "trace_id": "http/main/main"
+    },
+    {
+      "category": "FUNC",
+      "name": "http_server_destroy",
+      "provider_header_path": "server/http_server.h",
+      "provider_trace_id": "http/server/http_server",
+      "strategy": "dependency_provider",
+      "trace_id": "http/main/main"
+    },
+    {
+      "category": "STRUCT",
+      "name": "struct http_server",
+      "provider_header_path": "server/http_server.h",
+      "provider_trace_id": "http/server/http_server",
+      "strategy": "same_parent",
+      "trace_id": "http/server/http_server/find_session"
+    },
+    {
+      "category": "STRUCT",
+      "name": "http_session_node_t",
+      "provider_header_path": "server/http_server.h",
+      "provider_trace_id": "http/server/http_server",
+      "strategy": "same_parent",
+      "trace_id": "http/server/http_server/find_session"
+    },
+    {
+      "category": "STRUCT",
+      "name": "struct http_server",
+      "provider_header_path": "server/http_server.h",
+      "provider_trace_id": "http/server/http_server",
+      "strategy": "same_parent",
+      "trace_id": "http/server/http_server/remove_session"
+    },
+    {
+      "category": "STRUCT",
+      "name": "http_session_node_t",
+      "provider_header_path": "server/http_server.h",
+      "provider_trace_id": "http/server/http_server",
+      "strategy": "same_parent",
+      "trace_id": "http/server/http_server/remove_session"
+    },
+    {
+      "category": "FUNC",
+      "name": "http_session_destroy",
+      "provider_header_path": "server/http_session.h",
+      "provider_trace_id": "http/server/http_session",
+      "strategy": "dependency_provider",
+      "trace_id": "http/server/http_server/remove_session"
+    },
+    {
+      "category": "STRUCT",
+      "name": "struct http_server",
+      "provider_header_path": "server/http_server.h",
+      "provider_trace_id": "http/server/http_server",
+      "strategy": "same_parent",
+      "trace_id": "http/server/http_server/add_session"
+    },
+    {
+      "category": "STRUCT",
+      "name": "http_session_node_t",
+      "provider_header_path": "server/http_server.h",
+      "provider_trace_id": "http/server/http_server",
+      "strategy": "same_parent",
+      "trace_id": "http/server/http_server/add_session"
+    },
+    {
+      "category": "FUNC",
+      "name": "http_status_text",
+      "provider_header_path": "protocol/http_response.h",
+      "provider_trace_id": "http/protocol/http_response",
+      "strategy": "dependency_provider",
+      "trace_id": "http/server/http_server/send_error"
+    },
+    {
+      "category": "FUNC",
+      "name": "http_response_send",
+      "provider_header_path": "protocol/http_response.h",
+      "provider_trace_id": "http/protocol/http_response",
+      "strategy": "dependency_provider",
+      "trace_id": "http/server/http_server/send_error"
+    },
+    {
+      "category": "FUNC",
+      "name": "http_tcp_server_update_interest",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "http/network/tcp_server",
+      "strategy": "dependency_provider",
+      "trace_id": "http/server/http_server/send_error"
+    },
+    {
+      "category": "STRUCT",
+      "name": "http_session_t",
+      "provider_header_path": "server/http_session.h",
+      "provider_trace_id": "http/server/http_session",
+      "strategy": "dependency_provider",
+      "trace_id": "http/server/http_server/flush_and_update"
+    },
+    {
+      "category": "FUNC",
+      "name": "http_connection_flush",
+      "provider_header_path": "network/connection.h",
+      "provider_trace_id": "http/network/connection",
+      "strategy": "global_unique",
+      "trace_id": "http/server/http_server/flush_and_update"
+    },
+    {
+      "category": "FUNC",
+      "name": "http_connection_has_pending",
+      "provider_header_path": "network/connection.h",
+      "provider_trace_id": "http/network/connection",
+      "strategy": "global_unique",
+      "trace_id": "http/server/http_server/flush_and_update"
+    },
+    {
+      "category": "FUNC",
+      "name": "http_tcp_server_update_interest",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "http/network/tcp_server",
+      "strategy": "dependency_provider",
+      "trace_id": "http/server/http_server/flush_and_update"
+    },
+    {
+      "category": "STRUCT",
+      "name": "struct http_server",
+      "provider_header_path": "server/http_server.h",
+      "provider_trace_id": "http/server/http_server",
+      "strategy": "same_parent",
+      "trace_id": "http/server/http_server/serve_file"
+    },
+    {
+      "category": "STRUCT",
+      "name": "http_session_t",
+      "provider_header_path": "server/http_session.h",
+      "provider_trace_id": "http/server/http_session",
+      "strategy": "dependency_provider",
+      "trace_id": "http/server/http_server/serve_file"
+    },
+    {
+      "category": "STRUCT",
+      "name": "http_request_t",
+      "provider_header_path": "protocol/http_request.h",
+      "provider_trace_id": "http/protocol/http_request",
+      "strategy": "dependency_provider",
+      "trace_id": "http/server/http_server/serve_file"
+    },
+    {
+      "category": "FUNC",
+      "name": "http_resolve_path",
+      "provider_header_path": "resource/file_ops.h",
+      "provider_trace_id": "http/resource/file_ops",
+      "strategy": "dependency_provider",
+      "trace_id": "http/server/http_server/serve_file"
+    },
+    {
+      "category": "FUNC",
+      "name": "send_error",
+      "provider_header_path": "server/http_server.h",
+      "provider_trace_id": "http/server/http_server",
+      "strategy": "same_parent",
+      "trace_id": "http/server/http_server/serve_file"
+    },
+    {
+      "category": "FUNC",
+      "name": "http_stat_path",
+      "provider_header_path": "resource/file_ops.h",
+      "provider_trace_id": "http/resource/file_ops",
+      "strategy": "dependency_provider",
+      "trace_id": "http/server/http_server/serve_file"
+    },
+    {
+      "category": "FUNC",
+      "name": "http_read_file",
+      "provider_header_path": "resource/file_ops.h",
+      "provider_trace_id": "http/resource/file_ops",
+      "strategy": "dependency_provider",
+      "trace_id": "http/server/http_server/serve_file"
+    },
+    {
+      "category": "FUNC",
+      "name": "http_mime_by_ext",
+      "provider_header_path": "resource/file_ops.h",
+      "provider_trace_id": "http/resource/file_ops",
+      "strategy": "dependency_provider",
+      "trace_id": "http/server/http_server/serve_file"
+    },
+    {
+      "category": "FUNC",
+      "name": "http_dir_listing_html",
+      "provider_header_path": "resource/file_ops.h",
+      "provider_trace_id": "http/resource/file_ops",
+      "strategy": "dependency_provider",
+      "trace_id": "http/server/http_server/serve_file"
+    },
+    {
+      "category": "FUNC",
+      "name": "http_response_send",
+      "provider_header_path": "protocol/http_response.h",
+      "provider_trace_id": "http/protocol/http_response",
+      "strategy": "dependency_provider",
+      "trace_id": "http/server/http_server/serve_file"
+    },
+    {
+      "category": "FUNC",
+      "name": "http_tcp_server_update_interest",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "http/network/tcp_server",
+      "strategy": "dependency_provider",
+      "trace_id": "http/server/http_server/serve_file"
+    },
+    {
+      "category": "FUNC",
+      "name": "serve_file",
+      "provider_header_path": "server/http_server.h",
+      "provider_trace_id": "http/server/http_server",
+      "strategy": "same_parent",
+      "trace_id": "http/server/http_server/handle_get"
+    },
+    {
+      "category": "FUNC",
+      "name": "serve_file",
+      "provider_header_path": "server/http_server.h",
+      "provider_trace_id": "http/server/http_server",
+      "strategy": "same_parent",
+      "trace_id": "http/server/http_server/handle_head"
+    },
+    {
+      "category": "STRUCT",
+      "name": "struct http_server",
+      "provider_header_path": "server/http_server.h",
+      "provider_trace_id": "http/server/http_server",
+      "strategy": "same_parent",
+      "trace_id": "http/server/http_server/handle_post"
+    },
+    {
+      "category": "STRUCT",
+      "name": "http_session_t",
+      "provider_header_path": "server/http_session.h",
+      "provider_trace_id": "http/server/http_session",
+      "strategy": "dependency_provider",
+      "trace_id": "http/server/http_server/handle_post"
+    },
+    {
+      "category": "STRUCT",
+      "name": "http_request_t",
+      "provider_header_path": "protocol/http_request.h",
+      "provider_trace_id": "http/protocol/http_request",
+      "strategy": "dependency_provider",
+      "trace_id": "http/server/http_server/handle_post"
+    },
+    {
+      "category": "FUNC",
+      "name": "send_error",
+      "provider_header_path": "server/http_server.h",
+      "provider_trace_id": "http/server/http_server",
+      "strategy": "same_parent",
+      "trace_id": "http/server/http_server/handle_post"
+    },
+    {
+      "category": "FUNC",
+      "name": "http_resolve_path",
+      "provider_header_path": "resource/file_ops.h",
+      "provider_trace_id": "http/resource/file_ops",
+      "strategy": "dependency_provider",
+      "trace_id": "http/server/http_server/handle_post"
+    },
+    {
+      "category": "FUNC",
+      "name": "http_response_send",
+      "provider_header_path": "protocol/http_response.h",
+      "provider_trace_id": "http/protocol/http_response",
+      "strategy": "dependency_provider",
+      "trace_id": "http/server/http_server/handle_post"
+    },
+    {
+      "category": "FUNC",
+      "name": "http_tcp_server_update_interest",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "http/network/tcp_server",
+      "strategy": "dependency_provider",
+      "trace_id": "http/server/http_server/handle_post"
+    },
+    {
+      "category": "STRUCT",
+      "name": "http_request_t",
+      "provider_header_path": "protocol/http_request.h",
+      "provider_trace_id": "http/protocol/http_request",
+      "strategy": "dependency_provider",
+      "trace_id": "http/server/http_server/dispatch"
+    },
+    {
+      "category": "FUNC",
+      "name": "handle_get",
+      "provider_header_path": "server/http_server.h",
+      "provider_trace_id": "http/server/http_server",
+      "strategy": "same_parent",
+      "trace_id": "http/server/http_server/dispatch"
+    },
+    {
+      "category": "FUNC",
+      "name": "handle_head",
+      "provider_header_path": "server/http_server.h",
+      "provider_trace_id": "http/server/http_server",
+      "strategy": "same_parent",
+      "trace_id": "http/server/http_server/dispatch"
+    },
+    {
+      "category": "FUNC",
+      "name": "handle_post",
+      "provider_header_path": "server/http_server.h",
+      "provider_trace_id": "http/server/http_server",
+      "strategy": "same_parent",
+      "trace_id": "http/server/http_server/dispatch"
+    },
+    {
+      "category": "FUNC",
+      "name": "send_error",
+      "provider_header_path": "server/http_server.h",
+      "provider_trace_id": "http/server/http_server",
+      "strategy": "same_parent",
+      "trace_id": "http/server/http_server/dispatch"
+    },
+    {
+      "category": "STRUCT",
+      "name": "struct http_server",
+      "provider_header_path": "server/http_server.h",
+      "provider_trace_id": "http/server/http_server",
+      "strategy": "same_parent",
+      "trace_id": "http/server/http_server/on_accept_cb"
+    },
+    {
+      "category": "FUNC",
+      "name": "http_session_create",
+      "provider_header_path": "server/http_session.h",
+      "provider_trace_id": "http/server/http_session",
+      "strategy": "dependency_provider",
+      "trace_id": "http/server/http_server/on_accept_cb"
+    },
+    {
+      "category": "FUNC",
+      "name": "add_session",
+      "provider_header_path": "server/http_server.h",
+      "provider_trace_id": "http/server/http_server",
+      "strategy": "same_parent",
+      "trace_id": "http/server/http_server/on_accept_cb"
+    },
+    {
+      "category": "FUNC",
+      "name": "http_tcp_server_close_client",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "http/network/tcp_server",
+      "strategy": "dependency_provider",
+      "trace_id": "http/server/http_server/on_accept_cb"
+    },
+    {
+      "category": "FUNC",
+      "name": "http_session_destroy",
+      "provider_header_path": "server/http_session.h",
+      "provider_trace_id": "http/server/http_session",
+      "strategy": "dependency_provider",
+      "trace_id": "http/server/http_server/on_accept_cb"
+    },
+    {
+      "category": "FUNC",
+      "name": "http_tcp_server_close_client",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "http/network/tcp_server",
+      "strategy": "dependency_provider",
+      "trace_id": "http/server/http_server/close_client"
+    },
+    {
+      "category": "STRUCT",
+      "name": "struct http_server",
+      "provider_header_path": "server/http_server.h",
+      "provider_trace_id": "http/server/http_server",
+      "strategy": "same_parent",
+      "trace_id": "http/server/http_server/on_event_cb"
+    },
+    {
+      "category": "STRUCT",
+      "name": "http_session_t",
+      "provider_header_path": "server/http_session.h",
+      "provider_trace_id": "http/server/http_session",
+      "strategy": "dependency_provider",
+      "trace_id": "http/server/http_server/on_event_cb"
+    },
+    {
+      "category": "STRUCT",
+      "name": "http_request_t",
+      "provider_header_path": "protocol/http_request.h",
+      "provider_trace_id": "http/protocol/http_request",
+      "strategy": "dependency_provider",
+      "trace_id": "http/server/http_server/on_event_cb"
+    },
+    {
+      "category": "FUNC",
+      "name": "find_session",
+      "provider_header_path": "server/http_server.h",
+      "provider_trace_id": "http/server/http_server",
+      "strategy": "same_parent",
+      "trace_id": "http/server/http_server/on_event_cb"
+    },
+    {
+      "category": "FUNC",
+      "name": "http_connection_read",
+      "provider_header_path": "network/connection.h",
+      "provider_trace_id": "http/network/connection",
+      "strategy": "global_unique",
+      "trace_id": "http/server/http_server/on_event_cb"
+    },
+    {
+      "category": "FUNC",
+      "name": "close_client",
+      "provider_header_path": "server/http_server.h",
+      "provider_trace_id": "http/server/http_server",
+      "strategy": "same_parent",
+      "trace_id": "http/server/http_server/on_event_cb"
+    },
+    {
+      "category": "FUNC",
+      "name": "http_request_init",
+      "provider_header_path": "protocol/http_request.h",
+      "provider_trace_id": "http/protocol/http_request",
+      "strategy": "dependency_provider",
+      "trace_id": "http/server/http_server/on_event_cb"
+    },
+    {
+      "category": "FUNC",
+      "name": "http_request_parse",
+      "provider_header_path": "protocol/http_request.h",
+      "provider_trace_id": "http/protocol/http_request",
+      "strategy": "dependency_provider",
+      "trace_id": "http/server/http_server/on_event_cb"
+    },
+    {
+      "category": "FUNC",
+      "name": "http_request_free",
+      "provider_header_path": "protocol/http_request.h",
+      "provider_trace_id": "http/protocol/http_request",
+      "strategy": "dependency_provider",
+      "trace_id": "http/server/http_server/on_event_cb"
+    },
+    {
+      "category": "FUNC",
+      "name": "dispatch",
+      "provider_header_path": "server/http_server.h",
+      "provider_trace_id": "http/server/http_server",
+      "strategy": "same_parent",
+      "trace_id": "http/server/http_server/on_event_cb"
+    },
+    {
+      "category": "FUNC",
+      "name": "send_error",
+      "provider_header_path": "server/http_server.h",
+      "provider_trace_id": "http/server/http_server",
+      "strategy": "same_parent",
+      "trace_id": "http/server/http_server/on_event_cb"
+    },
+    {
+      "category": "FUNC",
+      "name": "flush_and_update",
+      "provider_header_path": "server/http_server.h",
+      "provider_trace_id": "http/server/http_server",
+      "strategy": "same_parent",
+      "trace_id": "http/server/http_server/on_event_cb"
+    },
+    {
+      "category": "FUNC",
+      "name": "http_connection_has_pending",
+      "provider_header_path": "network/connection.h",
+      "provider_trace_id": "http/network/connection",
+      "strategy": "global_unique",
+      "trace_id": "http/server/http_server/on_event_cb"
+    },
+    {
+      "category": "FUNC",
+      "name": "http_connection_flush",
+      "provider_header_path": "network/connection.h",
+      "provider_trace_id": "http/network/connection",
+      "strategy": "global_unique",
+      "trace_id": "http/server/http_server/on_event_cb"
+    },
+    {
+      "category": "FUNC",
+      "name": "http_tcp_server_update_interest",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "http/network/tcp_server",
+      "strategy": "dependency_provider",
+      "trace_id": "http/server/http_server/on_event_cb"
+    },
+    {
+      "category": "STRUCT",
+      "name": "struct http_server",
+      "provider_header_path": "server/http_server.h",
+      "provider_trace_id": "http/server/http_server",
+      "strategy": "same_parent",
+      "trace_id": "http/server/http_server/on_close_cb"
+    },
+    {
+      "category": "FUNC",
+      "name": "remove_session",
+      "provider_header_path": "server/http_server.h",
+      "provider_trace_id": "http/server/http_server",
+      "strategy": "same_parent",
+      "trace_id": "http/server/http_server/on_close_cb"
+    },
+    {
+      "category": "STRUCT",
+      "name": "struct http_server",
+      "provider_header_path": "server/http_server.h",
+      "provider_trace_id": "http/server/http_server",
+      "strategy": "same_parent",
+      "trace_id": "http/server/http_server/http_server_create"
+    },
+    {
+      "category": "FUNC",
+      "name": "http_tcp_server_create",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "http/network/tcp_server",
+      "strategy": "dependency_provider",
+      "trace_id": "http/server/http_server/http_server_create"
+    },
+    {
+      "category": "FUNC",
+      "name": "http_tcp_server_start",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "http/network/tcp_server",
+      "strategy": "dependency_provider",
+      "trace_id": "http/server/http_server/http_server_start"
+    },
+    {
+      "category": "FUNC",
+      "name": "http_tcp_server_run",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "http/network/tcp_server",
+      "strategy": "dependency_provider",
+      "trace_id": "http/server/http_server/http_server_run"
+    },
+    {
+      "category": "FUNC",
+      "name": "http_tcp_server_stop",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "http/network/tcp_server",
+      "strategy": "dependency_provider",
+      "trace_id": "http/server/http_server/http_server_stop"
+    },
+    {
+      "category": "STRUCT",
+      "name": "struct http_server",
+      "provider_header_path": "server/http_server.h",
+      "provider_trace_id": "http/server/http_server",
+      "strategy": "same_parent",
+      "trace_id": "http/server/http_server/http_server_destroy"
+    },
+    {
+      "category": "STRUCT",
+      "name": "http_session_node_t",
+      "provider_header_path": "server/http_server.h",
+      "provider_trace_id": "http/server/http_server",
+      "strategy": "same_parent",
+      "trace_id": "http/server/http_server/http_server_destroy"
+    },
+    {
+      "category": "FUNC",
+      "name": "http_session_destroy",
+      "provider_header_path": "server/http_session.h",
+      "provider_trace_id": "http/server/http_session",
+      "strategy": "dependency_provider",
+      "trace_id": "http/server/http_server/http_server_destroy"
+    },
+    {
+      "category": "FUNC",
+      "name": "http_tcp_server_destroy",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "http/network/tcp_server",
+      "strategy": "dependency_provider",
+      "trace_id": "http/server/http_server/http_server_destroy"
+    },
+    {
+      "category": "STRUCT",
+      "name": "http_session_t",
+      "provider_header_path": "server/http_session.h",
+      "provider_trace_id": "http/server/http_session",
+      "strategy": "same_parent",
+      "trace_id": "http/server/http_session/http_session_create"
+    },
+    {
+      "category": "FUNC",
+      "name": "http_connection_create",
+      "provider_header_path": "network/connection.h",
+      "provider_trace_id": "http/network/connection",
+      "strategy": "dependency_provider",
+      "trace_id": "http/server/http_session/http_session_create"
+    },
+    {
+      "category": "FUNC",
+      "name": "http_connection_destroy",
+      "provider_header_path": "network/connection.h",
+      "provider_trace_id": "http/network/connection",
+      "strategy": "dependency_provider",
+      "trace_id": "http/server/http_session/http_session_destroy"
+    }
+  ],
+  "schema_version": "spec_ablation_s2_transformation_manifest/v1",
+  "source_root": "specs-example/http_specs",
+  "transformation_hash": "3d8e10a416c35f2d5ba03746b2fc74b6612b567dfaded6dd2e13021392129035",
+  "transformer_version": "spec_ablation_s2_transformer/v2",
+  "validation": {
+    "leakage_scan": {
+      "forbidden_terms": [
+        "PROTOCOL_MODULE_SPEC",
+        "FILE_SPEC",
+        "FUNCTION_SPEC",
+        "ACCESS_PATHS",
+        "WIRE_MAPPING",
+        "CALL_CONTRACTS",
+        "FORBIDDEN_SYMBOLS",
+        "TEST_VECTORS",
+        "CONSISTENCY_RULES",
+        "DOC_REF",
+        "TRACE_REFS"
+      ],
+      "status": "passed",
+      "violations": []
+    },
+    "s2_project_graph_leakage_scan": {
+      "forbidden_terms": [
+        "PROTOCOL_MODULE_SPEC",
+        "FILE_SPEC",
+        "FUNCTION_SPEC",
+        "ACCESS_PATHS",
+        "WIRE_MAPPING",
+        "CALL_CONTRACTS",
+        "FORBIDDEN_SYMBOLS",
+        "TEST_VECTORS",
+        "CONSISTENCY_RULES",
+        "DOC_REF",
+        "TRACE_REFS",
+        "ROLE",
+        "ARTIFACTS",
+        "DATA",
+        "INTERFACE",
+        "FUNCTION_TYPE",
+        "PARAMS",
+        "NULLABLE",
+        "OWNERSHIP",
+        "PUBLIC_SYMBOLS",
+        "SCOPE"
+      ],
+      "status": "passed",
+      "violations": []
+    },
+    "source_loader": {
+      "diagnostics": [],
+      "status": "passed"
+    }
+  },
+  "view": "s2"
+}

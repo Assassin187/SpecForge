@@ -30,6 +30,8 @@ EXPECTED_HEADERS = {
     "smtp": 8,
 }
 
+GENERIC_SIGNATURE_PARAMS_INVARIANT = "调用方必须遵守 SIGNATURE.PARAMS 中的 NULLABLE 与 OWNERSHIP 约束。"
+
 
 def _read_json(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
@@ -67,6 +69,7 @@ class TransformerTests(unittest.TestCase):
                 for view in ("s1", "s2", "s3"):
                     manifest = self._manifest(protocol, view)
                     self.assertEqual(manifest["view"], view)
+                    self.assertEqual(manifest["transformer_version"], f"spec_ablation_{view}_transformer/v2")
                     self.assertEqual(manifest["validation"]["source_loader"]["status"], "passed")
                     self.assertEqual(manifest["validation"]["leakage_scan"]["status"], "passed")
                     self.assertEqual(manifest["counts"]["functions"], EXPECTED_FUNCTIONS[protocol])
@@ -165,6 +168,7 @@ class TransformerTests(unittest.TestCase):
                         text = data.decode("utf-8")
                         tags = [line.strip() for line in text.splitlines() if line.startswith("[") and line.endswith("]")]
                         self.assertEqual(tags, expected_tags)
+                        self.assertNotIn(GENERIC_SIGNATURE_PARAMS_INVARIANT, text)
                         for term in FORBIDDEN_VISIBLE_TERMS:
                             self.assertNotIn(term, text)
 

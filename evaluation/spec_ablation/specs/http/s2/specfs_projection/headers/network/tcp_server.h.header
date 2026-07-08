@@ -1,0 +1,23 @@
+#include <stdbool.h>
+#include <stdint.h>
+#include <sys/socket.h>
+
+#define HTTP_IO_READABLE 1u << 0
+#define HTTP_IO_WRITABLE 1u << 1
+typedef struct http_tcp_server http_tcp_server_t;
+typedef void (*http_tcp_on_accept_fn)(void* user, int fd, const struct sockaddr_storage* peer, socklen_t peer_len);
+typedef void (*http_tcp_on_event_fn)(void* user, int fd, uint32_t events);
+typedef void (*http_tcp_on_close_fn)(void* user, int fd);
+typedef struct http_tcp_callbacks {
+    http_tcp_on_accept_fn on_accept;
+    http_tcp_on_event_fn on_event;
+    http_tcp_on_close_fn on_close;
+} http_tcp_callbacks_t;
+
+http_tcp_server_t* http_tcp_server_create(uint16_t port, http_tcp_callbacks_t callbacks, void* user);
+int http_tcp_server_start(http_tcp_server_t* server);
+int http_tcp_server_run(http_tcp_server_t* server);
+void http_tcp_server_stop(http_tcp_server_t* server);
+void http_tcp_server_destroy(http_tcp_server_t* server);
+int http_tcp_server_update_interest(http_tcp_server_t* server, int fd, bool want_write);
+int http_tcp_server_close_client(http_tcp_server_t* server, int fd);

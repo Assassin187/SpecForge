@@ -1,0 +1,34 @@
+#include "network/connection.h"
+
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
+typedef enum http_method {
+    HTTP_GET = 0,
+    HTTP_HEAD = 1,
+    HTTP_POST = 2,
+    HTTP_UNKNOWN = 3,
+} http_method_t;
+#define HTTP_MAX_HEADERS 64
+#define HTTP_MAX_URI 2048
+#define HTTP_MAX_HEADER_NAME 256
+#define HTTP_MAX_HEADER_VALUE 4096
+#define HTTP_MAX_BODY 16777216
+typedef struct http_header {
+    char name[HTTP_MAX_HEADER_NAME];
+    char value[HTTP_MAX_HEADER_VALUE];
+} http_header_t;
+typedef struct http_request {
+    http_method_t method;
+    char uri[HTTP_MAX_URI];
+    http_header_t headers[HTTP_MAX_HEADERS];
+    size_t header_count;
+    char* body;
+    size_t body_len;
+} http_request_t;
+
+void http_request_init(http_request_t* req);
+void http_request_free(http_request_t* req);
+int http_request_parse(http_request_t* req, http_connection_t* conn);
+const char* http_request_header(const http_request_t* req, const char* name);

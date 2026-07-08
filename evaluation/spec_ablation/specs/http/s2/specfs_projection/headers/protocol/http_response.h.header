@@ -1,0 +1,8 @@
+#include "network/connection.h"
+
+#include <stddef.h>
+#include <stdint.h>
+
+const char* http_status_text(int code);
+int http_response_send(http_connection_t* conn, int status, const char** extra_headers, const void* body, size_t body_len);
+int http_response_send_html(http_connection_t* conn, int status, const char* title, const char* fmt, ...);

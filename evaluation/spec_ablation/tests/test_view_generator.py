@@ -11,9 +11,12 @@ from agent.coder.generation import DEFAULT_MAX_REPAIR_ROUNDS
 from agent.coder.llm_client import LLMResponse, LLMUsage
 
 from evaluation.spec_ablation.transformer import FORBIDDEN_VISIBLE_TERMS, transform_protocol
-from evaluation.spec_ablation.view_generator import build_parser, default_output_dir, main as view_generator_main
+from evaluation.spec_ablation.view_generator import PromptAudit, build_parser, default_output_dir, main as view_generator_main
 from evaluation.spec_ablation.view_prompts import ViewPromptBuilder
 from evaluation.spec_ablation.view_specs import PROMPT_FORBIDDEN_TERMS, load_ablation_view_context, prompt_forbidden_terms
+
+
+GENERIC_SIGNATURE_PARAMS_INVARIANT = "调用方必须遵守 SIGNATURE.PARAMS 中的 NULLABLE 与 OWNERSHIP 约束。"
 
 
 class FakeLLM:
@@ -157,6 +160,71 @@ class ViewGeneratorTests(unittest.TestCase):
         for term in prompt_forbidden_terms("s2"):
             self.assertNotIn(term, payload)
 
+    def test_s2_prompt_audit_allows_local_protocol_vocabulary_terms(self) -> None:
+        forbidden_terms = set(prompt_forbidden_terms("s2"))
+        for term in ("DATA", "INTERFACE", "NULLABLE", "OWNERSHIP", "PARAMS", "ROLE"):
+            self.assertNotIn(term, forbidden_terms)
+
+        messages = [{"role": "user", "content": "[SPECIFICATION]\nSIGNATURE.PARAMS NULLABLE OWNERSHIP DATA ROLE INTERFACE"}]
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            audit = PromptAudit(output_dir=Path(raw_tmp), view_name="s2")
+            audit("source_generation", "local_contract.spec", messages)
+            payload = json.loads(audit.path.read_text(encoding="utf-8"))
+            self.assertEqual(payload[0]["leakage_scan"]["status"], "passed")
+
+    def test_http_s2_prompt_audit_does_not_block_connection_prompt(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            root = Path(raw_tmp)
+            transform_protocol("http", root / "http", overwrite=True)
+            context = load_ablation_view_context(root / "http", view_name="s2")
+            file_spec = next(
+                item
+                for item in context.source_bundle.file_specs_by_source_path.values()
+                if item.source_path.endswith("network/connection.c")
+            )
+            messages = ViewPromptBuilder(context).build_source_prompt(
+                context.source_bundle,
+                context.source_bundle.modules_in_order[0],
+                file_spec,
+                [],
+                "/* canonical */",
+                {},
+            )
+            payload = json.dumps(messages, ensure_ascii=False)
+            self.assertIn("http_connection_destroy", payload)
+            self.assertNotIn(GENERIC_SIGNATURE_PARAMS_INVARIANT, payload)
+
+            audit = PromptAudit(output_dir=root / "out", view_name="s2")
+            audit("source_generation", file_spec.source_path, messages)
+            audit_payload = json.loads(audit.path.read_text(encoding="utf-8"))
+            self.assertTrue(all(item["leakage_scan"]["status"] == "passed" for item in audit_payload))
+
+    def test_smtp_s2_prompt_audit_does_not_block_data_command_prompt(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            root = Path(raw_tmp)
+            transform_protocol("smtp", root / "smtp", overwrite=True)
+            context = load_ablation_view_context(root / "smtp", view_name="s2")
+            file_spec = next(
+                item
+                for item in context.source_bundle.file_specs_by_source_path.values()
+                if item.source_path.endswith("server/smtp_server.c")
+            )
+            messages = ViewPromptBuilder(context).build_source_prompt(
+                context.source_bundle,
+                context.source_bundle.modules_in_order[0],
+                file_spec,
+                [],
+                "/* canonical */",
+                {},
+            )
+            payload = json.dumps(messages, ensure_ascii=False)
+            self.assertIn("DATA", payload)
+
+            audit = PromptAudit(output_dir=root / "out", view_name="s2")
+            audit("source_generation", file_spec.source_path, messages)
+            audit_payload = json.loads(audit.path.read_text(encoding="utf-8"))
+            self.assertTrue(all(item["leakage_scan"]["status"] == "passed" for item in audit_payload))
+
     def test_s2_repair_prompt_has_graph_diagnostics_and_current_source(self) -> None:
         file_spec = self.s2_context.source_bundle.file_specs_by_source_path["protocol/mqtt_decoder.c"]
         builder = ViewPromptBuilder(self.s2_context)
@@ -224,7 +292,6 @@ class ViewGeneratorTests(unittest.TestCase):
 
     def test_fake_generation_uses_view_prompt_builder_and_writes_audit(self) -> None:
         from agent.coder.generation import ProjectGenerator
-        from evaluation.spec_ablation.view_generator import PromptAudit
 
         expected_boundaries = {
             "s1": "s1_local_specfs",

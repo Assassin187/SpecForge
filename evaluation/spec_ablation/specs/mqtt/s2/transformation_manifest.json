@@ -2483,8 +2483,8 @@
   ],
   "schema_version": "spec_ablation_s2_transformation_manifest/v1",
   "source_root": "specs-example/mqtt_specs",
-  "transformation_hash": "46e1a06296601f98a7c3bda73446dcdb7051350c9709a856280b51ebe96767df",
-  "transformer_version": "spec_ablation_s2_transformer/v1",
+  "transformation_hash": "be37d4d871c63cce1b1b354006b0243d99fe5015b669e3091051b306de7e3e8b",
+  "transformer_version": "spec_ablation_s2_transformer/v2",
   "validation": {
     "leakage_scan": {
       "forbidden_terms": [

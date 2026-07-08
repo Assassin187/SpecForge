@@ -1,0 +1,12 @@
+#include "network/connection.h"
+
+#include <stdbool.h>
+#include <stddef.h>
+
+typedef struct http_session {
+    int fd;
+    http_connection_t* conn;
+} http_session_t;
+
+http_session_t* http_session_create(int fd);
+void http_session_destroy(http_session_t* session);

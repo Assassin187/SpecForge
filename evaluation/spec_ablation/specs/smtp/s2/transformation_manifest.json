@@ -1,0 +1,2231 @@
+{
+  "artifacts": {
+    "execution_manifest": "execution_manifest.json",
+    "functions": [
+      {
+        "artifact_path": "specfs_projection/functions/smtp/network/connection/ensure_cap.spec",
+        "name": "ensure_cap",
+        "sha256": "abb11adb34d30ca6e6f1df48e65e1d87858fb2aac97ee8d4d9a4216887f6ba07",
+        "source_path": "network/connection.c",
+        "trace_id": "smtp/network/connection/ensure_cap"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/network/connection/smtp_connection_create.spec",
+        "name": "smtp_connection_create",
+        "sha256": "3bf127e2d5f18cb4003126936143f02a272945964e808537d677249fad39c8cf",
+        "source_path": "network/connection.c",
+        "trace_id": "smtp/network/connection/smtp_connection_create"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/network/connection/smtp_connection_destroy.spec",
+        "name": "smtp_connection_destroy",
+        "sha256": "06bc9c8b5e06fac346b9c8d846ab410e7da7d74ef12df071a67006beffb36852",
+        "source_path": "network/connection.c",
+        "trace_id": "smtp/network/connection/smtp_connection_destroy"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/network/connection/smtp_connection_fd.spec",
+        "name": "smtp_connection_fd",
+        "sha256": "fb578f8b3323a646af70caa6f26c3ce7fe8f6efb3121c9c6379f899f9eb64771",
+        "source_path": "network/connection.c",
+        "trace_id": "smtp/network/connection/smtp_connection_fd"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/network/connection/smtp_connection_read.spec",
+        "name": "smtp_connection_read",
+        "sha256": "9df62c9fc4bb857df5ddd6cc9da1d61191c17ae2d3fb351f4a480bb085e34143",
+        "source_path": "network/connection.c",
+        "trace_id": "smtp/network/connection/smtp_connection_read"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/network/connection/smtp_connection_pop_line.spec",
+        "name": "smtp_connection_pop_line",
+        "sha256": "fe9592d01b4d3765c79da30e6e779ae41761465715fa54b327377cf85c5ace62",
+        "source_path": "network/connection.c",
+        "trace_id": "smtp/network/connection/smtp_connection_pop_line"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/network/connection/smtp_connection_queue.spec",
+        "name": "smtp_connection_queue",
+        "sha256": "2ff6c96e5ea091568baa4a75f68795c634c407766a175720bbdd0c677ba7d65a",
+        "source_path": "network/connection.c",
+        "trace_id": "smtp/network/connection/smtp_connection_queue"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/network/connection/smtp_connection_queue_str.spec",
+        "name": "smtp_connection_queue_str",
+        "sha256": "3b66908d5d1d3317ebcf65ec1d1f5d385602ad71902d8b3417f91cc3cfb1a7dd",
+        "source_path": "network/connection.c",
+        "trace_id": "smtp/network/connection/smtp_connection_queue_str"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/network/connection/smtp_connection_has_pending.spec",
+        "name": "smtp_connection_has_pending",
+        "sha256": "453b373c508a027175c4617d10ca65de574e726096341fdd30c660cc917f4293",
+        "source_path": "network/connection.c",
+        "trace_id": "smtp/network/connection/smtp_connection_has_pending"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/network/connection/smtp_connection_flush.spec",
+        "name": "smtp_connection_flush",
+        "sha256": "9ac3d35a0b95bb17c116e2fb10a24774d97e0983773e21cbca49c9ecc32efce6",
+        "source_path": "network/connection.c",
+        "trace_id": "smtp/network/connection/smtp_connection_flush"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/network/tcp_server/set_nonblocking.spec",
+        "name": "set_nonblocking",
+        "sha256": "4afad18ab831e8edd18add5e2436b0de409a118e75d5f64cb24f808d35fbb176",
+        "source_path": "network/tcp_server.c",
+        "trace_id": "smtp/network/tcp_server/set_nonblocking"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/network/tcp_server/find_client.spec",
+        "name": "find_client",
+        "sha256": "248fec1b3ee3b28175be2b345f457467865797120b9dbd328790e1607217515d",
+        "source_path": "network/tcp_server.c",
+        "trace_id": "smtp/network/tcp_server/find_client"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/network/tcp_server/add_client.spec",
+        "name": "add_client",
+        "sha256": "9dcd7d9d554ef0cb7ce63bbdc235fc65a90de6fb3ce3b7a81766d378243a5a99",
+        "source_path": "network/tcp_server.c",
+        "trace_id": "smtp/network/tcp_server/add_client"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/network/tcp_server/remove_client_node.spec",
+        "name": "remove_client_node",
+        "sha256": "dbe417eac37137c345bac30cc07b85c2804d214b5c3214a4756631d844567866",
+        "source_path": "network/tcp_server.c",
+        "trace_id": "smtp/network/tcp_server/remove_client_node"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/network/tcp_server/smtp_tcp_server_close_client.spec",
+        "name": "smtp_tcp_server_close_client",
+        "sha256": "1164db319e2a111413fb9bdb56f6b35bd9e4c5c6fec07fc5d56f8db9b6146764",
+        "source_path": "network/tcp_server.c",
+        "trace_id": "smtp/network/tcp_server/smtp_tcp_server_close_client"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/network/tcp_server/smtp_tcp_server_create.spec",
+        "name": "smtp_tcp_server_create",
+        "sha256": "f4807cbd939f0af8a9c65beaa03e28ae71f12540dfdddc4e12c47664d9c14d30",
+        "source_path": "network/tcp_server.c",
+        "trace_id": "smtp/network/tcp_server/smtp_tcp_server_create"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/network/tcp_server/smtp_tcp_server_update_interest.spec",
+        "name": "smtp_tcp_server_update_interest",
+        "sha256": "2bd9506706c64764ca33ac08e430faa3d3361d3f313ae0631fd5451178dfce1c",
+        "source_path": "network/tcp_server.c",
+        "trace_id": "smtp/network/tcp_server/smtp_tcp_server_update_interest"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/network/tcp_server/setup_listener.spec",
+        "name": "setup_listener",
+        "sha256": "0cc8068e44cd3aa06e614076ca48ef72acd5203b5922d2c7cd856ea1d6e50b40",
+        "source_path": "network/tcp_server.c",
+        "trace_id": "smtp/network/tcp_server/setup_listener"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/network/tcp_server/smtp_tcp_server_start.spec",
+        "name": "smtp_tcp_server_start",
+        "sha256": "89a1462a44992adbfe9d6411897755a6def43d2ae0c927de86b666e9ae79fc86",
+        "source_path": "network/tcp_server.c",
+        "trace_id": "smtp/network/tcp_server/smtp_tcp_server_start"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/network/tcp_server/accept_loop.spec",
+        "name": "accept_loop",
+        "sha256": "44ac10814da2cbdfe2e721ad021df40a078e34202a61c6bbcb76812eb325779f",
+        "source_path": "network/tcp_server.c",
+        "trace_id": "smtp/network/tcp_server/accept_loop"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/network/tcp_server/smtp_tcp_server_run.spec",
+        "name": "smtp_tcp_server_run",
+        "sha256": "d1b5f31a337d890d46d7d6c1bec4c811b6c7a25a0ba20dfd97fca81b8371b6ac",
+        "source_path": "network/tcp_server.c",
+        "trace_id": "smtp/network/tcp_server/smtp_tcp_server_run"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/network/tcp_server/smtp_tcp_server_stop.spec",
+        "name": "smtp_tcp_server_stop",
+        "sha256": "6fc9863983179a8f5f6e3047fcb4740272410b32771b8997cc167dbc8864045c",
+        "source_path": "network/tcp_server.c",
+        "trace_id": "smtp/network/tcp_server/smtp_tcp_server_stop"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/network/tcp_server/smtp_tcp_server_destroy.spec",
+        "name": "smtp_tcp_server_destroy",
+        "sha256": "e9b80d38b50ee8f5eafd84a976ae371a7c7e6c6e439555315519a02735f74f05",
+        "source_path": "network/tcp_server.c",
+        "trace_id": "smtp/network/tcp_server/smtp_tcp_server_destroy"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/protocol_text/smtp_command/parse_kind.spec",
+        "name": "parse_kind",
+        "sha256": "fc8297d0d6f9fd28a2e9ab5f66d13b46f94a314dc3535b58128336f807969bc1",
+        "source_path": "protocol/smtp_command.c",
+        "trace_id": "smtp/protocol_text/smtp_command/parse_kind"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/protocol_text/smtp_command/smtp_command_parse.spec",
+        "name": "smtp_command_parse",
+        "sha256": "6fe14456e70f74aaee25e6961e6cda9226d225fb920fa6b57db4dc121112e51e",
+        "source_path": "protocol/smtp_command.c",
+        "trace_id": "smtp/protocol_text/smtp_command/smtp_command_parse"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/protocol_text/smtp_command/smtp_command_name.spec",
+        "name": "smtp_command_name",
+        "sha256": "4c9c13ca8e2b8452b0239b656c43ba01a90fd0d2e646f343c9b9feea6f4897a5",
+        "source_path": "protocol/smtp_command.c",
+        "trace_id": "smtp/protocol_text/smtp_command/smtp_command_name"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/protocol_text/smtp_response/smtp_response_format.spec",
+        "name": "smtp_response_format",
+        "sha256": "96961d479b0214447acddc8c5372d17fcf9c7c5e060a72aceac99cb4006aa3af",
+        "source_path": "protocol/smtp_response.c",
+        "trace_id": "smtp/protocol_text/smtp_response/smtp_response_format"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/protocol_text/smtp_response/smtp_response_format_ehlo_caps.spec",
+        "name": "smtp_response_format_ehlo_caps",
+        "sha256": "a63eb18da05daa0e0e5d58a100da2271f57ca66548cf0d9827bdac539f12bc8c",
+        "source_path": "protocol/smtp_response.c",
+        "trace_id": "smtp/protocol_text/smtp_response/smtp_response_format_ehlo_caps"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/auth/smtp_auth/smtp_auth_default_user.spec",
+        "name": "smtp_auth_default_user",
+        "sha256": "886bcd3cc0df57d3fe0ecfa25fc66032b118fbb0157e32749e092e849c130507",
+        "source_path": "auth/smtp_auth.c",
+        "trace_id": "smtp/auth/smtp_auth/smtp_auth_default_user"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/auth/smtp_auth/smtp_auth_validate.spec",
+        "name": "smtp_auth_validate",
+        "sha256": "47ce82ca6802b5d98238960b36f67152789345f259e2e9767a42c561b535e7ed",
+        "source_path": "auth/smtp_auth.c",
+        "trace_id": "smtp/auth/smtp_auth/smtp_auth_validate"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/auth/smtp_auth/b64_value.spec",
+        "name": "b64_value",
+        "sha256": "35b67c6263ae59924d872685a6a4208d5a1670813711fcd07f946706a61cd60e",
+        "source_path": "auth/smtp_auth.c",
+        "trace_id": "smtp/auth/smtp_auth/b64_value"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/auth/smtp_auth/smtp_auth_decode_base64.spec",
+        "name": "smtp_auth_decode_base64",
+        "sha256": "57040941fe7a7dfcb6b925ad388e4a6a5389addcae49afc4a85958494309fdd5",
+        "source_path": "auth/smtp_auth.c",
+        "trace_id": "smtp/auth/smtp_auth/smtp_auth_decode_base64"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/auth/smtp_auth/smtp_auth_parse_plain_blob.spec",
+        "name": "smtp_auth_parse_plain_blob",
+        "sha256": "20305eea6025bbb64529b3ee7980d05dc0b54a2c217ca291f3cac7449ec7be4f",
+        "source_path": "auth/smtp_auth.c",
+        "trace_id": "smtp/auth/smtp_auth/smtp_auth_parse_plain_blob"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/storage/mail_store/ensure_dir_recursive.spec",
+        "name": "ensure_dir_recursive",
+        "sha256": "5b1436e997866318a5c3e47426ff6521e2923853fa0d290c2a69cd372ca3091d",
+        "source_path": "storage/mail_store.c",
+        "trace_id": "smtp/storage/mail_store/ensure_dir_recursive"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/storage/mail_store/write_all.spec",
+        "name": "write_all",
+        "sha256": "cc9b1c49e0fcac96ed8cc80e9afaf24abf57729fc24758171be2f4931f5dca5f",
+        "source_path": "storage/mail_store.c",
+        "trace_id": "smtp/storage/mail_store/write_all"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/storage/mail_store/smtp_mail_store_init.spec",
+        "name": "smtp_mail_store_init",
+        "sha256": "53dfe73c66226a8babb75c1202255cff2cca387b4f83876dd083e1428dc798d4",
+        "source_path": "storage/mail_store.c",
+        "trace_id": "smtp/storage/mail_store/smtp_mail_store_init"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/storage/mail_store/smtp_mail_store_write.spec",
+        "name": "smtp_mail_store_write",
+        "sha256": "51097771aad2e82ff99035eb3cb7590cb23d69762891514dc3eb6e2ab2b5f7c6",
+        "source_path": "storage/mail_store.c",
+        "trace_id": "smtp/storage/mail_store/smtp_mail_store_write"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/session/smtp_session/smtp_session_create.spec",
+        "name": "smtp_session_create",
+        "sha256": "7043280ddb64b579efbf90fdd0592e8cee290a034cde3a743dedd60b218c813c",
+        "source_path": "server/smtp_session.c",
+        "trace_id": "smtp/session/smtp_session/smtp_session_create"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/session/smtp_session/smtp_session_reset_transaction.spec",
+        "name": "smtp_session_reset_transaction",
+        "sha256": "a61b01e8a9b7843de87e02aaf14f9fa9d04d3cacb1ca07421c5e0630d2261e02",
+        "source_path": "server/smtp_session.c",
+        "trace_id": "smtp/session/smtp_session/smtp_session_reset_transaction"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/session/smtp_session/smtp_session_reset_auth_exchange.spec",
+        "name": "smtp_session_reset_auth_exchange",
+        "sha256": "3c8eee51b459aeddb6e59248ba829345a6cc0a36f0207a0c561053b37d613119",
+        "source_path": "server/smtp_session.c",
+        "trace_id": "smtp/session/smtp_session/smtp_session_reset_auth_exchange"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/session/smtp_session/smtp_session_destroy.spec",
+        "name": "smtp_session_destroy",
+        "sha256": "4d239e15252a7debe305fae5188d45107c152a0d3bdf73ba6ddc7069710e65de",
+        "source_path": "server/smtp_session.c",
+        "trace_id": "smtp/session/smtp_session/smtp_session_destroy"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/server_app/smtp_server/find_session.spec",
+        "name": "find_session",
+        "sha256": "854be1b0caa6fe5e0736b61658dd4602790f0f851bea3f34b8906bd4edfbeed7",
+        "source_path": "server/smtp_server.c",
+        "trace_id": "smtp/server_app/smtp_server/find_session"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/server_app/smtp_server/add_session.spec",
+        "name": "add_session",
+        "sha256": "5879ecc80991b6b4f45f2cd6bf5d6b759321767e23957dc5aa1ee6a513132c14",
+        "source_path": "server/smtp_server.c",
+        "trace_id": "smtp/server_app/smtp_server/add_session"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/server_app/smtp_server/remove_session.spec",
+        "name": "remove_session",
+        "sha256": "e7175ca843468b7abfad1cd282e2941743ef352584229d4a7a8fe8d1bd1720de",
+        "source_path": "server/smtp_server.c",
+        "trace_id": "smtp/server_app/smtp_server/remove_session"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/server_app/smtp_server/close_control.spec",
+        "name": "close_control",
+        "sha256": "b4e52181e60edd1de03f0e3ef784c7655ead3ff107389aa0ef1a43b93d02845e",
+        "source_path": "server/smtp_server.c",
+        "trace_id": "smtp/server_app/smtp_server/close_control"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/server_app/smtp_server/queue_raw.spec",
+        "name": "queue_raw",
+        "sha256": "e8c820f40d1e1a18d582077930ef6e4c114802ac10d3a4f8801fe687d3593951",
+        "source_path": "server/smtp_server.c",
+        "trace_id": "smtp/server_app/smtp_server/queue_raw"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/server_app/smtp_server/queue_code.spec",
+        "name": "queue_code",
+        "sha256": "913e43385265d7930b60dfb5b9438403455ac2cbe0d0b7f1a4ab2e9529273c5b",
+        "source_path": "server/smtp_server.c",
+        "trace_id": "smtp/server_app/smtp_server/queue_code"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/server_app/smtp_server/flush_control_now.spec",
+        "name": "flush_control_now",
+        "sha256": "2c65daae5d4ac51efc373150b018787148639e35298f1c19d0f16b92de1d8e18",
+        "source_path": "server/smtp_server.c",
+        "trace_id": "smtp/server_app/smtp_server/flush_control_now"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/server_app/smtp_server/append_message_line.spec",
+        "name": "append_message_line",
+        "sha256": "22ac64e608a3a61b72e67a7ea18c0f3a5bc7d57bb7ef7a86672235378116bc78",
+        "source_path": "server/smtp_server.c",
+        "trace_id": "smtp/server_app/smtp_server/append_message_line"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/server_app/smtp_server/handle_data_line.spec",
+        "name": "handle_data_line",
+        "sha256": "825a00bd42d8a057a1f7ceeda560a33dbd7e43eafa8a6264b519fad40d2da18f",
+        "source_path": "server/smtp_server.c",
+        "trace_id": "smtp/server_app/smtp_server/handle_data_line"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/server_app/smtp_server/parse_mailbox_arg.spec",
+        "name": "parse_mailbox_arg",
+        "sha256": "191d07564864d39e25ac80dc076fa405e43d9f7600d30492e1f7278c4c9704a8",
+        "source_path": "server/smtp_server.c",
+        "trace_id": "smtp/server_app/smtp_server/parse_mailbox_arg"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/server_app/smtp_server/begin_login_auth.spec",
+        "name": "begin_login_auth",
+        "sha256": "8d73a44691ab543b5cb9f9bc18b4a4b8c2a04f772f33bc973a27e62d89740f7e",
+        "source_path": "server/smtp_server.c",
+        "trace_id": "smtp/server_app/smtp_server/begin_login_auth"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/server_app/smtp_server/decode_b64_to_text.spec",
+        "name": "decode_b64_to_text",
+        "sha256": "34a1027042539c63813bf2ff96d483994fd23a7266296fdd673370ca02f27c66",
+        "source_path": "server/smtp_server.c",
+        "trace_id": "smtp/server_app/smtp_server/decode_b64_to_text"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/server_app/smtp_server/finish_auth_if_valid.spec",
+        "name": "finish_auth_if_valid",
+        "sha256": "342bc5fc5148043e8c8e6c19bddcf068e98e98b874960e264381fd5cea4ae693",
+        "source_path": "server/smtp_server.c",
+        "trace_id": "smtp/server_app/smtp_server/finish_auth_if_valid"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/server_app/smtp_server/handle_auth_continuation.spec",
+        "name": "handle_auth_continuation",
+        "sha256": "241611eb145f44cf9d344cea19068ed978b0c307238bcb39348c45df5cc7ffaf",
+        "source_path": "server/smtp_server.c",
+        "trace_id": "smtp/server_app/smtp_server/handle_auth_continuation"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/server_app/smtp_server/ensure_ready_for_mail.spec",
+        "name": "ensure_ready_for_mail",
+        "sha256": "024b4ec7ef0fd592adf6f06c808a55001501a8738495b4034c1262ed31e29192",
+        "source_path": "server/smtp_server.c",
+        "trace_id": "smtp/server_app/smtp_server/ensure_ready_for_mail"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/server_app/smtp_server/handle_auth.spec",
+        "name": "handle_auth",
+        "sha256": "020a49463123f01f226d4f0bec5ee812f7782cfd68851833f4f82c7a5f09cb5f",
+        "source_path": "server/smtp_server.c",
+        "trace_id": "smtp/server_app/smtp_server/handle_auth"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/server_app/smtp_server/handle_command.spec",
+        "name": "handle_command",
+        "sha256": "f643e95fabd9f8d16776984afd6d63d955d3744d437530aceb334ac392a3939e",
+        "source_path": "server/smtp_server.c",
+        "trace_id": "smtp/server_app/smtp_server/handle_command"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/server_app/smtp_server/on_accept_cb.spec",
+        "name": "on_accept_cb",
+        "sha256": "42fae7d4490554a6e5782400515c08542de2b5a6e4c3462a1dc3a88a60474f65",
+        "source_path": "server/smtp_server.c",
+        "trace_id": "smtp/server_app/smtp_server/on_accept_cb"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/server_app/smtp_server/on_event_cb.spec",
+        "name": "on_event_cb",
+        "sha256": "eecb2eab0f80fdea44210d7d74b1c5ced8cd3d7cf81fbfe96512051ebb0bbd4f",
+        "source_path": "server/smtp_server.c",
+        "trace_id": "smtp/server_app/smtp_server/on_event_cb"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/server_app/smtp_server/on_close_cb.spec",
+        "name": "on_close_cb",
+        "sha256": "49bf56d0ed07c72b249e699cadcd0fdc35b140004c536bcea6c64f76401744cb",
+        "source_path": "server/smtp_server.c",
+        "trace_id": "smtp/server_app/smtp_server/on_close_cb"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/server_app/smtp_server/smtp_server_create.spec",
+        "name": "smtp_server_create",
+        "sha256": "9d611324eaf36c16fcb9e487e79fa4a36cdc6456cbdfced49d00877b28c2cb38",
+        "source_path": "server/smtp_server.c",
+        "trace_id": "smtp/server_app/smtp_server/smtp_server_create"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/server_app/smtp_server/smtp_server_start.spec",
+        "name": "smtp_server_start",
+        "sha256": "44110f9cbb8cd1a69f015dd651232bafb04a0f53e53d4d602355de26f28c718f",
+        "source_path": "server/smtp_server.c",
+        "trace_id": "smtp/server_app/smtp_server/smtp_server_start"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/server_app/smtp_server/smtp_server_run.spec",
+        "name": "smtp_server_run",
+        "sha256": "cd61a6fd21aa00c0a6acfd453e3639613d74b1e3d8aed30284cb3dcd7ff0c617",
+        "source_path": "server/smtp_server.c",
+        "trace_id": "smtp/server_app/smtp_server/smtp_server_run"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/server_app/smtp_server/smtp_server_stop.spec",
+        "name": "smtp_server_stop",
+        "sha256": "7d2321f1d4c0dddb6eb77f6b3996c1ad48f86263b7f7302abf38ccc8edb47c6f",
+        "source_path": "server/smtp_server.c",
+        "trace_id": "smtp/server_app/smtp_server/smtp_server_stop"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/server_app/smtp_server/smtp_server_destroy.spec",
+        "name": "smtp_server_destroy",
+        "sha256": "b2abe7c62a6962d9ba3d30542337b80522a03ae7382e9d0f35ea2d6b0d563025",
+        "source_path": "server/smtp_server.c",
+        "trace_id": "smtp/server_app/smtp_server/smtp_server_destroy"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/main/parse_port.spec",
+        "name": "parse_port",
+        "sha256": "5826e435cc22f67f4d1269d5953c7e6ef185eacc8eba410d5ea2d94c4b7ff26f",
+        "source_path": "main.c",
+        "trace_id": "smtp/main/parse_port"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/smtp/main/main.spec",
+        "name": "main",
+        "sha256": "400951709d85025d5a6fc6278765b37a2cd51e962fdbee06a361b6fc3d4d6fdd",
+        "source_path": "main.c",
+        "trace_id": "smtp/main/main"
+      }
+    ],
+    "headers": [
+      {
+        "artifact_path": "specfs_projection/headers/network/connection.h.header",
+        "header_path": "network/connection.h",
+        "sha256": "e448664e3812bf0b7812b02ddb3381cf16821981b0fd4ef9c1955485594ae040"
+      },
+      {
+        "artifact_path": "specfs_projection/headers/network/tcp_server.h.header",
+        "header_path": "network/tcp_server.h",
+        "sha256": "d2b11fa07533667182dc6e31bf1887a21ce20f9efdfbe0a47c5f6a9bdb7ec47f"
+      },
+      {
+        "artifact_path": "specfs_projection/headers/protocol/smtp_command.h.header",
+        "header_path": "protocol/smtp_command.h",
+        "sha256": "a4b1710e04d0d444c82c80cfc11d38313a167f69507c354524974e347b6b7d17"
+      },
+      {
+        "artifact_path": "specfs_projection/headers/protocol/smtp_response.h.header",
+        "header_path": "protocol/smtp_response.h",
+        "sha256": "e76a1d2bd97e3bd2317da09feb3d6a14b000657eb1338e6bfe11910ad655e5e0"
+      },
+      {
+        "artifact_path": "specfs_projection/headers/auth/smtp_auth.h.header",
+        "header_path": "auth/smtp_auth.h",
+        "sha256": "aa94a9342b024386858e3d2c2daf294233147d92c09261c0e0e6a7217b72cd54"
+      },
+      {
+        "artifact_path": "specfs_projection/headers/storage/mail_store.h.header",
+        "header_path": "storage/mail_store.h",
+        "sha256": "d03fcd974af4a25d4da4a3a1893c811fba7b481afbe8794fe080afeac745af3f"
+      },
+      {
+        "artifact_path": "specfs_projection/headers/server/smtp_session.h.header",
+        "header_path": "server/smtp_session.h",
+        "sha256": "71f409c83560a6b1e435ecd59b4acc5f9d52b468b44b82b33a86f4417b794f38"
+      },
+      {
+        "artifact_path": "specfs_projection/headers/server/smtp_server.h.header",
+        "header_path": "server/smtp_server.h",
+        "sha256": "748ecc5651b42bb2a1496af3ec58426bb9501965f01a60a3f6a3ee711227c531"
+      }
+    ],
+    "project_graph": {
+      "artifact_path": "specfs_projection/project_graph.json",
+      "sha256": "b5252b4d1b968fd0b706b5ece2a7b0124b35394242ab4c2181414076d43f0f02"
+    }
+  },
+  "counts": {
+    "files": 9,
+    "functions": 68,
+    "headers": 8,
+    "project_graphs": 1
+  },
+  "hashes": {
+    "output_payload_sha256": "7200b28559eb60b92e3c357e36b6add54b9342048af894224f11c5a685cdc09c",
+    "source_specs_tree_sha256": "44834593ad22602f10000d13831f2c34dc5996d6fad9c35dc0b4faca165973ae"
+  },
+  "output_root": ".",
+  "protocol": "smtp",
+  "rely_resolution": [
+    {
+      "category": "STRUCT",
+      "name": "smtp_connection_t",
+      "provider_header_path": "network/connection.h",
+      "provider_trace_id": "smtp/network/connection",
+      "strategy": "same_parent",
+      "trace_id": "smtp/network/connection/smtp_connection_create"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_connection_t",
+      "provider_header_path": "network/connection.h",
+      "provider_trace_id": "smtp/network/connection",
+      "strategy": "same_parent",
+      "trace_id": "smtp/network/connection/smtp_connection_destroy"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_connection_t",
+      "provider_header_path": "network/connection.h",
+      "provider_trace_id": "smtp/network/connection",
+      "strategy": "same_parent",
+      "trace_id": "smtp/network/connection/smtp_connection_fd"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_connection_t",
+      "provider_header_path": "network/connection.h",
+      "provider_trace_id": "smtp/network/connection",
+      "strategy": "same_parent",
+      "trace_id": "smtp/network/connection/smtp_connection_read"
+    },
+    {
+      "category": "FUNC",
+      "name": "ensure_cap",
+      "provider_header_path": "network/connection.h",
+      "provider_trace_id": "smtp/network/connection",
+      "strategy": "same_parent",
+      "trace_id": "smtp/network/connection/smtp_connection_read"
+    },
+    {
+      "category": "FUNC",
+      "name": "recv",
+      "provider_header_path": "",
+      "provider_trace_id": "",
+      "strategy": "external_name_only",
+      "trace_id": "smtp/network/connection/smtp_connection_read"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_connection_t",
+      "provider_header_path": "network/connection.h",
+      "provider_trace_id": "smtp/network/connection",
+      "strategy": "same_parent",
+      "trace_id": "smtp/network/connection/smtp_connection_pop_line"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_connection_t",
+      "provider_header_path": "network/connection.h",
+      "provider_trace_id": "smtp/network/connection",
+      "strategy": "same_parent",
+      "trace_id": "smtp/network/connection/smtp_connection_queue"
+    },
+    {
+      "category": "FUNC",
+      "name": "ensure_cap",
+      "provider_header_path": "network/connection.h",
+      "provider_trace_id": "smtp/network/connection",
+      "strategy": "same_parent",
+      "trace_id": "smtp/network/connection/smtp_connection_queue"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_connection_t",
+      "provider_header_path": "network/connection.h",
+      "provider_trace_id": "smtp/network/connection",
+      "strategy": "same_parent",
+      "trace_id": "smtp/network/connection/smtp_connection_queue_str"
+    },
+    {
+      "category": "FUNC",
+      "name": "smtp_connection_queue",
+      "provider_header_path": "network/connection.h",
+      "provider_trace_id": "smtp/network/connection",
+      "strategy": "same_parent",
+      "trace_id": "smtp/network/connection/smtp_connection_queue_str"
+    },
+    {
+      "category": "FUNC",
+      "name": "strlen",
+      "provider_header_path": "",
+      "provider_trace_id": "",
+      "strategy": "external_name_only",
+      "trace_id": "smtp/network/connection/smtp_connection_queue_str"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_connection_t",
+      "provider_header_path": "network/connection.h",
+      "provider_trace_id": "smtp/network/connection",
+      "strategy": "same_parent",
+      "trace_id": "smtp/network/connection/smtp_connection_has_pending"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_connection_t",
+      "provider_header_path": "network/connection.h",
+      "provider_trace_id": "smtp/network/connection",
+      "strategy": "same_parent",
+      "trace_id": "smtp/network/connection/smtp_connection_flush"
+    },
+    {
+      "category": "FUNC",
+      "name": "send",
+      "provider_header_path": "",
+      "provider_trace_id": "",
+      "strategy": "external_name_only",
+      "trace_id": "smtp/network/connection/smtp_connection_flush"
+    },
+    {
+      "category": "FUNC",
+      "name": "fcntl",
+      "provider_header_path": "",
+      "provider_trace_id": "",
+      "strategy": "external_name_only",
+      "trace_id": "smtp/network/tcp_server/set_nonblocking"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_tcp_server_t",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "smtp/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/network/tcp_server/find_client"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_client_node_t",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "smtp/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/network/tcp_server/find_client"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_tcp_server_t",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "smtp/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/network/tcp_server/add_client"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_client_node_t",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "smtp/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/network/tcp_server/add_client"
+    },
+    {
+      "category": "FUNC",
+      "name": "epoll_ctl",
+      "provider_header_path": "",
+      "provider_trace_id": "",
+      "strategy": "external_name_only",
+      "trace_id": "smtp/network/tcp_server/add_client"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_tcp_server_t",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "smtp/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/network/tcp_server/remove_client_node"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_client_node_t",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "smtp/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/network/tcp_server/remove_client_node"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_tcp_server_t",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "smtp/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/network/tcp_server/smtp_tcp_server_close_client"
+    },
+    {
+      "category": "FUNC",
+      "name": "find_client",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "smtp/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/network/tcp_server/smtp_tcp_server_close_client"
+    },
+    {
+      "category": "FUNC",
+      "name": "epoll_ctl",
+      "provider_header_path": "",
+      "provider_trace_id": "",
+      "strategy": "external_name_only",
+      "trace_id": "smtp/network/tcp_server/smtp_tcp_server_close_client"
+    },
+    {
+      "category": "FUNC",
+      "name": "close",
+      "provider_header_path": "",
+      "provider_trace_id": "",
+      "strategy": "external_name_only",
+      "trace_id": "smtp/network/tcp_server/smtp_tcp_server_close_client"
+    },
+    {
+      "category": "FUNC",
+      "name": "remove_client_node",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "smtp/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/network/tcp_server/smtp_tcp_server_close_client"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_tcp_server_t",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "smtp/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/network/tcp_server/smtp_tcp_server_create"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_tcp_callbacks_t",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "smtp/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/network/tcp_server/smtp_tcp_server_create"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_tcp_server_t",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "smtp/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/network/tcp_server/smtp_tcp_server_update_interest"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_client_node_t",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "smtp/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/network/tcp_server/smtp_tcp_server_update_interest"
+    },
+    {
+      "category": "FUNC",
+      "name": "find_client",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "smtp/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/network/tcp_server/smtp_tcp_server_update_interest"
+    },
+    {
+      "category": "FUNC",
+      "name": "epoll_ctl",
+      "provider_header_path": "",
+      "provider_trace_id": "",
+      "strategy": "external_name_only",
+      "trace_id": "smtp/network/tcp_server/smtp_tcp_server_update_interest"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_tcp_server_t",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "smtp/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/network/tcp_server/setup_listener"
+    },
+    {
+      "category": "FUNC",
+      "name": "socket",
+      "provider_header_path": "",
+      "provider_trace_id": "",
+      "strategy": "external_name_only",
+      "trace_id": "smtp/network/tcp_server/setup_listener"
+    },
+    {
+      "category": "FUNC",
+      "name": "setsockopt",
+      "provider_header_path": "",
+      "provider_trace_id": "",
+      "strategy": "external_name_only",
+      "trace_id": "smtp/network/tcp_server/setup_listener"
+    },
+    {
+      "category": "FUNC",
+      "name": "set_nonblocking",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "smtp/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/network/tcp_server/setup_listener"
+    },
+    {
+      "category": "FUNC",
+      "name": "bind",
+      "provider_header_path": "",
+      "provider_trace_id": "",
+      "strategy": "external_name_only",
+      "trace_id": "smtp/network/tcp_server/setup_listener"
+    },
+    {
+      "category": "FUNC",
+      "name": "listen",
+      "provider_header_path": "",
+      "provider_trace_id": "",
+      "strategy": "external_name_only",
+      "trace_id": "smtp/network/tcp_server/setup_listener"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_tcp_server_t",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "smtp/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/network/tcp_server/smtp_tcp_server_start"
+    },
+    {
+      "category": "FUNC",
+      "name": "setup_listener",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "smtp/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/network/tcp_server/smtp_tcp_server_start"
+    },
+    {
+      "category": "FUNC",
+      "name": "epoll_create1",
+      "provider_header_path": "",
+      "provider_trace_id": "",
+      "strategy": "external_name_only",
+      "trace_id": "smtp/network/tcp_server/smtp_tcp_server_start"
+    },
+    {
+      "category": "FUNC",
+      "name": "epoll_ctl",
+      "provider_header_path": "",
+      "provider_trace_id": "",
+      "strategy": "external_name_only",
+      "trace_id": "smtp/network/tcp_server/smtp_tcp_server_start"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_tcp_server_t",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "smtp/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/network/tcp_server/accept_loop"
+    },
+    {
+      "category": "FUNC",
+      "name": "accept",
+      "provider_header_path": "",
+      "provider_trace_id": "",
+      "strategy": "external_name_only",
+      "trace_id": "smtp/network/tcp_server/accept_loop"
+    },
+    {
+      "category": "FUNC",
+      "name": "set_nonblocking",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "smtp/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/network/tcp_server/accept_loop"
+    },
+    {
+      "category": "FUNC",
+      "name": "add_client",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "smtp/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/network/tcp_server/accept_loop"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_tcp_server_t",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "smtp/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/network/tcp_server/smtp_tcp_server_run"
+    },
+    {
+      "category": "FUNC",
+      "name": "epoll_wait",
+      "provider_header_path": "",
+      "provider_trace_id": "",
+      "strategy": "external_name_only",
+      "trace_id": "smtp/network/tcp_server/smtp_tcp_server_run"
+    },
+    {
+      "category": "FUNC",
+      "name": "accept_loop",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "smtp/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/network/tcp_server/smtp_tcp_server_run"
+    },
+    {
+      "category": "FUNC",
+      "name": "find_client",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "smtp/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/network/tcp_server/smtp_tcp_server_run"
+    },
+    {
+      "category": "FUNC",
+      "name": "smtp_tcp_server_close_client",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "smtp/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/network/tcp_server/smtp_tcp_server_run"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_tcp_server_t",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "smtp/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/network/tcp_server/smtp_tcp_server_stop"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_tcp_server_t",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "smtp/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/network/tcp_server/smtp_tcp_server_destroy"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_client_node_t",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "smtp/network/tcp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/network/tcp_server/smtp_tcp_server_destroy"
+    },
+    {
+      "category": "FUNC",
+      "name": "close",
+      "provider_header_path": "",
+      "provider_trace_id": "",
+      "strategy": "external_name_only",
+      "trace_id": "smtp/network/tcp_server/smtp_tcp_server_destroy"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_command_kind_t",
+      "provider_header_path": "protocol/smtp_command.h",
+      "provider_trace_id": "smtp/protocol_text/smtp_command",
+      "strategy": "same_parent",
+      "trace_id": "smtp/protocol_text/smtp_command/parse_kind"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_command_t",
+      "provider_header_path": "protocol/smtp_command.h",
+      "provider_trace_id": "smtp/protocol_text/smtp_command",
+      "strategy": "same_parent",
+      "trace_id": "smtp/protocol_text/smtp_command/smtp_command_parse"
+    },
+    {
+      "category": "FUNC",
+      "name": "parse_kind",
+      "provider_header_path": "protocol/smtp_command.h",
+      "provider_trace_id": "smtp/protocol_text/smtp_command",
+      "strategy": "same_parent",
+      "trace_id": "smtp/protocol_text/smtp_command/smtp_command_parse"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_command_kind_t",
+      "provider_header_path": "protocol/smtp_command.h",
+      "provider_trace_id": "smtp/protocol_text/smtp_command",
+      "strategy": "same_parent",
+      "trace_id": "smtp/protocol_text/smtp_command/smtp_command_name"
+    },
+    {
+      "category": "FUNC",
+      "name": "b64_value",
+      "provider_header_path": "auth/smtp_auth.h",
+      "provider_trace_id": "smtp/auth/smtp_auth",
+      "strategy": "same_parent",
+      "trace_id": "smtp/auth/smtp_auth/smtp_auth_decode_base64"
+    },
+    {
+      "category": "FUNC",
+      "name": "mkdir",
+      "provider_header_path": "",
+      "provider_trace_id": "",
+      "strategy": "external_name_only",
+      "trace_id": "smtp/storage/mail_store/ensure_dir_recursive"
+    },
+    {
+      "category": "FUNC",
+      "name": "write",
+      "provider_header_path": "",
+      "provider_trace_id": "",
+      "strategy": "external_name_only",
+      "trace_id": "smtp/storage/mail_store/write_all"
+    },
+    {
+      "category": "FUNC",
+      "name": "ensure_dir_recursive",
+      "provider_header_path": "storage/mail_store.h",
+      "provider_trace_id": "smtp/storage/mail_store",
+      "strategy": "same_parent",
+      "trace_id": "smtp/storage/mail_store/smtp_mail_store_init"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_mail_t",
+      "provider_header_path": "storage/mail_store.h",
+      "provider_trace_id": "smtp/storage/mail_store",
+      "strategy": "same_parent",
+      "trace_id": "smtp/storage/mail_store/smtp_mail_store_write"
+    },
+    {
+      "category": "FUNC",
+      "name": "ensure_dir_recursive",
+      "provider_header_path": "storage/mail_store.h",
+      "provider_trace_id": "smtp/storage/mail_store",
+      "strategy": "same_parent",
+      "trace_id": "smtp/storage/mail_store/smtp_mail_store_write"
+    },
+    {
+      "category": "FUNC",
+      "name": "open",
+      "provider_header_path": "",
+      "provider_trace_id": "",
+      "strategy": "external_name_only",
+      "trace_id": "smtp/storage/mail_store/smtp_mail_store_write"
+    },
+    {
+      "category": "FUNC",
+      "name": "write_all",
+      "provider_header_path": "storage/mail_store.h",
+      "provider_trace_id": "smtp/storage/mail_store",
+      "strategy": "same_parent",
+      "trace_id": "smtp/storage/mail_store/smtp_mail_store_write"
+    },
+    {
+      "category": "FUNC",
+      "name": "close",
+      "provider_header_path": "",
+      "provider_trace_id": "",
+      "strategy": "external_name_only",
+      "trace_id": "smtp/storage/mail_store/smtp_mail_store_write"
+    },
+    {
+      "category": "FUNC",
+      "name": "unlink",
+      "provider_header_path": "",
+      "provider_trace_id": "",
+      "strategy": "external_name_only",
+      "trace_id": "smtp/storage/mail_store/smtp_mail_store_write"
+    },
+    {
+      "category": "FUNC",
+      "name": "snprintf",
+      "provider_header_path": "",
+      "provider_trace_id": "",
+      "strategy": "external_name_only",
+      "trace_id": "smtp/storage/mail_store/smtp_mail_store_write"
+    },
+    {
+      "category": "FUNC",
+      "name": "time",
+      "provider_header_path": "",
+      "provider_trace_id": "",
+      "strategy": "external_name_only",
+      "trace_id": "smtp/storage/mail_store/smtp_mail_store_write"
+    },
+    {
+      "category": "FUNC",
+      "name": "getpid",
+      "provider_header_path": "",
+      "provider_trace_id": "",
+      "strategy": "external_name_only",
+      "trace_id": "smtp/storage/mail_store/smtp_mail_store_write"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_session_t",
+      "provider_header_path": "server/smtp_session.h",
+      "provider_trace_id": "smtp/session/smtp_session",
+      "strategy": "same_parent",
+      "trace_id": "smtp/session/smtp_session/smtp_session_create"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_connection_t",
+      "provider_header_path": "network/connection.h",
+      "provider_trace_id": "smtp/network/connection",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/session/smtp_session/smtp_session_create"
+    },
+    {
+      "category": "FUNC",
+      "name": "smtp_connection_create",
+      "provider_header_path": "network/connection.h",
+      "provider_trace_id": "smtp/network/connection",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/session/smtp_session/smtp_session_create"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_session_t",
+      "provider_header_path": "server/smtp_session.h",
+      "provider_trace_id": "smtp/session/smtp_session",
+      "strategy": "same_parent",
+      "trace_id": "smtp/session/smtp_session/smtp_session_reset_transaction"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_session_t",
+      "provider_header_path": "server/smtp_session.h",
+      "provider_trace_id": "smtp/session/smtp_session",
+      "strategy": "same_parent",
+      "trace_id": "smtp/session/smtp_session/smtp_session_reset_auth_exchange"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_session_t",
+      "provider_header_path": "server/smtp_session.h",
+      "provider_trace_id": "smtp/session/smtp_session",
+      "strategy": "same_parent",
+      "trace_id": "smtp/session/smtp_session/smtp_session_destroy"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_connection_t",
+      "provider_header_path": "network/connection.h",
+      "provider_trace_id": "smtp/network/connection",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/session/smtp_session/smtp_session_destroy"
+    },
+    {
+      "category": "FUNC",
+      "name": "smtp_connection_destroy",
+      "provider_header_path": "network/connection.h",
+      "provider_trace_id": "smtp/network/connection",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/session/smtp_session/smtp_session_destroy"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_server_t",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/server_app/smtp_server/find_session"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_session_node_t",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/server_app/smtp_server/find_session"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_session_t",
+      "provider_header_path": "server/smtp_session.h",
+      "provider_trace_id": "smtp/session/smtp_session",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/server_app/smtp_server/find_session"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_server_t",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/server_app/smtp_server/add_session"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_session_node_t",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/server_app/smtp_server/add_session"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_session_t",
+      "provider_header_path": "server/smtp_session.h",
+      "provider_trace_id": "smtp/session/smtp_session",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/server_app/smtp_server/add_session"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_server_t",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/server_app/smtp_server/remove_session"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_session_node_t",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/server_app/smtp_server/remove_session"
+    },
+    {
+      "category": "FUNC",
+      "name": "smtp_session_destroy",
+      "provider_header_path": "server/smtp_session.h",
+      "provider_trace_id": "smtp/session/smtp_session",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/server_app/smtp_server/remove_session"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_server_t",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/server_app/smtp_server/close_control"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_session_t",
+      "provider_header_path": "server/smtp_session.h",
+      "provider_trace_id": "smtp/session/smtp_session",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/server_app/smtp_server/close_control"
+    },
+    {
+      "category": "FUNC",
+      "name": "smtp_tcp_server_close_client",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "smtp/network/tcp_server",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/server_app/smtp_server/close_control"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_server_t",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/server_app/smtp_server/queue_raw"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_session_t",
+      "provider_header_path": "server/smtp_session.h",
+      "provider_trace_id": "smtp/session/smtp_session",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/server_app/smtp_server/queue_raw"
+    },
+    {
+      "category": "FUNC",
+      "name": "smtp_connection_queue_str",
+      "provider_header_path": "network/connection.h",
+      "provider_trace_id": "smtp/network/connection",
+      "strategy": "global_unique",
+      "trace_id": "smtp/server_app/smtp_server/queue_raw"
+    },
+    {
+      "category": "FUNC",
+      "name": "smtp_tcp_server_update_interest",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "smtp/network/tcp_server",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/server_app/smtp_server/queue_raw"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_server_t",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/server_app/smtp_server/queue_code"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_session_t",
+      "provider_header_path": "server/smtp_session.h",
+      "provider_trace_id": "smtp/session/smtp_session",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/server_app/smtp_server/queue_code"
+    },
+    {
+      "category": "FUNC",
+      "name": "smtp_response_format",
+      "provider_header_path": "protocol/smtp_response.h",
+      "provider_trace_id": "smtp/protocol_text/smtp_response",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/server_app/smtp_server/queue_code"
+    },
+    {
+      "category": "FUNC",
+      "name": "queue_raw",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/server_app/smtp_server/queue_code"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_server_t",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/server_app/smtp_server/flush_control_now"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_session_t",
+      "provider_header_path": "server/smtp_session.h",
+      "provider_trace_id": "smtp/session/smtp_session",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/server_app/smtp_server/flush_control_now"
+    },
+    {
+      "category": "FUNC",
+      "name": "smtp_connection_flush",
+      "provider_header_path": "network/connection.h",
+      "provider_trace_id": "smtp/network/connection",
+      "strategy": "global_unique",
+      "trace_id": "smtp/server_app/smtp_server/flush_control_now"
+    },
+    {
+      "category": "FUNC",
+      "name": "smtp_connection_has_pending",
+      "provider_header_path": "network/connection.h",
+      "provider_trace_id": "smtp/network/connection",
+      "strategy": "global_unique",
+      "trace_id": "smtp/server_app/smtp_server/flush_control_now"
+    },
+    {
+      "category": "FUNC",
+      "name": "smtp_tcp_server_update_interest",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "smtp/network/tcp_server",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/server_app/smtp_server/flush_control_now"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_session_t",
+      "provider_header_path": "server/smtp_session.h",
+      "provider_trace_id": "smtp/session/smtp_session",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/server_app/smtp_server/append_message_line"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_server_t",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/server_app/smtp_server/handle_data_line"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_session_t",
+      "provider_header_path": "server/smtp_session.h",
+      "provider_trace_id": "smtp/session/smtp_session",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/server_app/smtp_server/handle_data_line"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_mail_t",
+      "provider_header_path": "storage/mail_store.h",
+      "provider_trace_id": "smtp/storage/mail_store",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/server_app/smtp_server/handle_data_line"
+    },
+    {
+      "category": "FUNC",
+      "name": "append_message_line",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/server_app/smtp_server/handle_data_line"
+    },
+    {
+      "category": "FUNC",
+      "name": "smtp_mail_store_write",
+      "provider_header_path": "storage/mail_store.h",
+      "provider_trace_id": "smtp/storage/mail_store",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/server_app/smtp_server/handle_data_line"
+    },
+    {
+      "category": "FUNC",
+      "name": "smtp_session_reset_transaction",
+      "provider_header_path": "server/smtp_session.h",
+      "provider_trace_id": "smtp/session/smtp_session",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/server_app/smtp_server/handle_data_line"
+    },
+    {
+      "category": "FUNC",
+      "name": "queue_code",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/server_app/smtp_server/handle_data_line"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_session_t",
+      "provider_header_path": "server/smtp_session.h",
+      "provider_trace_id": "smtp/session/smtp_session",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/server_app/smtp_server/begin_login_auth"
+    },
+    {
+      "category": "FUNC",
+      "name": "queue_code",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/server_app/smtp_server/begin_login_auth"
+    },
+    {
+      "category": "FUNC",
+      "name": "smtp_auth_decode_base64",
+      "provider_header_path": "auth/smtp_auth.h",
+      "provider_trace_id": "smtp/auth/smtp_auth",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/server_app/smtp_server/decode_b64_to_text"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_session_t",
+      "provider_header_path": "server/smtp_session.h",
+      "provider_trace_id": "smtp/session/smtp_session",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/server_app/smtp_server/finish_auth_if_valid"
+    },
+    {
+      "category": "FUNC",
+      "name": "smtp_auth_validate",
+      "provider_header_path": "auth/smtp_auth.h",
+      "provider_trace_id": "smtp/auth/smtp_auth",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/server_app/smtp_server/finish_auth_if_valid"
+    },
+    {
+      "category": "FUNC",
+      "name": "queue_code",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/server_app/smtp_server/finish_auth_if_valid"
+    },
+    {
+      "category": "FUNC",
+      "name": "smtp_session_reset_auth_exchange",
+      "provider_header_path": "server/smtp_session.h",
+      "provider_trace_id": "smtp/session/smtp_session",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/server_app/smtp_server/finish_auth_if_valid"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_session_t",
+      "provider_header_path": "server/smtp_session.h",
+      "provider_trace_id": "smtp/session/smtp_session",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/server_app/smtp_server/handle_auth_continuation"
+    },
+    {
+      "category": "FUNC",
+      "name": "decode_b64_to_text",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/server_app/smtp_server/handle_auth_continuation"
+    },
+    {
+      "category": "FUNC",
+      "name": "smtp_auth_decode_base64",
+      "provider_header_path": "auth/smtp_auth.h",
+      "provider_trace_id": "smtp/auth/smtp_auth",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/server_app/smtp_server/handle_auth_continuation"
+    },
+    {
+      "category": "FUNC",
+      "name": "smtp_auth_parse_plain_blob",
+      "provider_header_path": "auth/smtp_auth.h",
+      "provider_trace_id": "smtp/auth/smtp_auth",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/server_app/smtp_server/handle_auth_continuation"
+    },
+    {
+      "category": "FUNC",
+      "name": "finish_auth_if_valid",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/server_app/smtp_server/handle_auth_continuation"
+    },
+    {
+      "category": "FUNC",
+      "name": "queue_code",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/server_app/smtp_server/handle_auth_continuation"
+    },
+    {
+      "category": "FUNC",
+      "name": "smtp_session_reset_auth_exchange",
+      "provider_header_path": "server/smtp_session.h",
+      "provider_trace_id": "smtp/session/smtp_session",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/server_app/smtp_server/handle_auth_continuation"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_session_t",
+      "provider_header_path": "server/smtp_session.h",
+      "provider_trace_id": "smtp/session/smtp_session",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/server_app/smtp_server/ensure_ready_for_mail"
+    },
+    {
+      "category": "FUNC",
+      "name": "queue_code",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/server_app/smtp_server/ensure_ready_for_mail"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_session_t",
+      "provider_header_path": "server/smtp_session.h",
+      "provider_trace_id": "smtp/session/smtp_session",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/server_app/smtp_server/handle_auth"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_command_t",
+      "provider_header_path": "protocol/smtp_command.h",
+      "provider_trace_id": "smtp/protocol_text/smtp_command",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/server_app/smtp_server/handle_auth"
+    },
+    {
+      "category": "FUNC",
+      "name": "begin_login_auth",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/server_app/smtp_server/handle_auth"
+    },
+    {
+      "category": "FUNC",
+      "name": "decode_b64_to_text",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/server_app/smtp_server/handle_auth"
+    },
+    {
+      "category": "FUNC",
+      "name": "smtp_auth_decode_base64",
+      "provider_header_path": "auth/smtp_auth.h",
+      "provider_trace_id": "smtp/auth/smtp_auth",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/server_app/smtp_server/handle_auth"
+    },
+    {
+      "category": "FUNC",
+      "name": "smtp_auth_parse_plain_blob",
+      "provider_header_path": "auth/smtp_auth.h",
+      "provider_trace_id": "smtp/auth/smtp_auth",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/server_app/smtp_server/handle_auth"
+    },
+    {
+      "category": "FUNC",
+      "name": "finish_auth_if_valid",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/server_app/smtp_server/handle_auth"
+    },
+    {
+      "category": "FUNC",
+      "name": "queue_code",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/server_app/smtp_server/handle_auth"
+    },
+    {
+      "category": "FUNC",
+      "name": "smtp_session_reset_auth_exchange",
+      "provider_header_path": "server/smtp_session.h",
+      "provider_trace_id": "smtp/session/smtp_session",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/server_app/smtp_server/handle_auth"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_server_t",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/server_app/smtp_server/handle_command"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_session_t",
+      "provider_header_path": "server/smtp_session.h",
+      "provider_trace_id": "smtp/session/smtp_session",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/server_app/smtp_server/handle_command"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_command_t",
+      "provider_header_path": "protocol/smtp_command.h",
+      "provider_trace_id": "smtp/protocol_text/smtp_command",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/server_app/smtp_server/handle_command"
+    },
+    {
+      "category": "FUNC",
+      "name": "handle_auth",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/server_app/smtp_server/handle_command"
+    },
+    {
+      "category": "FUNC",
+      "name": "ensure_ready_for_mail",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/server_app/smtp_server/handle_command"
+    },
+    {
+      "category": "FUNC",
+      "name": "parse_mailbox_arg",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/server_app/smtp_server/handle_command"
+    },
+    {
+      "category": "FUNC",
+      "name": "smtp_session_reset_transaction",
+      "provider_header_path": "server/smtp_session.h",
+      "provider_trace_id": "smtp/session/smtp_session",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/server_app/smtp_server/handle_command"
+    },
+    {
+      "category": "FUNC",
+      "name": "smtp_session_reset_auth_exchange",
+      "provider_header_path": "server/smtp_session.h",
+      "provider_trace_id": "smtp/session/smtp_session",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/server_app/smtp_server/handle_command"
+    },
+    {
+      "category": "FUNC",
+      "name": "smtp_response_format_ehlo_caps",
+      "provider_header_path": "protocol/smtp_response.h",
+      "provider_trace_id": "smtp/protocol_text/smtp_response",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/server_app/smtp_server/handle_command"
+    },
+    {
+      "category": "FUNC",
+      "name": "queue_code",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/server_app/smtp_server/handle_command"
+    },
+    {
+      "category": "FUNC",
+      "name": "queue_raw",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/server_app/smtp_server/handle_command"
+    },
+    {
+      "category": "FUNC",
+      "name": "flush_control_now",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/server_app/smtp_server/handle_command"
+    },
+    {
+      "category": "FUNC",
+      "name": "close_control",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/server_app/smtp_server/handle_command"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_server_t",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/server_app/smtp_server/on_accept_cb"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_session_t",
+      "provider_header_path": "server/smtp_session.h",
+      "provider_trace_id": "smtp/session/smtp_session",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/server_app/smtp_server/on_accept_cb"
+    },
+    {
+      "category": "FUNC",
+      "name": "smtp_session_create",
+      "provider_header_path": "server/smtp_session.h",
+      "provider_trace_id": "smtp/session/smtp_session",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/server_app/smtp_server/on_accept_cb"
+    },
+    {
+      "category": "FUNC",
+      "name": "add_session",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/server_app/smtp_server/on_accept_cb"
+    },
+    {
+      "category": "FUNC",
+      "name": "smtp_tcp_server_close_client",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "smtp/network/tcp_server",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/server_app/smtp_server/on_accept_cb"
+    },
+    {
+      "category": "FUNC",
+      "name": "queue_code",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/server_app/smtp_server/on_accept_cb"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_server_t",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/server_app/smtp_server/on_event_cb"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_session_t",
+      "provider_header_path": "server/smtp_session.h",
+      "provider_trace_id": "smtp/session/smtp_session",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/server_app/smtp_server/on_event_cb"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_command_t",
+      "provider_header_path": "protocol/smtp_command.h",
+      "provider_trace_id": "smtp/protocol_text/smtp_command",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/server_app/smtp_server/on_event_cb"
+    },
+    {
+      "category": "FUNC",
+      "name": "find_session",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/server_app/smtp_server/on_event_cb"
+    },
+    {
+      "category": "FUNC",
+      "name": "smtp_connection_flush",
+      "provider_header_path": "network/connection.h",
+      "provider_trace_id": "smtp/network/connection",
+      "strategy": "global_unique",
+      "trace_id": "smtp/server_app/smtp_server/on_event_cb"
+    },
+    {
+      "category": "FUNC",
+      "name": "smtp_connection_has_pending",
+      "provider_header_path": "network/connection.h",
+      "provider_trace_id": "smtp/network/connection",
+      "strategy": "global_unique",
+      "trace_id": "smtp/server_app/smtp_server/on_event_cb"
+    },
+    {
+      "category": "FUNC",
+      "name": "smtp_tcp_server_update_interest",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "smtp/network/tcp_server",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/server_app/smtp_server/on_event_cb"
+    },
+    {
+      "category": "FUNC",
+      "name": "smtp_connection_read",
+      "provider_header_path": "network/connection.h",
+      "provider_trace_id": "smtp/network/connection",
+      "strategy": "global_unique",
+      "trace_id": "smtp/server_app/smtp_server/on_event_cb"
+    },
+    {
+      "category": "FUNC",
+      "name": "smtp_connection_pop_line",
+      "provider_header_path": "network/connection.h",
+      "provider_trace_id": "smtp/network/connection",
+      "strategy": "global_unique",
+      "trace_id": "smtp/server_app/smtp_server/on_event_cb"
+    },
+    {
+      "category": "FUNC",
+      "name": "handle_data_line",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/server_app/smtp_server/on_event_cb"
+    },
+    {
+      "category": "FUNC",
+      "name": "handle_auth_continuation",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/server_app/smtp_server/on_event_cb"
+    },
+    {
+      "category": "FUNC",
+      "name": "smtp_command_parse",
+      "provider_header_path": "protocol/smtp_command.h",
+      "provider_trace_id": "smtp/protocol_text/smtp_command",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/server_app/smtp_server/on_event_cb"
+    },
+    {
+      "category": "FUNC",
+      "name": "handle_command",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/server_app/smtp_server/on_event_cb"
+    },
+    {
+      "category": "FUNC",
+      "name": "flush_control_now",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/server_app/smtp_server/on_event_cb"
+    },
+    {
+      "category": "FUNC",
+      "name": "close_control",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/server_app/smtp_server/on_event_cb"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_server_t",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/server_app/smtp_server/on_close_cb"
+    },
+    {
+      "category": "FUNC",
+      "name": "remove_session",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/server_app/smtp_server/on_close_cb"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_server_t",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/server_app/smtp_server/smtp_server_create"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_tcp_callbacks_t",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "smtp/network/tcp_server",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/server_app/smtp_server/smtp_server_create"
+    },
+    {
+      "category": "FUNC",
+      "name": "smtp_mail_store_init",
+      "provider_header_path": "storage/mail_store.h",
+      "provider_trace_id": "smtp/storage/mail_store",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/server_app/smtp_server/smtp_server_create"
+    },
+    {
+      "category": "FUNC",
+      "name": "smtp_tcp_server_create",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "smtp/network/tcp_server",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/server_app/smtp_server/smtp_server_create"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_server_t",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/server_app/smtp_server/smtp_server_start"
+    },
+    {
+      "category": "FUNC",
+      "name": "smtp_tcp_server_start",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "smtp/network/tcp_server",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/server_app/smtp_server/smtp_server_start"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_server_t",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/server_app/smtp_server/smtp_server_run"
+    },
+    {
+      "category": "FUNC",
+      "name": "smtp_tcp_server_run",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "smtp/network/tcp_server",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/server_app/smtp_server/smtp_server_run"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_server_t",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/server_app/smtp_server/smtp_server_stop"
+    },
+    {
+      "category": "FUNC",
+      "name": "smtp_tcp_server_stop",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "smtp/network/tcp_server",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/server_app/smtp_server/smtp_server_stop"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_server_t",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/server_app/smtp_server/smtp_server_destroy"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_session_node_t",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "same_parent",
+      "trace_id": "smtp/server_app/smtp_server/smtp_server_destroy"
+    },
+    {
+      "category": "FUNC",
+      "name": "smtp_session_destroy",
+      "provider_header_path": "server/smtp_session.h",
+      "provider_trace_id": "smtp/session/smtp_session",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/server_app/smtp_server/smtp_server_destroy"
+    },
+    {
+      "category": "FUNC",
+      "name": "smtp_tcp_server_destroy",
+      "provider_header_path": "network/tcp_server.h",
+      "provider_trace_id": "smtp/network/tcp_server",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/server_app/smtp_server/smtp_server_destroy"
+    },
+    {
+      "category": "STRUCT",
+      "name": "smtp_server_t",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/main/main"
+    },
+    {
+      "category": "FUNC",
+      "name": "smtp_server_create",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/main/main"
+    },
+    {
+      "category": "FUNC",
+      "name": "smtp_server_start",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/main/main"
+    },
+    {
+      "category": "FUNC",
+      "name": "smtp_server_run",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/main/main"
+    },
+    {
+      "category": "FUNC",
+      "name": "smtp_server_destroy",
+      "provider_header_path": "server/smtp_server.h",
+      "provider_trace_id": "smtp/server_app/smtp_server",
+      "strategy": "dependency_provider",
+      "trace_id": "smtp/main/main"
+    }
+  ],
+  "schema_version": "spec_ablation_s2_transformation_manifest/v1",
+  "source_root": "specs-example/smtp_specs",
+  "transformation_hash": "b3a40de226d3faca98976d1286537bc59d588634f9a7921ede58c1253f1589c9",
+  "transformer_version": "spec_ablation_s2_transformer/v2",
+  "validation": {
+    "leakage_scan": {
+      "forbidden_terms": [
+        "PROTOCOL_MODULE_SPEC",
+        "FILE_SPEC",
+        "FUNCTION_SPEC",
+        "ACCESS_PATHS",
+        "WIRE_MAPPING",
+        "CALL_CONTRACTS",
+        "FORBIDDEN_SYMBOLS",
+        "TEST_VECTORS",
+        "CONSISTENCY_RULES",
+        "DOC_REF",
+        "TRACE_REFS"
+      ],
+      "status": "passed",
+      "violations": []
+    },
+    "s2_project_graph_leakage_scan": {
+      "forbidden_terms": [
+        "PROTOCOL_MODULE_SPEC",
+        "FILE_SPEC",
+        "FUNCTION_SPEC",
+        "ACCESS_PATHS",
+        "WIRE_MAPPING",
+        "CALL_CONTRACTS",
+        "FORBIDDEN_SYMBOLS",
+        "TEST_VECTORS",
+        "CONSISTENCY_RULES",
+        "DOC_REF",
+        "TRACE_REFS",
+        "ROLE",
+        "ARTIFACTS",
+        "DATA",
+        "INTERFACE",
+        "FUNCTION_TYPE",
+        "PARAMS",
+        "NULLABLE",
+        "OWNERSHIP",
+        "PUBLIC_SYMBOLS",
+        "SCOPE"
+      ],
+      "status": "passed",
+      "violations": []
+    },
+    "source_loader": {
+      "diagnostics": [
+        {
+          "code": "missing_wire_mapping_test_vectors",
+          "level": "warning",
+          "message": "Function 'smtp/auth/smtp_auth/smtp_auth_parse_plain_blob' has WIRE_MAPPING but no TEST_VECTORS anchor",
+          "path": "/home/ljf/SpecForge/specs-example/smtp_specs/auth/smtp_auth/smtp_auth_parse_plain_blob_spec.json"
+        },
+        {
+          "code": "missing_wire_mapping_test_vectors",
+          "level": "warning",
+          "message": "Function 'smtp/network/connection/smtp_connection_pop_line' has WIRE_MAPPING but no TEST_VECTORS anchor",
+          "path": "/home/ljf/SpecForge/specs-example/smtp_specs/network/connection/smtp_connection_pop_line_spec.json"
+        },
+        {
+          "code": "missing_wire_mapping_test_vectors",
+          "level": "warning",
+          "message": "Function 'smtp/protocol_text/smtp_command/parse_kind' has WIRE_MAPPING but no TEST_VECTORS anchor",
+          "path": "/home/ljf/SpecForge/specs-example/smtp_specs/protocol_text/smtp_command/parse_kind_spec.json"
+        },
+        {
+          "code": "missing_wire_mapping_test_vectors",
+          "level": "warning",
+          "message": "Function 'smtp/protocol_text/smtp_response/smtp_response_format_ehlo_caps' has WIRE_MAPPING but no TEST_VECTORS anchor",
+          "path": "/home/ljf/SpecForge/specs-example/smtp_specs/protocol_text/smtp_response/smtp_response_format_ehlo_caps_spec.json"
+        },
+        {
+          "code": "missing_wire_mapping_test_vectors",
+          "level": "warning",
+          "message": "Function 'smtp/server_app/smtp_server/append_message_line' has WIRE_MAPPING but no TEST_VECTORS anchor",
+          "path": "/home/ljf/SpecForge/specs-example/smtp_specs/server_app/smtp_server/append_message_line_spec.json"
+        },
+        {
+          "code": "missing_wire_mapping_test_vectors",
+          "level": "warning",
+          "message": "Function 'smtp/server_app/smtp_server/begin_login_auth' has WIRE_MAPPING but no TEST_VECTORS anchor",
+          "path": "/home/ljf/SpecForge/specs-example/smtp_specs/server_app/smtp_server/begin_login_auth_spec.json"
+        },
+        {
+          "code": "missing_wire_mapping_test_vectors",
+          "level": "warning",
+          "message": "Function 'smtp/server_app/smtp_server/handle_auth_continuation' has WIRE_MAPPING but no TEST_VECTORS anchor",
+          "path": "/home/ljf/SpecForge/specs-example/smtp_specs/server_app/smtp_server/handle_auth_continuation_spec.json"
+        },
+        {
+          "code": "missing_wire_mapping_test_vectors",
+          "level": "warning",
+          "message": "Function 'smtp/server_app/smtp_server/handle_auth' has WIRE_MAPPING but no TEST_VECTORS anchor",
+          "path": "/home/ljf/SpecForge/specs-example/smtp_specs/server_app/smtp_server/handle_auth_spec.json"
+        },
+        {
+          "code": "missing_wire_mapping_test_vectors",
+          "level": "warning",
+          "message": "Function 'smtp/server_app/smtp_server/handle_command' has WIRE_MAPPING but no TEST_VECTORS anchor",
+          "path": "/home/ljf/SpecForge/specs-example/smtp_specs/server_app/smtp_server/handle_command_spec.json"
+        },
+        {
+          "code": "missing_wire_mapping_test_vectors",
+          "level": "warning",
+          "message": "Function 'smtp/server_app/smtp_server/handle_data_line' has WIRE_MAPPING but no TEST_VECTORS anchor",
+          "path": "/home/ljf/SpecForge/specs-example/smtp_specs/server_app/smtp_server/handle_data_line_spec.json"
+        },
+        {
+          "code": "missing_wire_mapping_test_vectors",
+          "level": "warning",
+          "message": "Function 'smtp/server_app/smtp_server/queue_code' has WIRE_MAPPING but no TEST_VECTORS anchor",
+          "path": "/home/ljf/SpecForge/specs-example/smtp_specs/server_app/smtp_server/queue_code_spec.json"
+        },
+        {
+          "code": "missing_wire_mapping_test_vectors",
+          "level": "warning",
+          "message": "Function 'smtp/storage/mail_store/smtp_mail_store_write' has WIRE_MAPPING but no TEST_VECTORS anchor",
+          "path": "/home/ljf/SpecForge/specs-example/smtp_specs/storage/mail_store/smtp_mail_store_write_spec.json"
+        }
+      ],
+      "status": "passed"
+    }
+  },
+  "view": "s2"
+}

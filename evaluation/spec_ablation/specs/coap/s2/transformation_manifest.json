@@ -1,0 +1,1839 @@
+{
+  "artifacts": {
+    "execution_manifest": "execution_manifest.json",
+    "functions": [
+      {
+        "artifact_path": "specfs_projection/functions/coap/network/udp_server/set_nonblocking.spec",
+        "name": "set_nonblocking",
+        "sha256": "b437c1d99325582fc3292ccd287da4b6470868962cbdf9bc28195cbe64a382bf",
+        "source_path": "network/udp_server.c",
+        "trace_id": "coap/network/udp_server/set_nonblocking"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/network/udp_server/coap_endpoint_to_string.spec",
+        "name": "coap_endpoint_to_string",
+        "sha256": "793eced3b8a10f1ebaa39ff795bda5116628ada67593217007155f17df599a75",
+        "source_path": "network/udp_server.c",
+        "trace_id": "coap/network/udp_server/coap_endpoint_to_string"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/network/udp_server/coap_udp_server_create.spec",
+        "name": "coap_udp_server_create",
+        "sha256": "359e69b89466dda3069cd3765c9c41f29575f6478f3e18228d6343b25c8ae9f4",
+        "source_path": "network/udp_server.c",
+        "trace_id": "coap/network/udp_server/coap_udp_server_create"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/network/udp_server/coap_udp_server_destroy.spec",
+        "name": "coap_udp_server_destroy",
+        "sha256": "90ea1f785bc0630eb49ec5c5ce8edde91db3689c78b0037d789a11ef96076aa7",
+        "source_path": "network/udp_server.c",
+        "trace_id": "coap/network/udp_server/coap_udp_server_destroy"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/network/udp_server/coap_udp_server_start.spec",
+        "name": "coap_udp_server_start",
+        "sha256": "667f297ec6cbae61871004fffefbd8fe777f9698709e6750403b481e1a8792e0",
+        "source_path": "network/udp_server.c",
+        "trace_id": "coap/network/udp_server/coap_udp_server_start"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/network/udp_server/coap_udp_server_stop.spec",
+        "name": "coap_udp_server_stop",
+        "sha256": "db46c1d66023b83709e743c49d328bf2c6a303168df191f3da58252b7d160868",
+        "source_path": "network/udp_server.c",
+        "trace_id": "coap/network/udp_server/coap_udp_server_stop"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/network/udp_server/coap_udp_server_sendto.spec",
+        "name": "coap_udp_server_sendto",
+        "sha256": "1ca9db18d811df10af8bccb2f22777fed1b891135fedc90b569b8080713a868b",
+        "source_path": "network/udp_server.c",
+        "trace_id": "coap/network/udp_server/coap_udp_server_sendto"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/network/udp_server/coap_udp_server_run.spec",
+        "name": "coap_udp_server_run",
+        "sha256": "4fe8c133ef994c817f0f8d297b6b6668b7cf37c01d7832059df8a326e1c78d0d",
+        "source_path": "network/udp_server.c",
+        "trace_id": "coap/network/udp_server/coap_udp_server_run"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/protocol/coap_message/xrealloc.spec",
+        "name": "xrealloc",
+        "sha256": "525c194219620a26d2600614d9401e97fdc2007ae82dd28d5cfebad9f17f1709",
+        "source_path": "protocol/coap_message.c",
+        "trace_id": "coap/protocol/coap_message/xrealloc"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/protocol/coap_message/coap_message_init.spec",
+        "name": "coap_message_init",
+        "sha256": "d8a8e40a025198e2257f67934ca2290bda76c3af31042cf87093c1313e635c3a",
+        "source_path": "protocol/coap_message.c",
+        "trace_id": "coap/protocol/coap_message/coap_message_init"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/protocol/coap_message/coap_message_reset.spec",
+        "name": "coap_message_reset",
+        "sha256": "06682c5f6e9980a221d99c62b872c743bcf254fd090391b64cc91b99e95d1109",
+        "source_path": "protocol/coap_message.c",
+        "trace_id": "coap/protocol/coap_message/coap_message_reset"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/protocol/coap_message/coap_message_free.spec",
+        "name": "coap_message_free",
+        "sha256": "4c69a6c896c408495cc4370a6ba9229824f71fd84988d1df678c36046ce7ff45",
+        "source_path": "protocol/coap_message.c",
+        "trace_id": "coap/protocol/coap_message/coap_message_free"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/protocol/coap_message/coap_message_set_token.spec",
+        "name": "coap_message_set_token",
+        "sha256": "8b081f7ff48625933e59202576a84bfaf5fc63e7da4cf19d7d6b621cdfdeca0f",
+        "source_path": "protocol/coap_message.c",
+        "trace_id": "coap/protocol/coap_message/coap_message_set_token"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/protocol/coap_message/coap_message_set_payload.spec",
+        "name": "coap_message_set_payload",
+        "sha256": "7aecb7634ac75f6ee6f34f00760fdfeffa652514944f0daf139973ebfa76ee63",
+        "source_path": "protocol/coap_message.c",
+        "trace_id": "coap/protocol/coap_message/coap_message_set_payload"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/protocol/coap_message/coap_message_set_payload_string.spec",
+        "name": "coap_message_set_payload_string",
+        "sha256": "4e89a3af53a73ab4a849bdbe34ecf165afe08c8f041d830c10d568d695d16518",
+        "source_path": "protocol/coap_message.c",
+        "trace_id": "coap/protocol/coap_message/coap_message_set_payload_string"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/protocol/coap_message/coap_message_add_option.spec",
+        "name": "coap_message_add_option",
+        "sha256": "61a19562ac09687a201a5c08bd82594748106307a088d5717fefd8148a49545f",
+        "source_path": "protocol/coap_message.c",
+        "trace_id": "coap/protocol/coap_message/coap_message_add_option"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/protocol/coap_message/coap_message_add_option_string.spec",
+        "name": "coap_message_add_option_string",
+        "sha256": "ae33e6971e9eb2cb3f4b3d3b159224a3bc685e45da8ae4a2e9eddfe65d9c11da",
+        "source_path": "protocol/coap_message.c",
+        "trace_id": "coap/protocol/coap_message/coap_message_add_option_string"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/protocol/coap_message/coap_message_add_option_uint.spec",
+        "name": "coap_message_add_option_uint",
+        "sha256": "e604b02dc567d366ec197050d79923f8d9e4aaef51bf5bbefbe6518902ef466f",
+        "source_path": "protocol/coap_message.c",
+        "trace_id": "coap/protocol/coap_message/coap_message_add_option_uint"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/protocol/coap_message/coap_message_get_uint_option.spec",
+        "name": "coap_message_get_uint_option",
+        "sha256": "cbf1c952114b70accb8d427e7d2c074dea0fb75ffa4057ecb2d35e0cb9bf848d",
+        "source_path": "protocol/coap_message.c",
+        "trace_id": "coap/protocol/coap_message/coap_message_get_uint_option"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/protocol/coap_message/coap_message_join_options.spec",
+        "name": "coap_message_join_options",
+        "sha256": "c19fd2e9055ee897914a6cb4d49a1a54a014ac225a55ac7b0f03e8ec22a40584",
+        "source_path": "protocol/coap_message.c",
+        "trace_id": "coap/protocol/coap_message/coap_message_join_options"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/protocol/coap_message/coap_make_code.spec",
+        "name": "coap_make_code",
+        "sha256": "ab06cb6bb12675b38d22d2ed790d1ff28613c8ab53295f3975cce2833912c4df",
+        "source_path": "protocol/coap_message.c",
+        "trace_id": "coap/protocol/coap_message/coap_make_code"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/protocol/coap_message/coap_code_class.spec",
+        "name": "coap_code_class",
+        "sha256": "3260056bcc5117bf0858d013437d79389e940fa310653f8bab03157750471a10",
+        "source_path": "protocol/coap_message.c",
+        "trace_id": "coap/protocol/coap_message/coap_code_class"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/protocol/coap_message/coap_code_detail.spec",
+        "name": "coap_code_detail",
+        "sha256": "7c453c7d75ed639b6df3724b69f39b45f73fbe35bc06d032d81fd6374ff95a17",
+        "source_path": "protocol/coap_message.c",
+        "trace_id": "coap/protocol/coap_message/coap_code_detail"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/protocol/coap_message/coap_code_is_method.spec",
+        "name": "coap_code_is_method",
+        "sha256": "69f5cb4d340d6a254027f8de4a1b6dfa32b56fc5b34fb2624927c9585262b188",
+        "source_path": "protocol/coap_message.c",
+        "trace_id": "coap/protocol/coap_message/coap_code_is_method"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/protocol/coap_message/coap_bytes_free.spec",
+        "name": "coap_bytes_free",
+        "sha256": "4a45594f9715fd6badbbcf82781a415da56d5037b4430f2e33646a816385f837",
+        "source_path": "protocol/coap_message.c",
+        "trace_id": "coap/protocol/coap_message/coap_bytes_free"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/protocol/coap_codec/option_ext_len.spec",
+        "name": "option_ext_len",
+        "sha256": "f4593357d55f9d467b5fa092bd361036952a93914c9f9c8deb2f35b13f6359d7",
+        "source_path": "protocol/coap_codec.c",
+        "trace_id": "coap/protocol/coap_codec/option_ext_len"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/protocol/coap_codec/encode_ext.spec",
+        "name": "encode_ext",
+        "sha256": "fb47d7d717e54e8bde3079b9934525e78195c2b9d035683a0d5f552cfc556b72",
+        "source_path": "protocol/coap_codec.c",
+        "trace_id": "coap/protocol/coap_codec/encode_ext"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/protocol/coap_codec/encode_nibble.spec",
+        "name": "encode_nibble",
+        "sha256": "455410bef97f7dceedacd19aea1353a8fcdce740701b4f60a5aa3aff2155c6f4",
+        "source_path": "protocol/coap_codec.c",
+        "trace_id": "coap/protocol/coap_codec/encode_nibble"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/protocol/coap_codec/decode_ext.spec",
+        "name": "decode_ext",
+        "sha256": "90823f35bff50ad643bcff9d121d8e7cf3a0e1ce40f1a75857ee7a3aa488e98e",
+        "source_path": "protocol/coap_codec.c",
+        "trace_id": "coap/protocol/coap_codec/decode_ext"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/protocol/coap_codec/coap_decode_message.spec",
+        "name": "coap_decode_message",
+        "sha256": "aeb4591ffe7cf032ef9008d3fbcb01eed313e88cf47bb5cefb0d234484ded641",
+        "source_path": "protocol/coap_codec.c",
+        "trace_id": "coap/protocol/coap_codec/coap_decode_message"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/protocol/coap_codec/coap_encode_message.spec",
+        "name": "coap_encode_message",
+        "sha256": "811439d3089c1ed39bcf059b17cba07159fccbe04777ff9a09bcbae7ef208d07",
+        "source_path": "protocol/coap_codec.c",
+        "trace_id": "coap/protocol/coap_codec/coap_encode_message"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/resource/resource_router/dup_string.spec",
+        "name": "dup_string",
+        "sha256": "280c7e1a7d00c74a52e3eafe687f104221cc86348ed7e07011a3fe67562c3411",
+        "source_path": "resource/resource_router.c",
+        "trace_id": "coap/resource/resource_router/dup_string"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/resource/resource_router/path_matches.spec",
+        "name": "path_matches",
+        "sha256": "252d9596c81ed8d20f2d066733163c6a91df57623bd98e18f38abe669b1a2d94",
+        "source_path": "resource/resource_router.c",
+        "trace_id": "coap/resource/resource_router/path_matches"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/resource/resource_router/coap_resource_router_create.spec",
+        "name": "coap_resource_router_create",
+        "sha256": "166980d83e77a75df5b227c0b7024a6bebec4926adf205b410b0e1a81f3e3fc8",
+        "source_path": "resource/resource_router.c",
+        "trace_id": "coap/resource/resource_router/coap_resource_router_create"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/resource/resource_router/coap_resource_router_destroy.spec",
+        "name": "coap_resource_router_destroy",
+        "sha256": "badb6fd6e5ac9ad8cd0311214eadf951c984aff9ec40f3567b848b43ba7d8c4d",
+        "source_path": "resource/resource_router.c",
+        "trace_id": "coap/resource/resource_router/coap_resource_router_destroy"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/resource/resource_router/coap_resource_router_add.spec",
+        "name": "coap_resource_router_add",
+        "sha256": "c5e464b1bc6072cd932118d3b8a2fa528be41235c8634aa7522e2a2e48f00ae7",
+        "source_path": "resource/resource_router.c",
+        "trace_id": "coap/resource/resource_router/coap_resource_router_add"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/resource/resource_router/coap_resource_router_dispatch.spec",
+        "name": "coap_resource_router_dispatch",
+        "sha256": "9279907580f472c6df1d31e2602de5bb3e64533455923673f35a5dd39e29e6da",
+        "source_path": "resource/resource_router.c",
+        "trace_id": "coap/resource/resource_router/coap_resource_router_dispatch"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/resource/resource_router/coap_resource_router_build_core_links.spec",
+        "name": "coap_resource_router_build_core_links",
+        "sha256": "86738e6d68f65aff4693ffcb63e10cf594251bf242cbf99f5a1d318b0252cbc5",
+        "source_path": "resource/resource_router.c",
+        "trace_id": "coap/resource/resource_router/coap_resource_router_build_core_links"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/main/main.spec",
+        "name": "main",
+        "sha256": "8466d4047692e725d51894fb16290fdf57f5b2759571599b87ebf63059cfde1d",
+        "source_path": "main.c",
+        "trace_id": "coap/main/main"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/server/coap_server/dup_string.spec",
+        "name": "dup_string",
+        "sha256": "39a51795bbf4fe69e990f984563c31914828facd98e0ab29bc76d5f750f2258b",
+        "source_path": "server/coap_server.c",
+        "trace_id": "coap/server/coap_server/dup_string"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/server/coap_server/response_set_text.spec",
+        "name": "response_set_text",
+        "sha256": "a5e96606e72c8c1b5e71628ce7e7eace8c634c8c10cf49a247682305584aa429",
+        "source_path": "server/coap_server.c",
+        "trace_id": "coap/server/coap_server/response_set_text"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/server/coap_server/response_set_bytes.spec",
+        "name": "response_set_bytes",
+        "sha256": "560169d41de752a31af3724c57e067c0993fe802e0a31200b5a20efb6033614c",
+        "source_path": "server/coap_server.c",
+        "trace_id": "coap/server/coap_server/response_set_bytes"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/server/coap_server/find_kv.spec",
+        "name": "find_kv",
+        "sha256": "25bfa2fb67a60d720f54d097038dba84d5638bd5762412b9f8041c34dc2e4cc3",
+        "source_path": "server/coap_server.c",
+        "trace_id": "coap/server/coap_server/find_kv"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/server/coap_server/kv_put.spec",
+        "name": "kv_put",
+        "sha256": "f05b20bd299e34060568bda8e796fe492885af8ce5d282825e9c7417dff14987",
+        "source_path": "server/coap_server.c",
+        "trace_id": "coap/server/coap_server/kv_put"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/server/coap_server/kv_delete.spec",
+        "name": "kv_delete",
+        "sha256": "8bc70847a6671da69db00c289d84487b62549adbef58ef18f80482586c36fab9",
+        "source_path": "server/coap_server.c",
+        "trace_id": "coap/server/coap_server/kv_delete"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/server/coap_server/handle_discovery.spec",
+        "name": "handle_discovery",
+        "sha256": "f06b54d34a423210ed6444478aeefe5de50041d73f4516bb260045448c4de41c",
+        "source_path": "server/coap_server.c",
+        "trace_id": "coap/server/coap_server/handle_discovery"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/server/coap_server/handle_hello.spec",
+        "name": "handle_hello",
+        "sha256": "54fbc229720c27b36206555e8d9c8c09c934d422f3838ab3b39cb2ccda31a13e",
+        "source_path": "server/coap_server.c",
+        "trace_id": "coap/server/coap_server/handle_hello"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/server/coap_server/handle_echo.spec",
+        "name": "handle_echo",
+        "sha256": "1cb44df0d03115993fdd15e052844bb357c5f8827670284755cb4ea231059793",
+        "source_path": "server/coap_server.c",
+        "trace_id": "coap/server/coap_server/handle_echo"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/server/coap_server/handle_kv.spec",
+        "name": "handle_kv",
+        "sha256": "1a096f8818af02eb4e533c33373f96197b1a8e434126bc5d6c8d5d9bd2c40823",
+        "source_path": "server/coap_server.c",
+        "trace_id": "coap/server/coap_server/handle_kv"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/server/coap_server/setup_response_envelope.spec",
+        "name": "setup_response_envelope",
+        "sha256": "9d8c3fc3f6fccb6e32057927dea542d89af6d016d5c64c8bbadea16d5c4ba5bd",
+        "source_path": "server/coap_server.c",
+        "trace_id": "coap/server/coap_server/setup_response_envelope"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/server/coap_server/build_request_view.spec",
+        "name": "build_request_view",
+        "sha256": "46a9d9da129317984216bde39af2fd2d3ba32592f9b4c9ab4dd1a00f3af3c2ad",
+        "source_path": "server/coap_server.c",
+        "trace_id": "coap/server/coap_server/build_request_view"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/server/coap_server/free_request_view.spec",
+        "name": "free_request_view",
+        "sha256": "51f28c87d53bb1632a9688c2e0513a75e37aad9eec67755dec94da72cf890c78",
+        "source_path": "server/coap_server.c",
+        "trace_id": "coap/server/coap_server/free_request_view"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/server/coap_server/send_response.spec",
+        "name": "send_response",
+        "sha256": "93760571033fcf3ee8f7bfee70d50864eefc9c7f6d13647bfa56a4151c384849",
+        "source_path": "server/coap_server.c",
+        "trace_id": "coap/server/coap_server/send_response"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/server/coap_server/send_reset.spec",
+        "name": "send_reset",
+        "sha256": "46cd221fe9f39b7b495697974f342a4020e15682302f2e154ecc5669d4ff747d",
+        "source_path": "server/coap_server.c",
+        "trace_id": "coap/server/coap_server/send_reset"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/server/coap_server/on_datagram.spec",
+        "name": "on_datagram",
+        "sha256": "d2e2dba6466db61bc861b1af231d1d406c7aeb371b4d318075b2ced71e815083",
+        "source_path": "server/coap_server.c",
+        "trace_id": "coap/server/coap_server/on_datagram"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/server/coap_server/coap_server_create.spec",
+        "name": "coap_server_create",
+        "sha256": "f0c7193629ae8fc660468e86c990d21a1265b21d2560bfad3b6c3357104cdbe0",
+        "source_path": "server/coap_server.c",
+        "trace_id": "coap/server/coap_server/coap_server_create"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/server/coap_server/coap_server_destroy.spec",
+        "name": "coap_server_destroy",
+        "sha256": "6379ef1fd5cb5b729c07f8e55642fae4aa65c42d90505785971abd6156fad3b6",
+        "source_path": "server/coap_server.c",
+        "trace_id": "coap/server/coap_server/coap_server_destroy"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/server/coap_server/coap_server_start.spec",
+        "name": "coap_server_start",
+        "sha256": "6f53f4df2d63c972eef996ffb9d174fe09a76efbae297f055e33c5f177cb3e50",
+        "source_path": "server/coap_server.c",
+        "trace_id": "coap/server/coap_server/coap_server_start"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/server/coap_server/coap_server_run.spec",
+        "name": "coap_server_run",
+        "sha256": "c3a7b0b12b8410c77cded11cd4c71cacfc2041f5f8e6c5816108659c275265de",
+        "source_path": "server/coap_server.c",
+        "trace_id": "coap/server/coap_server/coap_server_run"
+      },
+      {
+        "artifact_path": "specfs_projection/functions/coap/server/coap_server/coap_server_stop.spec",
+        "name": "coap_server_stop",
+        "sha256": "e6f6ae56e9ae97cb73cd50d02ce0cf5edf97eabcd2c60b8a28a7ce982dc09855",
+        "source_path": "server/coap_server.c",
+        "trace_id": "coap/server/coap_server/coap_server_stop"
+      }
+    ],
+    "headers": [
+      {
+        "artifact_path": "specfs_projection/headers/network/udp_server.h.header",
+        "header_path": "network/udp_server.h",
+        "sha256": "c498eb6e3f9068a4c56fe9335577a298467f2ef68dcb71f313ca56e854fd5267"
+      },
+      {
+        "artifact_path": "specfs_projection/headers/protocol/coap_message.h.header",
+        "header_path": "protocol/coap_message.h",
+        "sha256": "9c5a6719580e5ce755bd55907fdfdd6ab8305e891f0f200bef3edf5a12f1dba2"
+      },
+      {
+        "artifact_path": "specfs_projection/headers/protocol/coap_codec.h.header",
+        "header_path": "protocol/coap_codec.h",
+        "sha256": "77b25402340786529b39b19781ef9af27422a663c86544377b4ffbda3851b80f"
+      },
+      {
+        "artifact_path": "specfs_projection/headers/resource/resource_router.h.header",
+        "header_path": "resource/resource_router.h",
+        "sha256": "7ef5b3f1852bbfb611cd6489275e1b27b57a327429df4656b25a9b4bf34c1616"
+      },
+      {
+        "artifact_path": "specfs_projection/headers/server/coap_server.h.header",
+        "header_path": "server/coap_server.h",
+        "sha256": "1b2c8ae0a2de284632b0f67ff5e64e26003c0ad46c7c16b25dbbef191e405248"
+      }
+    ],
+    "project_graph": {
+      "artifact_path": "specfs_projection/project_graph.json",
+      "sha256": "46bac5abe29e1695cea8efce93b6d716e333503ecfa9873987ad2f433ac231fe"
+    }
+  },
+  "counts": {
+    "files": 6,
+    "functions": 60,
+    "headers": 5,
+    "project_graphs": 1
+  },
+  "hashes": {
+    "output_payload_sha256": "4a2cbc098672082239df86fd93348b1c336a22f4013ff720692e19aa18a7a734",
+    "source_specs_tree_sha256": "41a3c946a12109a1097797e04912008e209215933e849ed2dc2a50cca41570ba"
+  },
+  "output_root": ".",
+  "protocol": "coap",
+  "rely_resolution": [
+    {
+      "category": "STRUCT",
+      "name": "coap_endpoint_t",
+      "provider_header_path": "network/udp_server.h",
+      "provider_trace_id": "coap/network/udp_server",
+      "strategy": "same_parent",
+      "trace_id": "coap/network/udp_server/coap_endpoint_to_string"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_udp_server_t",
+      "provider_header_path": "network/udp_server.h",
+      "provider_trace_id": "coap/network/udp_server",
+      "strategy": "same_parent",
+      "trace_id": "coap/network/udp_server/coap_udp_server_create"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_udp_callbacks_t",
+      "provider_header_path": "network/udp_server.h",
+      "provider_trace_id": "coap/network/udp_server",
+      "strategy": "same_parent",
+      "trace_id": "coap/network/udp_server/coap_udp_server_create"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_udp_server_t",
+      "provider_header_path": "network/udp_server.h",
+      "provider_trace_id": "coap/network/udp_server",
+      "strategy": "same_parent",
+      "trace_id": "coap/network/udp_server/coap_udp_server_destroy"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_udp_server_stop",
+      "provider_header_path": "network/udp_server.h",
+      "provider_trace_id": "coap/network/udp_server",
+      "strategy": "same_parent",
+      "trace_id": "coap/network/udp_server/coap_udp_server_destroy"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_udp_server_t",
+      "provider_header_path": "network/udp_server.h",
+      "provider_trace_id": "coap/network/udp_server",
+      "strategy": "same_parent",
+      "trace_id": "coap/network/udp_server/coap_udp_server_start"
+    },
+    {
+      "category": "FUNC",
+      "name": "set_nonblocking",
+      "provider_header_path": "network/udp_server.h",
+      "provider_trace_id": "coap/network/udp_server",
+      "strategy": "same_parent",
+      "trace_id": "coap/network/udp_server/coap_udp_server_start"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_udp_server_t",
+      "provider_header_path": "network/udp_server.h",
+      "provider_trace_id": "coap/network/udp_server",
+      "strategy": "same_parent",
+      "trace_id": "coap/network/udp_server/coap_udp_server_stop"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_udp_server_t",
+      "provider_header_path": "network/udp_server.h",
+      "provider_trace_id": "coap/network/udp_server",
+      "strategy": "same_parent",
+      "trace_id": "coap/network/udp_server/coap_udp_server_sendto"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_endpoint_t",
+      "provider_header_path": "network/udp_server.h",
+      "provider_trace_id": "coap/network/udp_server",
+      "strategy": "same_parent",
+      "trace_id": "coap/network/udp_server/coap_udp_server_sendto"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_udp_server_t",
+      "provider_header_path": "network/udp_server.h",
+      "provider_trace_id": "coap/network/udp_server",
+      "strategy": "same_parent",
+      "trace_id": "coap/network/udp_server/coap_udp_server_run"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_endpoint_t",
+      "provider_header_path": "network/udp_server.h",
+      "provider_trace_id": "coap/network/udp_server",
+      "strategy": "same_parent",
+      "trace_id": "coap/network/udp_server/coap_udp_server_run"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_message_t",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "same_parent",
+      "trace_id": "coap/protocol/coap_message/coap_message_init"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_message_t",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "same_parent",
+      "trace_id": "coap/protocol/coap_message/coap_message_reset"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_message_init",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "same_parent",
+      "trace_id": "coap/protocol/coap_message/coap_message_reset"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_message_t",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "same_parent",
+      "trace_id": "coap/protocol/coap_message/coap_message_free"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_message_reset",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "same_parent",
+      "trace_id": "coap/protocol/coap_message/coap_message_free"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_message_t",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "same_parent",
+      "trace_id": "coap/protocol/coap_message/coap_message_set_token"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_message_t",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "same_parent",
+      "trace_id": "coap/protocol/coap_message/coap_message_set_payload"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_message_t",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "same_parent",
+      "trace_id": "coap/protocol/coap_message/coap_message_set_payload_string"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_message_set_payload",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "same_parent",
+      "trace_id": "coap/protocol/coap_message/coap_message_set_payload_string"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_message_t",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "same_parent",
+      "trace_id": "coap/protocol/coap_message/coap_message_add_option"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_option_t",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "same_parent",
+      "trace_id": "coap/protocol/coap_message/coap_message_add_option"
+    },
+    {
+      "category": "FUNC",
+      "name": "xrealloc",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "same_parent",
+      "trace_id": "coap/protocol/coap_message/coap_message_add_option"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_message_t",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "same_parent",
+      "trace_id": "coap/protocol/coap_message/coap_message_add_option_string"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_message_add_option",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "same_parent",
+      "trace_id": "coap/protocol/coap_message/coap_message_add_option_string"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_message_t",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "same_parent",
+      "trace_id": "coap/protocol/coap_message/coap_message_add_option_uint"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_message_add_option",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "same_parent",
+      "trace_id": "coap/protocol/coap_message/coap_message_add_option_uint"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_message_t",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "same_parent",
+      "trace_id": "coap/protocol/coap_message/coap_message_get_uint_option"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_option_t",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "same_parent",
+      "trace_id": "coap/protocol/coap_message/coap_message_get_uint_option"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_message_t",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "same_parent",
+      "trace_id": "coap/protocol/coap_message/coap_message_join_options"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_option_t",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "same_parent",
+      "trace_id": "coap/protocol/coap_message/coap_message_join_options"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_code_class",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "same_parent",
+      "trace_id": "coap/protocol/coap_message/coap_code_is_method"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_bytes_t",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "same_parent",
+      "trace_id": "coap/protocol/coap_message/coap_bytes_free"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_message_t",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/protocol/coap_codec/coap_decode_message"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_option_t",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/protocol/coap_codec/coap_decode_message"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_message_init",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/protocol/coap_codec/coap_decode_message"
+    },
+    {
+      "category": "FUNC",
+      "name": "decode_ext",
+      "provider_header_path": "protocol/coap_codec.h",
+      "provider_trace_id": "coap/protocol/coap_codec",
+      "strategy": "same_parent",
+      "trace_id": "coap/protocol/coap_codec/coap_decode_message"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_message_add_option",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/protocol/coap_codec/coap_decode_message"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_message_set_payload",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/protocol/coap_codec/coap_decode_message"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_message_free",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/protocol/coap_codec/coap_decode_message"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_message_t",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/protocol/coap_codec/coap_encode_message"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_option_t",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/protocol/coap_codec/coap_encode_message"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_bytes_t",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/protocol/coap_codec/coap_encode_message"
+    },
+    {
+      "category": "FUNC",
+      "name": "option_ext_len",
+      "provider_header_path": "protocol/coap_codec.h",
+      "provider_trace_id": "coap/protocol/coap_codec",
+      "strategy": "same_parent",
+      "trace_id": "coap/protocol/coap_codec/coap_encode_message"
+    },
+    {
+      "category": "FUNC",
+      "name": "encode_nibble",
+      "provider_header_path": "protocol/coap_codec.h",
+      "provider_trace_id": "coap/protocol/coap_codec",
+      "strategy": "same_parent",
+      "trace_id": "coap/protocol/coap_codec/coap_encode_message"
+    },
+    {
+      "category": "FUNC",
+      "name": "encode_ext",
+      "provider_header_path": "protocol/coap_codec.h",
+      "provider_trace_id": "coap/protocol/coap_codec",
+      "strategy": "same_parent",
+      "trace_id": "coap/protocol/coap_codec/coap_encode_message"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_resource_entry_t",
+      "provider_header_path": "resource/resource_router.h",
+      "provider_trace_id": "coap/resource/resource_router",
+      "strategy": "same_parent",
+      "trace_id": "coap/resource/resource_router/path_matches"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_resource_router_t",
+      "provider_header_path": "resource/resource_router.h",
+      "provider_trace_id": "coap/resource/resource_router",
+      "strategy": "same_parent",
+      "trace_id": "coap/resource/resource_router/coap_resource_router_create"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_resource_entry_t",
+      "provider_header_path": "resource/resource_router.h",
+      "provider_trace_id": "coap/resource/resource_router",
+      "strategy": "same_parent",
+      "trace_id": "coap/resource/resource_router/coap_resource_router_create"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_resource_router_t",
+      "provider_header_path": "resource/resource_router.h",
+      "provider_trace_id": "coap/resource/resource_router",
+      "strategy": "same_parent",
+      "trace_id": "coap/resource/resource_router/coap_resource_router_destroy"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_resource_entry_t",
+      "provider_header_path": "resource/resource_router.h",
+      "provider_trace_id": "coap/resource/resource_router",
+      "strategy": "same_parent",
+      "trace_id": "coap/resource/resource_router/coap_resource_router_destroy"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_resource_router_t",
+      "provider_header_path": "resource/resource_router.h",
+      "provider_trace_id": "coap/resource/resource_router",
+      "strategy": "same_parent",
+      "trace_id": "coap/resource/resource_router/coap_resource_router_add"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_resource_entry_t",
+      "provider_header_path": "resource/resource_router.h",
+      "provider_trace_id": "coap/resource/resource_router",
+      "strategy": "same_parent",
+      "trace_id": "coap/resource/resource_router/coap_resource_router_add"
+    },
+    {
+      "category": "FUNC",
+      "name": "dup_string",
+      "provider_header_path": "resource/resource_router.h",
+      "provider_trace_id": "coap/resource/resource_router",
+      "strategy": "same_parent",
+      "trace_id": "coap/resource/resource_router/coap_resource_router_add"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_resource_router_t",
+      "provider_header_path": "resource/resource_router.h",
+      "provider_trace_id": "coap/resource/resource_router",
+      "strategy": "same_parent",
+      "trace_id": "coap/resource/resource_router/coap_resource_router_dispatch"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_resource_entry_t",
+      "provider_header_path": "resource/resource_router.h",
+      "provider_trace_id": "coap/resource/resource_router",
+      "strategy": "same_parent",
+      "trace_id": "coap/resource/resource_router/coap_resource_router_dispatch"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_request_t",
+      "provider_header_path": "resource/resource_router.h",
+      "provider_trace_id": "coap/resource/resource_router",
+      "strategy": "same_parent",
+      "trace_id": "coap/resource/resource_router/coap_resource_router_dispatch"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_message_t",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/resource/resource_router/coap_resource_router_dispatch"
+    },
+    {
+      "category": "FUNC",
+      "name": "path_matches",
+      "provider_header_path": "resource/resource_router.h",
+      "provider_trace_id": "coap/resource/resource_router",
+      "strategy": "same_parent",
+      "trace_id": "coap/resource/resource_router/coap_resource_router_dispatch"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_make_code",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/resource/resource_router/coap_resource_router_dispatch"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_resource_router_t",
+      "provider_header_path": "resource/resource_router.h",
+      "provider_trace_id": "coap/resource/resource_router",
+      "strategy": "same_parent",
+      "trace_id": "coap/resource/resource_router/coap_resource_router_build_core_links"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_resource_entry_t",
+      "provider_header_path": "resource/resource_router.h",
+      "provider_trace_id": "coap/resource/resource_router",
+      "strategy": "same_parent",
+      "trace_id": "coap/resource/resource_router/coap_resource_router_build_core_links"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_server_t",
+      "provider_header_path": "server/coap_server.h",
+      "provider_trace_id": "coap/server/coap_server",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/main/main"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_server_create",
+      "provider_header_path": "server/coap_server.h",
+      "provider_trace_id": "coap/server/coap_server",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/main/main"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_server_start",
+      "provider_header_path": "server/coap_server.h",
+      "provider_trace_id": "coap/server/coap_server",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/main/main"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_server_run",
+      "provider_header_path": "server/coap_server.h",
+      "provider_trace_id": "coap/server/coap_server",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/main/main"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_server_destroy",
+      "provider_header_path": "server/coap_server.h",
+      "provider_trace_id": "coap/server/coap_server",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/main/main"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_message_t",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/response_set_text"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_message_add_option_uint",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/response_set_text"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_message_set_payload_string",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/response_set_text"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_message_t",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/response_set_bytes"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_message_add_option_uint",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/response_set_bytes"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_message_set_payload",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/response_set_bytes"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_server_t",
+      "provider_header_path": "server/coap_server.h",
+      "provider_trace_id": "coap/server/coap_server",
+      "strategy": "same_parent",
+      "trace_id": "coap/server/coap_server/find_kv"
+    },
+    {
+      "category": "STRUCT",
+      "name": "kv_entry_t",
+      "provider_header_path": "server/coap_server.h",
+      "provider_trace_id": "coap/server/coap_server",
+      "strategy": "same_parent",
+      "trace_id": "coap/server/coap_server/find_kv"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_server_t",
+      "provider_header_path": "server/coap_server.h",
+      "provider_trace_id": "coap/server/coap_server",
+      "strategy": "same_parent",
+      "trace_id": "coap/server/coap_server/kv_put"
+    },
+    {
+      "category": "STRUCT",
+      "name": "kv_entry_t",
+      "provider_header_path": "server/coap_server.h",
+      "provider_trace_id": "coap/server/coap_server",
+      "strategy": "same_parent",
+      "trace_id": "coap/server/coap_server/kv_put"
+    },
+    {
+      "category": "FUNC",
+      "name": "find_kv",
+      "provider_header_path": "server/coap_server.h",
+      "provider_trace_id": "coap/server/coap_server",
+      "strategy": "same_parent",
+      "trace_id": "coap/server/coap_server/kv_put"
+    },
+    {
+      "category": "FUNC",
+      "name": "dup_string",
+      "provider_header_path": "server/coap_server.h",
+      "provider_trace_id": "coap/server/coap_server",
+      "strategy": "same_parent",
+      "trace_id": "coap/server/coap_server/kv_put"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_server_t",
+      "provider_header_path": "server/coap_server.h",
+      "provider_trace_id": "coap/server/coap_server",
+      "strategy": "same_parent",
+      "trace_id": "coap/server/coap_server/kv_delete"
+    },
+    {
+      "category": "STRUCT",
+      "name": "kv_entry_t",
+      "provider_header_path": "server/coap_server.h",
+      "provider_trace_id": "coap/server/coap_server",
+      "strategy": "same_parent",
+      "trace_id": "coap/server/coap_server/kv_delete"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_server_t",
+      "provider_header_path": "server/coap_server.h",
+      "provider_trace_id": "coap/server/coap_server",
+      "strategy": "same_parent",
+      "trace_id": "coap/server/coap_server/handle_discovery"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_request_t",
+      "provider_header_path": "resource/resource_router.h",
+      "provider_trace_id": "coap/resource/resource_router",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/handle_discovery"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_message_t",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/handle_discovery"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_resource_router_build_core_links",
+      "provider_header_path": "resource/resource_router.h",
+      "provider_trace_id": "coap/resource/resource_router",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/handle_discovery"
+    },
+    {
+      "category": "FUNC",
+      "name": "response_set_text",
+      "provider_header_path": "server/coap_server.h",
+      "provider_trace_id": "coap/server/coap_server",
+      "strategy": "same_parent",
+      "trace_id": "coap/server/coap_server/handle_discovery"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_make_code",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/handle_discovery"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_request_t",
+      "provider_header_path": "resource/resource_router.h",
+      "provider_trace_id": "coap/resource/resource_router",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/handle_hello"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_message_t",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/handle_hello"
+    },
+    {
+      "category": "FUNC",
+      "name": "response_set_text",
+      "provider_header_path": "server/coap_server.h",
+      "provider_trace_id": "coap/server/coap_server",
+      "strategy": "same_parent",
+      "trace_id": "coap/server/coap_server/handle_hello"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_make_code",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/handle_hello"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_request_t",
+      "provider_header_path": "resource/resource_router.h",
+      "provider_trace_id": "coap/resource/resource_router",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/handle_echo"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_message_t",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/handle_echo"
+    },
+    {
+      "category": "FUNC",
+      "name": "response_set_bytes",
+      "provider_header_path": "server/coap_server.h",
+      "provider_trace_id": "coap/server/coap_server",
+      "strategy": "same_parent",
+      "trace_id": "coap/server/coap_server/handle_echo"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_make_code",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/handle_echo"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_server_t",
+      "provider_header_path": "server/coap_server.h",
+      "provider_trace_id": "coap/server/coap_server",
+      "strategy": "same_parent",
+      "trace_id": "coap/server/coap_server/handle_kv"
+    },
+    {
+      "category": "STRUCT",
+      "name": "kv_entry_t",
+      "provider_header_path": "server/coap_server.h",
+      "provider_trace_id": "coap/server/coap_server",
+      "strategy": "same_parent",
+      "trace_id": "coap/server/coap_server/handle_kv"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_request_t",
+      "provider_header_path": "resource/resource_router.h",
+      "provider_trace_id": "coap/resource/resource_router",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/handle_kv"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_message_t",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/handle_kv"
+    },
+    {
+      "category": "FUNC",
+      "name": "find_kv",
+      "provider_header_path": "server/coap_server.h",
+      "provider_trace_id": "coap/server/coap_server",
+      "strategy": "same_parent",
+      "trace_id": "coap/server/coap_server/handle_kv"
+    },
+    {
+      "category": "FUNC",
+      "name": "kv_put",
+      "provider_header_path": "server/coap_server.h",
+      "provider_trace_id": "coap/server/coap_server",
+      "strategy": "same_parent",
+      "trace_id": "coap/server/coap_server/handle_kv"
+    },
+    {
+      "category": "FUNC",
+      "name": "kv_delete",
+      "provider_header_path": "server/coap_server.h",
+      "provider_trace_id": "coap/server/coap_server",
+      "strategy": "same_parent",
+      "trace_id": "coap/server/coap_server/handle_kv"
+    },
+    {
+      "category": "FUNC",
+      "name": "response_set_text",
+      "provider_header_path": "server/coap_server.h",
+      "provider_trace_id": "coap/server/coap_server",
+      "strategy": "same_parent",
+      "trace_id": "coap/server/coap_server/handle_kv"
+    },
+    {
+      "category": "FUNC",
+      "name": "response_set_bytes",
+      "provider_header_path": "server/coap_server.h",
+      "provider_trace_id": "coap/server/coap_server",
+      "strategy": "same_parent",
+      "trace_id": "coap/server/coap_server/handle_kv"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_make_code",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/handle_kv"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_message_t",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/setup_response_envelope"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_message_init",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/setup_response_envelope"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_message_set_token",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/setup_response_envelope"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_message_t",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/build_request_view"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_request_t",
+      "provider_header_path": "resource/resource_router.h",
+      "provider_trace_id": "coap/resource/resource_router",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/build_request_view"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_code_is_method",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/build_request_view"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_message_join_options",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/build_request_view"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_message_get_uint_option",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/build_request_view"
+    },
+    {
+      "category": "FUNC",
+      "name": "dup_string",
+      "provider_header_path": "server/coap_server.h",
+      "provider_trace_id": "coap/server/coap_server",
+      "strategy": "same_parent",
+      "trace_id": "coap/server/coap_server/build_request_view"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_request_t",
+      "provider_header_path": "resource/resource_router.h",
+      "provider_trace_id": "coap/resource/resource_router",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/free_request_view"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_server_t",
+      "provider_header_path": "server/coap_server.h",
+      "provider_trace_id": "coap/server/coap_server",
+      "strategy": "same_parent",
+      "trace_id": "coap/server/coap_server/send_response"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_endpoint_t",
+      "provider_header_path": "network/udp_server.h",
+      "provider_trace_id": "coap/network/udp_server",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/send_response"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_message_t",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/send_response"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_bytes_t",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/send_response"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_encode_message",
+      "provider_header_path": "protocol/coap_codec.h",
+      "provider_trace_id": "coap/protocol/coap_codec",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/send_response"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_udp_server_sendto",
+      "provider_header_path": "network/udp_server.h",
+      "provider_trace_id": "coap/network/udp_server",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/send_response"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_bytes_free",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/send_response"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_server_t",
+      "provider_header_path": "server/coap_server.h",
+      "provider_trace_id": "coap/server/coap_server",
+      "strategy": "same_parent",
+      "trace_id": "coap/server/coap_server/send_reset"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_endpoint_t",
+      "provider_header_path": "network/udp_server.h",
+      "provider_trace_id": "coap/network/udp_server",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/send_reset"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_message_t",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/send_reset"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_message_init",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/send_reset"
+    },
+    {
+      "category": "FUNC",
+      "name": "send_response",
+      "provider_header_path": "server/coap_server.h",
+      "provider_trace_id": "coap/server/coap_server",
+      "strategy": "same_parent",
+      "trace_id": "coap/server/coap_server/send_reset"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_message_free",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/send_reset"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_server_t",
+      "provider_header_path": "server/coap_server.h",
+      "provider_trace_id": "coap/server/coap_server",
+      "strategy": "same_parent",
+      "trace_id": "coap/server/coap_server/on_datagram"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_endpoint_t",
+      "provider_header_path": "network/udp_server.h",
+      "provider_trace_id": "coap/network/udp_server",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/on_datagram"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_message_t",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/on_datagram"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_request_t",
+      "provider_header_path": "resource/resource_router.h",
+      "provider_trace_id": "coap/resource/resource_router",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/on_datagram"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_decode_message",
+      "provider_header_path": "protocol/coap_codec.h",
+      "provider_trace_id": "coap/protocol/coap_codec",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/on_datagram"
+    },
+    {
+      "category": "FUNC",
+      "name": "send_reset",
+      "provider_header_path": "server/coap_server.h",
+      "provider_trace_id": "coap/server/coap_server",
+      "strategy": "same_parent",
+      "trace_id": "coap/server/coap_server/on_datagram"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_endpoint_to_string",
+      "provider_header_path": "network/udp_server.h",
+      "provider_trace_id": "coap/network/udp_server",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/on_datagram"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_code_class",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/on_datagram"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_code_detail",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/on_datagram"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_code_is_method",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/on_datagram"
+    },
+    {
+      "category": "FUNC",
+      "name": "setup_response_envelope",
+      "provider_header_path": "server/coap_server.h",
+      "provider_trace_id": "coap/server/coap_server",
+      "strategy": "same_parent",
+      "trace_id": "coap/server/coap_server/on_datagram"
+    },
+    {
+      "category": "FUNC",
+      "name": "build_request_view",
+      "provider_header_path": "server/coap_server.h",
+      "provider_trace_id": "coap/server/coap_server",
+      "strategy": "same_parent",
+      "trace_id": "coap/server/coap_server/on_datagram"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_resource_router_dispatch",
+      "provider_header_path": "resource/resource_router.h",
+      "provider_trace_id": "coap/resource/resource_router",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/on_datagram"
+    },
+    {
+      "category": "FUNC",
+      "name": "send_response",
+      "provider_header_path": "server/coap_server.h",
+      "provider_trace_id": "coap/server/coap_server",
+      "strategy": "same_parent",
+      "trace_id": "coap/server/coap_server/on_datagram"
+    },
+    {
+      "category": "FUNC",
+      "name": "free_request_view",
+      "provider_header_path": "server/coap_server.h",
+      "provider_trace_id": "coap/server/coap_server",
+      "strategy": "same_parent",
+      "trace_id": "coap/server/coap_server/on_datagram"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_message_free",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/on_datagram"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_make_code",
+      "provider_header_path": "protocol/coap_message.h",
+      "provider_trace_id": "coap/protocol/coap_message",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/on_datagram"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_server_t",
+      "provider_header_path": "server/coap_server.h",
+      "provider_trace_id": "coap/server/coap_server",
+      "strategy": "same_parent",
+      "trace_id": "coap/server/coap_server/coap_server_create"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_udp_callbacks_t",
+      "provider_header_path": "network/udp_server.h",
+      "provider_trace_id": "coap/network/udp_server",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/coap_server_create"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_resource_router_t",
+      "provider_header_path": "resource/resource_router.h",
+      "provider_trace_id": "coap/resource/resource_router",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/coap_server_create"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_resource_router_create",
+      "provider_header_path": "resource/resource_router.h",
+      "provider_trace_id": "coap/resource/resource_router",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/coap_server_create"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_udp_server_create",
+      "provider_header_path": "network/udp_server.h",
+      "provider_trace_id": "coap/network/udp_server",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/coap_server_create"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_resource_router_add",
+      "provider_header_path": "resource/resource_router.h",
+      "provider_trace_id": "coap/resource/resource_router",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/coap_server_create"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_server_destroy",
+      "provider_header_path": "server/coap_server.h",
+      "provider_trace_id": "coap/server/coap_server",
+      "strategy": "same_parent",
+      "trace_id": "coap/server/coap_server/coap_server_create"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_server_t",
+      "provider_header_path": "server/coap_server.h",
+      "provider_trace_id": "coap/server/coap_server",
+      "strategy": "same_parent",
+      "trace_id": "coap/server/coap_server/coap_server_destroy"
+    },
+    {
+      "category": "STRUCT",
+      "name": "kv_entry_t",
+      "provider_header_path": "server/coap_server.h",
+      "provider_trace_id": "coap/server/coap_server",
+      "strategy": "same_parent",
+      "trace_id": "coap/server/coap_server/coap_server_destroy"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_server_stop",
+      "provider_header_path": "server/coap_server.h",
+      "provider_trace_id": "coap/server/coap_server",
+      "strategy": "same_parent",
+      "trace_id": "coap/server/coap_server/coap_server_destroy"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_udp_server_destroy",
+      "provider_header_path": "network/udp_server.h",
+      "provider_trace_id": "coap/network/udp_server",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/coap_server_destroy"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_resource_router_destroy",
+      "provider_header_path": "resource/resource_router.h",
+      "provider_trace_id": "coap/resource/resource_router",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/coap_server_destroy"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_server_t",
+      "provider_header_path": "server/coap_server.h",
+      "provider_trace_id": "coap/server/coap_server",
+      "strategy": "same_parent",
+      "trace_id": "coap/server/coap_server/coap_server_start"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_udp_server_start",
+      "provider_header_path": "network/udp_server.h",
+      "provider_trace_id": "coap/network/udp_server",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/coap_server_start"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_server_t",
+      "provider_header_path": "server/coap_server.h",
+      "provider_trace_id": "coap/server/coap_server",
+      "strategy": "same_parent",
+      "trace_id": "coap/server/coap_server/coap_server_run"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_udp_server_run",
+      "provider_header_path": "network/udp_server.h",
+      "provider_trace_id": "coap/network/udp_server",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/coap_server_run"
+    },
+    {
+      "category": "STRUCT",
+      "name": "coap_server_t",
+      "provider_header_path": "server/coap_server.h",
+      "provider_trace_id": "coap/server/coap_server",
+      "strategy": "same_parent",
+      "trace_id": "coap/server/coap_server/coap_server_stop"
+    },
+    {
+      "category": "FUNC",
+      "name": "coap_udp_server_stop",
+      "provider_header_path": "network/udp_server.h",
+      "provider_trace_id": "coap/network/udp_server",
+      "strategy": "dependency_provider",
+      "trace_id": "coap/server/coap_server/coap_server_stop"
+    }
+  ],
+  "schema_version": "spec_ablation_s2_transformation_manifest/v1",
+  "source_root": "specs-example/coap_specs",
+  "transformation_hash": "c900eb43f7eefdc367fad9aff949d7ba771fe2162eb534b1fdc9c1760bb7f2f2",
+  "transformer_version": "spec_ablation_s2_transformer/v2",
+  "validation": {
+    "leakage_scan": {
+      "forbidden_terms": [
+        "PROTOCOL_MODULE_SPEC",
+        "FILE_SPEC",
+        "FUNCTION_SPEC",
+        "ACCESS_PATHS",
+        "WIRE_MAPPING",
+        "CALL_CONTRACTS",
+        "FORBIDDEN_SYMBOLS",
+        "TEST_VECTORS",
+        "CONSISTENCY_RULES",
+        "DOC_REF",
+        "TRACE_REFS"
+      ],
+      "status": "passed",
+      "violations": []
+    },
+    "s2_project_graph_leakage_scan": {
+      "forbidden_terms": [
+        "PROTOCOL_MODULE_SPEC",
+        "FILE_SPEC",
+        "FUNCTION_SPEC",
+        "ACCESS_PATHS",
+        "WIRE_MAPPING",
+        "CALL_CONTRACTS",
+        "FORBIDDEN_SYMBOLS",
+        "TEST_VECTORS",
+        "CONSISTENCY_RULES",
+        "DOC_REF",
+        "TRACE_REFS",
+        "ROLE",
+        "ARTIFACTS",
+        "DATA",
+        "INTERFACE",
+        "FUNCTION_TYPE",
+        "PARAMS",
+        "NULLABLE",
+        "OWNERSHIP",
+        "PUBLIC_SYMBOLS",
+        "SCOPE"
+      ],
+      "status": "passed",
+      "violations": []
+    },
+    "source_loader": {
+      "diagnostics": [],
+      "status": "passed"
+    }
+  },
+  "view": "s2"
+}

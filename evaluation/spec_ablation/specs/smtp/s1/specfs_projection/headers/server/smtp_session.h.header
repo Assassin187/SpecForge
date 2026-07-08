@@ -1,0 +1,36 @@
+#include "network/connection.h"
+
+#include <stdbool.h>
+#include <stddef.h>
+
+#define SMTP_MAX_RECIPIENTS 32
+#define SMTP_MAX_MESSAGE_SIZE (1024u * 1024u)
+typedef enum smtp_auth_state {
+    SMTP_AUTH_STATE_NONE = 0,
+    SMTP_AUTH_STATE_LOGIN_WAIT_USER,
+    SMTP_AUTH_STATE_LOGIN_WAIT_PASS,
+    SMTP_AUTH_STATE_PLAIN_WAIT_BLOB,
+} smtp_auth_state_t;
+typedef struct smtp_session {
+    int control_fd;
+    smtp_connection_t* conn;
+    bool greeted;
+    bool authenticated;
+    char helo_name[256];
+    char auth_user[256];
+    smtp_auth_state_t auth_state;
+    char auth_login_user[256];
+    char mail_from[512];
+    bool has_mail_from;
+    char rcpt_to[SMTP_MAX_RECIPIENTS][512];
+    size_t rcpt_count;
+    bool in_data_mode;
+    char message_buf[SMTP_MAX_MESSAGE_SIZE + 1];
+    size_t message_len;
+    bool message_too_large;
+} smtp_session_t;
+
+smtp_session_t* smtp_session_create(int control_fd);
+void smtp_session_reset_transaction(smtp_session_t* session);
+void smtp_session_reset_auth_exchange(smtp_session_t* session);
+void smtp_session_destroy(smtp_session_t* session);

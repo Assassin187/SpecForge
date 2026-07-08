@@ -3,6 +3,27 @@
   "schema_version": "spec_ablation_view_set_manifest/v1",
   "source_root": "specs-example/coap_specs",
   "views": {
+    "s1": {
+      "counts": {
+        "files": 6,
+        "functions": 60,
+        "headers": 5
+      },
+      "root": "s1",
+      "transformation_hash": "83ef5a6aa694e8494a15f855b50fc97bafa6485a85deb4a3e6bc144f4b65b051",
+      "transformation_manifest": "s1/transformation_manifest.json"
+    },
+    "s2": {
+      "counts": {
+        "files": 6,
+        "functions": 60,
+        "headers": 5,
+        "project_graphs": 1
+      },
+      "root": "s2",
+      "transformation_hash": "c900eb43f7eefdc367fad9aff949d7ba771fe2162eb534b1fdc9c1760bb7f2f2",
+      "transformation_manifest": "s2/transformation_manifest.json"
+    },
     "s3": {
       "counts": {
         "files": 6,
@@ -12,7 +33,7 @@
         "project_graphs": 1
       },
       "root": "s3",
-      "transformation_hash": "8365155cd03f9c665f7c831227b4a7343b8a06aa4b4686f2f8e237993c6d28aa",
+      "transformation_hash": "80c7a3d5e47a7892b580a29b80839bf92a687a8e9159b8c3e484582bc088b969",
       "transformation_manifest": "s3/transformation_manifest.json"
     }
   }

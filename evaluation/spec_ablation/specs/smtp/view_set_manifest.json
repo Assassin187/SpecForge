@@ -3,6 +3,27 @@
   "schema_version": "spec_ablation_view_set_manifest/v1",
   "source_root": "specs-example/smtp_specs",
   "views": {
+    "s1": {
+      "counts": {
+        "files": 9,
+        "functions": 68,
+        "headers": 8
+      },
+      "root": "s1",
+      "transformation_hash": "70957ae67eb81fc3ade831a25e34386f6eb73dc72bdc78b31601089fd67b16ba",
+      "transformation_manifest": "s1/transformation_manifest.json"
+    },
+    "s2": {
+      "counts": {
+        "files": 9,
+        "functions": 68,
+        "headers": 8,
+        "project_graphs": 1
+      },
+      "root": "s2",
+      "transformation_hash": "b3a40de226d3faca98976d1286537bc59d588634f9a7921ede58c1253f1589c9",
+      "transformation_manifest": "s2/transformation_manifest.json"
+    },
     "s3": {
       "counts": {
         "files": 9,
@@ -12,7 +33,7 @@
         "project_graphs": 1
       },
       "root": "s3",
-      "transformation_hash": "56ff069d11e13deba424dd025a7b6f816303eef7a112317aa40a27003b4d768d",
+      "transformation_hash": "9e2809dc19de08a2923b6db6956a76652275bc9894f019db3f8503245264c32c",
       "transformation_manifest": "s3/transformation_manifest.json"
     }
   }
