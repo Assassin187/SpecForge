@@ -4,6 +4,7 @@ import http.client
 import os
 import shutil
 import socket
+import subprocess
 import tempfile
 from pathlib import Path
 
@@ -307,19 +308,42 @@ def run(project_dir: Path, binary_name: str, scenarios: list[dict[str, str]]) ->
 
             # ----------------------------------------- 9. integration / smoke
             try:
-                # Verify the main loop handles multiple sequential requests
-                # without crashing or returning incorrect results.
+                curl = shutil.which("curl")
+                if not curl:
+                    raise RuntimeError("curl executable not found")
+
+                # Verify interoperability with an external HTTP/1.1 client.
                 for i in range(5):
-                    status, body, _ = _http_get("127.0.0.1", port, "/hello")
-                    if status != 200 or body != b"Hello, HTTP/1.1!":
+                    result = subprocess.run(
+                        [
+                            curl,
+                            "--http1.1",
+                            "--fail",
+                            "--silent",
+                            "--show-error",
+                            "--max-time",
+                            "3",
+                            f"http://127.0.0.1:{port}/hello",
+                        ],
+                        text=True,
+                        capture_output=True,
+                        check=False,
+                        timeout=5,
+                    )
+                    if result.returncode != 0:
                         raise RuntimeError(
-                            f"Smoke test iteration {i}: "
-                            f"expected 200 'Hello, HTTP/1.1!', got {status} {body!r}"
+                            f"curl smoke test iteration {i}: "
+                            f"exit {result.returncode}, stderr={result.stderr.strip()!r}"
+                        )
+                    if result.stdout != "Hello, HTTP/1.1!":
+                        raise RuntimeError(
+                            f"curl smoke test iteration {i}: "
+                            f"expected body 'Hello, HTTP/1.1!', got {result.stdout!r}"
                         )
                 scenarios.append({
                     "name": "http_smoke_test",
                     "status": "passed",
-                    "detail": "Main loop handled 5 sequential requests without failure",
+                    "detail": "curl completed 5 sequential HTTP/1.1 GET requests successfully",
                 })
             except Exception as _e:
                 scenarios.append({

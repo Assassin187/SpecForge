@@ -3089,6 +3089,53 @@ def validate_full_implementation_plan(plan: dict[str, Any], *, profile: dict[str
     return diagnostics
 
 
+BEHAVIOR_READINESS_ERROR_CODES = {
+    "blocking_unresolved_questions",
+    "readiness_missing_protocol_version",
+    "readiness_missing_protocol_roles",
+    "readiness_call_contract_param_count_mismatch",
+    "readiness_call_contract_param_name_mismatch",
+    "readiness_call_contract_unknown_param_binding",
+    "readiness_call_contract_failure_policy_mismatch",
+    "readiness_behavior_action_unbound",
+    "readiness_missing_codec_test_vectors",
+    "readiness_core_message_fields_without_access",
+    "missing_runtime_entrypoint",
+    "runtime_entrypoint_unknown_lifecycle_function",
+    "runtime_entrypoint_non_lifecycle_call",
+    "runtime_entrypoint_missing_source_dependency",
+    "readiness_missing_runtime_success_test",
+    "readiness_missing_runtime_error_test",
+    "runtime_key_flow_missing_lifecycle_api",
+}
+
+
+def is_behavior_readiness_diagnostic(diagnostic: PlanningDiagnostic) -> bool:
+    return diagnostic.code in BEHAVIOR_READINESS_ERROR_CODES
+
+
+def validate_compile_readiness_plan(plan: dict[str, Any], *, profile: dict[str, Any], planning_ir: dict[str, Any], path: str | None = None) -> list[PlanningDiagnostic]:
+    return [
+        diagnostic
+        for diagnostic in validate_full_implementation_plan(plan, profile=profile, planning_ir=planning_ir, path=path)
+        if not is_behavior_readiness_diagnostic(diagnostic)
+    ]
+
+
+def collect_behavior_readiness_debt(plan: dict[str, Any], *, profile: dict[str, Any], planning_ir: dict[str, Any], path: str | None = None) -> list[dict[str, Any]]:
+    return [
+        {
+            "kind": diagnostic.code,
+            "stage": "5.7_behavior_readiness",
+            "target_id": diagnostic.path or "",
+            "message": diagnostic.message,
+            "trace_ref_keys": [],
+        }
+        for diagnostic in validate_full_implementation_plan(plan, profile=profile, planning_ir=planning_ir, path=path)
+        if is_behavior_readiness_diagnostic(diagnostic)
+    ]
+
+
 def stage_passed(diagnostics: list[PlanningDiagnostic]) -> bool:
     return not has_errors(diagnostics)
 

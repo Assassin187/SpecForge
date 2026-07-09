@@ -740,12 +740,13 @@ def _function_spec(
             continue
         access_path = str(access.get("path") or "").strip()
         target_path = str(item.get("target_path") or "").strip()
-        target = access_path if access_path and (not target_path or target_path == "buffer" or str(item.get("direction", "")).strip() == "serialize") else target_path or access_path
         strategy = str(item.get("strategy") or "").strip()
+        effective_strategy = strategy or ("store_in_field" if access.get("path") else "parse_and_skip")
+        target = access_path if access_path and effective_strategy == "store_in_field" else target_path or access_path
         mapping = {
             "PACKET": packet,
             "WIRE_FIELD": wire_field,
-            "STRATEGY": strategy or ("store_in_field" if access.get("path") else "parse_and_skip"),
+            "STRATEGY": effective_strategy,
         }
         if target:
             mapping["TARGET"] = target

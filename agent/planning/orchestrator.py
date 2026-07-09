@@ -57,6 +57,7 @@ from .stages.implementation_plan_merger import (
     apply_deterministic_dependency_fallback,
     apply_file_layout_override_patch,
     build_plan_skeleton,
+    conservatize_calls_allowed_for_compile,
     fallback_calls_allowed,
     fallback_core_design,
     fallback_dependency_repair_patch,
@@ -84,6 +85,8 @@ from .stages.implementation_plan_merger import (
     normalize_function_signature_patch,
     repair_function_inventory_symbols,
     reconcile_type_inventory_function_refs,
+    stabilize_plan_for_coder_compatibility,
+    stabilize_type_inventory_for_compile,
 )
 from .stages.preflight import build_manifest, validate_input_paths
 from .stages.protocol_profile import apply_protocol_profile_patch_candidate, build_protocol_profile
@@ -94,13 +97,14 @@ from .validators.coder_compat import validate_coder_compatibility
 from .validators.constraints import validate_constraints
 from .validators.dependencies import validate_dependency_graph
 from .validators.implementation_plan_stages import (
+    collect_behavior_readiness_debt,
     stage_passed,
+    validate_compile_readiness_plan,
     validate_calls_allowed_candidate,
     validate_core_design_candidate,
     validate_dependency_repair_patch,
     validate_file_layout_override_patch,
     validate_file_layout_candidate,
-    validate_full_implementation_plan,
     validate_function_annotation_candidate,
     validate_function_behavior_contract_patch,
     validate_function_inventory_candidate,
@@ -1081,7 +1085,7 @@ def validate_resume_prefix(
     if isinstance(artifacts.get("implementation_plan"), dict):
         implementation_plan = artifacts["implementation_plan"]
         if isinstance(profile, dict) and isinstance(planning_ir, dict):
-            diagnostics.extend(validate_full_implementation_plan(implementation_plan, profile=profile, planning_ir=planning_ir, path=str(artifact_paths["implementation_plan"])))
+            diagnostics.extend(validate_compile_readiness_plan(implementation_plan, profile=profile, planning_ir=planning_ir, path=str(artifact_paths["implementation_plan"])))
         diagnostics.extend(validate_dependency_graph(implementation_plan, path=str(artifact_paths["implementation_plan"])))
         dependency_report = artifacts.get("dependency_validation_report")
         if isinstance(dependency_report, dict) and dependency_report.get("status") == "failed":
@@ -1145,7 +1149,12 @@ def _validation_report(
     coder_compatibility_status: str = "not_run",
     coder_schema_status: str = "not_run",
     coder_loader_status: str = "not_run",
+    compile_readiness_status: str = "not_run",
+    behavior_readiness_status: str = "not_run",
+    deterministic_closure_rounds: int = 0,
+    semantic_debt: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
+    semantic_debt = semantic_debt or []
     return {
         "schema_version": "planning_validation_report/v1",
         "created_at": datetime.now().isoformat(timespec="seconds"),
@@ -1154,11 +1163,16 @@ def _validation_report(
         "coder_compatibility_status": coder_compatibility_status,
         "coder_schema_status": coder_schema_status,
         "coder_loader_status": coder_loader_status,
+        "compile_readiness_status": compile_readiness_status,
+        "behavior_readiness_status": behavior_readiness_status,
+        "deterministic_closure_rounds": deterministic_closure_rounds,
         "artifact_status": {key: str(value) for key, value in artifact_paths.items()},
         "diagnostics": diagnostics_to_dict(diagnostics),
+        "semantic_debt": semantic_debt,
         "summary": {
             "error_count": sum(1 for item in diagnostics if item.level == "error"),
             "warning_count": sum(1 for item in diagnostics if item.level == "warning"),
+            "semantic_debt_count": len(semantic_debt),
         },
     }
 
@@ -1228,6 +1242,39 @@ class PlanningAgent:
         diagnostics = self.validate_inputs()
         artifact_paths: dict[str, Path] = {}
         inherited_artifacts: dict[str, Any] = {}
+        semantic_debt_records: list[dict[str, Any]] = []
+        compile_readiness_status = "not_run"
+        behavior_readiness_status = "not_run"
+        deterministic_closure_rounds = 0
+
+        def add_semantic_debt(items: list[dict[str, Any]]) -> None:
+            existing = {
+                (str(item.get("kind", "")), str(item.get("stage", "")), str(item.get("target_id", "")), str(item.get("message", "")))
+                for item in semantic_debt_records
+                if isinstance(item, dict)
+            }
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                key = (str(item.get("kind", "")), str(item.get("stage", "")), str(item.get("target_id", "")), str(item.get("message", "")))
+                if key not in existing:
+                    semantic_debt_records.append(item)
+                    existing.add(key)
+
+        def downgrade_diagnostics_to_debt(diagnostics_to_downgrade: list[PlanningDiagnostic], stage: str, target_id: str) -> None:
+            add_semantic_debt(
+                [
+                    {
+                        "kind": diagnostic.code,
+                        "stage": stage,
+                        "target_id": target_id,
+                        "message": diagnostic.message,
+                        "trace_ref_keys": [],
+                    }
+                    for diagnostic in diagnostics_to_downgrade
+                    if diagnostic.level == "error"
+                ]
+            )
 
         def finish_run(
             stage: str,
@@ -1247,6 +1294,10 @@ class PlanningAgent:
                 coder_compatibility_status=coder_compatibility_status,
                 coder_schema_status=coder_schema_status,
                 coder_loader_status=coder_loader_status,
+                compile_readiness_status=compile_readiness_status,
+                behavior_readiness_status=behavior_readiness_status,
+                deterministic_closure_rounds=deterministic_closure_rounds,
+                semantic_debt=semantic_debt_records,
             )
             report_path = store.write_step_json(STEP_FILENAMES["planning_validation_report"], report)
             artifact_paths["planning_validation_report"] = report_path
@@ -1980,7 +2031,6 @@ class PlanningAgent:
                     for future in as_completed(future_map):
                         type_results.append(future.result())
 
-                type_stage_failed = False
                 for result in sorted(type_results, key=lambda item: item["module_index"]):
                     module_id = result["module_id"]
                     stage_label = result["stage_label"]
@@ -1995,7 +2045,21 @@ class PlanningAgent:
                     )
                     reconciliation = result.get("reconciliation", {})
                     type_candidate = result.get("accepted") or reconciliation.get("candidate", {})
-                    type_candidate_diags = result["accepted_diags"]
+                    type_candidate, type_stabilization_report = stabilize_type_inventory_for_compile(
+                        type_candidate,
+                        type_base_draft,
+                        type_base_draft.get("module_artifacts", []),
+                        profile,
+                        planning_ir,
+                    )
+                    add_semantic_debt(type_stabilization_report.get("semantic_debt", []))
+                    type_candidate_diags = validate_type_inventory_candidate(
+                        type_candidate,
+                        type_base_draft.get("module_artifacts", []),
+                        type_base_draft,
+                        profile,
+                        planning_ir,
+                    )
                     reconciliation_path = store.write_agent_json(
                         _suffixed_step_filename(STEP_FILENAMES["type_reconciliation_report"], module_id),
                         reconciliation.get("reconciliation_report", {}),
@@ -2011,6 +2075,10 @@ class PlanningAgent:
                     public_obligations_path = store.write_agent_json(
                         _suffixed_step_filename(STEP_FILENAMES["public_type_obligation_report"], module_id),
                         reconciliation.get("public_type_obligation_report", {}),
+                    )
+                    stabilization_path = store.write_agent_json(
+                        _suffixed_step_filename("007_5_3_type_data_compile_stabilization_report.json", module_id),
+                        type_stabilization_report,
                     )
                     candidate_path = store.write_agent_json(_suffixed_step_filename(STEP_FILENAMES["type_inventory_candidate"], module_id), type_candidate)
                     report_path = store.write_step_json(
@@ -2028,17 +2096,16 @@ class PlanningAgent:
                     artifact_paths[f"type_inventory_diagnostics_{artifact_suffix}"] = diagnostics_path
                     artifact_paths[f"type_obligations_{artifact_suffix}"] = obligations_path
                     artifact_paths[f"public_type_obligation_report_{artifact_suffix}"] = public_obligations_path
+                    artifact_paths[f"type_compile_stabilization_report_{artifact_suffix}"] = stabilization_path
                     artifact_paths[f"type_inventory_candidate_{artifact_suffix}"] = candidate_path
                     artifact_paths[f"type_inventory_validation_report_{artifact_suffix}"] = report_path
                     fatal_diags = result.get("fatal_diagnostics", [])
                     if fatal_diags:
-                        diagnostics.extend(fatal_diags)
-                        type_stage_failed = True
+                        downgrade_diagnostics_to_debt(fatal_diags, "5.3_type_data", module_id)
                         for diag in fatal_diags:
-                            store.log_event(f"stage=implementation_plan substage={stage_label} fatal code={diag.code}")
-                        continue
+                            store.log_event(f"stage=implementation_plan substage={stage_label} downgraded_to_debt code={diag.code}")
                     if has_errors(type_candidate_diags):
-                        diagnostics.extend(type_candidate_diags)
+                        downgrade_diagnostics_to_debt(type_candidate_diags, "5.3_type_data", module_id)
                     type_aggregate["types"].extend(type_candidate.get("types", []))
                     type_aggregate["assumptions"].extend(type_candidate.get("assumptions", []))
                     type_aggregate["unresolved_questions"].extend(type_candidate.get("unresolved_questions", []))
@@ -2050,15 +2117,13 @@ class PlanningAgent:
                     inventory_attempt_summary("5.3_type_data", type_results),
                 )
                 artifact_paths["type_inventory_attempt_summary"] = type_attempt_summary_path
-                if type_stage_failed:
-                    return finish_early("implementation_plan_5_3")
                 type_diags = validate_type_inventory_candidate(type_aggregate, draft.get("module_artifacts", []), draft, profile, planning_ir)
                 type_path = store.write_step_json(STEP_FILENAMES["type_inventory_candidate"], type_aggregate)
                 artifact_paths["type_inventory_candidate"] = type_path
                 type_report_path = store.write_step_json(STEP_FILENAMES["type_inventory_validation_report"], validation_report("5.3_type_data:all_modules", type_diags))
                 artifact_paths["type_inventory_validation_report"] = type_report_path
                 if has_errors(type_diags):
-                    diagnostics.extend(type_diags)
+                    downgrade_diagnostics_to_debt(type_diags, "5.3_type_data", "all_modules")
             else:
                 type_aggregate = inherited_stage_candidate(
                     stage_label="5.3_type_data:all_modules",
@@ -2148,7 +2213,6 @@ class PlanningAgent:
                     for future in as_completed(future_map):
                         inventory_results.append(future.result())
 
-                inventory_stage_failed = False
                 for result in sorted(inventory_results, key=lambda item: item["module_index"]):
                     module_id = result["module_id"]
                     stage_label = result["stage_label"]
@@ -2161,14 +2225,17 @@ class PlanningAgent:
                     reconciliation = result.get("reconciliation", {})
                     inventory_candidate = result.get("accepted") or reconciliation.get("candidate")
                     if inventory_candidate is None:
-                        inventory_stage_failed = True
-                        diagnostics.append(
-                            PlanningDiagnostic(
-                                "error",
-                                "implementation_plan_5_4a_missing_candidate",
-                                f"{stage_label} did not produce an accepted candidate.",
-                                stage_label,
-                            )
+                        downgrade_diagnostics_to_debt(
+                            [
+                                PlanningDiagnostic(
+                                    "error",
+                                    "implementation_plan_5_4a_missing_candidate",
+                                    f"{stage_label} did not produce an accepted candidate.",
+                                    stage_label,
+                                )
+                            ],
+                            "5.4a_function_inventory",
+                            module_id,
                         )
                         continue
                     log_key = f"function_inventory_candidate_{safe_slug(module_id)}"
@@ -2213,11 +2280,11 @@ class PlanningAgent:
                     artifact_paths[f"function_inventory_candidate_{artifact_suffix}"] = candidate_path
                     artifact_paths[f"function_inventory_validation_report_{artifact_suffix}"] = report_path
                     if fatal_diags:
-                        diagnostics.extend(fatal_diags)
-                        inventory_stage_failed = True
+                        downgrade_diagnostics_to_debt(fatal_diags, "5.4a_function_inventory", module_id)
                         for diag in fatal_diags:
-                            store.log_event(f"stage=implementation_plan substage={stage_label} fatal code={diag.code}")
-                        continue
+                            store.log_event(f"stage=implementation_plan substage={stage_label} downgraded_to_debt code={diag.code}")
+                    if has_errors(result["accepted_diags"]):
+                        downgrade_diagnostics_to_debt(result["accepted_diags"], "5.4a_function_inventory", module_id)
                     inventory_aggregate["functions"].extend(inventory_candidate.get("functions", []))
                     inventory_aggregate["assumptions"].extend(inventory_candidate.get("assumptions", []))
                     inventory_aggregate["unresolved_questions"].extend(inventory_candidate.get("unresolved_questions", []))
@@ -2229,10 +2296,8 @@ class PlanningAgent:
                     inventory_attempt_summary("5.4a_function_inventory", inventory_results),
                 )
                 artifact_paths["function_inventory_attempt_summary"] = inventory_attempt_summary_path
-                if inventory_stage_failed:
-                    return finish_early("implementation_plan_5_4a")
                 draft = reconcile_type_inventory_function_refs(draft)
-                draft, inventory_aggregate, symbol_repair_report = repair_function_inventory_symbols(draft, inventory_aggregate)
+                draft, inventory_aggregate, symbol_repair_report = repair_function_inventory_symbols(draft, inventory_aggregate, compile_oriented=True)
                 symbol_repair_report_path = store.write_agent_json("007_5_4a_function_symbol_repair_report.json", symbol_repair_report)
                 artifact_paths["function_symbol_repair_report"] = symbol_repair_report_path
                 draft = reconcile_type_inventory_function_refs(draft)
@@ -2242,22 +2307,23 @@ class PlanningAgent:
                 inventory_report_path = store.write_step_json(STEP_FILENAMES["function_inventory_validation_report"], validation_report("5.4a_function_inventory:all_modules", inventory_diags))
                 artifact_paths["function_inventory_validation_report"] = inventory_report_path
                 if has_errors(inventory_diags):
-                    diagnostics.extend(inventory_diags)
-                    return finish_early("implementation_plan_5_4a")
+                    downgrade_diagnostics_to_debt(inventory_diags, "5.4a_function_inventory", "all_modules")
             else:
                 inventory_aggregate = inherited_stage_candidate(
                     stage_label="5.4a_function_inventory:all_modules",
                     candidate_key="function_inventory_candidate",
                     validator=lambda candidate: validate_function_inventory_candidate(candidate, draft.get("module_artifacts", []), draft, profile, planning_ir),
                 )
+                draft, inventory_aggregate, symbol_repair_report = repair_function_inventory_symbols(draft, inventory_aggregate, compile_oriented=True)
+                symbol_repair_report_path = store.write_agent_json("007_5_4a_function_symbol_repair_report.json", symbol_repair_report)
+                artifact_paths["function_symbol_repair_report"] = symbol_repair_report_path
                 draft = merge_function_inventory(draft, inventory_aggregate)
                 draft = reconcile_type_inventory_function_refs(draft)
                 inventory_diags = validate_function_inventory_candidate(inventory_aggregate, draft.get("module_artifacts", []), draft, profile, planning_ir)
                 inventory_report_path = store.write_step_json(STEP_FILENAMES["function_inventory_validation_report"], validation_report("5.4a_function_inventory:all_modules", inventory_diags))
                 artifact_paths["function_inventory_validation_report"] = inventory_report_path
                 if has_errors(inventory_diags):
-                    diagnostics.extend(inventory_diags)
-                    return finish_early("implementation_plan_5_4a")
+                    downgrade_diagnostics_to_debt(inventory_diags, "5.4a_function_inventory", "all_modules")
             if _should_stop_after("implementation_plan_5_4a", stop_after_stage):
                 return finish_early("implementation_plan_5_4a")
 
@@ -2506,19 +2572,30 @@ class PlanningAgent:
                         "stage=implementation_plan substage=5.4e_call_contracts:all_modules normalized "
                         + " ".join(f"{key}={value}" for key, value in sorted(aggregate_call_stats.items()) if value)
                     )
+                calls_aggregate, calls_stabilization_report = conservatize_calls_allowed_for_compile(calls_aggregate, draft, selected_architecture)
+                add_semantic_debt(calls_stabilization_report.get("semantic_debt", []))
+                calls_stabilization_path = store.write_agent_json("007_5_4e_function_call_contracts_compile_stabilization_report.json", calls_stabilization_report)
+                artifact_paths["calls_allowed_compile_stabilization_report"] = calls_stabilization_path
                 calls_diags = validate_calls_allowed_candidate(calls_aggregate, draft, selected_architecture)
                 calls_path = store.write_step_json(STEP_FILENAMES["calls_allowed_candidate"], calls_aggregate)
                 artifact_paths["calls_allowed_candidate"] = calls_path
                 calls_report_path = store.write_step_json(STEP_FILENAMES["calls_allowed_validation_report"], validation_report("5.4e_call_contracts:all_modules", calls_diags))
                 artifact_paths["calls_allowed_validation_report"] = calls_report_path
                 if has_errors(calls_diags):
-                    diagnostics.extend(calls_diags)
+                    downgrade_diagnostics_to_debt(calls_diags, "5.4e_call_contracts", "all_modules")
             else:
                 calls_aggregate = inherited_stage_candidate(
                     stage_label="5.4e_call_contracts:all_modules",
                     candidate_key="calls_allowed_candidate",
                     validator=lambda candidate: validate_calls_allowed_candidate(candidate, draft, selected_architecture),
                 )
+                calls_aggregate, calls_stabilization_report = conservatize_calls_allowed_for_compile(calls_aggregate, draft, selected_architecture)
+                add_semantic_debt(calls_stabilization_report.get("semantic_debt", []))
+                calls_stabilization_path = store.write_agent_json("007_5_4e_function_call_contracts_compile_stabilization_report.json", calls_stabilization_report)
+                artifact_paths["calls_allowed_compile_stabilization_report"] = calls_stabilization_path
+                calls_diags = validate_calls_allowed_candidate(calls_aggregate, draft, selected_architecture)
+                if has_errors(calls_diags):
+                    downgrade_diagnostics_to_debt(calls_diags, "5.4e_call_contracts", "all_modules")
             draft = merge_calls_allowed(draft, calls_aggregate)
             if _should_stop_after("implementation_plan_5_4e", stop_after_stage):
                 return finish_early("implementation_plan_5_4e")
@@ -2654,7 +2731,14 @@ class PlanningAgent:
             if _should_stop_after("implementation_plan_5_6", stop_after_stage):
                 return finish_early("implementation_plan_5_6")
 
-            plan_diags = validate_full_implementation_plan(implementation_plan, profile=profile, planning_ir=planning_ir, path=str(implementation_plan_path))
+            behavior_debt = collect_behavior_readiness_debt(implementation_plan, profile=profile, planning_ir=planning_ir)
+            add_semantic_debt(behavior_debt)
+            if semantic_debt_records:
+                implementation_plan["semantic_debt"] = list(semantic_debt_records)
+                implementation_plan_path = store.write_step_json(STEP_FILENAMES["implementation_plan"], implementation_plan)
+                artifact_paths["implementation_plan"] = implementation_plan_path
+
+            plan_diags = validate_compile_readiness_plan(implementation_plan, profile=profile, planning_ir=planning_ir, path=str(implementation_plan_path))
             dependency_diags = validate_dependency_graph(implementation_plan, path=str(implementation_plan_path))
             dependency_report = build_dependency_validation_report(implementation_plan, dependency_diags)
             dependency_report_path = store.write_step_json(STEP_FILENAMES["dependency_validation_report"], dependency_report)
@@ -2666,6 +2750,8 @@ class PlanningAgent:
             diagnostics.extend(dependency_diags)
             diagnostics.extend(layout_runtime_diags)
             final_readiness_passed = not has_errors([*plan_diags, *dependency_diags, *layout_runtime_diags])
+            compile_readiness_status = "passed" if final_readiness_passed else "failed"
+            behavior_readiness_status = "debt" if behavior_debt else "passed"
             readiness_errors = [diag for diag in [*plan_diags, *dependency_diags, *layout_runtime_diags] if diag.level == "error"]
             validator_stats.record(
                 stage_key="implementation_plan_5_7",
@@ -2698,17 +2784,44 @@ class PlanningAgent:
                 if has_errors(layout_runtime_diags):
                     store.log_event("stage=specs_compile blocked by layout_runtime_mapping_report")
                     return finish_run("specs_compile", status="failed", failure={"stage": "specs_compile", "code": "layout_runtime_mapping_errors"})
-            coder_manifest, coder_manifest_path = compile_spec_bundle(implementation_plan, self.output_dir)
-            artifact_paths["coder_manifest"] = coder_manifest_path
-            spec_root = Path(coder_manifest["spec_root"])
-            artifact_paths["spec_bundle"] = spec_root
-            if "dependency_validation_report" in artifact_paths:
-                dependency_report = read_json(artifact_paths["dependency_validation_report"])
-                if not all(key in dependency_report for key in ("dependency_sources", "call_edge_sources", "errors", "warnings")):
-                    dependency_report = build_dependency_validation_report(implementation_plan, validate_dependency_graph(implementation_plan))
-                dependency_report = attach_coder_dependency_sources(dependency_report, spec_root)
+            def compile_and_validate_current_plan() -> list[PlanningDiagnostic]:
+                coder_manifest, coder_manifest_path = compile_spec_bundle(implementation_plan, self.output_dir)
+                artifact_paths["coder_manifest"] = coder_manifest_path
+                spec_root = Path(coder_manifest["spec_root"])
+                artifact_paths["spec_bundle"] = spec_root
+                if "dependency_validation_report" in artifact_paths:
+                    dependency_report = read_json(artifact_paths["dependency_validation_report"])
+                    if not all(key in dependency_report for key in ("dependency_sources", "call_edge_sources", "errors", "warnings")):
+                        dependency_report = build_dependency_validation_report(implementation_plan, validate_dependency_graph(implementation_plan))
+                    dependency_report = attach_coder_dependency_sources(dependency_report, spec_root)
+                    artifact_paths["dependency_validation_report"] = store.write_step_json(STEP_FILENAMES["dependency_validation_report"], dependency_report)
+                return validate_coder_compatibility(spec_root)
+
+            coder_diags = compile_and_validate_current_plan()
+            for closure_index in range(2):
+                if not has_errors(coder_diags):
+                    break
+                implementation_plan, closure_report = stabilize_plan_for_coder_compatibility(implementation_plan, coder_diags)
+                add_semantic_debt(closure_report.get("semantic_debt", []))
+                closure_path = store.write_agent_json(f"010_specs_compile_deterministic_closure_round_{closure_index + 1}.json", closure_report)
+                artifact_paths[f"specs_compile_closure_round_{closure_index + 1}"] = closure_path
+                if not closure_report.get("changed"):
+                    break
+                deterministic_closure_rounds += 1
+                if semantic_debt_records:
+                    implementation_plan["semantic_debt"] = list(semantic_debt_records)
+                implementation_plan_path = store.write_step_json(STEP_FILENAMES["implementation_plan"], implementation_plan)
+                artifact_paths["implementation_plan"] = implementation_plan_path
+                dependency_diags = validate_dependency_graph(implementation_plan, path=str(implementation_plan_path))
+                dependency_report = build_dependency_validation_report(implementation_plan, dependency_diags)
                 artifact_paths["dependency_validation_report"] = store.write_step_json(STEP_FILENAMES["dependency_validation_report"], dependency_report)
-            coder_diags = validate_coder_compatibility(spec_root)
+                layout_runtime_report, layout_runtime_diags = build_layout_runtime_mapping_report(implementation_plan)
+                artifact_paths["layout_runtime_mapping_report"] = store.write_step_json(STEP_FILENAMES["layout_runtime_mapping_report"], layout_runtime_report)
+                if has_errors([*dependency_diags, *layout_runtime_diags]):
+                    diagnostics.extend(dependency_diags)
+                    diagnostics.extend(layout_runtime_diags)
+                    break
+                coder_diags = compile_and_validate_current_plan()
             diagnostics.extend(coder_diags)
             coder_status = "failed" if has_errors(coder_diags) else "passed"
             coder_schema_status = "failed" if any(item.level == "error" and item.code.startswith("coder_schema_") for item in coder_diags) else "passed"
@@ -2782,7 +2895,7 @@ def verify_output_dir(output_dir: str | Path) -> PlanningResult:
         profile = read_json(artifact_paths["protocol_profile"]) if "protocol_profile" in artifact_paths else None
         planning_ir = read_json(artifact_paths["planning_ir"]) if "planning_ir" in artifact_paths else None
         if profile is not None and planning_ir is not None:
-            diagnostics.extend(validate_full_implementation_plan(implementation_plan, profile=profile, planning_ir=planning_ir, path=str(artifact_paths["implementation_plan"])))
+            diagnostics.extend(validate_compile_readiness_plan(implementation_plan, profile=profile, planning_ir=planning_ir, path=str(artifact_paths["implementation_plan"])))
         diagnostics.extend(validate_dependency_graph(implementation_plan, path=str(artifact_paths["implementation_plan"])))
     if "spec_bundle" in artifact_paths:
         diagnostics.extend(validate_coder_compatibility(artifact_paths["spec_bundle"]))

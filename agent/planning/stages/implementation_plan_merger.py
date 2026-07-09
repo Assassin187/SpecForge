@@ -5,10 +5,10 @@ from copy import deepcopy
 from typing import Any
 
 from ..schemas.implementation_plan import SCHEMA_VERSION
-from .coder_spec_lowering import canonical_function_symbol, lower_canonical_type_to_header_data, normalize_param_ownership_for_coder, normalize_type_key
+from .coder_spec_lowering import canonical_function_symbol, is_anonymous_c_function_pointer_type, lower_canonical_type_to_header_data, normalize_param_ownership_for_coder, normalize_type_key
 from .dependencies import derive_dependency_graph
 from .implementation_plan import _allowed_call_value_ref, _capability_refs, _field_value, _function_signature, _handler_surfaces, _safe_id, _surface_units, _target_directives, _wire_fields
-from .implementation_plan_context import SYSTEM_TYPE_IDS, normalize_type_inventory_candidate
+from .implementation_plan_context import SYSTEM_TYPE_IDS, normalize_system_type_ref, normalize_type_inventory_candidate
 
 
 def _constraint_ids(constraints: dict[str, Any]) -> list[str]:
@@ -43,6 +43,27 @@ def _nonblocking_questions(items: Any) -> list[Any]:
         elif str(item).strip():
             result.append({"question": str(item), "blocking": False})
     return result
+
+
+def _semantic_debt(kind: str, message: str, stage: str, target_id: str = "", refs: list[str] | None = None) -> dict[str, Any]:
+    return {
+        "kind": kind,
+        "stage": stage,
+        "target_id": target_id,
+        "message": message,
+        "trace_ref_keys": refs or [],
+    }
+
+
+def _add_semantic_debt(plan: dict[str, Any], debt: dict[str, Any]) -> None:
+    key = (str(debt.get("kind", "")), str(debt.get("stage", "")), str(debt.get("target_id", "")), str(debt.get("message", "")))
+    existing = {
+        (str(item.get("kind", "")), str(item.get("stage", "")), str(item.get("target_id", "")), str(item.get("message", "")))
+        for item in plan.get("semantic_debt", [])
+        if isinstance(item, dict)
+    }
+    if key not in existing:
+        plan.setdefault("semantic_debt", []).append(debt)
 
 
 def _error_behavior(error_ids: list[str] | None = None) -> dict[str, Any]:
@@ -743,6 +764,177 @@ def _is_opaque_backing_pair(left: dict[str, Any], right: dict[str, Any]) -> bool
     return str(backing.get("visibility", "")) in {"private", "module_internal"} and str(backing.get("defined_in", "")) != "public_header"
 
 
+def _compile_type_key(value: Any) -> str:
+    text = str(value or "").strip()
+    text = re.sub(r"\b(?:const|volatile|restrict|struct|enum)\b", " ", text)
+    text = re.sub(r"\[[^\]]*\]", " ", text)
+    text = text.replace("*", " ").replace("&", " ")
+    text = re.sub(r"\s+", " ", text).strip()
+    return normalize_type_key(text)
+
+
+def _compile_type_indexes(draft: dict[str, Any], candidate: dict[str, Any]) -> tuple[set[str], dict[str, str]]:
+    known_ids = set(SYSTEM_TYPE_IDS)
+    by_name: dict[str, str] = {}
+    for container_key in ("canonical_types", "type_inventory"):
+        for item in draft.get(container_key, []) if isinstance(draft.get(container_key), list) else []:
+            if not isinstance(item, dict):
+                continue
+            type_id = str(item.get("type_id", "")).strip()
+            name = str(item.get("name", "")).strip()
+            if type_id:
+                known_ids.add(type_id)
+            for value in (type_id, name, name.removeprefix("struct "), name.removesuffix("_t")):
+                key = _compile_type_key(value)
+                if key and type_id:
+                    by_name.setdefault(key, type_id)
+    for item in candidate.get("types", []) if isinstance(candidate.get("types"), list) else []:
+        if not isinstance(item, dict):
+            continue
+        type_id = str(item.get("type_id", "")).strip()
+        name = str(item.get("name", "")).strip()
+        if type_id:
+            known_ids.add(type_id)
+        for value in (type_id, name, name.removeprefix("struct "), name.removesuffix("_t")):
+            key = _compile_type_key(value)
+            if key and type_id:
+                by_name.setdefault(key, type_id)
+    return known_ids, by_name
+
+
+def _resolve_compile_type_ref(type_ref: Any, raw_type: Any, known_ids: set[str], known_by_name: dict[str, str]) -> str:
+    for value in (type_ref, raw_type, _compile_type_key(raw_type)):
+        text = normalize_system_type_ref(value)
+        if text in SYSTEM_TYPE_IDS:
+            return text
+        if text in known_ids:
+            return text
+        key = _compile_type_key(text)
+        if key in known_by_name:
+            return known_by_name[key]
+    return ""
+
+
+def _compile_safe_pointer_type(raw_type: Any) -> str:
+    return "const void*" if "const" in str(raw_type or "").lower() else "void*"
+
+
+def _type_text(type_item: dict[str, Any]) -> str:
+    return " ".join(
+        str(type_item.get(key, ""))
+        for key in ("type_id", "name", "kind", "purpose", "ownership_lifetime")
+    ).lower()
+
+
+def _field_is_pointer_like(field: dict[str, Any]) -> bool:
+    text = str(field.get("field_type", "")).lower()
+    return "*" in text or any(token in text for token in ("buffer", "bytes", "string", "payload", "uint8_t"))
+
+
+def stabilize_type_inventory_for_compile(
+    candidate: dict[str, Any],
+    draft: dict[str, Any],
+    module_artifacts: list[dict[str, Any]],
+    profile: dict[str, Any] | None = None,
+    planning_ir: dict[str, Any] | None = None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    del module_artifacts, profile, planning_ir
+    result = normalize_type_inventory_candidate(deepcopy(candidate))
+    report: dict[str, Any] = {
+        "schema_version": "compile_stabilization_report/v1",
+        "stage": "5.3_type_data",
+        "changed": False,
+        "changes": [],
+        "semantic_debt": [],
+    }
+    known_ids, known_by_name = _compile_type_indexes(draft, result)
+
+    def note(target_id: str, kind: str, message: str) -> None:
+        report["changed"] = True
+        report["changes"].append({"target_id": target_id, "kind": kind, "message": message})
+        report["semantic_debt"].append(_semantic_debt(kind, message, "5.3_type_data", target_id))
+
+    for type_item in result.get("types", []) if isinstance(result.get("types"), list) else []:
+        if not isinstance(type_item, dict):
+            continue
+        type_id = str(type_item.get("type_id", "")).strip()
+        text = _type_text(type_item)
+        if "packet" in text and (type_item.get("enum_values") or "enum" in text) and type_item.get("kind") != "enum":
+            type_item["kind"] = "enum"
+            note(type_id, "type_kind_stabilized", "packet type with enum values was normalized to enum for compile-oriented lowering")
+        if "payload" in text and type_item.get("kind") == "owned_buffer":
+            type_item["kind"] = "struct"
+            note(type_id, "type_kind_stabilized", "payload owned_buffer was normalized to struct to avoid buffer lifecycle hard failures")
+        dependencies: list[str] = []
+        for dependency in type_item.get("dependencies", []) if isinstance(type_item.get("dependencies"), list) else []:
+            resolved = _resolve_compile_type_ref(dependency, dependency, known_ids, known_by_name)
+            if resolved:
+                dependencies.append(resolved)
+            else:
+                note(type_id, "unknown_type_dependency_omitted", f"unknown type dependency '{dependency}' was omitted from compile-oriented type inventory")
+        type_item["dependencies"] = sorted(dict.fromkeys(dependencies))
+        has_pointer_field = False
+        for field in type_item.get("fields", []) if isinstance(type_item.get("fields"), list) else []:
+            if not isinstance(field, dict):
+                continue
+            raw_type = field.get("field_type", "")
+            resolved = _resolve_compile_type_ref(field.get("type_ref", ""), raw_type, known_ids, known_by_name)
+            if resolved:
+                field["type_ref"] = resolved
+            elif str(field.get("type_ref", "")).strip() or _compile_type_key(raw_type):
+                field["field_type"] = _compile_safe_pointer_type(raw_type)
+                field["type_ref"] = ""
+                field["ownership"] = "BORROWED"
+                field["lifetime"] = str(field.get("lifetime") or "external")
+                note(type_id, "unknown_field_type_erased", f"field '{field.get('field_name')}' unknown C type was erased to {field['field_type']}")
+            if _field_is_pointer_like(field):
+                has_pointer_field = True
+                if not str(field.get("ownership", "")).strip() or field.get("ownership") == "UNKNOWN":
+                    field["ownership"] = "BORROWED"
+                    note(type_id, "pointer_field_ownership_defaulted", f"field '{field.get('field_name')}' pointer ownership defaulted to BORROWED")
+                if not str(field.get("lifetime", "")).strip():
+                    field["lifetime"] = "external"
+                    note(type_id, "pointer_field_lifetime_defaulted", f"field '{field.get('field_name')}' pointer lifetime defaulted to external")
+        callback = type_item.get("callback_signature", {}) if isinstance(type_item.get("callback_signature"), dict) else {}
+        if callback:
+            return_type = str(callback.get("return_type", "")).strip()
+            if return_type and not _resolve_compile_type_ref("", return_type, known_ids, known_by_name):
+                callback["return_type"] = _compile_safe_pointer_type(return_type) if return_type != "void" else "void"
+                note(type_id, "unknown_callback_return_type_erased", f"callback return unknown C type was erased to {callback['return_type']}")
+            for param in callback.get("params", []) if isinstance(callback.get("params"), list) else []:
+                if not isinstance(param, dict):
+                    continue
+                resolved = _resolve_compile_type_ref(param.get("type_ref", ""), param.get("type", ""), known_ids, known_by_name)
+                if resolved:
+                    param["type_ref"] = resolved
+                elif str(param.get("type_ref", "")).strip() or _compile_type_key(param.get("type", "")):
+                    param["type"] = _compile_safe_pointer_type(param.get("type", ""))
+                    param["type_ref"] = ""
+                    note(type_id, "unknown_callback_param_type_erased", f"callback param '{param.get('name')}' unknown C type was erased to {param['type']}")
+        field_names = {str(field.get("field_name", "")).strip() for field in type_item.get("fields", []) if isinstance(field, dict)}
+        if type_item.get("kind") == "owned_buffer" and not (field_names & {"len", "length", "size", "capacity", "cap"}):
+            type_item.setdefault("fields", []).append(
+                {
+                    "field_name": "length",
+                    "field_type": "size_t",
+                    "type_ref": "size_t",
+                    "ownership": "UNKNOWN",
+                    "lifetime": "value",
+                    "length_field": "",
+                    "capacity_field": "",
+                    "validation_notes": "deterministic compile-oriented size field",
+                }
+            )
+            note(type_id, "buffer_length_field_added", "owned_buffer was given a deterministic size_t length field")
+        lifecycle = type_item.get("lifecycle", {}) if isinstance(type_item.get("lifecycle"), dict) else {}
+        if (has_pointer_field or type_item.get("kind") == "owned_buffer") and not (lifecycle.get("freed_by") or lifecycle.get("destroyed_by")):
+            base = _safe_id(str(type_item.get("name") or type_id).removeprefix("struct ").removesuffix("_t"))
+            lifecycle["freed_by"] = [f"{base}_free"]
+            type_item["lifecycle"] = lifecycle
+            note(type_id, "release_lifecycle_defaulted", "pointer-owning type was given a deterministic free lifecycle hook")
+    return result, report
+
+
 def merge_type_inventory(draft: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any]:
     result = deepcopy(draft)
     candidate = normalize_type_inventory_candidate(candidate)
@@ -1284,9 +1476,10 @@ def _replace_call_contract_name_refs(function: dict[str, Any], old_name: str, ne
 
 
 class FunctionNameAllocator:
-    def __init__(self, draft: dict[str, Any], candidate: dict[str, Any]) -> None:
+    def __init__(self, draft: dict[str, Any], candidate: dict[str, Any], *, compile_oriented: bool = False) -> None:
         self.draft = draft
         self.candidate = candidate
+        self.compile_oriented = compile_oriented
         self.protocol = str(draft.get("protocol_name", "protocol"))
         self.draft_by_id = {
             str(item.get("function_id", "")): item
@@ -1390,6 +1583,8 @@ class FunctionNameAllocator:
     def _can_rename(self, function: dict[str, Any]) -> bool:
         if self._is_runtime_lifecycle(function):
             return False
+        if self.compile_oriented:
+            return True
         if self._is_module_artifact_public(function):
             return False
         if self._is_generated_obligation(function):
@@ -1437,6 +1632,12 @@ class FunctionNameAllocator:
         for type_item in self.draft.get("type_inventory", []):
             if isinstance(type_item, dict) and str(type_item.get("module_id", "")) == str(function.get("module_id", "")) and _replace_type_function_refs(type_item, old_name, new_name):
                 touched_types.append(str(type_item.get("type_id", "")))
+        for module in self.draft.get("module_artifacts", []):
+            if not isinstance(module, dict) or str(module.get("module_id", "")) != str(function.get("module_id", "")):
+                continue
+            for artifact in module.get("artifacts", []) if isinstance(module.get("artifacts"), list) else []:
+                if isinstance(artifact, dict) and str(artifact.get("kind", "")).upper() == "FUNC" and str(artifact.get("name", "")) == old_name:
+                    artifact["name"] = new_name
         for file_item in self.draft.get("file_layout", {}).get("files", []):
             if not isinstance(file_item, dict):
                 continue
@@ -1459,11 +1660,52 @@ class FunctionNameAllocator:
         )
 
 
-def repair_function_inventory_symbols(draft: dict[str, Any], candidate: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+def repair_function_inventory_symbols(draft: dict[str, Any], candidate: dict[str, Any], *, compile_oriented: bool = False) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     result_draft = deepcopy(draft)
     result_candidate = deepcopy(candidate)
-    report = FunctionNameAllocator(result_draft, result_candidate).allocate()
+    report = FunctionNameAllocator(result_draft, result_candidate, compile_oriented=compile_oriented).allocate()
     return result_draft, result_candidate, report
+
+
+def _c_type_symbol_names(plan: dict[str, Any]) -> set[str]:
+    names: set[str] = set()
+    for key in ("canonical_types", "type_inventory"):
+        for item in plan.get(key, []) if isinstance(plan.get(key), list) else []:
+            if not isinstance(item, dict):
+                continue
+            for value in (item.get("name"), item.get("c_name"), item.get("symbol_name")):
+                text = str(value or "").strip()
+                if text and re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", text):
+                    names.add(text)
+    return names
+
+
+def repair_function_type_symbol_collisions(plan: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    result = deepcopy(plan)
+    type_symbols = _c_type_symbol_names(result)
+    allocator = FunctionNameAllocator(result, {"functions": []}, compile_oriented=True)
+    allocator.report["stage"] = "specs_compile_function_type_symbol_repair"
+    allocator.report["reason"] = "deterministic repair for C namespace collisions between typedef/type symbols and function symbols"
+    allocator.used_names.update(type_symbols)
+    for function in list(allocator.draft_by_id.values()):
+        old_name = canonical_function_symbol(function) or str(function.get("name", "")).strip()
+        if not old_name or old_name not in type_symbols:
+            continue
+        if not allocator._can_rename(function):
+            allocator.report["unrepaired_duplicates"].append(
+                {
+                    "function_id": function.get("function_id", ""),
+                    "name": old_name,
+                    "reason": "runtime lifecycle API symbol collided with a type symbol and was not renamed",
+                }
+            )
+            continue
+        new_name = _unique_function_name(
+            _fallback_repair_name(allocator.protocol, str(function.get("module_id", "")), old_name),
+            allocator.used_names,
+        )
+        allocator._rename(function, old_name, new_name)
+    return result, allocator.report
 
 
 def fallback_function_signatures(draft: dict[str, Any], module_id: str, functions: list[dict[str, Any]] | None = None, *, batch_index: int = 0, batch_size: int = 0) -> dict[str, Any]:
@@ -2608,6 +2850,146 @@ def normalize_calls_allowed_aggregate(candidate: dict[str, Any], draft: dict[str
     return result, stats
 
 
+def conservatize_calls_allowed_for_compile(
+    candidate: dict[str, Any],
+    draft: dict[str, Any],
+    selected_architecture: dict[str, Any] | None = None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    result = deepcopy(candidate)
+    functions_by_id = {
+        str(item.get("function_id", "")): item
+        for item in draft.get("function_contracts", [])
+        if isinstance(item, dict) and str(item.get("function_id", "")).strip()
+    }
+    module_ids = {
+        str(item.get("module_id", ""))
+        for item in (selected_architecture or {}).get("architecture", {}).get("modules", [])
+        if isinstance(item, dict) and str(item.get("module_id", "")).strip()
+    } or {
+        str(item.get("module_id", ""))
+        for item in draft.get("module_artifacts", [])
+        if isinstance(item, dict) and str(item.get("module_id", "")).strip()
+    }
+    known_service_ids = set(_service_requirement_ids(list(functions_by_id.values())))
+    unresolved_service_ids = {
+        str(item)
+        for item in result.get("unresolved_service_requirements", [])
+        if str(item).strip()
+    }
+    report: dict[str, Any] = {
+        "schema_version": "compile_stabilization_report/v1",
+        "stage": "5.4e_call_contracts",
+        "changed": False,
+        "removed_edges": [],
+        "cleared_param_bindings": [],
+        "semantic_debt": [],
+    }
+
+    def note(kind: str, message: str, target_id: str) -> None:
+        report["changed"] = True
+        report["semantic_debt"].append(_semantic_debt(kind, message, "5.4e_call_contracts", target_id))
+
+    function_symbols = set(functions_by_id)
+    for function in functions_by_id.values():
+        signature = function.get("signature", {}) if isinstance(function.get("signature"), dict) else {}
+        for value in (function.get("name"), signature.get("name"), canonical_function_symbol(function)):
+            text = str(value or "").strip()
+            if text:
+                function_symbols.add(text)
+
+    for update in result.get("call_updates", []) if isinstance(result.get("call_updates"), list) else []:
+        if not isinstance(update, dict):
+            continue
+        caller_id = str(update.get("caller_function_id", "")).strip()
+        caller = functions_by_id.get(caller_id)
+        retained_edges = []
+        for edge in update.get("calls_allowed", []) if isinstance(update.get("calls_allowed"), list) else []:
+            if not isinstance(edge, dict):
+                continue
+            callee_id = str(edge.get("callee_function_id", "")).strip()
+            callee = functions_by_id.get(callee_id)
+            service_ids = {str(item) for item in edge.get("service_requirement_ids", []) if str(item).strip()}
+            remove_reason = ""
+            if caller is None:
+                remove_reason = f"unknown caller '{caller_id}'"
+            elif callee is None:
+                remove_reason = f"unknown callee '{callee_id}'"
+            elif caller_id == callee_id:
+                remove_reason = "self call"
+            elif str(caller.get("module_id", "")) not in module_ids or str(callee.get("module_id", "")) not in module_ids:
+                remove_reason = "unknown module"
+            elif str(caller.get("module_id", "")) != str(callee.get("module_id", "")) and not _function_is_public(callee):
+                remove_reason = "private cross-module callee"
+            elif service_ids and str(caller.get("module_id", "")) == str(callee.get("module_id", "")):
+                remove_reason = "cross-module service bound to same-module callee"
+            elif str(caller.get("module_id", "")) != str(callee.get("module_id", "")) and not service_ids and str(edge.get("call_kind", "")) not in {"service_requirement", "handler_dispatch"}:
+                remove_reason = "unscoped cross-module call"
+            if remove_reason:
+                unresolved_service_ids.update(service_ids & known_service_ids)
+                report["removed_edges"].append({"caller_function_id": caller_id, "callee_function_id": callee_id, "reason": remove_reason})
+                note("call_edge_omitted_for_compile", f"call edge {caller_id}->{callee_id} omitted: {remove_reason}", caller_id)
+                continue
+            cleanup = str(edge.get("return_binding", {}).get("cleanup_function_id", "")).strip() if isinstance(edge.get("return_binding"), dict) else ""
+            if cleanup and cleanup not in functions_by_id:
+                edge.setdefault("return_binding", {})["cleanup_function_id"] = ""
+                note("call_cleanup_binding_erased", f"unknown cleanup function '{cleanup}' erased from call edge {caller_id}->{callee_id}", caller_id)
+            valid_service_ids = sorted(service_ids & known_service_ids)
+            if len(valid_service_ids) != len(service_ids):
+                edge["service_requirement_ids"] = valid_service_ids
+                note("unknown_call_service_requirement_erased", f"unknown service ids erased from call edge {caller_id}->{callee_id}", caller_id)
+            requirement_by_id = {
+                str(requirement.get("service_requirement_id", "")): requirement
+                for requirement in caller.get("service_requirements", []) if isinstance(requirement, dict)
+            } if caller else {}
+            for service_id in valid_service_ids:
+                failure_policy = str(requirement_by_id.get(service_id, {}).get("failure_policy", "")).strip()
+                if failure_policy and failure_policy != "unknown" and str(edge.get("failure_behavior", "")).strip() not in {"", failure_policy}:
+                    edge["failure_behavior"] = "return_error" if failure_policy == "cleanup_and_return" else failure_policy
+                    note("call_failure_behavior_normalized", f"failure behavior normalized for service requirement '{service_id}'", caller_id)
+            bindings = edge.get("param_bindings", [])
+            if caller and callee and isinstance(bindings, list) and bindings:
+                callee_params = _signature_params(callee)
+                caller_param_names = {
+                    str(param.get("name", "")).strip()
+                    for param in _signature_params(caller)
+                    if str(param.get("name", "")).strip()
+                }
+                local_symbols = {
+                    str(other.get("return_binding", {}).get("target_ref", "")).strip()
+                    for other in update.get("calls_allowed", [])
+                    if isinstance(other, dict) and isinstance(other.get("return_binding"), dict)
+                }
+                binding_invalid = len(bindings) != len(callee_params)
+                binding_invalid = binding_invalid or any(
+                    isinstance(binding, dict)
+                    and str(binding.get("value_ref", "")).strip()
+                    and not _allowed_call_value_ref(str(binding.get("value_ref", "")).strip(), caller_param_names, set(), local_symbols, function_symbols)
+                    for binding in bindings
+                )
+                if not binding_invalid:
+                    for binding, param in zip(bindings, callee_params):
+                        if isinstance(binding, dict) and str(binding.get("param_name", "")).strip() and str(binding.get("param_name", "")).strip() != str(param.get("name", "")).strip():
+                            binding_invalid = True
+                            break
+                if binding_invalid:
+                    edge["param_bindings"] = []
+                    edge["binding_status"] = "omitted_for_compile"
+                    report["cleared_param_bindings"].append({"caller_function_id": caller_id, "callee_function_id": callee_id})
+                    note("call_param_bindings_omitted_for_compile", f"param bindings for {caller_id}->{callee_id} were omitted to preserve compile-safe call contract shape", caller_id)
+            retained_edges.append(edge)
+        update["calls_allowed"] = retained_edges
+
+    resolved_service_ids = {
+        str(service_id)
+        for record in _call_edge_records(result)
+        for service_id in record["edge"].get("service_requirement_ids", [])
+        if str(service_id).strip()
+    }
+    unresolved_service_ids |= known_service_ids - resolved_service_ids
+    result["unresolved_service_requirements"] = sorted(unresolved_service_ids & known_service_ids)
+    return result, report
+
+
 def merge_calls_allowed(draft: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any]:
     result = deepcopy(draft)
     updates = {str(item.get("caller_function_id")): item for item in candidate.get("call_updates", []) if isinstance(item, dict)}
@@ -3379,3 +3761,219 @@ def finalize_dependency_graph(draft: dict[str, Any]) -> dict[str, Any]:
     result["dependency_graph"] = derive_dependency_graph(result)
     result.pop("accepted_stage_artifacts", None)
     return result
+
+
+def _forbidden_symbol_value(item: Any) -> str:
+    if isinstance(item, dict):
+        return str(item.get("symbol") or item.get("name") or item.get("NAME") or "").strip()
+    return str(item or "").strip()
+
+
+def _remove_forbidden_symbols(values: Any, symbols: set[str]) -> tuple[list[Any], int]:
+    result = []
+    removed = 0
+    for item in values if isinstance(values, list) else []:
+        if _forbidden_symbol_value(item) in symbols:
+            removed += 1
+            continue
+        result.append(item)
+    return result, removed
+
+
+def _signature_type_known(raw_type: Any, type_ref: Any, known_ids: set[str], known_by_name: dict[str, str]) -> bool:
+    text = str(raw_type or "").strip()
+    if not text:
+        return True
+    if is_anonymous_c_function_pointer_type(text):
+        return True
+    return bool(_resolve_compile_type_ref(type_ref, text, known_ids, known_by_name))
+
+
+def _repair_signature_for_compile(function: dict[str, Any], known_ids: set[str], known_by_name: dict[str, str]) -> tuple[bool, list[dict[str, Any]]]:
+    signature = function.get("signature", {}) if isinstance(function.get("signature"), dict) else {}
+    if not signature:
+        return False, []
+    changed = False
+    debts: list[dict[str, Any]] = []
+    function_id = str(function.get("function_id", ""))
+    return_type = str(signature.get("return_type", "int") or "int")
+    if not _signature_type_known(return_type, "", known_ids, known_by_name):
+        new_return = _compile_safe_pointer_type(return_type) if "*" in return_type else "int"
+        signature["return_type"] = new_return
+        return_type = new_return
+        changed = True
+        debts.append(_semantic_debt("signature_return_type_erased_for_compile", f"unknown return type was erased to {new_return}", "specs_compile_closure", function_id))
+    params = []
+    for param in signature.get("params", []) if isinstance(signature.get("params"), list) else []:
+        if not isinstance(param, dict):
+            continue
+        item = deepcopy(param)
+        raw_type = str(item.get("type", "") or "")
+        if not _signature_type_known(raw_type, item.get("type_ref", ""), known_ids, known_by_name):
+            item["type"] = _compile_safe_pointer_type(raw_type)
+            item["type_ref"] = ""
+            item["passing_mode"] = "by_pointer"
+            changed = True
+            debts.append(_semantic_debt("signature_param_type_erased_for_compile", f"parameter '{item.get('name')}' unknown type was erased to {item['type']}", "specs_compile_closure", function_id))
+        params.append(item)
+    if changed:
+        name = str(signature.get("name") or function.get("name") or "function")
+        signature.update(_function_signature(return_type, name, params))
+        function["signature"] = signature
+    return changed, debts
+
+
+def _repair_wire_mapping_targets_for_compile(plan: dict[str, Any]) -> tuple[bool, list[dict[str, Any]], list[dict[str, Any]]]:
+    access_by_id = {
+        str(item.get("access_path_id", "")): item
+        for item in plan.get("access_path_table", [])
+        if isinstance(item, dict) and str(item.get("access_path_id", "")).strip()
+    }
+    changes: list[dict[str, Any]] = []
+    debts: list[dict[str, Any]] = []
+
+    def access_path_for(mapping: dict[str, Any]) -> str:
+        access = access_by_id.get(str(mapping.get("access_path_id", "")))
+        return str((access or {}).get("path", "")).strip()
+
+    for function in plan.get("function_contracts", []) if isinstance(plan.get("function_contracts"), list) else []:
+        if not isinstance(function, dict):
+            continue
+        for mapping in function.get("wire_mapping", []) if isinstance(function.get("wire_mapping"), list) else []:
+            if not isinstance(mapping, dict) or str(mapping.get("strategy", "")).strip() != "store_in_field":
+                continue
+            access_path = access_path_for(mapping)
+            target_path = str(mapping.get("target_path", "")).strip()
+            if access_path and target_path and target_path != "buffer" and target_path != access_path:
+                mapping["target_path"] = access_path
+                changes.append(
+                    {
+                        "kind": "wire_mapping_target_canonicalized",
+                        "function_id": function.get("function_id", ""),
+                        "mapping_id": mapping.get("mapping_id", ""),
+                        "old_target": target_path,
+                        "new_target": access_path,
+                    }
+                )
+                debts.append(
+                    _semantic_debt(
+                        "wire_mapping_target_canonicalized_for_compile",
+                        f"wire mapping target '{target_path}' was replaced with canonical ACCESS_PATH '{access_path}'",
+                        "specs_compile_closure",
+                        str(function.get("function_id", "")),
+                    )
+                )
+
+    for mapping in plan.get("wire_mapping_table", []) if isinstance(plan.get("wire_mapping_table"), list) else []:
+        if not isinstance(mapping, dict) or str(mapping.get("strategy", "")).strip() != "store_in_field":
+            continue
+        access_path = access_path_for(mapping)
+        target_path = str(mapping.get("target_path", "")).strip()
+        if access_path and target_path and target_path != "buffer" and target_path != access_path:
+            mapping["target_path"] = access_path
+            changes.append(
+                {
+                    "kind": "wire_mapping_table_target_canonicalized",
+                    "mapping_id": mapping.get("mapping_id", ""),
+                    "old_target": target_path,
+                    "new_target": access_path,
+                }
+            )
+    return bool(changes), changes, debts
+
+
+def stabilize_plan_for_coder_compatibility(plan: dict[str, Any], diagnostics: list[Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    result = deepcopy(plan)
+    report: dict[str, Any] = {
+        "schema_version": "compile_stabilization_report/v1",
+        "stage": "specs_compile_closure",
+        "changed": False,
+        "diagnostic_codes": sorted({str(getattr(item, "code", "")) for item in diagnostics if str(getattr(item, "code", "")).strip()}),
+        "changes": [],
+        "semantic_debt": [],
+    }
+    for diag in diagnostics:
+        level = str(getattr(diag, "level", "warning"))
+        if level == "error":
+            report["semantic_debt"].append(
+                _semantic_debt(
+                    str(getattr(diag, "code", "coder_compatibility_error")),
+                    str(getattr(diag, "message", "")),
+                    "specs_compile_closure",
+                    str(getattr(diag, "path", "") or ""),
+                )
+            )
+
+    result, symbol_report = repair_function_type_symbol_collisions(result)
+    if symbol_report.get("renamed_functions"):
+        report["changed"] = True
+        report["changes"].append(
+            {
+                "kind": "function_type_symbol_collisions_renamed",
+                "count": len(symbol_report.get("renamed_functions", [])),
+                "renamed_functions": symbol_report.get("renamed_functions", []),
+            }
+        )
+        for item in symbol_report.get("renamed_functions", []):
+            report["semantic_debt"].append(
+                _semantic_debt(
+                    "function_type_symbol_collision_renamed",
+                    f"function '{item.get('old_name')}' collided with a C type symbol and was renamed to '{item.get('new_name')}' for header compilation",
+                    "specs_compile_closure",
+                    str(item.get("function_id", "")),
+                )
+            )
+    if symbol_report.get("unrepaired_duplicates"):
+        report["semantic_debt"].append(
+            _semantic_debt(
+                "function_type_symbol_collision_unrepaired",
+                "one or more function/type C symbol collisions could not be renamed deterministically",
+                "specs_compile_closure",
+                "function_contracts",
+            )
+        )
+
+    wire_changed, wire_changes, wire_debts = _repair_wire_mapping_targets_for_compile(result)
+    if wire_changed:
+        report["changed"] = True
+        report["changes"].extend(wire_changes)
+        report["semantic_debt"].extend(wire_debts)
+
+    known_ids, known_by_name = _compile_type_indexes(result, {"types": result.get("type_inventory", [])})
+    public_symbols = {
+        canonical_function_symbol(function)
+        for function in result.get("function_contracts", [])
+        if isinstance(function, dict) and canonical_function_symbol(function)
+    }
+    public_symbols.update(
+        str(item.get("name", "")).strip()
+        for item in result.get("canonical_types", [])
+        if isinstance(item, dict) and str(item.get("name", "")).strip()
+    )
+    result["forbidden_symbols"], removed = _remove_forbidden_symbols(result.get("forbidden_symbols", []), public_symbols)
+    if removed:
+        report["changed"] = True
+        report["changes"].append({"kind": "forbidden_symbols_pruned", "count": removed})
+    for function in result.get("function_contracts", []) if isinstance(result.get("function_contracts"), list) else []:
+        if not isinstance(function, dict):
+            continue
+        function["forbidden_symbols"], function_removed = _remove_forbidden_symbols(function.get("forbidden_symbols", []), public_symbols)
+        if function_removed:
+            report["changed"] = True
+            report["changes"].append({"kind": "function_forbidden_symbols_pruned", "function_id": function.get("function_id", ""), "count": function_removed})
+        signature_changed, debts = _repair_signature_for_compile(function, known_ids, known_by_name)
+        if signature_changed:
+            report["changed"] = True
+            report["changes"].append({"kind": "signature_stabilized", "function_id": function.get("function_id", "")})
+            report["semantic_debt"].extend(debts)
+        for edge in function.get("call_contracts", []) if isinstance(function.get("call_contracts"), list) else []:
+            if isinstance(edge, dict) and edge.get("param_bindings"):
+                edge["param_bindings"] = []
+                edge["binding_status"] = "omitted_for_compile"
+                report["changed"] = True
+                report["changes"].append({"kind": "call_param_bindings_omitted", "function_id": function.get("function_id", ""), "callee_function_id": edge.get("callee_function_id", "")})
+    for debt in report["semantic_debt"]:
+        _add_semantic_debt(result, debt)
+    if report["changed"]:
+        result = cleanup_final_unresolved_questions(finalize_dependency_graph(result))
+    return result, report
