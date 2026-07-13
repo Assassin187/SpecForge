@@ -10,6 +10,13 @@ from .facts import write_json
 from .registry import CanonicalPlanningRegistry
 
 
+_CUSTOM_TYPE = re.compile(r"\b[A-Za-z_][A-Za-z0-9_]*_t\b")
+_STANDARD_TYPES = {
+    "bool", "int8_t", "int16_t", "int32_t", "int64_t", "intptr_t", "ptrdiff_t",
+    "size_t", "ssize_t", "uint8_t", "uint16_t", "uint32_t", "uint64_t", "uintptr_t",
+}
+
+
 def _by_id(items: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     return {item["id"]: item for item in items}
 
@@ -41,6 +48,10 @@ def _companion_source_path(header_path: str) -> str:
     if header_path.endswith(".h"):
         return f"{header_path[:-2]}.c"
     return f"{header_path}.c"
+
+
+def _companion_header_path(source_path: str) -> str:
+    return str(Path(source_path).with_suffix(".h"))
 
 
 def _as_list(value: Any) -> list[Any]:
@@ -110,7 +121,7 @@ def _parse_param(raw: str) -> dict[str, Any]:
 
 def _signature(raw: Any, fallback_name: str) -> dict[str, Any]:
     text = str(raw.get("RAW", "")) if isinstance(raw, dict) else str(raw or "")
-    text = text.strip()
+    text = text.strip().removesuffix(";").strip()
     match = re.match(r"(?P<return>.+?)\s*(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*\((?P<params>.*)\)\s*$", text)
     if not match:
         raise ValueError(f"Canonical function {fallback_name!r} is missing a complete C signature")
@@ -145,13 +156,46 @@ def _callback_signature(raw: Any, name: str) -> str:
     return re.sub(r"\(\s*\*\s*\)", f"(*{name})", signature, count=1)
 
 
+def _normalize_array_members(spec: dict[str, Any]) -> dict[str, Any]:
+    normalized = deepcopy(spec)
+    for key in ("FIELDS", "VARIANTS"):
+        for member in normalized.get(key, []):
+            if not isinstance(member, dict):
+                continue
+            match = re.fullmatch(r"([^\[\]]+?)\s*\[([^\[\]]+)\]", str(member.get("TYPE", "")).strip())
+            if match and "ARRAY_LEN" not in member:
+                member["TYPE"] = match.group(1).strip()
+                member["ARRAY_LEN"] = match.group(2).strip()
+            if isinstance(member.get("TYPE_SPEC"), dict):
+                member["TYPE_SPEC"] = _normalize_array_members(member["TYPE_SPEC"])
+    return normalized
+
+
+def _omit_unresolved_type_members(spec: dict[str, Any], known_types: set[str]) -> dict[str, Any]:
+    normalized = deepcopy(spec)
+    for key in ("FIELDS", "VARIANTS"):
+        members = []
+        for member in normalized.get(key, []):
+            if not isinstance(member, dict):
+                continue
+            refs = set(_CUSTOM_TYPE.findall(str(member.get("TYPE", ""))))
+            if refs - known_types - _STANDARD_TYPES:
+                continue
+            if isinstance(member.get("TYPE_SPEC"), dict):
+                member["TYPE_SPEC"] = _omit_unresolved_type_members(member["TYPE_SPEC"], known_types)
+            members.append(member)
+        if key in normalized:
+            normalized[key] = members
+    return normalized
+
+
 def _lower_type_spec(item: dict[str, Any]) -> dict[str, Any]:
     if isinstance(item.get("type_spec"), dict):
         spec = dict(item["type_spec"])
         if str(spec.get("TYPE_KIND", "")).upper() == "CALLBACK":
             name = str(item.get("name") or item.get("type_name") or item.get("symbol") or "callback_t")
             spec["CALLBACK_SIGNATURE"] = _callback_signature(spec.get("CALLBACK_SIGNATURE"), name)
-        return spec
+        return _normalize_array_members(spec)
     kind = str(item.get("type_kind") or item.get("kind") or "OPAQUE").upper()
     fields = item.get("fields", [])
     if kind == "ENUM":
@@ -168,7 +212,7 @@ def _lower_type_spec(item: dict[str, Any]) -> dict[str, Any]:
             ],
         }
     if kind == "STRUCT":
-        return {
+        return _normalize_array_members({
             "TYPE_KIND": "STRUCT",
             "FIELDS": [
                 {
@@ -179,7 +223,7 @@ def _lower_type_spec(item: dict[str, Any]) -> dict[str, Any]:
                 for field in fields
                 if isinstance(field, dict) and field.get("name")
             ],
-        }
+        })
     if kind == "CALLBACK":
         name = str(item.get("name") or item.get("type_name") or item.get("symbol") or "callback_t")
         signature = _callback_signature(item.get("c_type") or item.get("signature"), name)
@@ -378,6 +422,23 @@ def normalize_plan_for_compiler(plan: dict[str, Any]) -> dict[str, Any]:
             group["source_dependencies"].extend(_as_list(intent.get("public_includes")) + _as_list(closure.get("header_dependencies")))
         group["source_dependencies"].extend(_as_list(intent.get("private_includes")) + _as_list(closure.get("source_dependencies")))
 
+    shared_header_owners: dict[str, str] = {}
+    groups_by_header: dict[str, list[dict[str, Any]]] = {}
+    for group in file_groups.values():
+        if group["header_path"]:
+            groups_by_header.setdefault(group["header_path"], []).append(group)
+    for header_path, groups in groups_by_header.items():
+        if len(groups) < 2:
+            continue
+        owner = next(
+            (group for group in groups if _strip_c_suffix(str(group.get("source_path") or "")) == _strip_c_suffix(header_path)),
+            groups[0],
+        )
+        shared_header_owners[header_path] = owner["id"]
+        for group in groups:
+            if group is not owner and group.get("source_path"):
+                group["header_path"] = _companion_header_path(group["source_path"])
+
     header_aliases: dict[str, str] = {}
     for group in file_groups.values():
         if group["header_path"]:
@@ -390,7 +451,8 @@ def normalize_plan_for_compiler(plan: dict[str, Any]) -> dict[str, Any]:
                 *group["_raw_ids"],
                 *registry_aliases,
             ]:
-                header_aliases[str(alias)] = group["header_path"]
+                if str(alias) not in shared_header_owners or shared_header_owners[str(alias)] == group["id"]:
+                    header_aliases.setdefault(str(alias), group["header_path"])
         for alias in [group["source_path"], Path(str(group["source_path"])).name if group["source_path"] else "", group["header_path"], Path(str(group["header_path"])).name if group["header_path"] else "", *group["_raw_ids"]]:
             if alias:
                 alias_to_file_id[str(alias)] = group["id"]
@@ -464,6 +526,10 @@ def normalize_plan_for_compiler(plan: dict[str, Any]) -> dict[str, Any]:
         type_roles[name] = normalized["role"]
         if file_id in files_by_id:
             files_by_id[file_id]["types"].append(normalized["id"])
+
+    known_types = {item["name"] for item in types}
+    for type_item in types:
+        type_item["type_spec"] = _omit_unresolved_type_members(type_item["type_spec"], known_types)
 
     behavior_stage = stages.get("function_behavior_design", {})
     behaviors = {str(item.get("function_id")): item for item in behavior_stage.get("function_behaviors", []) if isinstance(item, dict)}
@@ -554,6 +620,12 @@ def normalize_plan_for_compiler(plan: dict[str, Any]) -> dict[str, Any]:
             ):
                 function_file["header_dependencies"].append(owner_header)
         function_file["header_dependencies"] = _unique(function_file["header_dependencies"])
+
+    for function in functions:
+        owner = files_by_id.get(function["file"])
+        if function["function_type"] == "ENTRYPOINT" and owner and not owner.get("header_path"):
+            source = Path(str(owner.get("source_path") or "main.c"))
+            owner["source_path"] = str(source.with_name("main.c"))
 
     modules: list[dict[str, Any]] = []
     for item in raw.get("modules", []):
@@ -768,13 +840,19 @@ def _module_spec(plan: dict[str, Any]) -> dict[str, Any]:
     }
     if protocol.get("default_port"):
         protocol_block["DEFAULT_PORT"] = protocol["default_port"]
+    generation_order = [module["name"] for module in plan["modules"]]
+    positions = {name: index for index, name in enumerate(generation_order)}
     modules = []
     for module in plan["modules"]:
         modules.append(
             {
                 "NAME": module["name"],
                 "ROLE": module["role"],
-                "DEPENDENCIES": module["dependencies"],
+                "DEPENDENCIES": [
+                    dependency
+                    for dependency in module["dependencies"]
+                    if dependency in positions and positions[dependency] < positions[module["name"]]
+                ],
                 "ARTIFACTS": module.get("artifacts", []),
                 "FILES": module["files"],
                 "DOC_REF": _doc_refs(module),
@@ -784,7 +862,7 @@ def _module_spec(plan: dict[str, Any]) -> dict[str, Any]:
         "KIND": "PROTOCOL_MODULE_SPEC",
         "PROTOCOL": protocol_block,
         "MODULES": modules,
-        "GENERATION_ORDER": [module["name"] for module in plan["modules"]],
+        "GENERATION_ORDER": generation_order,
         "CONSISTENCY_RULES": plan.get("consistency_rules", []),
         "FORBIDDEN_SYMBOLS": plan.get("forbidden_symbols", []),
         "TEST_VECTORS": plan.get("test_vectors", []),

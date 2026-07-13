@@ -327,6 +327,31 @@ PLANNING_STAGES: tuple[PlanningStage, ...] = (
 )
 
 
+def _empty_recoverable_stage_artifact(stage_id: str) -> dict[str, Any] | None:
+    return {
+        "scope_fact_inventory": {
+            "confirmed_scope": [], "deferred_scope": [], "fact_inventory": [],
+            "open_assumption_candidates": [], "no_invention_checks": [],
+        },
+        "architecture_boundaries": {
+            "module_candidates": [], "ownership_decisions": [], "cross_module_services": [],
+            "coverage_matrix": [], "architecture_diagnostics": [],
+        },
+        "public_artifact_inventory": {
+            "types": [], "constants_or_macros": [], "functions": [], "lifecycle_matrix": [],
+            "runtime_entrypoint": {}, "public_symbol_table": [], "forbidden_symbols": [],
+        },
+        "function_test_vector_design": {
+            "function_test_vectors": {}, "file_test_vectors": {}, "runtime_test_vectors": [],
+            "test_vector_diagnostics": [],
+        },
+        "dependency_closure": {
+            "ordering_choices": [], "architecture_choices": [], "artifact_requests": [],
+            "dependency_diagnostics": [],
+        },
+    }.get(stage_id)
+
+
 class LLMStructuredPlanner:
     def __init__(self, api_key_env: str = "ALI_API", stage_log_dir: str | Path | None = None) -> None:
         self.api_key_env = api_key_env
@@ -379,66 +404,69 @@ class LLMStructuredPlanner:
                 )
             except ValueError as exc:
                 issue = classify_partition_error(exc)
-                if (
-                    stage.partition_strategy is not None
-                    or stage.stage_id == "final_plan_assembly"
-                    or self.unresolved_partitions
-                ):
-                    self.validation_ledger.record(
-                        issue, stage_id=stage.stage_id, partition_id="whole_stage", outcome="unresolved"
-                    )
+                if stage.stage_id == "final_plan_assembly":
                     self._record_stage_validation_failure(stage, exc)
                     raise RecoverablePlanningError(stage.stage_id, str(exc)) from exc
-                self.validation_ledger.record(
-                    issue, stage_id=stage.stage_id, partition_id="whole_stage", outcome="correction_requested"
-                )
-                from agent.common.llm_client import FixedQwenClient
+                if stage.partition_strategy is not None or self.unresolved_partitions:
+                    self._record_unresolved_partition(
+                        stage_id=stage.stage_id,
+                        partition_id="whole_stage",
+                        diagnostic=str(exc),
+                        correction_attempted=stage.partition_strategy is not None,
+                        issue=issue,
+                    )
+                    candidate_registry = self.registry
+                else:
+                    self.validation_ledger.record(
+                        issue, stage_id=stage.stage_id, partition_id="whole_stage", outcome="correction_requested"
+                    )
+                    from agent.common.llm_client import FixedQwenClient
 
-                stage_dir = self._stage_dir(stage)
-                if stage_dir is not None:
-                    stage_dir.mkdir(parents=True, exist_ok=True)
-                try:
-                    corrected, correction_usage = self._request_local_semantic_correction(
-                        client=FixedQwenClient(api_key_env=self.api_key_env),
-                        stage=stage,
-                        partition={"partition_id": "whole_stage"},
-                        artifact=artifact,
-                        validation_error=str(exc),
-                        partition_dir=stage_dir,
-                        context=context,
-                        previous_artifacts=stage_artifacts,
-                        validation_issue=issue,
-                    )
-                except ValueError as correction_exc:
-                    correction_issue = classify_partition_error(correction_exc)
-                    self.validation_ledger.record(
-                        correction_issue,
-                        stage_id=stage.stage_id,
-                        partition_id="whole_stage",
-                        outcome="unresolved",
-                    )
-                    self._record_stage_validation_failure(stage, correction_exc)
-                    raise RecoverablePlanningError(stage.stage_id, str(correction_exc)) from correction_exc
-                completed["artifact"] = corrected
-                self._record_whole_stage_correction(stage, corrected, correction_usage, success=False)
-                try:
-                    candidate_registry = self._validate_stage_commit(
-                        stage, stage_artifacts, completed, context
-                    )
-                except ValueError as correction_exc:
-                    correction_issue = classify_partition_error(correction_exc)
-                    self.validation_ledger.record(
-                        correction_issue,
-                        stage_id=stage.stage_id,
-                        partition_id="whole_stage",
-                        outcome="unresolved",
-                    )
-                    self._record_stage_validation_failure(stage, correction_exc)
-                    raise RecoverablePlanningError(stage.stage_id, str(correction_exc)) from correction_exc
-                self.validation_ledger.record(
-                    issue, stage_id=stage.stage_id, partition_id="whole_stage", outcome="corrected"
-                )
-                self._record_whole_stage_correction(stage, corrected, correction_usage, success=True)
+                    stage_dir = self._stage_dir(stage)
+                    if stage_dir is not None:
+                        stage_dir.mkdir(parents=True, exist_ok=True)
+                    correction_usage: dict[str, int] = {}
+                    correction_error: ValueError | None = None
+                    try:
+                        corrected, correction_usage = self._request_local_semantic_correction(
+                            client=FixedQwenClient(api_key_env=self.api_key_env),
+                            stage=stage,
+                            partition={"partition_id": "whole_stage"},
+                            artifact=artifact,
+                            validation_error=str(exc),
+                            partition_dir=stage_dir,
+                            context=context,
+                            previous_artifacts=stage_artifacts,
+                            validation_issue=issue,
+                        )
+                        completed["artifact"] = corrected
+                        self._record_whole_stage_correction(stage, corrected, correction_usage, success=False)
+                        candidate_registry = self._validate_stage_commit(
+                            stage, stage_artifacts, completed, context
+                        )
+                    except ValueError as failed_correction:
+                        correction_error = failed_correction
+                        fallback = _empty_recoverable_stage_artifact(stage.stage_id)
+                        if fallback is None:
+                            self._record_stage_validation_failure(stage, failed_correction)
+                            raise RecoverablePlanningError(stage.stage_id, str(failed_correction)) from failed_correction
+                        completed["artifact"] = fallback
+                        self._record_unresolved_partition(
+                            stage_id=stage.stage_id,
+                            partition_id="whole_stage",
+                            diagnostic=str(failed_correction),
+                            correction_attempted=True,
+                            issue=classify_partition_error(failed_correction),
+                        )
+                        candidate_registry = self._validate_stage_commit(
+                            stage, stage_artifacts, completed, context
+                        )
+                        self._record_whole_stage_correction(stage, fallback, correction_usage, success=False)
+                    if correction_error is None:
+                        self.validation_ledger.record(
+                            issue, stage_id=stage.stage_id, partition_id="whole_stage", outcome="corrected"
+                        )
+                        self._record_whole_stage_correction(stage, completed["artifact"], correction_usage, success=True)
             stage_artifacts.append(completed)
             self.registry = candidate_registry
             self.amendments.set_registry(self.registry)
@@ -1526,6 +1554,7 @@ def _canonical_function_indexes(
         function_id = _stable_artifact_key(item, "function")
         raw_signature = item.get("signature", {})
         signature = str(raw_signature.get("RAW", "")) if isinstance(raw_signature, dict) else str(raw_signature or "")
+        signature = signature.strip().removesuffix(";").strip()
         match = re.match(r".+?\s*([A-Za-z_][A-Za-z0-9_]*)\s*\(.*\)\s*$", signature)
         name = str(item.get("name") or (raw_signature.get("NAME") if isinstance(raw_signature, dict) else "") or (match.group(1) if match else ""))
         owner = str(item.get("owner_file") or item.get("file") or "")
@@ -1579,6 +1608,11 @@ def _canonical_function_indexes(
                 "owner_file": owner,
                 "file": owner,
                 "visibility": visibility.lower(),
+                "signature": (
+                    {**deepcopy(raw_signature), "RAW": signature}
+                    if isinstance(raw_signature, dict)
+                    else signature
+                ),
             }
         )
         by_id[function_id] = canonical

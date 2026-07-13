@@ -33,7 +33,10 @@ def _print_result(result) -> None:
     warnings = [diag for diag in result.diagnostics if diag.level == "warning"]
     print(f"run_status: {result.run_status}")
     print(f"candidate_root: {result.candidate_root}")
-    print(f"qualified_specs_root: {result.specs_root}")
+    print(f"specs_root: {result.specs_root}")
+    print(f"specs_generated: {result.specs_root is not None and result.specs_root.exists()}")
+    print(f"coder_loader_passed: {not any(diag.level == 'error' and diag.code.startswith('coder_') for diag in result.diagnostics)}")
+    print(f"artifact_success: {result.success}")
     print(f"planning_manifest: {result.manifest_path}")
     print(f"diagnostics: {len(errors)} error(s), {len(warnings)} warning(s)")
     for diag in errors[:20]:

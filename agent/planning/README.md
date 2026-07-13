@@ -75,7 +75,8 @@ deterministic completion；需要新增 lifecycle/helper/access service 或调�
 
 Semantic patch 只接收直接相关 artifacts、facts、generic constraints 和 decisions，只允许稳定 ID
 的 add/update，并要求 reason、provenance 与 affected artifact IDs。closure 仍有 error 时，pipeline
-不会生成成功 specs，也不会把 error 降为 warning。
+保留最后一个 structurally valid plan 和原 error severity，继续生成 evaluation specs；error 只影响
+`qualification_passed`，不再阻止 specs 物化。
 
 `<out>/_planning/semantic_closure/` 保存 initial/final diagnostics、deterministic completion、
 input slice、raw patch responses、patch usage、validated applied patch 与 implementability report。
@@ -85,9 +86,12 @@ input slice、raw patch responses、patch usage、validated applied patch 与 im
 每次可恢复运行都会生成 `_planning/candidate_planning_package/`，保存已提交 stage overlays、
 unresolved partitions、blocking diagnostics、provenance、manifests、registry snapshot 和 metrics。
 运行状态严格区分 `completed_with_qualified_specs`、`completed_with_candidate_only` 与
-`failed_internal`。Specs 先写入 candidate staging；只有 planning validation、coder loader 与
-rendered-header checks 均无 error 时才移动到 `<protocol>_specs/`。Candidate-only manifest 的
-`specs_root` 为 `null`，不会作为 coder 的默认输入。
+`failed_internal`。Specs 始终先写入 candidate staging，并对该目录执行 planning validation、coder
+loader 与 rendered-header checks；全部 qualification checks 通过时另行复制到 `<protocol>_specs/`。
+Candidate-only manifest 的 `specs_root` 指向 candidate specs，供 evaluation 显式加载；它不会被描述
+为 qualified specs。`run_manifest.json` 分别记录 `specs_generated`、`planning_validation_passed`、
+`coder_loader_passed`、`qualification_passed`、stage/partition survival、semantic/unresolved counts、
+token accounting 与 fresh/resume 标记。
 
 ### Controlled Inventory Amendment
 

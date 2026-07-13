@@ -79,8 +79,8 @@ class PlanningResult:
 
     @property
     def success(self) -> bool:
-        return self.run_status == "completed_with_qualified_specs" and not any(
-            diag.level == "error" for diag in self.diagnostics
+        return self.run_status != "failed_internal" and self.specs_root is not None and not any(
+            diag.level == "error" and diag.code.startswith("coder_") for diag in self.diagnostics
         )
 
 

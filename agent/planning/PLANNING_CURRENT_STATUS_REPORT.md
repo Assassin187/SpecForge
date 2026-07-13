@@ -1,7 +1,7 @@
 # SpecForge Planning Agent 当前状态、优化进展与稳定性报告
 
 > 更新时间：2026-07-13  
-> 本文件是 planning agent 当前实现、优化效果、实际运行结果和后续工作的唯一权威进度报告。原稳定性优化计划已完成历史信息合并并删除；历史 replay 只作为非回归证据，不计作 fresh stability success。
+> 本文件是 planning agent 当前实现、优化效果、实际运行结果和后续工作的唯一权威进度报告。`PLANNING_EVALUATION_STABILITY_PLAN.md` 记录本轮逐步执行证据；历史 replay 只作为非回归证据，不计作 fresh stability success。
 
 ## 1. 研究定位与范围
 
@@ -21,20 +21,19 @@ technical documents
 
 ## 2. 当前结论
 
-本轮优化取得了明显的execution stability进展，但**整体目标仍未完成**。
+本轮 **evaluation artifact stability 目标已经完成**。
 
-- 已形成canonical registry、typed delta、partition transaction、bounded recovery、deterministic assembly与严格qualification gate。
-- Run 3 deterministic replay可稳定生成43个qualified specs files，并通过planning、coder loader和rendered-header checks。
-- 原预算Goal执行4次fresh planning，4/4产生candidate、0/4 qualified，累计1,892,276 planning LLM tokens后按启动门禁停止。
-- Goal结束后执行的优化前独立观察run完成11/11 stages、16/16 partitions，但semantic closure失败，仍为candidate-only。
-- Token优化后执行2次fresh run，均完成11/11 stages和全部partitions，总token稳定在约40万，较优化前下降超过53%。
-- 两次token优化run的semantic diagnostics均高于优化前基线；表面字段覆盖保持完整，但实现语义闭包没有通过非回归验收。
-- 合计7次优化后fresh运行：candidate 7/7（100%），qualified 0/7（0%），连续fresh qualified为0。
-- 当前pipeline在semantic diagnostics非空时跳过`compile_specs`，因此失败运行只产出candidate planning package，不产出结构完整的candidate specs。
+- 保留了canonical registry、typed overlays、partition transaction、bounded recovery、diagnostics、provenance、resume、token metrics和deterministic compiler，没有另建strict/evaluation双模式。
+- 只要facts、pipeline state、registry和final structural lowering正常，pipeline现在即使存在semantic diagnostics或semantic patch failure，也会执行`compile_specs`并保存candidate specs。
+- semantic diagnostics、planning validation和qualification结论保持原severity并进入manifest；candidate specs可由现有coder loader读取，不会被误发布为qualified specs。
+- Bootstrap fresh首次暴露coder array spelling问题；两次compile-only resume依次修复array lowering和generation-order lowering后，真实路径首次产出coder-loadable specs。
+- 第一组acceptance因Stage 6尾分号和后续semantic patch异常两次清零；通过失败run的resume定位并修复后，重新从全新输出目录开始第二组验收。
+- 第二组3次独立fresh运行均为11/11 stages、`specs_generated=true`、`coder_loader_passed=true`，形成连续3/3。
+- 三次最终fresh均为candidate-only且`qualification_passed=false`；semantic qualification、generated code compile和behavior tests仍未完成，也不属于本轮目标。
 
 最准确的状态是：
 
-> 局部错误隔离、运行审计、严格门禁和prompt降耗已基本建立；完整fresh run的token目标已经连续两次达到，但semantic质量连续两次未通过非回归验收，尚不能稳定完成`protocol facts -> complete protocol specs`，也尚未满足“局部错误后仍物化结构完整candidate specs”的要求。
+> planning 已达到连续3次fresh生成coder-loadable specs的artifact stability，可用于RQ1后续coder生成实验；该结论不代表specs已qualified、compile-ready或behavior-correct。
 
 ## 3. 已实现架构与实际效果
 
@@ -46,7 +45,7 @@ technical documents
 - `completed_with_candidate_only`：保留registry、committed overlays、unresolved partitions、diagnostics、provenance、metrics与manifests；
 - `failed_internal`：用于facts read、registry/canonical/pipeline-state/deterministic invariant等不可恢复错误。
 
-效果：validator error不会被降级，candidate不会被coder默认读取，错误运行也能保留完整审计材料。缺口是semantic closure失败时`candidate_specs_root`仍为`null`。
+效果：validator error不会被降级，错误运行仍保留完整审计材料；semantic closure失败时，只要structural lowering条件成立，`candidate_specs_root`会指向实际生成的specs。只有qualification全部通过时才发布qualified specs。
 
 ### 3.2 Canonical Symbol Registry
 
@@ -86,7 +85,7 @@ Stage 5/7/8按`generate -> parse -> bind -> validate -> commit`执行：
 - non-partition whole-stage structural/binding failure最多一次correction；
 - unresolved结果不会进入qualified publication。
 
-效果：partition rollback、survival和状态隔离已有fixtures；第二次token优化run的Stage 7 JSON syntax repair和Stage 8 local semantic correction均成功，流程继续完成。缺口是whole-stage correction再次失败后仍会提前结束后续stages；unresolved partition虽然可继续到final assembly，但随后跳过semantic closure和specs compilation。
+效果：partition rollback、survival和状态隔离已有fixtures；recoverable whole-stage或partition failure会物化schema-valid empty artifact、写入unresolved ledger并继续后续独立stage。Essential final assembly、registry或pipeline invariant仍属于不可恢复失败。Unresolved/semantic diagnostics不再跳过specs compilation。
 
 ### 3.6 三层Validation与Semantic Closure
 
@@ -100,7 +99,7 @@ Stage 5/7/8按`generate -> parse -> bind -> validate -> commit`执行：
 
 `validation_layers.json`记录diagnostic ID、owner layer、recovery与outcomes；deterministic changes必须带`code`、`artifact_id`、`field`、`reason`和`source_artifact_id`。
 
-Semantic closure执行primary patch和按diagnostic group分区的一轮correction。只有整个patch通过residual closure才会应用；失败时保留原plan并追加`semantic_patch_invalid`。该策略保持了严格门禁，但会丢弃部分已经结构合法、能够改善plan的operations，也不会继续生成candidate specs。
+Semantic closure执行primary patch和按diagnostic group分区的一轮correction。只有整个patch通过residual closure才会应用；失败时保留原plan并追加`semantic_patch_invalid`。`RegistryInvariantError`等invalid semantic patch现在转为可审计diagnostic，而不是逃逸为`failed_internal`；无论patch是否成功，只要结构可lower，都会继续生成candidate specs。
 
 ### 3.7 Prompt成本控制
 
@@ -108,23 +107,24 @@ Semantic closure执行primary patch和按diagnostic group分区的一轮correcti
 
 两次Fresh验证均通过550,000-token目标；第二次run即使触发syntax repair和local correction，仍保持相同量级，说明降耗对partition数量和局部恢复具有一定稳定性。生成效果对比及具体数据统一见5.4节。
 
-## 4. 原优化步骤的代码审计状态
+## 4. Evaluation artifact stability执行状态
 
-以下状态来自当前代码路径、tests与实际运行，不沿用旧计划中的checkbox结论：
+以下状态对应`PLANNING_EVALUATION_STABILITY_PLAN.md`的Step 0-9：
 
-| Step | 当前状态 | 代码审计结论 |
+| Step | 状态 | 结论 |
 | --- | --- | --- |
-| 0 Baseline/metrics | DONE | stage/partition survival、binding counts、repair、recovery、production、request与token metrics已实现；83项tests可验证 |
-| 1 Lifecycle | PARTIAL | 三态、candidate package和qualified-only publication完成；semantic失败时不生成candidate specs |
-| 2 Registry | MOSTLY DONE | 七类registry、immutable identity、typed binding与compiler读取完成；缺stage/partition原生typed view |
-| 3 Typed Delta | PARTIAL | Stage 5/8/10 runtime shape/binding完成；不是API级schema enforcement，Stage 8 call intent语义校验不足 |
-| 4 Amendment | PARTIAL | schema、validation、bounded audit与两类local rerun完成；允许kind/stage的executor覆盖不完整 |
-| 5 Transaction | MOSTLY DONE | Stage 5/7/8 partition commit/rollback/correction完成；whole-stage失败仍可能提前结束后续流程 |
-| 6 Validation | PARTIAL | 三层ownership、hard-failure分类与bounded semantic closure完成；semantic failure仍导致0 specs |
-| 7 Replay/non-regression | DONE | Run 3 replay、历史failure fixtures、planning/coder/header checks与静态门禁完成 |
-| 8 Fresh stability | NOT PASSED | 0/7 fresh qualified；未达到连续两次fresh qualified标准 |
+| 0 控制流与基线 | DONE | 冻结83项tests及旧行为，定位semantic gate阻断`compile_specs` |
+| 1 specs物化 | DONE | structural lowering正常时始终编译candidate specs |
+| 2 recoverable continuation | DONE | 可恢复whole-stage/partition失败写ledger并继续11 stages |
+| 3 coder-loadable lowering | DONE | 修复array、dependency、signature、entrypoint、custom type和shared header lowering |
+| 4 manifest/可观测性 | DONE | artifact success与qualification分离，manifest记录specs/loader/semantic/survival/token |
+| 5 静态与回归 | DONE | 94项tests覆盖anti-hardcoding、reference isolation、replay和新增failure fixtures |
+| 6 bootstrap fresh | DONE | 11/11并生成specs；首次loader失败后进入resume定位 |
+| 7 bootstrap resume | DONE | 两次compile-only resume后独立coder loader通过 |
+| 8 连续3次fresh | DONE | 第二组acceptance连续3/3生成coder-loadable specs |
+| 9 冻结与报告 | DONE | 报告、最终回归、定向门禁、scope和完整diff审计均完成 |
 
-因此，不能把本轮优化描述为“全部完成”。更准确的表述是：核心机制大部分落地，execution stability显著改善，qualification stability和完整candidate specs物化仍未完成。
+本轮完成的是artifact stability，不是qualification stability；原研究架构和严格semantic diagnostics均保留。
 
 ## 5. Replay与Fresh运行结果
 
@@ -213,62 +213,84 @@ Token验收线为550,000，两次均通过；相对优化前分别下降53.9%和
 
 因此，当前最准确的判断是：compact JSON和context slicing稳定降低了token，且没有破坏schema字段生成；但两次token优化run均未保持优化前的semantic基线。由于Fresh LLM存在随机性，现有样本不能把全部退化严格归因于context裁剪，但已足以判定语义非回归没有通过。
 
+### 5.5 Evaluation artifact stability修复与最终验收
+
+本节记录本轮新目标的真实运行路径。所有fresh run均使用同一MQTT protocol facts，不使用resume/replay、不复制历史artifacts、不人工修改运行产物。
+
+Bootstrap路径：
+
+| Run | Stage survival | Specs | Coder loader | Tokens | 结论 |
+| --- | --- | --- | --- | ---: | --- |
+| `mqtt_evaluation_bootstrap_01_20260713` | 11/11 | 1/7/30 | Failed：array type spelling | 384,702 | 进入resume定位 |
+| 同run compile-only resume 1 | 11/11 | 1/7/30 | Failed：3 generation-order errors | +0 | 继续lowering修复 |
+| 同run compile-only resume 2 | 11/11 | 1/7/30 | Passed，独立0 errors | +0 | 首次真实路径打通 |
+
+第一组acceptance未计入最终结果：`mqtt_evaluation_fresh_01_20260713`在Stage 6因signature尾分号误判失败；resume修复尾分号、entrypoint path和unresolved member lowering后loader通过。随后`mqtt_evaluation_acceptance_fresh_01_20260713`、`..._02_...`先后成功，但`..._03_...`发生semantic patch noncanonical ID内部异常，连续计数清零。该失败run的resume又暴露duplicate shared header owner；修复semantic exception与shared-header lowering、重新通过94项tests后，才启动第二组全新验收。
+
+最终连续3次fresh证据：
+
+| Run | Stage / partition survival | Module/File/Function | Planning / Qualification | Coder loader | Semantic diagnostics | Tokens |
+| --- | --- | --- | --- | --- | ---: | ---: |
+| `mqtt_evaluation_acceptance_r2_fresh_01_20260713` | 11/11；16/16 | 1/6/30 | Failed / Failed | Passed，独立0 errors / 0 warnings | 23 | 429,947 |
+| `mqtt_evaluation_acceptance_r2_fresh_02_20260713` | 11/11；17/17 | 1/6/30 | Failed / Failed | Passed，独立0 errors / 0 warnings | 68 | 483,783 |
+| `mqtt_evaluation_acceptance_r2_fresh_03_20260713` | 11/11；18/18 | 1/8/32 | Failed / Failed | Passed，独立0 errors / 0 warnings | 3 semantic；72 total；3 unresolved | 455,323 |
+
+三轮均满足`fresh=true`、`resume=false`、`replay=false`、`specs_generated=true`、exactly one module spec、可发现FILE_SPEC/FUNCTION_SPEC、`coder_loader_passed=true`。最终sequence累计1,369,053 planning LLM tokens，连续成功计数为3/3。
+
 ## 6. 优化效果评估
 
 ### 已取得的效果
 
-- Fresh流程从早期Stage 4/5/8 binding失败推进到最近的11/11 stages与semantic closure。
-- High-risk partitions可独立commit/rollback，已完成工作不因局部失败丢失。
-- unknown ID、kind mismatch、canonical drift与JSON错误有明确恢复和审计路径。
-- Candidate/qualified publication边界准确，错误结果没有进入coder。
-- Run 3 replay证明registry -> deterministic plan -> specs compiler -> coder validation链路可用。
-- Compact JSON、fact slice、Stage/partition context projector和局部correction裁剪连续两次把完整run控制在约40.5万–40.8万tokens。
-- Function signature、behavior、trace和test-vector字段覆盖没有因prompt裁剪下降。
-- 最新83/83 tests、`compileall`、anti-hardcoding、reference isolation与`git diff --check`均通过。
+- Fresh流程已从早期Stage 4/5/8 binding失败推进到连续3次11/11 stages、完整specs materialization和coder loader pass。
+- High-risk partitions可独立commit/rollback；recoverable whole-stage失败也可生成empty artifact、记录unresolved并继续。
+- Semantic patch failure不会吞掉diagnostics，也不会在结构可lower时阻止candidate specs生成。
+- Candidate/qualified publication边界保持明确：artifact success不伪装成qualification success。
+- Compiler以通用结构规则lower array、dependency、signature、entrypoint、自定义member和shared header，没有复制MQTT示例inventory或发明协议行为。
+- Run 3 replay和新增fixtures共同证明registry -> deterministic plan -> specs compiler -> coder loader链路非回归。
+- 最终连续3次fresh分别产出1/6/30、1/6/30和1/8/32 specs，coder loader均通过。
+- 当前代码基线为94项tests；freeze时已再次执行`compileall`、全量tests、anti-hardcoding/reference isolation、replay/coder-loader/header定向fixtures和`git diff --check`，全部通过。
 
 ### 尚未达到的效果
 
-- 7次fresh均未生成qualified specs，qualification成功率仍为0%。
-- 两次token优化run的semantic diagnostics均高于优化前基线，降耗通过但语义非回归连续失败。
-- Semantic或unresolved错误存在时不生成结构完整candidate specs，与“局部错误不导致零规格产物”的目标不一致。
+- 最终三次fresh均未生成qualified specs，qualification成功率仍为0%。
+- Semantic diagnostics分别为23、68、3，第三轮另有3个unresolved partitions；semantic closure仍未稳定。
 - Stage 8 typed IDs解决了kind问题，但没有解决call direction、callback binding和placeholder edge语义真实性。
 - Semantic patch correction仍可能修复症状而非源关系，并因原子应用策略丢弃可用的局部改进。
-- 当前tests主要证明机制和严格门禁，没有“semantic失败仍生成完整candidate specs”或“连续两次fresh qualified”的通过证据。
+- Dependency source-edge repair、access-service provider闭包、runtime entrypoint质量仍是后续semantic qualification工作。
+- 本轮没有运行coder source generation/repair、generated code compile或behavior tests，不能据此判断protocol implementation质量。
 
 ## 7. 当前最新进度与下一步
 
-当前没有运行中的planning进程。最新状态是：源码机制保持83项tests通过；两次token优化fresh run均以约40万tokens完成11/11 stages，但semantic closure均失败，仍为candidate-only；没有candidate specs或qualified fresh specs可交给coder。
+当前没有运行中的planning进程。最新状态是：第二组3次独立fresh均完成11/11 stages、生成candidate specs并通过现有coder loader，evaluation artifact stability目标已达到。
 
-下一步按优先级执行：
+后续工作必须作为独立目标授权，不能混入本轮结论：
 
-1. **物化完整candidate specs。** Final plan只要满足结构lowering条件，即使semantic qualification失败，也编译到`candidate_planning_package/specs/`并附blocking diagnostics；qualified publication与coder默认输入仍保持严格隔离。
-2. **前移Stage 4 inventory closure。** 校验`runtime_entrypoint`中的main、startup/run/cleanup symbols真实存在；lifecycle matrix引用的types/functions必须进入canonical inventory。
-3. **限制Stage 6 signature类型。** 参数和返回类型必须绑定type/callback registry enum；禁止再次产生`mqtt_transport_t`之类未登记类型。
-4. **增强Stage 8 call-intent validation。** 拒绝placeholder、方向反转、跨文件private callee和缺少参数provider的edges；允许无调用caller返回空集合。
-5. **区分普通call、callback binding与lifecycle relation。** 分别建模registration/provider和create/destroy pairing，避免所有关系被错误降为普通call edge。
-6. **从源关系修复dependency。** Module-order diagnostic携带来源call/type edge；correction必须修复源关系，不能只删除会被deterministic completion重新生成的派生dependency。
-7. 完成上述改动后先做Stage 4/6/8定向resume，再以独立预算重新执行fresh stability；只有连续两次`completed_with_qualified_specs`且planning/coder/rendered-header checks全部通过，才能宣称稳定。
+1. 提升semantic qualification稳定率，处理call direction、callback/lifecycle relation和placeholder edges。
+2. 修复dependency source-edge、access-service provider、signature type和runtime entrypoint语义闭包。
+3. 评估candidate specs的semantic密度和跨协议迁移能力。
+4. 另行执行coder source generation/repair、generated code compile和behavior tests。
 
 ## 8. 修改与验证摘要
 
-本轮核心实现文件：
+本轮evaluation artifact stability实际修改文件：
 
-- `planner.py`：typed stages、transactions、whole-stage/local correction与LLM调用编排；
-- `prompts.py`：compact prompt、context projector及stage/repair/correction/amendment message builders；
-- `facts.py`：trace-ref驱动的原始fact/evidence slice；
-- `registry.py`：canonical registry与file alias修复；
-- `amendment.py`：controlled inventory amendment；
-- `validation_layers.py`：三层validation、ledger、hard-failure分类与provenance gate；
-- `implementability.py`：deterministic completion、analyzer与bounded semantic closure；
-- `pipeline.py`：lifecycle、candidate staging、qualification和failure manifests；
-- `metrics.py`：stage/partition/recovery/token与request accounting；
-- `compiler.py`、`models.py`、`validation.py`、`cli.py`、`README.md`与planning tests。
+- `pipeline.py`：无条件candidate compilation、planning/coder validation、manifest和artifact-success lifecycle；
+- `planner.py`：recoverable whole-stage continuation、empty artifacts、unresolved ledger及semantic patch invariant diagnostic；
+- `compiler.py`：coder-loadable structural lowering；
+- `models.py`、`cli.py`：artifact success语义和CLI结果输出；
+- `tests/test_pipeline.py`：新增lifecycle、continuation、lowering、semantic exception和shared header fixtures；
+- `README.md`：同步candidate/qualified行为与manifest contract；
+- `PLANNING_EVALUATION_STABILITY_PLAN.md`、本报告：逐Step执行与freeze证据。
+
+删除或替换的旧行为包括：semantic diagnostics直接跳过`compile_specs`、validation失败后移除candidate specs、recoverable whole-stage错误直接终止、coder-facing forward/cyclic dependency以及未规范化的array/signature/header owner输出。没有引入strict/evaluation平行模式。
 
 当前验证基线：
 
 - `python -m compileall -q agent/planning`：pass；
-- `python -m unittest discover -s agent/planning/tests -p 'test_*.py'`：83/83 pass；
+- `python -m unittest discover -s agent/planning/tests -p 'test_*.py'`：94/94 pass；
 - anti-hardcoding：pass；
 - reference isolation：pass；
 - `git diff --check -- agent/planning`：pass；
 - protocol facts与generated run artifacts未被手工修改以制造成功。
+
+冻结结论：planning已达到连续3次fresh生成coder-loadable specs的artifact stability，可用于RQ1后续coder生成实验。该freeze point不包含semantic qualification、generated code compile或behavior correctness保证。

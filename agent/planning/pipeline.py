@@ -24,7 +24,7 @@ from .knowledge import activate_engineering_rules, extract_open_assumptions, nor
 from .metrics import build_run_metrics
 from .models import Diagnostic, PlanningResult, to_jsonable
 from .planner import LLMStructuredPlanner, PLANNING_STAGES, RecoverablePlanningError, build_planning_context
-from .registry import CanonicalPlanningRegistry, register_semantic_patch_additions
+from .registry import CanonicalPlanningRegistry, RegistryInvariantError, register_semantic_patch_additions
 from .validation import diagnostics_to_json, validate_planning_run
 from .validation_layers import (
     classify_hard_failure,
@@ -164,6 +164,12 @@ def _write_failed_manifest(
             "module_spec": None,
             "summary": None,
             "written_files": [],
+            "specs_generated": False,
+            "planning_validation_passed": False,
+            "coder_loader_passed": None,
+            "qualification_passed": False,
+            "semantic_diagnostic_counts": {"error": 0, "warning": 0},
+            "unresolved_stage_partition_count": 0,
             "diagnostic_counts": {"error": 1, "warning": 0},
         },
     )
@@ -228,7 +234,11 @@ def _write_planning_artifacts(
     semantic_patch_usage: dict[str, int],
     run_status: str,
     candidate_root: Path,
-    candidate_specs_root: Path | None,
+    candidate_specs_root: Path,
+    planning_validation_passed: bool,
+    coder_loader_passed: bool | None,
+    semantic_diagnostics: list[dict[str, Any]],
+    resume_from: str | None,
 ) -> Path:
     write_json(planning_root / "fact_refs.json", fact_refs)
     write_json(planning_root / "normalized_characteristics.json", to_jsonable(characteristics))
@@ -241,6 +251,7 @@ def _write_planning_artifacts(
     write_json(planning_root / "engineering_decisions.json", plan.get("engineering_decisions", []))
     write_json(planning_root / "open_assumptions.json", [to_jsonable(item) for item in assumptions])
     write_json(planning_root / "diagnostics.json", diagnostics_to_json(diagnostics))
+    metrics = read_json(planning_root / "run_metrics.json")
     manifest = {
         "kind": "PLANNING_RUN_MANIFEST",
         "facts_path": str(facts_path),
@@ -248,11 +259,27 @@ def _write_planning_artifacts(
         "planner_mode": planner_mode,
         "run_status": run_status,
         "candidate_root": str(candidate_root),
-        "candidate_specs_root": str(candidate_specs_root) if candidate_specs_root is not None else None,
-        "specs_root": compile_manifest["specs_root"] if run_status == QUALIFIED else None,
-        "module_spec": compile_manifest["module_spec"] if run_status == QUALIFIED else None,
-        "summary": compile_manifest["summary"] if run_status == QUALIFIED else None,
-        "written_files": compile_manifest["written_files"] if run_status == QUALIFIED else [],
+        "candidate_specs_root": str(candidate_specs_root),
+        "specs_root": compile_manifest["specs_root"],
+        "module_spec": compile_manifest["module_spec"],
+        "summary": compile_manifest["summary"],
+        "written_files": compile_manifest["written_files"],
+        "specs_generated": True,
+        "planning_validation_passed": planning_validation_passed,
+        "coder_loader_passed": coder_loader_passed,
+        "qualification_passed": run_status == QUALIFIED,
+        "semantic_diagnostic_counts": {
+            "error": sum(item.get("level") == "error" for item in semantic_diagnostics),
+            "warning": sum(item.get("level") == "warning" for item in semantic_diagnostics),
+        },
+        "unresolved_stage_partition_count": len(plan.get("unresolved_partitions", [])),
+        "stage_survival": metrics.get("stage_survival", {}),
+        "partition_survival": metrics.get("partition_survival", {}),
+        "token_accounting": metrics.get("token_accounting", {}),
+        "fresh": resume_from is None,
+        "resume": resume_from is not None,
+        "resume_from": resume_from,
+        "replay": False,
         "implementability_report": str(implementability_report),
         "semantic_patch_usage": semantic_patch_usage,
         "diagnostic_counts": {
@@ -326,7 +353,7 @@ def _close_implementability(
             trial = normalize_plan_for_compiler(trial)
             complete_deterministic_dependencies(trial)
             residual = analyze_implementability(trial)
-        except (KeyError, TypeError, ValueError) as exc:
+        except (KeyError, TypeError, ValueError, RegistryInvariantError) as exc:
             return [*errors, f"patch application failed: {type(exc).__name__}: {exc}"]
         return [*errors, *[f"residual closure {item['code']}: {item['message']}" for item in residual]]
 
@@ -547,6 +574,19 @@ def run_planning(
                 "module_spec": None,
                 "summary": None,
                 "written_files": [],
+                "specs_generated": False,
+                "planning_validation_passed": False,
+                "coder_loader_passed": None,
+                "qualification_passed": False,
+                "semantic_diagnostic_counts": {"error": 0, "warning": 0},
+                "unresolved_stage_partition_count": 1,
+                "stage_survival": metrics.get("stage_survival", {}),
+                "partition_survival": metrics.get("partition_survival", {}),
+                "token_accounting": metrics.get("token_accounting", {}),
+                "fresh": resume_from is None,
+                "resume": resume_from is not None,
+                "resume_from": resume_from,
+                "replay": False,
                 "diagnostic_counts": {"error": 1, "warning": 0},
             },
         )
@@ -618,26 +658,22 @@ def run_planning(
         if qualified_specs_root.exists():
             shutil.rmtree(qualified_specs_root)
         closure_diagnostics = implementability_report["final_diagnostics"]
-        candidate_specs_root: Path | None = None
-        if closure_diagnostics:
-            compile_manifest = {
-                "specs_root": None,
-                "module_spec": None,
-                "summary": None,
-                "written_files": [],
-            }
-            diagnostics = closure_diagnostics_as_models(closure_diagnostics)
-        else:
-            candidate_specs_root = candidate_root / "specs"
-            compile_manifest = compile_specs(plan, candidate_specs_root, clean=True)
-            diagnostics = validate_planning_run(facts, facts_hash, plan, candidate_specs_root)
-            if coder_validate:
-                diagnostics.extend(_coder_validate(candidate_specs_root))
+        candidate_specs_root = candidate_root / "specs"
+        compile_manifest = compile_specs(plan, candidate_specs_root, clean=True)
+        diagnostics = closure_diagnostics_as_models(closure_diagnostics)
+        planning_diagnostics = validate_planning_run(facts, facts_hash, plan, candidate_specs_root)
+        for diagnostic in planning_diagnostics:
+            identity = (diagnostic.level, diagnostic.code, diagnostic.message, diagnostic.path)
+            if identity not in {(item.level, item.code, item.message, item.path) for item in diagnostics}:
+                diagnostics.append(diagnostic)
+        coder_diagnostics: list[Diagnostic] = []
+        if coder_validate:
+            coder_diagnostics = _coder_validate(candidate_specs_root)
+            diagnostics.extend(coder_diagnostics)
         run_status = CANDIDATE_ONLY if any(diag.level == "error" for diag in diagnostics) else QUALIFIED
-        if run_status == QUALIFIED and candidate_specs_root is not None:
-            shutil.move(str(candidate_specs_root), str(qualified_specs_root))
+        if run_status == QUALIFIED:
+            shutil.copytree(candidate_specs_root, qualified_specs_root)
             compile_manifest = _relocate_compile_manifest(compile_manifest, candidate_specs_root, qualified_specs_root)
-            candidate_specs_root = None
     except BaseException as exc:
         _record_internal_failure(
             planning_root,
@@ -691,10 +727,14 @@ def run_planning(
         run_status,
         candidate_root,
         candidate_specs_root,
+        not any(diag.level == "error" for diag in planning_diagnostics),
+        None if not coder_validate else not any(diag.level == "error" for diag in coder_diagnostics),
+        closure_diagnostics,
+        resume_from,
     )
     return PlanningResult(
         output_root=output_root,
-        specs_root=qualified_specs_root if run_status == QUALIFIED else None,
+        specs_root=Path(compile_manifest["specs_root"]),
         planning_root=planning_root,
         candidate_root=candidate_root,
         manifest_path=manifest_path,
@@ -710,8 +750,8 @@ def validate_existing_run(run_dir: str | Path, *, coder_validate: bool = True) -
     run_status = str(manifest.get("run_status", QUALIFIED))
     candidate_value = manifest.get("candidate_root")
     candidate_root = Path(candidate_value) if candidate_value else None
-    if run_status != QUALIFIED or not manifest.get("specs_root"):
-        stored = read_json(planning_root / "diagnostics.json") if (planning_root / "diagnostics.json").exists() else []
+    if not manifest.get("specs_root"):
+        stored = json.loads((planning_root / "diagnostics.json").read_text(encoding="utf-8")) if (planning_root / "diagnostics.json").exists() else []
         diagnostics = [Diagnostic(item["level"], item["code"], item["message"], item.get("path")) for item in stored]
         return PlanningResult(root, None, planning_root, candidate_root, planning_root / "run_manifest.json", diagnostics, run_status)
     facts = read_json(manifest["facts_path"])
@@ -725,30 +765,24 @@ def validate_existing_run(run_dir: str | Path, *, coder_validate: bool = True) -
         "error": sum(1 for diag in diagnostics if diag.level == "error"),
         "warning": sum(1 for diag in diagnostics if diag.level == "warning"),
     }
-    if any(diag.level == "error" for diag in diagnostics):
-        candidate_root = candidate_root or planning_root / "candidate_planning_package"
-        candidate_root.mkdir(parents=True, exist_ok=True)
-        candidate_specs_root = candidate_root / "specs"
-        if candidate_specs_root.exists():
-            shutil.rmtree(candidate_specs_root)
-        if specs_root.exists():
-            shutil.move(str(specs_root), str(candidate_specs_root))
-        run_status = CANDIDATE_ONLY
-        manifest.update(
-            {
-                "run_status": run_status,
-                "candidate_root": str(candidate_root),
-                "candidate_specs_root": str(candidate_specs_root),
-                "specs_root": None,
-                "module_spec": None,
-                "summary": None,
-                "written_files": [],
-            }
-        )
+    coder_diagnostics = [diag for diag in diagnostics if diag.code.startswith("coder_")]
+    manifest.update(
+        {
+            "specs_generated": specs_root.exists(),
+            "planning_validation_passed": not any(
+                diag.level == "error" and not diag.code.startswith("coder_") for diag in diagnostics
+            ),
+            "coder_loader_passed": None if not coder_validate else not any(
+                diag.level == "error" for diag in coder_diagnostics
+            ),
+        }
+    )
+    run_status = CANDIDATE_ONLY if any(diag.level == "error" for diag in diagnostics) else QUALIFIED
+    manifest.update({"run_status": run_status, "qualification_passed": run_status == QUALIFIED})
     write_json(planning_root / "run_manifest.json", manifest)
     return PlanningResult(
         root,
-        specs_root if run_status == QUALIFIED else None,
+        specs_root,
         planning_root,
         candidate_root,
         planning_root / "run_manifest.json",

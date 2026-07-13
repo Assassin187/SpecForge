@@ -29,7 +29,7 @@ from agent.planning.planner import (
     planning_stage_catalog,
 )
 from agent.planning.prompts import build_stage_prompt
-from agent.planning.registry import CanonicalPlanningRegistry, build_registry
+from agent.planning.registry import CanonicalPlanningRegistry, RegistryInvariantError, build_registry
 from agent.planning.validation import (
     anti_hardcoding_scan,
     fact_decision_assumption_separation_check,
@@ -387,6 +387,47 @@ class PlanningPipelineTests(unittest.TestCase):
             ledger = read_json(Path(raw) / "validation_layers.json")
             self.assertEqual(ledger["events"][0]["outcomes"], ["correction_requested", "corrected"])
 
+    def test_whole_stage_correction_failure_uses_empty_delta_and_continues(self) -> None:
+        context = {"facts": {}, "characteristics": {}, "engineering_rules": [], "open_assumptions": []}
+        called: list[str] = []
+
+        def fake_stage(planner, stage, _context, _previous):
+            called.append(stage.stage_id)
+            planner.stage_records.append(
+                {
+                    "stage_id": stage.stage_id,
+                    "status": "completed",
+                    "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+                    "repair_usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+                }
+            )
+            if stage.stage_id == "dependency_closure":
+                return {"invalid_inventory": []}
+            return _minimal_plan() if stage.stage_id == "final_plan_assembly" else {}
+
+        def validate_commit(planner, stage, _previous, completed, _context):
+            if stage.stage_id == "dependency_closure" and "invalid_inventory" in completed["artifact"]:
+                raise ValueError("typed_delta_forbidden_field: fixture invalid dependency delta")
+            return planner.registry
+
+        with tempfile.TemporaryDirectory() as raw:
+            planner = LLMStructuredPlanner(stage_log_dir=Path(raw))
+            with patch.object(LLMStructuredPlanner, "_run_stage", fake_stage), patch.object(
+                LLMStructuredPlanner, "_validate_stage_commit", validate_commit
+            ), patch.object(
+                planner,
+                "_request_local_semantic_correction",
+                return_value=({"invalid_inventory": []}, {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}),
+            ):
+                plan = planner.build_plan(context)
+        self.assertEqual(called, [stage.stage_id for stage in PLANNING_STAGES])
+        self.assertEqual(len(planner.unresolved_partitions), 1)
+        dependency = next(
+            item["artifact"] for item in plan["structured_planning_stages"] if item["stage_id"] == "dependency_closure"
+        )
+        self.assertEqual(dependency["ordering_choices"], [])
+        self.assertEqual(len([record for record in planner.stage_records if record["status"] == "completed"]), 11)
+
     def test_stage5_typed_delta_rejects_non_type_registry_id(self) -> None:
         plan = _minimal_plan()
         registry = CanonicalPlanningRegistry.from_snapshot(plan["canonical_registry_snapshot"])
@@ -404,6 +445,19 @@ class PlanningPipelineTests(unittest.TestCase):
                 {},
                 registry=registry,
             )
+
+    def test_stage6_accepts_and_normalizes_c_declaration_semicolons(self) -> None:
+        plan = _minimal_plan()
+        registry = CanonicalPlanningRegistry.from_snapshot(plan["canonical_registry_snapshot"])
+        interfaces = deepcopy(plan["functions"])
+        for interface in interfaces:
+            interface["signature"] = interface["signature"]["RAW"] + ";"
+        _validate_completed_stage(
+            "function_interface_design",
+            [{"stage_id": "function_interface_design", "artifact": {"function_interfaces": interfaces}}],
+            {},
+            registry=registry,
+        )
 
     def test_fresh_failure_regression_stage8_type_cannot_be_callee(self) -> None:
         base = _minimal_plan()
@@ -743,6 +797,15 @@ class PlanningPipelineTests(unittest.TestCase):
             self.assertTrue(result.success, result.diagnostics)
             self.assertEqual(result.run_status, "completed_with_qualified_specs")
             self.assertIsNotNone(result.specs_root)
+            manifest = read_json(result.manifest_path)
+            self.assertTrue(Path(manifest["candidate_specs_root"]).exists())
+            self.assertTrue(manifest["qualification_passed"])
+            self.assertTrue(manifest["specs_generated"])
+            self.assertTrue(manifest["planning_validation_passed"])
+            self.assertTrue(manifest["coder_loader_passed"])
+            self.assertTrue(manifest["fresh"])
+            self.assertFalse(manifest["resume"])
+            self.assertEqual(manifest["stage_survival"]["expected"], 11)
             self.assertTrue((result.candidate_root / "manifest.json").exists())
             self.assertTrue((result.planning_root / "structured_planning_stages.json").exists())
             bundle = load_spec_bundle_from_root(result.specs_root, validate_rendered_headers=True)
@@ -799,7 +862,12 @@ class PlanningPipelineTests(unittest.TestCase):
         base = _minimal_plan()
 
         def fake_stage(planner, stage, context, previous_artifacts):
-            del context, previous_artifacts
+            if stage.stage_id == "final_plan_assembly":
+                artifact = _assemble_final_plan_candidate(
+                    context, previous_artifacts, registry=planner.registry, allow_incomplete=True
+                )
+                artifact["unresolved_partitions"] = deepcopy(planner.unresolved_partitions)
+                return artifact
             if stage.stage_id == "module_file_plan":
                 return {"modules": base["modules"], "files": base["files"]}
             if stage.stage_id == "public_artifact_inventory":
@@ -841,7 +909,7 @@ class PlanningPipelineTests(unittest.TestCase):
             self.assertEqual(amendment_log["records"][0]["status"], "accepted_pending_rerun")
             self.assertIn("callback:fixture_callback_t", {item["artifact_id"] for item in snapshot["entries"]})
             self.assertIsNotNone(read_json(result.candidate_root / "manifest.json")["inventory_amendments"])
-            coder_validate.assert_not_called()
+            coder_validate.assert_called_once_with(result.specs_root)
 
     def test_qualification_error_keeps_specs_inside_candidate_package(self) -> None:
         def fake_stage(self, stage, context, previous_artifacts):
@@ -856,10 +924,113 @@ class PlanningPipelineTests(unittest.TestCase):
             result = run_planning(FACTS, run_dir, coder_validate=False)
             manifest = read_json(result.manifest_path)
             self.assertEqual(result.run_status, "completed_with_candidate_only")
-            self.assertIsNone(result.specs_root)
-            self.assertIsNone(manifest["specs_root"])
+            self.assertEqual(result.specs_root, Path(manifest["candidate_specs_root"]))
+            self.assertEqual(manifest["specs_root"], manifest["candidate_specs_root"])
+            self.assertFalse(manifest["qualification_passed"])
+            self.assertTrue(manifest["specs_generated"])
+            self.assertEqual(manifest["semantic_diagnostic_counts"]["error"], 0)
             self.assertTrue(Path(manifest["candidate_specs_root"]).exists())
             self.assertFalse((run_dir / "mqtt_specs").exists())
+
+    def test_semantic_patch_invalid_still_materializes_specs_and_preserves_diagnostic(self) -> None:
+        plan = _minimal_plan()
+        report = {
+            "final_diagnostics": [
+                {
+                    "level": "error",
+                    "code": "semantic_patch_invalid",
+                    "message": "fixture patch remains invalid",
+                    "artifact_ids": [],
+                    "details": {},
+                }
+            ]
+        }
+        usage = {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
+        with tempfile.TemporaryDirectory() as raw, patch(
+            "agent.planning.planner.LLMStructuredPlanner.build_plan", return_value=plan
+        ), patch(
+            "agent.planning.pipeline._close_implementability", return_value=(plan, report, usage)
+        ), patch("agent.planning.pipeline._coder_validate", return_value=[]) as coder_validate:
+            result = run_planning(FACTS, Path(raw) / "run")
+            manifest = read_json(result.manifest_path)
+            self.assertEqual(result.run_status, "completed_with_candidate_only")
+            self.assertTrue(result.success)
+            self.assertTrue(result.specs_root.exists())
+            self.assertFalse(manifest["qualification_passed"])
+            self.assertEqual(manifest["semantic_diagnostic_counts"]["error"], 1)
+            diagnostic = next(item for item in result.diagnostics if item.code == "semantic_patch_invalid")
+            self.assertEqual(diagnostic.level, "error")
+            coder_validate.assert_called_once_with(result.specs_root)
+
+    def test_semantic_patch_registry_invariant_becomes_diagnostic_and_specs(self) -> None:
+        plan = _minimal_plan()
+        closure_error = {
+            "level": "error", "code": "fixture_closure", "message": "fixture requires patch",
+            "artifact_ids": [], "details": {},
+        }
+        patch_value = {"patch_id": "fixture", "operations": []}
+        usage = {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
+        with tempfile.TemporaryDirectory() as raw, patch(
+            "agent.planning.planner.LLMStructuredPlanner.build_plan", return_value=plan
+        ), patch(
+            "agent.planning.pipeline.analyze_implementability", return_value=[closure_error]
+        ), patch(
+            "agent.planning.pipeline.request_semantic_patch", return_value=(patch_value, usage)
+        ), patch(
+            "agent.planning.pipeline._apply_registry_additions",
+            side_effect=RegistryInvariantError("semantic_patch_noncanonical_id: fixture"),
+        ) as registry_additions:
+            result = run_planning(FACTS, Path(raw) / "run")
+        self.assertTrue(result.success, result.diagnostics)
+        self.assertIn("semantic_patch_invalid", {item.code for item in result.diagnostics})
+        registry_additions.assert_called()
+
+    def test_semantic_failed_specs_with_missing_optional_overlays_load_in_real_coder(self) -> None:
+        plan = _minimal_plan()
+        for function in plan["functions"]:
+            for field in ("logic", "event", "LOGIC", "EVENT", "call_contracts", "CALL_CONTRACTS", "test_vectors", "TEST_VECTORS"):
+                function.pop(field, None)
+        report = {
+            "final_diagnostics": [
+                {
+                    "level": "error",
+                    "code": "fixture_semantic_gap",
+                    "message": "optional semantic overlays remain unresolved",
+                    "artifact_ids": [],
+                    "details": {},
+                }
+            ]
+        }
+        usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        with tempfile.TemporaryDirectory() as raw, patch(
+            "agent.planning.planner.LLMStructuredPlanner.build_plan", return_value=plan
+        ), patch(
+            "agent.planning.pipeline._close_implementability", return_value=(plan, report, usage)
+        ):
+            result = run_planning(FACTS, Path(raw) / "run")
+            bundle = load_spec_bundle_from_root(result.specs_root, validate_rendered_headers=True)
+            specs = [read_json(path) for path in result.specs_root.rglob("*_spec.json")]
+        self.assertTrue(result.success, result.diagnostics)
+        self.assertFalse(bundle.has_errors(), bundle.diagnostics)
+        self.assertEqual(sum(item.get("KIND") == "PROTOCOL_MODULE_SPEC" for item in specs), 1)
+        self.assertEqual(sum(item.get("KIND") == "FILE_SPEC" for item in specs), len(plan["files"]))
+        self.assertEqual(sum(item.get("KIND") == "FUNCTION_SPEC" for item in specs), len(plan["functions"]))
+        self.assertEqual(set(bundle.function_specs_by_trace), {item["trace_id"] for item in plan["functions"]})
+
+    def test_coder_loader_failure_keeps_specs_and_is_recorded(self) -> None:
+        plan = _minimal_plan()
+        coder_error = Diagnostic("error", "coder_validation_exception", "fixture loader failure")
+        with tempfile.TemporaryDirectory() as raw, patch(
+            "agent.planning.planner.LLMStructuredPlanner.build_plan", return_value=plan
+        ), patch("agent.planning.pipeline._coder_validate", return_value=[coder_error]):
+            result = run_planning(FACTS, Path(raw) / "run")
+            manifest = read_json(result.manifest_path)
+            stored = json.loads((result.planning_root / "diagnostics.json").read_text(encoding="utf-8"))
+            specs_exist = result.specs_root.exists()
+        self.assertFalse(result.success)
+        self.assertTrue(specs_exist)
+        self.assertEqual(manifest["specs_root"], str(result.specs_root))
+        self.assertIn("coder_validation_exception", {item["code"] for item in stored})
 
     def test_internal_failure_records_failed_internal_before_raising(self) -> None:
         with tempfile.TemporaryDirectory() as raw, patch(
@@ -871,6 +1042,8 @@ class PlanningPipelineTests(unittest.TestCase):
             manifest = read_json(run_dir / "_planning/run_manifest.json")
             self.assertEqual(manifest["run_status"], "failed_internal")
             self.assertEqual(manifest["hard_failure_code"], "deterministic_internal_invariant")
+            self.assertFalse(manifest["specs_generated"])
+            self.assertFalse(manifest["qualification_passed"])
 
     def test_facts_read_failure_is_materialized_from_hard_failure_allowlist(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
@@ -1330,11 +1503,11 @@ class PlanningPipelineTests(unittest.TestCase):
             result = run_planning(FACTS, Path(raw) / "run")
             report = read_json(result.planning_root / "semantic_closure/implementability_report.json")
             self.assertEqual(result.run_status, "completed_with_candidate_only")
-            self.assertIsNone(result.specs_root)
+            self.assertTrue(result.specs_root.exists())
             self.assertFalse(report["semantic_patch_attempted"])
             self.assertEqual(report["final_diagnostics"][0]["code"], "unresolved_partition")
             semantic_closure.assert_not_called()
-            coder_validate.assert_not_called()
+            coder_validate.assert_called_once_with(result.specs_root)
 
     def test_stage10_accepts_only_non_derivable_choices(self) -> None:
         typed = {
@@ -1469,6 +1642,108 @@ class PlanningPipelineTests(unittest.TestCase):
             self.assertEqual(ops_file["source_dependencies"], ["ops.h", "private_detail.h"])
             bundle = load_spec_bundle_from_root(Path(raw) / "specs", validate_rendered_headers=True)
             self.assertFalse(bundle.has_errors(), bundle.diagnostics)
+
+    def test_compiler_lowers_one_dimensional_array_member_for_coder_loader(self) -> None:
+        plan = _minimal_plan()
+        plan["types"][0]["type_spec"] = {
+            "TYPE_KIND": "STRUCT",
+            "FIELDS": [{"NAME": "peer_addr", "TYPE": "char[64]", "ROLE": "address text"}],
+        }
+        with tempfile.TemporaryDirectory() as raw:
+            specs_root = Path(raw) / "specs"
+            compile_specs(plan, specs_root)
+            bundle = load_spec_bundle_from_root(specs_root, validate_rendered_headers=True)
+            file_spec = next(iter(bundle.file_specs_by_trace.values())).raw
+        member = file_spec["HEADER"]["DATA"][0]["TYPE_SPEC"]["FIELDS"][0]
+        self.assertEqual(member["TYPE"], "char")
+        self.assertEqual(member["ARRAY_LEN"], "64")
+        self.assertFalse(bundle.has_errors(), bundle.diagnostics)
+
+    def test_compiler_omits_only_dependencies_incompatible_with_generation_order(self) -> None:
+        plan = _minimal_plan()
+        plan.pop("canonical_registry_snapshot")
+        consumer = plan["modules"][0]
+        consumer.update({"id": "module:consumer", "name": "consumer", "dependencies": ["provider"]})
+        provider = {
+            "id": "module:provider", "name": "provider", "role": "fixture provider",
+            "dependencies": ["consumer"], "files": [], "trace_refs": [],
+        }
+        plan["modules"].append(provider)
+        plan["files"][0]["module"] = "consumer"
+        with tempfile.TemporaryDirectory() as raw:
+            specs_root = Path(raw) / "specs"
+            manifest = compile_specs(plan, specs_root)
+            module_spec = read_json(Path(manifest["module_spec"]))
+            bundle = load_spec_bundle_from_root(specs_root, validate_rendered_headers=True)
+        dependencies = {item["NAME"]: item["DEPENDENCIES"] for item in module_spec["MODULES"]}
+        self.assertEqual(dependencies, {"consumer": [], "provider": ["consumer"]})
+        self.assertFalse(bundle.has_errors(), bundle.diagnostics)
+
+    def test_compiler_normalizes_source_only_entrypoint_path_for_coder_loader(self) -> None:
+        plan = _minimal_plan()
+        plan.pop("canonical_registry_snapshot")
+        main = next(function for function in plan["functions"] if function["name"] == "main")
+        main_file_id = "file:mqtt/mqtt_main"
+        main["file"] = main_file_id
+        plan["files"].append(
+            {
+                "id": main_file_id, "module": "core_runtime", "trace_id": "mqtt/mqtt_main",
+                "role": "runtime entrypoint", "header_path": None, "source_path": "mqtt_main.c",
+                "header_dependencies": [], "source_dependencies": [], "types": [], "functions": [main["id"]],
+                "trace_refs": [], "forbidden_symbols": [], "test_vectors": [],
+            }
+        )
+        with tempfile.TemporaryDirectory() as raw:
+            specs_root = Path(raw) / "specs"
+            compile_specs(plan, specs_root)
+            bundle = load_spec_bundle_from_root(specs_root, validate_rendered_headers=True)
+        entrypoint_file = next(item for item in bundle.file_specs_by_trace.values() if item.trace_id == "mqtt/mqtt_main")
+        self.assertEqual(entrypoint_file.source_path, "main.c")
+        self.assertFalse(bundle.has_errors(), bundle.diagnostics)
+
+    def test_compiler_omits_unresolved_custom_type_member_without_inventing_type(self) -> None:
+        plan = _minimal_plan()
+        plan["types"][0]["type_spec"] = {
+            "TYPE_KIND": "STRUCT",
+            "FIELDS": [
+                {"NAME": "size", "TYPE": "size_t", "ROLE": "known field"},
+                {"NAME": "missing", "TYPE": "missing_planned_t *", "ROLE": "unresolved field"},
+            ],
+        }
+        with tempfile.TemporaryDirectory() as raw:
+            specs_root = Path(raw) / "specs"
+            compile_specs(plan, specs_root)
+            bundle = load_spec_bundle_from_root(specs_root, validate_rendered_headers=True)
+            file_spec = next(iter(bundle.file_specs_by_trace.values())).raw
+        fields = file_spec["HEADER"]["DATA"][0]["TYPE_SPEC"]["FIELDS"]
+        self.assertEqual([field["NAME"] for field in fields], ["size"])
+        self.assertFalse(bundle.has_errors(), bundle.diagnostics)
+
+    def test_compiler_assigns_unique_companion_headers_for_shared_header_layout(self) -> None:
+        plan = _minimal_plan()
+        plan.pop("canonical_registry_snapshot")
+        plan["files"].extend(
+            [
+                {
+                    "id": f"file:mqtt/{name}", "module": "core_runtime", "trace_id": f"mqtt/{name}",
+                    "role": name, "header_path": "shared.h", "source_path": f"{name}.c",
+                    "header_dependencies": [], "source_dependencies": [], "types": [], "functions": [],
+                    "trace_refs": [], "forbidden_symbols": [], "test_vectors": [],
+                }
+                for name in ("decoder", "encoder")
+            ]
+        )
+        with tempfile.TemporaryDirectory() as raw:
+            specs_root = Path(raw) / "specs"
+            compile_specs(plan, specs_root)
+            bundle = load_spec_bundle_from_root(specs_root, validate_rendered_headers=True)
+        headers = {
+            item.trace_id: item.header_path
+            for item in bundle.file_specs_by_trace.values()
+            if item.trace_id in {"mqtt/decoder", "mqtt/encoder"}
+        }
+        self.assertEqual(headers, {"mqtt/decoder": "shared.h", "mqtt/encoder": "encoder.h"})
+        self.assertFalse(bundle.has_errors(), bundle.diagnostics)
 
     def test_compiler_rejects_function_name_as_signature_fallback(self) -> None:
         plan = _minimal_plan()
