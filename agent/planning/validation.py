@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from .facts import stable_json_hash
+from .implementability import analyze_implementability, closure_diagnostics_as_models
 from .knowledge import activate_engineering_rules, extract_open_assumptions, normalize_characteristics
 from .models import Diagnostic, to_jsonable
 from .planner import build_planning_context
@@ -265,6 +266,7 @@ def validate_planning_run(
     specs_root: str | Path,
 ) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = []
+    diagnostics.extend(closure_diagnostics_as_models(analyze_implementability(plan)))
     diagnostics.extend(schema_shape_check(specs_root))
     diagnostics.extend(structural_consistency_check(plan, specs_root))
     diagnostics.extend(reference_isolation_check())

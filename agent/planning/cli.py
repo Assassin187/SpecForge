@@ -31,7 +31,9 @@ def build_parser() -> argparse.ArgumentParser:
 def _print_result(result) -> None:
     errors = [diag for diag in result.diagnostics if diag.level == "error"]
     warnings = [diag for diag in result.diagnostics if diag.level == "warning"]
-    print(f"specs_root: {result.specs_root}")
+    print(f"run_status: {result.run_status}")
+    print(f"candidate_root: {result.candidate_root}")
+    print(f"qualified_specs_root: {result.specs_root}")
     print(f"planning_manifest: {result.manifest_path}")
     print(f"diagnostics: {len(errors)} error(s), {len(warnings)} warning(s)")
     for diag in errors[:20]:

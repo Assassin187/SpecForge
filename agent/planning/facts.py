@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -134,6 +135,55 @@ def collect_top_level_fact_refs(facts: JsonObject) -> list[JsonObject]:
             for idx, child_value in enumerate(value):
                 refs.append(make_fact_ref(f"{key}[{idx}]", child_value))
     return refs
+
+
+def select_fact_slice(facts: JsonObject, refs: list[str]) -> JsonObject:
+    """Return exact fact subtrees and evidence for a bounded planning prompt."""
+    slices: list[JsonObject] = []
+    evidence_ids: set[str] = set()
+    seen: set[tuple[str, str]] = set()
+    for raw_ref in refs:
+        fact_ref = str(raw_ref).strip()
+        if not fact_ref.startswith("fact:"):
+            continue
+        requested_path = fact_ref.removeprefix("fact:").strip(".")
+        resolved_path, value = _resolve_longest_fact_path(facts, requested_path)
+        if resolved_path:
+            key = (fact_ref, resolved_path)
+            if key not in seen:
+                slices.append(
+                    {
+                        "fact_ref": fact_ref,
+                        "resolved_path": resolved_path,
+                        "value": deepcopy(value),
+                    }
+                )
+                seen.add(key)
+            evidence_ids.update(collect_evidence_refs(value))
+        else:
+            evidence_ids.add(requested_path)
+
+    selected_evidence = [
+        deepcopy(item)
+        for item in facts.get("evidence_index", [])
+        if isinstance(item, dict) and str(item.get("evidence_id", "")) in evidence_ids
+    ]
+    return {"fact_slices": slices, "evidence_index": selected_evidence}
+
+
+def _resolve_longest_fact_path(facts: JsonObject, path: str) -> tuple[str, Any]:
+    parts = [part for part in re.split(r"\.|\[|\]", path) if part]
+    current: Any = facts
+    resolved: list[str] = []
+    for part in parts:
+        if isinstance(current, dict) and part in current:
+            current = current[part]
+        elif isinstance(current, list) and part.isdigit() and int(part) < len(current):
+            current = current[int(part)]
+        else:
+            break
+        resolved.append(part)
+    return (".".join(resolved), current) if resolved else ("", None)
 
 
 def fact_ref_ids_for_paths(paths: list[str]) -> list[str]:

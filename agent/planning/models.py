@@ -70,14 +70,18 @@ class EngineeringDecision:
 @dataclass(frozen=True)
 class PlanningResult:
     output_root: Path
-    specs_root: Path
+    specs_root: Path | None
     planning_root: Path
+    candidate_root: Path | None
     manifest_path: Path
     diagnostics: list[Diagnostic]
+    run_status: str
 
     @property
     def success(self) -> bool:
-        return not any(diag.level == "error" for diag in self.diagnostics)
+        return self.run_status == "completed_with_qualified_specs" and not any(
+            diag.level == "error" for diag in self.diagnostics
+        )
 
 
 def to_jsonable(value: Any) -> Any:

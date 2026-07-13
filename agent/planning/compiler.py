@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .facts import write_json
+from .registry import CanonicalPlanningRegistry
 
 
 def _by_id(items: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
@@ -108,12 +109,15 @@ def _parse_param(raw: str) -> dict[str, Any]:
 
 
 def _signature(raw: Any, fallback_name: str) -> dict[str, Any]:
-    if isinstance(raw, dict) and {"RAW", "NAME", "RETURN", "PARAMS"} <= set(raw):
-        return raw
-    text = str(raw or fallback_name).strip()
+    text = str(raw.get("RAW", "")) if isinstance(raw, dict) else str(raw or "")
+    text = text.strip()
     match = re.match(r"(?P<return>.+?)\s*(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*\((?P<params>.*)\)\s*$", text)
     if not match:
-        return {"RAW": text, "NAME": fallback_name, "RETURN": "void", "PARAMS": []}
+        raise ValueError(f"Canonical function {fallback_name!r} is missing a complete C signature")
+    if isinstance(raw, dict) and {"RAW", "NAME", "RETURN", "PARAMS"} <= set(raw):
+        if str(raw.get("NAME")) != match.group("name"):
+            raise ValueError(f"Canonical function {fallback_name!r} has inconsistent signature identity")
+        return raw
     return {
         "RAW": text,
         "NAME": match.group("name"),
@@ -122,16 +126,43 @@ def _signature(raw: Any, fallback_name: str) -> dict[str, Any]:
     }
 
 
+def _callback_signature(raw: Any, name: str) -> str:
+    if isinstance(raw, dict):
+        return_type = str(raw.get("return_type") or raw.get("RETURN") or "void")
+        parameters = raw.get("parameters", raw.get("PARAMS", []))
+        rendered = []
+        for index, parameter in enumerate(parameters if isinstance(parameters, list) else []):
+            if not isinstance(parameter, dict):
+                continue
+            parameter_type = str(parameter.get("type") or parameter.get("TYPE") or "void*")
+            parameter_name = str(parameter.get("name") or parameter.get("NAME") or f"arg{index}")
+            rendered.append(f"{parameter_type} {parameter_name}")
+        return f"{return_type} (*{name})({', '.join(rendered) or 'void'})"
+    signature = str(raw or "void (*)(void)").strip()
+    if signature.startswith("typedef "):
+        signature = signature[len("typedef ") :].strip()
+    signature = signature.removesuffix(";").strip()
+    return re.sub(r"\(\s*\*\s*\)", f"(*{name})", signature, count=1)
+
+
 def _lower_type_spec(item: dict[str, Any]) -> dict[str, Any]:
     if isinstance(item.get("type_spec"), dict):
-        return item["type_spec"]
+        spec = dict(item["type_spec"])
+        if str(spec.get("TYPE_KIND", "")).upper() == "CALLBACK":
+            name = str(item.get("name") or item.get("type_name") or item.get("symbol") or "callback_t")
+            spec["CALLBACK_SIGNATURE"] = _callback_signature(spec.get("CALLBACK_SIGNATURE"), name)
+        return spec
     kind = str(item.get("type_kind") or item.get("kind") or "OPAQUE").upper()
     fields = item.get("fields", [])
     if kind == "ENUM":
         return {
             "TYPE_KIND": "ENUM",
             "ENUM_VALUES": [
-                {"NAME": str(field.get("name", "")), "VALUE": field.get("value"), "ROLE": str(field.get("summary", field.get("role", "")))}
+                {
+                    "NAME": str(field.get("name", "")),
+                    "VALUE": field.get("value"),
+                    "ROLE": str(field.get("summary") or field.get("role") or f"{field.get('name', 'enum')} value."),
+                }
                 for field in fields
                 if isinstance(field, dict) and field.get("name")
             ],
@@ -140,13 +171,23 @@ def _lower_type_spec(item: dict[str, Any]) -> dict[str, Any]:
         return {
             "TYPE_KIND": "STRUCT",
             "FIELDS": [
-                {"NAME": str(field.get("name", "")), "TYPE": str(field.get("c_type") or field.get("type") or "void*"), "ROLE": str(field.get("summary", field.get("role", "")))}
+                {
+                    "NAME": str(field.get("name", "")),
+                    "TYPE": str(field.get("c_type") or field.get("type") or "void*"),
+                    "ROLE": str(field.get("summary") or field.get("role") or f"{field.get('name', 'field')} value."),
+                }
                 for field in fields
                 if isinstance(field, dict) and field.get("name")
             ],
         }
-    if kind in {"UNION", "CALLBACK", "ALIAS"}:
-        return {"TYPE_KIND": kind}
+    if kind == "CALLBACK":
+        name = str(item.get("name") or item.get("type_name") or item.get("symbol") or "callback_t")
+        signature = _callback_signature(item.get("c_type") or item.get("signature"), name)
+        return {"TYPE_KIND": "CALLBACK", "CALLBACK_SIGNATURE": signature}
+    if kind == "ALIAS":
+        return {"TYPE_KIND": "ALIAS", "ALIAS_OF": str(item.get("alias_of", "void*"))}
+    if kind == "UNION":
+        return {"TYPE_KIND": "UNION"}
     return {"TYPE_KIND": "OPAQUE"}
 
 
@@ -269,8 +310,22 @@ def _normalize_wire_mapping(value: Any) -> list[dict[str, str]]:
     return out
 
 
+def _normalize_call_contracts(values: Any) -> list[dict[str, str]]:
+    out: list[dict[str, str]] = []
+    for item in _as_list(values):
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("NAME") or item.get("callee") or "")
+        signature = str(item.get("SIGNATURE") or item.get("signature") or "")
+        if name:
+            out.append({"NAME": name, "SIGNATURE": signature})
+    return out
+
+
 def normalize_plan_for_compiler(plan: dict[str, Any]) -> dict[str, Any]:
     raw = deepcopy(plan.get("implementation_plan", plan))
+    snapshot = raw.get("canonical_registry_snapshot")
+    registry = CanonicalPlanningRegistry.from_snapshot(snapshot) if isinstance(snapshot, dict) else None
     stages = _stage_artifacts(raw)
     protocol = raw.get("protocol", {})
     slug = str(protocol.get("slug") or protocol.get("name", "protocol")).lower()
@@ -283,13 +338,16 @@ def normalize_plan_for_compiler(plan: dict[str, Any]) -> dict[str, Any]:
             continue
         module = str(item.get("module", ""))
         path = str(item.get("source_path") or item.get("header_path") or item.get("id", "file"))
+        registry_entry = registry.resolve(item.get("id") or path, expected_kinds={"file"}) if registry else None
+        if registry_entry is not None:
+            module = registry.resolve(registry_entry["owner_module_id"], expected_kinds={"module"})["canonical_name"]
         key = (module, _strip_c_suffix(path))
         group = file_groups.setdefault(
             key,
             {
-                "id": f"file:{_trace_from_path(slug, path)}",
+                "id": registry_entry["artifact_id"] if registry_entry is not None else f"file:{_trace_from_path(slug, path)}",
                 "module": module,
-                "trace_id": _trace_from_path(slug, path),
+                "trace_id": registry_entry["canonical_name"] if registry_entry is not None else _trace_from_path(slug, path),
                 "role_parts": [],
                 "header_path": None,
                 "source_path": None,
@@ -312,6 +370,8 @@ def normalize_plan_for_compiler(plan: dict[str, Any]) -> dict[str, Any]:
             group["source_path"] = str(item["source_path"])
         intent = item.get("dependency_intent", {}) if isinstance(item.get("dependency_intent"), dict) else {}
         closure = dep_files.get(str(item.get("id")), {})
+        group["header_dependencies"].extend(_as_list(item.get("header_dependencies")))
+        group["source_dependencies"].extend(_as_list(item.get("source_dependencies")))
         if item.get("header_path"):
             group["header_dependencies"].extend(_as_list(intent.get("public_includes")) + _as_list(closure.get("header_dependencies")))
         if item.get("source_path"):
@@ -321,7 +381,15 @@ def normalize_plan_for_compiler(plan: dict[str, Any]) -> dict[str, Any]:
     header_aliases: dict[str, str] = {}
     for group in file_groups.values():
         if group["header_path"]:
-            for alias in [group["header_path"], Path(group["header_path"]).name, *group["_raw_ids"]]:
+            registry_aliases: list[str] = []
+            if registry is not None:
+                registry_aliases = registry.resolve(group["id"], expected_kinds={"file"}).get("aliases", [])
+            for alias in [
+                group["header_path"],
+                Path(group["header_path"]).name,
+                *group["_raw_ids"],
+                *registry_aliases,
+            ]:
                 header_aliases[str(alias)] = group["header_path"]
         for alias in [group["source_path"], Path(str(group["source_path"])).name if group["source_path"] else "", group["header_path"], Path(str(group["header_path"])).name if group["header_path"] else "", *group["_raw_ids"]]:
             if alias:
@@ -366,19 +434,31 @@ def normalize_plan_for_compiler(plan: dict[str, Any]) -> dict[str, Any]:
     for item in raw.get("types", []):
         if not isinstance(item, dict):
             continue
-        name = str(item.get("name") or item.get("type_name") or "")
-        file_id = alias_to_file_id.get(str(item.get("file") or item.get("owner_file") or ""), next(iter(files_by_id), ""))
+        name = str(item.get("name") or item.get("type_name") or item.get("symbol") or "")
+        registry_entry = registry.resolve(item.get("id") or name, expected_kinds={"type", "callback"}) if registry else None
+        if registry_entry is not None:
+            name = registry_entry["canonical_name"]
+            file_id = registry_entry["owner_file_id"]
+        else:
+            file_id = alias_to_file_id.get(str(item.get("file") or item.get("owner_file") or ""), next(iter(files_by_id), ""))
         normalized = {
-            "id": str(item.get("id") or f"type:{name}"),
+            "id": registry_entry["artifact_id"] if registry_entry is not None else str(item.get("id") or f"type:{name}"),
             "file": file_id,
             "name": name,
             "kind": "TYPE",
-            "visibility": _normalize_visibility(item.get("visibility", item.get("public_visibility")), public_true=True),
+            "visibility": _normalize_visibility(
+                registry_entry["visibility"] if registry_entry is not None else item.get("visibility", item.get("public_visibility", bool(item.get("public_access_path")))),
+                public_true=True,
+            ),
             "role": str(item.get("role") or item.get("ownership_semantics") or f"{name} protocol data type."),
             "type_spec": _lower_type_spec(item),
             "trace_refs": _unique([str(ref) for ref in _as_list(item.get("trace_refs", item.get("source_facts", [])))]),
             "decision_refs": _as_list(item.get("decision_refs")),
             "rule_refs": _as_list(item.get("rule_refs")),
+            "resource_handle": bool(item.get("resource_handle")),
+            "ownership_model": str(item.get("ownership_model", "")),
+            "opaque_boundaries": item.get("opaque_boundaries", {}) if isinstance(item.get("opaque_boundaries"), dict) else {},
+            "ownership_fields": _as_list(item.get("ownership_fields")),
         }
         types.append(normalized)
         type_roles[name] = normalized["role"]
@@ -392,7 +472,12 @@ def normalize_plan_for_compiler(plan: dict[str, Any]) -> dict[str, Any]:
     call_contracts: dict[str, list[dict[str, Any]]] = {}
     for item in closure.get("call_contracts", []):
         if isinstance(item, dict) and item.get("caller"):
-            call_contracts.setdefault(str(item["caller"]), []).append({"NAME": str(item.get("NAME", item.get("callee", ""))), "SIGNATURE": str(item.get("SIGNATURE", ""))})
+            call_contracts.setdefault(str(item["caller"]), []).append(
+                {
+                    "NAME": str(item.get("NAME", item.get("callee", ""))),
+                    "SIGNATURE": str(item.get("SIGNATURE", item.get("signature", ""))),
+                }
+            )
     test_stage = stages.get("function_test_vector_design", {})
     stage_vectors = test_stage.get("function_test_vectors", {}) if isinstance(test_stage.get("function_test_vectors"), dict) else {}
 
@@ -402,27 +487,41 @@ def normalize_plan_for_compiler(plan: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(item, dict):
             continue
         fid = str(item.get("id") or item.get("function_id") or item.get("name") or "")
+        registry_entry = registry.resolve(fid, expected_kinds={"function"}) if registry else None
+        if registry_entry is not None:
+            fid = registry_entry["artifact_id"]
         behavior = behaviors.get(fid) or behaviors.get(str(item.get("function_id", ""))) or {}
         signature = _signature(item.get("signature"), fid)
-        name = str(item.get("name") or signature["NAME"] or fid)
-        file_id = alias_to_file_id.get(str(item.get("file") or item.get("owner_file") or ""), next(iter(files_by_id), ""))
+        name = registry_entry["canonical_name"] if registry_entry is not None else str(item.get("name") or signature["NAME"] or fid)
+        if registry_entry is not None and signature["NAME"] != name:
+            raise ValueError(f"Registry function {fid!r} conflicts with signature name {signature['NAME']!r}")
+        file_id = registry_entry["owner_file_id"] if registry_entry is not None else alias_to_file_id.get(str(item.get("file") or item.get("owner_file") or ""), next(iter(files_by_id), ""))
         file_trace = files_by_id.get(file_id, {}).get("trace_id", f"{slug}/{name}")
         raw_type = str(item.get("function_type", "")).upper()
-        is_event = raw_type == "EVENT" or "EVENT" in behavior
-        function_type = "EVENT" if is_event else "ENTRYPOINT" if raw_type == "ENTRYPOINT" or name == "main" else "ALGORITHM"
-        rely = item.get("rely", item.get("RELY", closure_rely.get(fid, closure_rely.get(name, {}))))
+        is_event = raw_type == "EVENT" or "EVENT" in item or "EVENT" in behavior
+        function_type = "ENTRYPOINT" if raw_type in {"ENTRYPOINT", "ENTRY_POINT"} or name == "main" else "EVENT" if is_event else "ALGORITHM"
+        rely = item.get("rely")
+        if not isinstance(rely, dict):
+            rely = item.get("RELY")
+        if not isinstance(rely, dict):
+            rely = closure_rely.get(fid, closure_rely.get(name, {}))
+        direct_contracts = item.get("call_contracts")
+        if not isinstance(direct_contracts, list):
+            direct_contracts = item.get("CALL_CONTRACTS")
+        if not isinstance(direct_contracts, list):
+            direct_contracts = call_contracts.get(fid, call_contracts.get(name, []))
         vectors = item.get("test_vectors", item.get("TEST_VECTORS", stage_vectors.get(fid, stage_vectors.get(name, []))))
         normalized = {
-            "id": str(item.get("id") or f"function:{file_trace}/{name}"),
+            "id": registry_entry["artifact_id"] if registry_entry is not None else str(item.get("id") or f"function:{file_trace}/{name}"),
             "file": file_id,
             "trace_id": f"{file_trace}/{name}",
             "name": name,
             "function_type": function_type,
-            "visibility": _normalize_visibility(item.get("visibility")),
+            "visibility": _normalize_visibility(registry_entry["visibility"] if registry_entry is not None else item.get("visibility")),
             "role": str(item.get("role") or f"{name} function."),
             "signature": signature,
             "rely": _normalize_rely(rely),
-            "call_contracts": call_contracts.get(fid, call_contracts.get(name, item.get("call_contracts", item.get("CALL_CONTRACTS", [])))),
+            "call_contracts": _normalize_call_contracts(direct_contracts),
             "wire_mapping": _normalize_wire_mapping(item.get("wire_mapping", item.get("WIRE_MAPPING", behavior.get("wire_mapping")))),
             "trace_refs": _unique([str(ref) for ref in _as_list(item.get("trace_refs", behavior.get("trace_refs", [])))]),
             "decision_refs": _as_list(item.get("decision_refs")),
@@ -460,7 +559,9 @@ def normalize_plan_for_compiler(plan: dict[str, Any]) -> dict[str, Any]:
     for item in raw.get("modules", []):
         if not isinstance(item, dict):
             continue
-        module_files = [file for file in files if file["module"] == item.get("name")]
+        registry_entry = registry.resolve(item.get("id") or item.get("name"), expected_kinds={"module"}) if registry else None
+        module_name = registry_entry["canonical_name"] if registry_entry is not None else item.get("name")
+        module_files = [file for file in files if file["module"] == module_name]
         artifacts = [
             {"NAME": type_item["name"], "KIND": "TYPE", "ROLE": type_item["role"]}
             for type_item in types
@@ -472,8 +573,8 @@ def normalize_plan_for_compiler(plan: dict[str, Any]) -> dict[str, Any]:
         ]
         modules.append(
             {
-                "id": str(item.get("id") or f"module:{item.get('name')}"),
-                "name": str(item.get("name") or item.get("id")),
+                "id": registry_entry["artifact_id"] if registry_entry is not None else str(item.get("id") or f"module:{item.get('name')}"),
+                "name": str(module_name or item.get("id")),
                 "role": str(item.get("role", "")),
                 "dependencies": [str(dep) for dep in _as_list(item.get("dependencies"))],
                 "files": [path for file in module_files for path in (file.get("header_path"), file.get("source_path")) if path],
