@@ -1,5 +1,5 @@
 {
-  "target_role": "server",
+  "target_role": "broker",
   "language": "C",
   "runtime": "Linux epoll",
   "scope": "minimum_v1",
@@ -9,4 +9,3 @@
     "tls_mode": "none"
   }
 }
-

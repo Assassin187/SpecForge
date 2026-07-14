@@ -14,6 +14,9 @@ class Diagnostic:
     code: str
     message: str
     path: str | None = None
+    owner_layer: str | None = None
+    authoritative_stage: str | None = None
+    recovery_action: str | None = None
 
 
 @dataclass(frozen=True)

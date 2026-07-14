@@ -96,7 +96,7 @@ token accounting 与 fresh/resume 标记。
 ### Controlled Inventory Amendment
 
 Stage 5/8 若发现 closed inventory缺失，只能输出 `ArtifactRequest`。Request必须声明 requested kind、
-semantic role、owner、required-by artifact、reason、provenance、preferred visibility，可提供
+semantic role、owner、required-by artifact、reason、provenance、preferred visibility 和
 `proposed_name`。系统只会 typed-bind已有 artifact，或注册一个 `status=requested` 的 canonical
 identity；不会自动生成 signature、fields、behavior 或 API family。每个 stage/partition最多一个
 amendment round，结果与受影响的 Stage 5/6/7/8 local rerun schedule写入

@@ -20,6 +20,7 @@ HARD_FAILURE_CODES = {
     "canonical_artifact_mutation",
     "pipeline_state_corruption",
     "deterministic_internal_invariant",
+    "candidate_serialization_impossible",
 }
 DETERMINISTIC_CHANGE_REQUIRED_FIELDS = {
     "code",
@@ -96,6 +97,8 @@ class ValidationLedger:
 
 def classify_partition_error(error: Exception) -> ValidationIssue:
     message = str(error)
+    if message.startswith("candidate_serialization_impossible:"):
+        return "candidate_serialization_impossible"
     code = message.split(":", 1)[0]
     if isinstance(error, RegistryBindingError):
         code = error.code

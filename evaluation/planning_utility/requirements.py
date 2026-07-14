@@ -22,6 +22,7 @@ LOCAL_PATH_MARKERS = (
     "specs-example/",
     "protocol-example/",
 )
+TARGET_PROFILE_STRING_FIELDS = ("target_role", "language", "runtime", "scope")
 
 
 def read_json(path: Path) -> dict[str, Any]:
@@ -35,6 +36,23 @@ def write_json(path: Path, data: Any) -> None:
 
 def file_sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def load_target_profile(path: Path) -> dict[str, Any]:
+    try:
+        profile = read_json(path)
+    except FileNotFoundError as exc:
+        raise ValueError(f"target_profile_missing: {path}") from exc
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"target_profile_invalid_json: {path}: {exc.msg}") from exc
+    if not isinstance(profile, dict):
+        raise ValueError(f"target_profile_invalid_shape: {path}: expected object")
+    missing = [field for field in TARGET_PROFILE_STRING_FIELDS if not str(profile.get(field, "")).strip()]
+    if missing:
+        raise ValueError(f"target_profile_missing_fields: {path}: {', '.join(missing)}")
+    if not isinstance(profile.get("deployment_constraints"), dict):
+        raise ValueError(f"target_profile_invalid_constraints: {path}: expected object")
+    return profile
 
 
 def _looks_like_local_path(value: str) -> bool:
@@ -78,7 +96,7 @@ def build_allowed_inputs(
     runtime_contract: dict[str, Any],
 ) -> dict[str, Any]:
     facts = read_json(facts_path)
-    target_profile = read_json(target_profile_path)
+    target_profile = load_target_profile(target_profile_path)
     return {
         "input_hashes": {
             "protocol_facts_sha256": file_sha256(facts_path),
@@ -89,4 +107,3 @@ def build_allowed_inputs(
         "minimum_requirements": extract_minimum_requirements(facts),
         "runtime_contract": runtime_contract,
     }
-

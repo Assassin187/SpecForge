@@ -60,11 +60,44 @@ def _name_items(value: Any) -> list[str]:
 
 
 def _diag(code: str, message: str, artifact_ids: list[str], **details: Any) -> dict[str, Any]:
+    if code in {"task_evaporation_function_inventory_empty", "task_evaporation_type_inventory_empty"}:
+        authoritative_stage = "public_artifact_inventory"
+    elif code == "task_evaporation_test_inventory_empty":
+        authoritative_stage = "function_test_vector_design"
+    elif code in {"empty_enum_values", "enum_value_grounding_missing"}:
+        authoritative_stage = "type_and_access_path_design"
+    elif code == "opaque_type_by_value":
+        authoritative_stage = (
+            "type_and_access_path_design"
+            if str(details.get("signature_field", "")).startswith("CALLBACK_SIGNATURE")
+            else "function_interface_design"
+        )
+    elif code == "required_wire_mapping_missing":
+        authoritative_stage = "function_behavior_design"
+    elif code == "file_header_missing":
+        authoritative_stage = "module_file_plan"
+    elif any(token in code for token in ("dependency", "module")):
+        authoritative_stage = "dependency_closure"
+    elif code == "runtime_entrypoint_signature_invalid":
+        authoritative_stage = "function_interface_design"
+    elif any(token in code for token in ("runtime_flow", "runtime_call_chain", "runtime_failure_cleanup")):
+        authoritative_stage = "function_call_contract_closure"
+    elif any(token in code for token in ("call", "callee", "callback", "access_service", "private_function")):
+        authoritative_stage = "function_call_contract_closure"
+    elif any(token in code for token in ("type", "opaque", "constructor", "destructor")):
+        authoritative_stage = "type_and_access_path_design"
+    elif "runtime_entrypoint" in code or "function_owner" in code:
+        authoritative_stage = "public_artifact_inventory"
+    else:
+        authoritative_stage = "final_plan_assembly"
     return {
         "level": "error",
         "code": code,
         "message": message,
         "artifact_ids": _unique([item for item in artifact_ids if item]),
+        "owner_layer": "semantic_closure",
+        "authoritative_stage": authoritative_stage,
+        "recovery_action": f"regenerate_{authoritative_stage}_partition",
         "details": details,
     }
 
@@ -76,6 +109,9 @@ def closure_diagnostics_as_models(diagnostics: list[dict[str, Any]]) -> list[Dia
             str(item.get("code", "implementability_error")),
             str(item.get("message", "Implementability closure failed")),
             ",".join(str(value) for value in item.get("artifact_ids", [])) or None,
+            str(item.get("owner_layer", "semantic_closure")),
+            str(item.get("authoritative_stage", "final_plan_assembly")),
+            str(item.get("recovery_action", "bounded_semantic_closure")),
         )
         for item in diagnostics
     ]
@@ -141,7 +177,7 @@ def complete_deterministic_dependencies(plan: dict[str, Any]) -> list[dict[str, 
     files, _ = _index(plan, "file")
     types, types_by_name = _index(plan, "type")
     functions, functions_by_name = _index(plan, "function")
-    del types, functions
+    del types
 
     planned_symbols = {
         str(item.get("name", ""))
@@ -290,6 +326,24 @@ def complete_deterministic_dependencies(plan: dict[str, Any]) -> list[dict[str, 
             if owner_header:
                 add_dependency(caller_file, "source_dependencies", owner_header, f"{function.get('name')} calls {callee_name}", str(callees[0].get("id", "")))
 
+    for binding in plan.get("callback_bindings", []):
+        if not isinstance(binding, dict):
+            continue
+        owner = functions.get(str(binding.get("owner_function_id", "")))
+        provider = functions.get(str(binding.get("provider_function_id", "")))
+        if owner is None or provider is None or owner.get("file") == provider.get("file"):
+            continue
+        owner_file = files.get(str(owner.get("file", "")))
+        provider_header = _owner_header(provider, files)
+        if owner_file is not None and provider_header:
+            add_dependency(
+                owner_file,
+                "source_dependencies",
+                provider_header,
+                f"typed callback binding uses provider {provider.get('name')}",
+                str(provider.get("id", "")),
+            )
+
     for type_item in plan.get("types", []):
         if not isinstance(type_item, dict):
             continue
@@ -301,7 +355,8 @@ def complete_deterministic_dependencies(plan: dict[str, Any]) -> list[dict[str, 
             if len(owners) == 1 and owners[0].get("file") != type_item.get("file"):
                 owner_header = _owner_header(owners[0], files)
                 if owner_header:
-                    add_dependency(owner_file, "header_dependencies", owner_header, f"{type_item.get('name')} contains foreign type {type_name}", str(owners[0].get("id", "")))
+                    field = "header_dependencies" if str(type_item.get("visibility", "")).lower() == "public" else "source_dependencies"
+                    add_dependency(owner_file, field, owner_header, f"{type_item.get('name')} contains foreign type {type_name}", str(owners[0].get("id", "")))
 
     header_owner = {str(item.get("header_path")): item for item in files.values() if item.get("header_path")}
     modules, modules_by_name = _index(plan, "module")
@@ -358,6 +413,201 @@ def _custom_type_in(value: str, type_names: set[str]) -> list[str]:
 
 def _signature(function: dict[str, Any]) -> dict[str, Any]:
     return function.get("signature", {}) if isinstance(function.get("signature"), dict) else {}
+
+
+def _runtime_implementability_diagnostics(
+    plan: dict[str, Any],
+    functions: dict[str, dict[str, Any]],
+    functions_by_name: dict[str, list[dict[str, Any]]],
+) -> list[dict[str, Any]]:
+    diagnostics: list[dict[str, Any]] = []
+    mains = functions_by_name.get("main", [])
+    if not mains:
+        return [
+            _diag(
+                "runtime_entrypoint_missing",
+                "Executable protocol target has no main function",
+                [str(item.get("id", "")) for item in plan.get("modules", [])],
+                required_symbol="main",
+            )
+        ]
+    if len(mains) > 1:
+        return [
+            _diag(
+                "runtime_entrypoint_ambiguous",
+                "Executable protocol target has more than one main function",
+                [str(item.get("id", "")) for item in mains],
+                required_symbol="main",
+            )
+        ]
+    main = mains[0]
+    signature = _signature(main)
+    raw = re.sub(r"\s+", " ", str(signature.get("RAW", "")).strip())
+    params = [item for item in signature.get("PARAMS", []) if isinstance(item, dict)]
+    valid_params = not params or (
+        len(params) == 2
+        and _normalized_c_type(str(params[0].get("TYPE", ""))) == "int"
+        and _normalized_c_type(str(params[1].get("TYPE", ""))) in {"char**", "char*[]"}
+    )
+    if (
+        str(signature.get("NAME", "")) != "main"
+        or _normalized_c_type(str(signature.get("RETURN", ""))) != "int"
+        or not re.fullmatch(r"int\s+main\s*\(.*\)", raw)
+        or not valid_params
+    ):
+        diagnostics.append(
+            _diag(
+                "runtime_entrypoint_signature_invalid",
+                "Entrypoint must be exactly one complete int main(void) or int main(int, char**) interface",
+                [str(main.get("id", ""))],
+                signature=signature,
+            )
+        )
+
+    runtime = plan.get("runtime_entrypoint")
+    lifecycle = plan.get("lifecycle_matrix")
+    if not isinstance(runtime, dict) or not runtime or not isinstance(lifecycle, list) or not lifecycle:
+        # Legacy/minimal fixtures without a Stage 4 runtime contract retain the
+        # exactly-one-main check; fresh closed planning is gated below.
+        return diagnostics
+
+    def resolve(reference: Any) -> str:
+        value = str(reference or "")
+        if value in functions:
+            return value
+        owners = functions_by_name.get(value, [])
+        return str(owners[0].get("id", "")) if len(owners) == 1 else ""
+
+    main_id = str(main.get("id", ""))
+    startup_ids = [resolve(value) for value in _items(runtime.get("startup_services"))]
+    run_ids = [resolve(value) for value in _items(runtime.get("run_services"))]
+    cleanup_ids = [resolve(value) for value in _items(runtime.get("cleanup_services"))]
+    create_ids: list[str] = []
+    use_ids: list[str] = []
+    destroy_ids: list[str] = []
+    for item in lifecycle:
+        if not isinstance(item, dict):
+            continue
+        create_id = resolve(item.get("create_function"))
+        current_use_ids = [resolve(value) for value in _items(item.get("use_functions"))]
+        destroy_id = resolve(item.get("destroy_function"))
+        create_ids.append(create_id)
+        use_ids.extend(current_use_ids)
+        destroy_ids.append(destroy_id)
+    required_ids = _unique([*startup_ids, *create_ids, *run_ids, *use_ids, *cleanup_ids, *destroy_ids])
+    if any(not value for value in required_ids):
+        diagnostics.append(
+            _diag(
+                "runtime_call_chain_unknown_service",
+                "Runtime or lifecycle contract references an unknown function",
+                [main_id],
+            )
+        )
+        return diagnostics
+
+    graph: dict[str, set[str]] = {}
+    handled_results: set[str] = set()
+    for caller_id, function in functions.items():
+        for contract in _items(function.get("call_contracts")):
+            if not isinstance(contract, dict):
+                continue
+            callee_id = resolve(contract.get("callee_function_id") or contract.get("NAME"))
+            if not callee_id:
+                continue
+            graph.setdefault(caller_id, set()).add(callee_id)
+            result = contract.get("result_usage")
+            if isinstance(result, dict) and result.get("usage") in {"checked", "stored"}:
+                handled_results.add(callee_id)
+    for binding in _items(plan.get("callback_bindings")):
+        if not isinstance(binding, dict):
+            continue
+        consumer_id = resolve(binding.get("consumer_function_id"))
+        provider_id = resolve(binding.get("provider_function_id"))
+        if consumer_id and provider_id:
+            graph.setdefault(consumer_id, set()).add(provider_id)
+
+    reachable: set[str] = set()
+    pending = [main_id]
+    while pending:
+        current = pending.pop()
+        for callee_id in graph.get(current, set()):
+            if callee_id not in reachable:
+                reachable.add(callee_id)
+                pending.append(callee_id)
+
+    flow = plan.get("runtime_flow")
+    if not isinstance(flow, dict) or not flow:
+        diagnostics.append(
+            _diag(
+                "runtime_flow_missing",
+                "Stage 8 must materialize one typed runtime_flow for main",
+                [main_id, *required_ids],
+            )
+        )
+        return diagnostics
+    sequence = [resolve(value) for value in _items(flow.get("success_sequence"))]
+    top_level_ids = _unique([*startup_ids, *run_ids, *cleanup_ids])
+    missing_sequence = [value for value in top_level_ids if value not in sequence]
+    missing_reachable = [value for value in required_ids if value not in reachable]
+    if resolve(flow.get("main_function_id")) != main_id or missing_sequence or missing_reachable:
+        diagnostics.append(
+            _diag(
+                "runtime_call_chain_incomplete",
+                "main call chain must order top-level runtime services and reach every nested lifecycle service",
+                [main_id, *missing_sequence, *missing_reachable],
+                missing_from_success_sequence=missing_sequence,
+                unreachable_from_main=missing_reachable,
+            )
+        )
+    positions = {function_id: index for index, function_id in enumerate(sequence)}
+    order_invalid = any(
+        positions.get(startup_id, -1) >= positions.get(run_id, len(sequence))
+        for startup_id in startup_ids
+        for run_id in run_ids
+    ) or any(
+        positions.get(run_id, -1) >= positions.get(cleanup_id, len(sequence))
+        for run_id in run_ids
+        for cleanup_id in cleanup_ids
+    )
+    if order_invalid:
+        diagnostics.append(
+            _diag(
+                "runtime_flow_order_invalid",
+                "runtime_flow success_sequence violates top-level startup/run/cleanup ordering",
+                [main_id, *sequence],
+            )
+        )
+
+    failure_map = {
+        resolve(item.get("after_function_id")): [
+            resolve(value) for value in _items(item.get("cleanup_function_ids"))
+        ]
+        for item in _items(flow.get("failure_cleanup"))
+        if isinstance(item, dict)
+    }
+    cleanup_set = set(cleanup_ids)
+    fallible_ids = [
+        function_id
+        for function_id in _unique([*startup_ids, *run_ids])
+        if _normalized_c_type(str(_signature(functions[function_id]).get("RETURN", ""))) != "void"
+    ]
+    invalid_failure = [
+        function_id
+        for function_id in fallible_ids
+        if function_id not in handled_results
+        or not failure_map.get(function_id)
+        or not set(failure_map[function_id]).issubset(cleanup_set)
+    ]
+    if invalid_failure:
+        diagnostics.append(
+            _diag(
+                "runtime_failure_cleanup_incomplete",
+                "Every fallible top-level startup/run result must be handled and map to typed cleanup functions",
+                [main_id, *invalid_failure],
+                uncovered_fallible_functions=invalid_failure,
+            )
+        )
+    return diagnostics
 
 
 def _explicit_lifecycle_boundary(value: Any) -> bool:
@@ -422,12 +672,19 @@ def _function_matches_callback(function: dict[str, Any], callback: tuple[str, li
     return actual_return == callback[0] and actual_params == callback[1]
 
 
+def _type_is_by_value(c_type: str, type_name: str) -> bool:
+    return bool(re.search(rf"\b{re.escape(type_name)}\b", c_type)) and "*" not in c_type
+
+
 def analyze_implementability(plan: dict[str, Any]) -> list[dict[str, Any]]:
     diagnostics: list[dict[str, Any]] = []
     files, files_by_name = _index(plan, "file")
     types, types_by_name = _index(plan, "type")
     functions, functions_by_name = _index(plan, "function")
     modules, modules_by_name = _index(plan, "module")
+    callback_bindings = [
+        item for item in plan.get("callback_bindings", []) if isinstance(item, dict)
+    ]
     del files_by_name, modules
 
     for kind, by_name in (("type", types_by_name), ("function", functions_by_name), ("module", modules_by_name)):
@@ -436,6 +693,136 @@ def analyze_implementability(plan: dict[str, Any]) -> list[dict[str, Any]]:
                 diagnostics.append(_diag(f"duplicate_{kind}_symbol", f"{kind} symbol {name} has multiple owners", [str(item.get("id", "")) for item in items], symbol=name))
 
     type_names = set(types_by_name)
+    if not functions:
+        diagnostics.append(
+            _diag(
+                "task_evaporation_function_inventory_empty",
+                "Executable implementation plan has no functions",
+                [str(item.get("id", "")) for item in plan.get("modules", [])],
+            )
+        )
+    if not types:
+        diagnostics.append(
+            _diag(
+                "task_evaporation_type_inventory_empty",
+                "Executable implementation plan has no types",
+                [str(item.get("id", "")) for item in plan.get("modules", [])],
+            )
+        )
+    test_count = len(_items(plan.get("test_vectors"))) + sum(
+        len(_items(item.get("test_vectors")))
+        for collection in (plan.get("files", []), plan.get("functions", []))
+        for item in collection
+        if isinstance(item, dict)
+    )
+    if not test_count:
+        diagnostics.append(
+            _diag(
+                "task_evaporation_test_inventory_empty",
+                "Executable implementation plan has no function, file, or runtime test vectors",
+                [str(item.get("id", "")) for item in plan.get("modules", [])],
+            )
+        )
+
+    opaque_type_names = {
+        name
+        for name, owners in types_by_name.items()
+        if len(owners) == 1
+        and isinstance(owners[0].get("type_spec"), dict)
+        and str(owners[0]["type_spec"].get("TYPE_KIND", "")).upper() == "OPAQUE"
+    }
+    for type_item in types.values():
+        spec = type_item.get("type_spec", {}) if isinstance(type_item.get("type_spec"), dict) else {}
+        type_kind = str(spec.get("TYPE_KIND", "")).upper()
+        if type_kind == "CALLBACK":
+            callback = _callback_contract(str(spec.get("CALLBACK_SIGNATURE", "")))
+            if callback is not None:
+                for index, c_type in enumerate(callback[1]):
+                    for type_name in opaque_type_names:
+                        if _type_is_by_value(c_type, type_name):
+                            diagnostics.append(
+                                _diag(
+                                    "opaque_type_by_value",
+                                    f"Callback {type_item.get('name')} uses opaque type {type_name} by value in PARAMS[{index}]",
+                                    [str(type_item.get("id", "")), str(types_by_name[type_name][0].get("id", ""))],
+                                    signature_field=f"CALLBACK_SIGNATURE.PARAMS[{index}]",
+                                )
+                            )
+            continue
+        if type_kind != "ENUM":
+            continue
+        values = spec.get("ENUM_VALUES", [])
+        if not values:
+            diagnostics.append(
+                _diag(
+                    "empty_enum_values",
+                    f"Enum {type_item.get('name')} has no ENUM_VALUES",
+                    [str(type_item.get("id", ""))],
+                )
+            )
+            continue
+        type_refs = _unique(
+            [
+                *[str(item) for item in _items(type_item.get("trace_refs"))],
+                *[str(item) for item in _items(type_item.get("decision_refs"))],
+                *[str(item) for item in _items(type_item.get("rule_refs"))],
+            ]
+        )
+        for index, value in enumerate(values):
+            if not isinstance(value, dict):
+                continue
+            value_refs = _unique(
+                [
+                    *[str(item) for item in _items(value.get("TRACE_REFS", value.get("trace_refs")))],
+                    *[str(item) for item in _items(value.get("decision_refs"))],
+                    *[str(item) for item in _items(value.get("rule_refs"))],
+                    *type_refs,
+                ]
+            )
+            if not value_refs:
+                diagnostics.append(
+                    _diag(
+                        "enum_value_grounding_missing",
+                        f"Enum value {value.get('NAME', index)} has no fact/rule/decision grounding",
+                        [str(type_item.get("id", ""))],
+                        value_index=index,
+                    )
+                )
+
+    for function in functions.values():
+        signature = _signature(function)
+        signature_parts = [
+            ("RETURN", str(signature.get("RETURN", ""))),
+            *[
+                (f"PARAMS[{index}]", str(item.get("TYPE", "")))
+                for index, item in enumerate(signature.get("PARAMS", []))
+                if isinstance(item, dict)
+            ],
+        ]
+        for field, c_type in signature_parts:
+            for type_name in opaque_type_names:
+                if _type_is_by_value(c_type, type_name):
+                    diagnostics.append(
+                        _diag(
+                            "opaque_type_by_value",
+                            f"Function {function.get('name')} uses opaque type {type_name} by value in {field}",
+                            [str(function.get("id", "")), str(types_by_name[type_name][0].get("id", ""))],
+                            signature_field=field,
+                        )
+                    )
+        if (
+            isinstance(function.get("wire_obligation"), dict)
+            and function["wire_obligation"].get("required") is True
+            and not _items(function.get("wire_mapping", function.get("WIRE_MAPPING")))
+        ):
+            diagnostics.append(
+                _diag(
+                    "required_wire_mapping_missing",
+                    f"Wire-facing function {function.get('name')} has no structured wire mapping",
+                    [str(function.get("id", ""))],
+                )
+            )
+
     header_owner = {str(item.get("header_path")): item for item in files.values() if item.get("header_path")}
     module_positions = {str(item.get("name", "")): index for index, item in enumerate(plan.get("modules", [])) if isinstance(item, dict)}
     for file_item in files.values():
@@ -497,6 +884,22 @@ def analyze_implementability(plan: dict[str, Any]) -> list[dict[str, Any]]:
         for contract in contracts if isinstance(contracts, list) else []:
             if not isinstance(contract, dict):
                 continue
+            raw_condition = contract.get("condition", contract.get("CONDITION", ""))
+            if isinstance(raw_condition, dict):
+                condition = str(raw_condition.get("expression", "")).strip().lower()
+                unreachable = raw_condition.get("reachable") is not True
+            else:
+                condition = str(raw_condition).strip().lower()
+                unreachable = condition in {"never", "no call occurs", "none"}
+            if unreachable:
+                diagnostics.append(
+                    _diag(
+                        "placeholder_call_edge",
+                        f"Function {function.get('name')} contains a non-executable placeholder call edge",
+                        [str(function.get("id", ""))],
+                        condition=condition,
+                    )
+                )
             callees = functions_by_name.get(str(contract.get("NAME", "")), [])
             if len(callees) > 1:
                 diagnostics.append(
@@ -545,76 +948,53 @@ def analyze_implementability(plan: dict[str, Any]) -> list[dict[str, Any]]:
                     diagnostics.append(_diag("cross_file_private_type", f"Type {type_item.get('name')} contains private foreign type {type_name}", [str(type_item.get("id", "")), str(owners[0].get("id", ""))], symbol=type_name))
 
     for caller in functions.values():
-        caller_calls = set(_function_calls(caller))
-        behavior_text = json.dumps({"logic": caller.get("logic"), "event": caller.get("event")}, ensure_ascii=False)
-        candidates = [
-            function
-            for function in functions.values()
-            if function.get("id") != caller.get("id")
-            and (str(function.get("name", "")) in caller_calls or str(function.get("name", "")) in behavior_text)
-        ]
         for callee_name in _function_calls(caller):
             callees = functions_by_name.get(callee_name, [])
             if len(callees) != 1:
                 continue
-            callback_params: list[tuple[dict[str, Any], tuple[str, list[str]]]] = []
-            for param in _signature(callees[0]).get("PARAMS", []):
+            callee = callees[0]
+            for param in _signature(callee).get("PARAMS", []):
                 if not isinstance(param, dict):
                     continue
                 contract = _callback_contract_for_param(str(param.get("TYPE", "")), types_by_name)
-                if contract is not None:
-                    callback_params.append((param, contract))
-            if not callback_params:
-                continue
-            callback_candidates = [candidate for candidate in candidates if candidate.get("id") != callees[0].get("id")]
-            missing: list[str] = []
-            compatible_missing: dict[str, list[dict[str, Any]]] = {}
-            mismatched: list[str] = []
-            expected_contracts: dict[str, dict[str, Any]] = {}
-            callback_type_ids: list[str] = []
-            for param, contract in callback_params:
-                param_name = str(param.get("NAME", "callback"))
-                expected_contracts[param_name] = {"RETURN": contract[0], "PARAMS": contract[1]}
-                callback_type_ids.extend(
-                    str(item.get("id", "")) for item in types_by_name.get(str(param.get("TYPE", "")).strip(), [])
-                )
-                if any(_function_matches_callback(candidate, contract) for candidate in callback_candidates):
+                if contract is None:
                     continue
-                compatible = [
-                    candidate
-                    for candidate in functions.values()
-                    if candidate.get("id") not in {caller.get("id"), callees[0].get("id")}
-                    and _function_matches_callback(candidate, contract)
+                param_name = str(param.get("NAME", "callback"))
+                matches = [
+                    binding for binding in callback_bindings
+                    if str(binding.get("owner_function_id")) == str(caller.get("id"))
+                    and str(binding.get("consumer_function_id")) == str(callee.get("id"))
+                    and str(binding.get("consumer_parameter")) == param_name
                 ]
-                mentioned = [candidate for candidate in callback_candidates if str(candidate.get("name", "")) in behavior_text]
-                if mentioned:
-                    mismatched.extend(str(candidate.get("name", "")) for candidate in mentioned)
-                else:
-                    missing.append(param_name)
-                    compatible_missing[param_name] = compatible
-            if missing:
-                compatible_functions = _unique([function for values in compatible_missing.values() for function in values])
-                diagnostics.append(
-                    _diag(
-                        "callback_provider_missing",
-                        f"Function {caller.get('name')} calls {callee_name} without explicit compatible providers for callback parameters {', '.join(missing)}",
-                        [str(caller.get("id", "")), str(callees[0].get("id", "")), *callback_type_ids, *[str(item.get("id", "")) for item in compatible_functions]],
-                        callback_params=missing,
-                        compatible_candidates={key: [item.get("name") for item in values] for key, values in compatible_missing.items()},
-                        expected_contracts={key: expected_contracts[key] for key in missing},
+                if not matches:
+                    compatible = [
+                        function for function in functions.values()
+                        if function.get("id") not in {caller.get("id"), callee.get("id")}
+                        and _function_matches_callback(function, contract)
+                    ]
+                    diagnostics.append(
+                        _diag(
+                            "callback_provider_missing",
+                            f"Function {caller.get('name')} calls {callee_name} without a typed callback binding for {param_name}",
+                            [str(caller.get("id", "")), str(callee.get("id", "")), *[str(item.get("id", "")) for item in compatible]],
+                            callback_params=[param_name],
+                            compatible_candidates={param_name: [item.get("name") for item in compatible]},
+                            expected_contracts={param_name: {"RETURN": contract[0], "PARAMS": contract[1]}},
+                        )
                     )
-                )
-            if mismatched:
-                diagnostics.append(
-                    _diag(
-                        "callback_signature_mismatch",
-                        f"Function {caller.get('name')} binds incompatible callback function(s) {', '.join(_unique(mismatched))} when calling {callee_name}",
-                        [str(caller.get("id", "")), str(callees[0].get("id", "")), *callback_type_ids, *[str(functions_by_name[name][0].get("id", "")) for name in _unique(mismatched) if len(functions_by_name.get(name, [])) == 1]],
-                        callbacks=_unique(mismatched),
-                        expected_contracts=expected_contracts,
-                        actual_signatures={name: _signature(functions_by_name[name][0]) for name in _unique(mismatched) if len(functions_by_name.get(name, [])) == 1},
+                    continue
+                provider = functions.get(str(matches[0].get("provider_function_id")))
+                if provider is None or not _function_matches_callback(provider, contract):
+                    diagnostics.append(
+                        _diag(
+                            "callback_signature_mismatch",
+                            f"Typed callback binding for {caller.get('name')}->{callee_name} has an incompatible provider",
+                            [str(caller.get("id", "")), str(callee.get("id", "")), str(provider.get("id", "")) if provider else ""],
+                            callback=provider.get("name") if provider else None,
+                            expected_contract={"RETURN": contract[0], "PARAMS": contract[1]},
+                            actual_signature=_signature(provider) if provider else None,
+                        )
                     )
-                )
 
     for file_item in files.values():
         module_matches = modules_by_name.get(str(file_item.get("module", "")), [])
@@ -696,29 +1076,31 @@ def analyze_implementability(plan: dict[str, Any]) -> list[dict[str, Any]]:
         if users and not cleanup:
             diagnostics.append(_diag("owned_resource_cleanup_missing", f"Owned resource type {type_name} has no explicit cleanup function", [str(type_item.get("id", "")), *[str(item.get("id", "")) for item in users]], symbol=type_name))
 
-    opaque_type_names = {
-        name
-        for name, owners in types_by_name.items()
-        if len(owners) == 1
-        and isinstance(owners[0].get("type_spec"), dict)
-        and str(owners[0]["type_spec"].get("TYPE_KIND", "")).upper() == "OPAQUE"
-    }
     missing_access: dict[tuple[str, str], dict[str, Any]] = {}
     for caller in functions.values():
-        calls = [functions_by_name[name][0] for name in _function_calls(caller) if len(functions_by_name.get(name, [])) == 1]
-        available = set(_custom_type_in(" ".join(str(item.get("TYPE", "")) for item in _signature(caller).get("PARAMS", []) if isinstance(item, dict)), opaque_type_names))
-        for callee in calls:
-            available.update(_custom_type_in(str(_signature(callee).get("RETURN", "")), opaque_type_names))
-        for callee in calls:
+        contracts = caller.get("call_contracts", [])
+        for relation in contracts if isinstance(contracts, list) else []:
+            if not isinstance(relation, dict):
+                continue
+            callees = functions_by_name.get(str(relation.get("NAME", "")), [])
+            if len(callees) != 1:
+                continue
+            callee = callees[0]
             if callee.get("file") == caller.get("file"):
                 continue
-            required_text = " ".join(
-                str(item.get("TYPE", ""))
-                for item in _signature(callee).get("PARAMS", [])
-                if isinstance(item, dict) and "(*" not in str(item.get("TYPE", ""))
-            )
-            for required_type in _custom_type_in(required_text, opaque_type_names):
-                if required_type not in available:
+            bindings = {
+                str(item.get("parameter")): item
+                for item in relation.get("argument_semantics", [])
+                if isinstance(item, dict)
+            }
+            for parameter in _signature(callee).get("PARAMS", []):
+                if not isinstance(parameter, dict):
+                    continue
+                required_types = _custom_type_in(str(parameter.get("TYPE", "")), opaque_type_names)
+                for required_type in required_types:
+                    binding = bindings.get(str(parameter.get("NAME", "")))
+                    if binding is not None and required_type in str(binding.get("source_type", "")):
+                        continue
                     key = (str(caller.get("id", "")), required_type)
                     entry = missing_access.setdefault(
                         key,
@@ -743,11 +1125,7 @@ def analyze_implementability(plan: dict[str, Any]) -> list[dict[str, Any]]:
             )
         )
 
-    mains = [function for function in functions.values() if function.get("name") == "main"]
-    if not mains:
-        diagnostics.append(_diag("runtime_entrypoint_missing", "Executable protocol target has no main function", [str(item.get("id", "")) for item in plan.get("modules", [])], required_symbol="main"))
-    elif len(mains) > 1:
-        diagnostics.append(_diag("runtime_entrypoint_ambiguous", "Executable protocol target has more than one main function", [str(item.get("id", "")) for item in mains], required_symbol="main"))
+    diagnostics.extend(_runtime_implementability_diagnostics(plan, functions, functions_by_name))
 
     deduped: list[dict[str, Any]] = []
     seen: set[str] = set()
@@ -839,8 +1217,8 @@ def validate_semantic_patch(plan: dict[str, Any], patch: dict[str, Any]) -> list
         return ["operations must be a non-empty array"]
     indexes = {kind: _index(plan, kind)[0] for kind in _PATCH_KINDS}
     allowed_changes = {
-        "module": {"role", "dependencies", "trace_refs"},
-        "file": {"module", "role", "header_path", "source_path", "header_dependencies", "source_dependencies", "trace_refs", "forbidden_symbols", "test_vectors"},
+        "module": {"role", "trace_refs"},
+        "file": {"module", "role", "header_path", "source_path", "trace_refs", "forbidden_symbols", "test_vectors"},
         "type": {
             "file",
             "visibility",
@@ -854,7 +1232,7 @@ def validate_semantic_patch(plan: dict[str, Any], patch: dict[str, Any]) -> list
             "decision_refs",
             "rule_refs",
         },
-        "function": {"file", "name", "function_type", "visibility", "role", "signature", "rely", "call_contracts", "logic", "event", "wire_mapping", "trace_refs", "decision_refs", "rule_refs", "test_vectors"},
+        "function": {"file", "name", "function_type", "visibility", "role", "signature", "rely", "call_contracts", "logic", "event", "wire_mapping", "access_paths", "forbidden_symbols", "trace_refs", "decision_refs", "rule_refs", "test_vectors"},
     }
     required_add = {
         "module": {"id", "name", "role", "dependencies"},

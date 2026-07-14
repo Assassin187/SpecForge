@@ -117,6 +117,26 @@ class AmendmentTests(unittest.TestCase):
         self.assertEqual(registry.snapshot(), before)
         self.assertEqual(len(processor.pending_for_stage("type_and_access_path_design")), 1)
 
+    def test_proposed_name_is_required_by_prompt_and_validator_contract(self) -> None:
+        registry = _registry()
+        request = _request()
+        request.pop("proposed_name")
+        outcome = InventoryAmendmentProcessor(registry).process(
+            [request], stage_id="type_and_access_path_design"
+        )[0]
+        self.assertEqual(outcome["diagnostic"], "artifact_request_invalid_fields")
+
+    def test_constant_request_returns_to_authoritative_stage4(self) -> None:
+        registry = _registry()
+        outcome = InventoryAmendmentProcessor(registry).process(
+            [_request(requested_kind="constant", proposed_name="FRAME_KIND")],
+            stage_id="type_and_access_path_design",
+        )[0]
+        self.assertEqual(outcome["status"], "unresolved")
+        self.assertEqual(outcome["diagnostic"], "artifact_request_constant_requires_stage4_regeneration")
+        with self.assertRaises(ValueError):
+            registry.resolve("FRAME_KIND", expected_kinds={"constant"})
+
     def test_amendment_round_is_bounded_once_per_partition(self) -> None:
         registry = _registry()
         processor = InventoryAmendmentProcessor(registry)

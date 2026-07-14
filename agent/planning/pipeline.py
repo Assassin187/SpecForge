@@ -39,7 +39,179 @@ FAILED_INTERNAL = "failed_internal"
 
 
 def _as_diag(level: str, code: str, message: str, path: str | None = None) -> Diagnostic:
-    return Diagnostic(level, code, message, path)
+    return Diagnostic(
+        level,
+        code,
+        message,
+        path,
+        "pipeline",
+        "pipeline_runtime",
+        "inspect_fatal_classification_or_resume_from_last_committed_stage",
+    )
+
+
+def _dedupe_diagnostics(diagnostics: list[Diagnostic]) -> list[Diagnostic]:
+    out: list[Diagnostic] = []
+    seen: set[tuple[str, str, str, str | None]] = set()
+    for diagnostic in diagnostics:
+        identity = (diagnostic.level, diagnostic.code, diagnostic.message, diagnostic.path)
+        if identity not in seen:
+            seen.add(identity)
+            out.append(diagnostic)
+    return out
+
+
+def _distinct_unresolved_partitions(values: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for item in values:
+        identity = (
+            str(item.get("stage_id", "")),
+            str(item.get("partition_id", "")),
+            str(item.get("diagnostic", "")),
+        )
+        if identity not in seen:
+            seen.add(identity)
+            out.append(item)
+    return out
+
+
+def _readiness_manifest_fields(
+    plan: dict[str, Any],
+    specs_root: Path,
+    diagnostics: list[Diagnostic],
+    *,
+    run_status: str,
+    coder_loader_passed: bool | None,
+) -> dict[str, Any]:
+    spec_objects: list[dict[str, Any]] = []
+    if specs_root.exists():
+        for path in sorted(specs_root.rglob("*_spec.json")):
+            value = read_json(path)
+            if isinstance(value, dict):
+                spec_objects.append(value)
+    function_specs = {
+        str(item.get("TRACE_ID")): item
+        for item in spec_objects
+        if item.get("KIND") == "FUNCTION_SPEC"
+    }
+    type_names = {
+        str(item.get("NAME"))
+        for spec in spec_objects
+        if spec.get("KIND") == "FILE_SPEC"
+        for block in (spec.get("HEADER"), spec.get("SOURCE"))
+        if isinstance(block, dict)
+        for item in block.get("DATA", [])
+        if isinstance(item, dict) and item.get("KIND") == "TYPE"
+    }
+    required_functions = [item for item in plan.get("functions", []) if isinstance(item, dict)]
+    required_types = [item for item in plan.get("types", []) if isinstance(item, dict)]
+
+    wire_required = 0
+    wire_materialized = 0
+    for function in required_functions:
+        targets = function.get("wire_obligation", {}).get("targets", []) if isinstance(function.get("wire_obligation"), dict) else []
+        emitted = function_specs.get(str(function.get("trace_id")), {})
+        mappings = emitted.get("WIRE_MAPPING", []) if isinstance(emitted, dict) else []
+        for target in targets if isinstance(targets, list) else []:
+            if not isinstance(target, dict):
+                continue
+            wire_required += 1
+            if any(
+                isinstance(mapping, dict)
+                and str(mapping.get("PACKET", mapping.get("packet", ""))) == str(target.get("packet", ""))
+                and str(mapping.get("WIRE_FIELD", mapping.get("wire_field", ""))) == str(target.get("wire_field", ""))
+                and (not target.get("rule") or str(mapping.get("RULE", mapping.get("rule", ""))).strip())
+                for mapping in mappings if isinstance(mappings, list)
+            ):
+                wire_materialized += 1
+
+    tests_required = len(required_functions) + (1 if plan.get("test_obligations") else 0)
+    tests_materialized = sum(
+        bool(function_specs.get(str(function.get("trace_id")), {}).get("TEST_VECTORS"))
+        for function in required_functions
+    ) + (1 if plan.get("test_obligations") and any(
+        item.get("KIND") == "PROTOCOL_MODULE_SPEC" and item.get("TEST_VECTORS")
+        for item in spec_objects
+    ) else 0)
+
+    error_diagnostics = [item for item in diagnostics if item.level == "error"]
+    unresolved = _distinct_unresolved_partitions(plan.get("unresolved_partitions", []))
+    plan_drop_count = sum(item.code.startswith("plan_to_spec_") for item in error_diagnostics)
+    runtime_error_count = sum(
+        item.code.startswith("runtime_entrypoint")
+        or item.code.startswith("runtime_flow")
+        or item.code.startswith("runtime_call_chain")
+        or item.code.startswith("runtime_failure_cleanup")
+        for item in error_diagnostics
+    )
+    metrics = {
+        "required_function_count": len(required_functions),
+        "materialized_function_spec_count": sum(
+            str(item.get("trace_id")) in function_specs for item in required_functions
+        ),
+        "required_type_count": len(required_types),
+        "materialized_type_count": sum(str(item.get("name")) in type_names for item in required_types),
+        "required_wire_target_count": wire_required,
+        "materialized_wire_target_count": wire_materialized,
+        "required_test_surface_count": tests_required,
+        "materialized_test_surface_count": tests_materialized,
+        "plan_to_spec_required_field_drop_count": plan_drop_count,
+        "runtime_entrypoint_or_flow_error_count": runtime_error_count,
+        "runtime_contract_materialized": bool(
+            isinstance(plan.get("runtime_entrypoint"), dict)
+            and plan.get("runtime_entrypoint")
+            and isinstance(plan.get("lifecycle_matrix"), list)
+            and plan.get("lifecycle_matrix")
+            and isinstance(plan.get("runtime_flow"), dict)
+            and plan.get("runtime_flow")
+        ),
+        "union_error_diagnostic_count": len(error_diagnostics),
+        "distinct_unresolved_partition_count": len(unresolved),
+        "attempt_unresolved_partition_count": len(plan.get("unresolved_partitions", [])),
+    }
+    artifact_success = bool(
+        specs_root.exists()
+        and coder_loader_passed is True
+        and not unresolved
+    )
+    semantic_qualified = bool(
+        run_status == QUALIFIED and not error_diagnostics and not unresolved
+    )
+    implementation_ready = bool(
+        artifact_success
+        and semantic_qualified
+        and plan.get("required_implementation_obligations")
+        and metrics["required_function_count"] > 0
+        and metrics["required_function_count"] == metrics["materialized_function_spec_count"]
+        and metrics["required_type_count"] > 0
+        and metrics["required_type_count"] == metrics["materialized_type_count"]
+        and metrics["required_wire_target_count"] == metrics["materialized_wire_target_count"]
+        and metrics["required_test_surface_count"] == metrics["materialized_test_surface_count"]
+        and metrics["plan_to_spec_required_field_drop_count"] == 0
+        and metrics["runtime_entrypoint_or_flow_error_count"] == 0
+        and metrics["runtime_contract_materialized"]
+    )
+
+    def counts(values: list[Diagnostic]) -> dict[str, int]:
+        return {
+            "error": sum(item.level == "error" for item in values),
+            "warning": sum(item.level == "warning" for item in values),
+        }
+
+    return {
+        "artifact_success": artifact_success,
+        "semantic_qualified": semantic_qualified,
+        "implementation_ready": implementation_ready,
+        "readiness_metrics": metrics,
+        "closure_diagnostic_counts": counts(
+            [item for item in diagnostics if item.owner_layer == "semantic_closure"]
+        ),
+        "post_validation_diagnostic_counts": counts(
+            [item for item in diagnostics if item.owner_layer == "post_planning_validation"]
+        ),
+        "union_diagnostic_counts": counts(diagnostics),
+    }
 
 
 def _clean_dir(path: Path) -> None:
@@ -158,6 +330,9 @@ def _write_failed_manifest(
             "planner_mode": planner_mode,
             "run_status": FAILED_INTERNAL,
             "hard_failure_code": hard_failure_code,
+            "fatal": True,
+            "fatal_reason_code": hard_failure_code,
+            "nonfatal_no_specs_count": 0,
             "candidate_root": None,
             "candidate_specs_root": None,
             "specs_root": None,
@@ -165,11 +340,18 @@ def _write_failed_manifest(
             "summary": None,
             "written_files": [],
             "specs_generated": False,
+            "artifact_success": False,
+            "semantic_qualified": False,
+            "implementation_ready": False,
             "planning_validation_passed": False,
             "coder_loader_passed": None,
             "qualification_passed": False,
             "semantic_diagnostic_counts": {"error": 0, "warning": 0},
+            "closure_diagnostic_counts": {"error": 0, "warning": 0},
+            "post_validation_diagnostic_counts": {"error": 0, "warning": 0},
+            "union_diagnostic_counts": {"error": 1, "warning": 0},
             "unresolved_stage_partition_count": 0,
+            "unresolved_stage_partition_attempt_count": 0,
             "diagnostic_counts": {"error": 1, "warning": 0},
         },
     )
@@ -211,7 +393,17 @@ def _coder_validate(specs_root: Path) -> list[Diagnostic]:
 
         bundle = load_spec_bundle_from_root(specs_root, validate_rendered_headers=True)
         for diag in bundle.diagnostics:
-            diagnostics.append(Diagnostic(diag.level, f"coder_{diag.code}", diag.message, diag.path))
+            diagnostics.append(
+                Diagnostic(
+                    diag.level,
+                    f"coder_{diag.code}",
+                    diag.message,
+                    diag.path,
+                    "coder_loader",
+                    "compile_specs",
+                    "regenerate_authoritative_planning_partition",
+                )
+            )
     except Exception as exc:  # pragma: no cover - defensive path, tested by end-to-end command.
         diagnostics.append(_as_diag("error", "coder_validation_exception", f"{type(exc).__name__}: {exc}", str(specs_root)))
     return diagnostics
@@ -258,11 +450,15 @@ def _write_planning_artifacts(
         "facts_sha256": facts_hash,
         "planner_mode": planner_mode,
         "run_status": run_status,
+        "fatal": False,
+        "fatal_reason_code": None,
+        "nonfatal_no_specs_count": 0,
         "candidate_root": str(candidate_root),
         "candidate_specs_root": str(candidate_specs_root),
         "specs_root": compile_manifest["specs_root"],
         "module_spec": compile_manifest["module_spec"],
         "summary": compile_manifest["summary"],
+        "semantic_mapping": compile_manifest.get("semantic_mapping"),
         "written_files": compile_manifest["written_files"],
         "specs_generated": True,
         "planning_validation_passed": planning_validation_passed,
@@ -272,7 +468,10 @@ def _write_planning_artifacts(
             "error": sum(item.get("level") == "error" for item in semantic_diagnostics),
             "warning": sum(item.get("level") == "warning" for item in semantic_diagnostics),
         },
-        "unresolved_stage_partition_count": len(plan.get("unresolved_partitions", [])),
+        "unresolved_stage_partition_count": len(
+            _distinct_unresolved_partitions(plan.get("unresolved_partitions", []))
+        ),
+        "unresolved_stage_partition_attempt_count": len(plan.get("unresolved_partitions", [])),
         "stage_survival": metrics.get("stage_survival", {}),
         "partition_survival": metrics.get("partition_survival", {}),
         "token_accounting": metrics.get("token_accounting", {}),
@@ -287,6 +486,15 @@ def _write_planning_artifacts(
             "warning": sum(1 for diag in diagnostics if diag.level == "warning"),
         },
     }
+    manifest.update(
+        _readiness_manifest_fields(
+            plan,
+            Path(compile_manifest["specs_root"]),
+            diagnostics,
+            run_status=run_status,
+            coder_loader_passed=coder_loader_passed,
+        )
+    )
     manifest_path = planning_root / "run_manifest.json"
     write_json(manifest_path, manifest)
     return manifest_path
@@ -537,14 +745,22 @@ def run_planning(
     try:
         plan = provider.build_plan(context, resume_from=resume_from)
     except RecoverablePlanningError as exc:
-        diagnostics = [_as_diag("error", "stage_binding_failure", exc.diagnostic, exc.stage_id)]
+        fatal_reason_code = "candidate_serialization_impossible"
+        diagnostics = [
+            _as_diag(
+                "error",
+                fatal_reason_code,
+                f"No fact-grounded module/file/function interface inventory can be serialized after {exc.stage_id}: {exc.diagnostic}",
+                exc.stage_id,
+            )
+        ]
         unresolved = [{"stage_id": exc.stage_id, "partition_id": "whole_stage", "diagnostic": exc.diagnostic}]
         _write_candidate_package(
             planning_root,
             candidate_root,
             facts_path=facts_path,
             facts_hash=facts_hash,
-            run_status=CANDIDATE_ONLY,
+            run_status=FAILED_INTERNAL,
             plan=None,
             unresolved_partitions=unresolved,
             diagnostics=diagnostics,
@@ -553,7 +769,7 @@ def run_planning(
         metrics = build_run_metrics(
             provider.stage_records,
             expected_stages=len(PLANNING_STAGES),
-            run_status=CANDIDATE_ONLY,
+            run_status=FAILED_INTERNAL,
             candidate_produced=True,
             diagnostics=diagnostics_to_json(diagnostics),
         )
@@ -567,7 +783,11 @@ def run_planning(
                 "facts_path": str(facts_path),
                 "facts_sha256": facts_hash,
                 "planner_mode": planner_mode,
-                "run_status": CANDIDATE_ONLY,
+                "run_status": FAILED_INTERNAL,
+                "hard_failure_code": fatal_reason_code,
+                "fatal": True,
+                "fatal_reason_code": fatal_reason_code,
+                "nonfatal_no_specs_count": 0,
                 "candidate_root": str(candidate_root),
                 "candidate_specs_root": None,
                 "specs_root": None,
@@ -575,11 +795,18 @@ def run_planning(
                 "summary": None,
                 "written_files": [],
                 "specs_generated": False,
+                "artifact_success": False,
+                "semantic_qualified": False,
+                "implementation_ready": False,
                 "planning_validation_passed": False,
                 "coder_loader_passed": None,
                 "qualification_passed": False,
                 "semantic_diagnostic_counts": {"error": 0, "warning": 0},
+                "closure_diagnostic_counts": {"error": 0, "warning": 0},
+                "post_validation_diagnostic_counts": {"error": 0, "warning": 0},
+                "union_diagnostic_counts": {"error": 1, "warning": 0},
                 "unresolved_stage_partition_count": 1,
+                "unresolved_stage_partition_attempt_count": len(unresolved),
                 "stage_survival": metrics.get("stage_survival", {}),
                 "partition_survival": metrics.get("partition_survival", {}),
                 "token_accounting": metrics.get("token_accounting", {}),
@@ -590,7 +817,7 @@ def run_planning(
                 "diagnostic_counts": {"error": 1, "warning": 0},
             },
         )
-        return PlanningResult(output_root, None, planning_root, candidate_root, manifest_path, diagnostics, CANDIDATE_ONLY)
+        return PlanningResult(output_root, None, planning_root, candidate_root, manifest_path, diagnostics, FAILED_INTERNAL)
     except BaseException as exc:
         _record_internal_failure(
             planning_root,
@@ -607,15 +834,19 @@ def run_planning(
             raise RuntimeError("registry_snapshot_missing: structured planning completed without canonical registry")
         if plan.get("unresolved_partitions"):
             semantic_patch_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+            distinct_unresolved = _distinct_unresolved_partitions(plan["unresolved_partitions"])
             unresolved_diagnostics = [
                 {
                     "level": "error",
                     "code": "unresolved_partition",
                     "message": str(item.get("diagnostic", "partition did not commit")),
                     "artifact_ids": [],
+                    "owner_layer": str(item.get("validation_layer", "partition_validation")),
+                    "authoritative_stage": str(item.get("stage_id", "unknown_stage")),
+                    "recovery_action": "resume_or_regenerate_failed_partition",
                     "details": item,
                 }
-                for item in plan["unresolved_partitions"]
+                for item in distinct_unresolved
             ]
             implementability_report = {
                 "kind": "IMPLEMENTABILITY_REPORT",
@@ -661,6 +892,19 @@ def run_planning(
         candidate_specs_root = candidate_root / "specs"
         compile_manifest = compile_specs(plan, candidate_specs_root, clean=True)
         diagnostics = closure_diagnostics_as_models(closure_diagnostics)
+        diagnostics.extend(
+            Diagnostic(
+                level=str(item.get("level", "error")),
+                code=str(item.get("code", "semantic_lowering_error")),
+                message=str(item.get("message", "Compiler could not losslessly lower planning semantics")),
+                path=str(item.get("path")) if item.get("path") else None,
+                owner_layer=str(item.get("owner_layer", "compiler")),
+                authoritative_stage=str(item.get("authoritative_stage", "final_plan_assembly")),
+                recovery_action=str(item.get("recovery_action", "regenerate_authoritative_partition")),
+            )
+            for item in compile_manifest.get("diagnostics", [])
+            if isinstance(item, dict)
+        )
         planning_diagnostics = validate_planning_run(facts, facts_hash, plan, candidate_specs_root)
         for diagnostic in planning_diagnostics:
             identity = (diagnostic.level, diagnostic.code, diagnostic.message, diagnostic.path)
@@ -670,6 +914,7 @@ def run_planning(
         if coder_validate:
             coder_diagnostics = _coder_validate(candidate_specs_root)
             diagnostics.extend(coder_diagnostics)
+        diagnostics = _dedupe_diagnostics(diagnostics)
         run_status = CANDIDATE_ONLY if any(diag.level == "error" for diag in diagnostics) else QUALIFIED
         if run_status == QUALIFIED:
             shutil.copytree(candidate_specs_root, qualified_specs_root)
@@ -752,7 +997,18 @@ def validate_existing_run(run_dir: str | Path, *, coder_validate: bool = True) -
     candidate_root = Path(candidate_value) if candidate_value else None
     if not manifest.get("specs_root"):
         stored = json.loads((planning_root / "diagnostics.json").read_text(encoding="utf-8")) if (planning_root / "diagnostics.json").exists() else []
-        diagnostics = [Diagnostic(item["level"], item["code"], item["message"], item.get("path")) for item in stored]
+        diagnostics = [
+            Diagnostic(
+                item["level"],
+                item["code"],
+                item["message"],
+                item.get("path"),
+                item.get("owner_layer"),
+                item.get("authoritative_stage"),
+                item.get("recovery_action"),
+            )
+            for item in stored
+        ]
         return PlanningResult(root, None, planning_root, candidate_root, planning_root / "run_manifest.json", diagnostics, run_status)
     facts = read_json(manifest["facts_path"])
     plan = read_json(planning_root / "implementation_plan.json")
@@ -779,6 +1035,15 @@ def validate_existing_run(run_dir: str | Path, *, coder_validate: bool = True) -
     )
     run_status = CANDIDATE_ONLY if any(diag.level == "error" for diag in diagnostics) else QUALIFIED
     manifest.update({"run_status": run_status, "qualification_passed": run_status == QUALIFIED})
+    manifest.update(
+        _readiness_manifest_fields(
+            plan,
+            specs_root,
+            diagnostics,
+            run_status=run_status,
+            coder_loader_passed=manifest["coder_loader_passed"],
+        )
+    )
     write_json(planning_root / "run_manifest.json", manifest)
     return PlanningResult(
         root,

@@ -11,9 +11,7 @@ from typing import Any
 from unittest.mock import patch
 
 from agent.coder.llm_client import LLMResponse, LLMUsage
-from agent.planning.adapters.target_profile import load_target_profile
-
-from evaluation.planning_utility import baseline_runner, prompts, repair_cli
+from evaluation.planning_utility import baseline_runner, full_specforge_adapter, prompts, repair_cli
 from evaluation.planning_utility.baseline_runner import (
     FSDirectCoderRunner,
     NLPlanCodeRunner,
@@ -26,7 +24,7 @@ from evaluation.planning_utility.header_context import (
     extract_header_declarations,
     fit_header_context,
 )
-from evaluation.planning_utility.requirements import build_allowed_inputs, write_json
+from evaluation.planning_utility.requirements import build_allowed_inputs, load_target_profile, write_json
 
 
 class FakeLLM:
@@ -197,15 +195,207 @@ def _toy_config(tmp: Path) -> ProtocolConfig:
     )
 
 
+def _planning_fixture(
+    root: Path,
+    *,
+    qualified: bool,
+    specs_generated: bool = True,
+    fatal_reason_code: str | None = None,
+) -> Path:
+    planning_root = root / "_planning"
+    specs_root = planning_root / "candidate_planning_package" / "specs"
+    if specs_generated:
+        specs_root.mkdir(parents=True)
+    manifest = {
+        "kind": "PLANNING_RUN_MANIFEST",
+        "run_status": (
+            "failed_internal"
+            if fatal_reason_code
+            else "completed_with_qualified_specs"
+            if qualified
+            else "completed_with_candidate_only"
+        ),
+        "facts_path": str(root / "protocol_facts.json"),
+        "qualification_passed": qualified,
+        "planning_validation_passed": qualified,
+        "coder_loader_passed": specs_generated,
+        "specs_generated": specs_generated,
+        "specs_root": str(specs_root) if specs_generated else None,
+        "candidate_specs_root": str(specs_root) if specs_generated else None,
+        "candidate_root": str(planning_root / "candidate_planning_package"),
+        "fatal": fatal_reason_code is not None,
+        "fatal_reason_code": fatal_reason_code,
+        "hard_failure_code": fatal_reason_code,
+        "diagnostic_counts": {"error": 0 if qualified else 1, "warning": 0},
+        "token_accounting": {"total_tokens": 17},
+        "written_files": [],
+    }
+    write_json(planning_root / "run_manifest.json", manifest)
+    write_json(
+        planning_root / "diagnostics.json",
+        [] if qualified else [{"level": "error", "code": "fixture_gap", "message": "fixture is not qualified"}],
+    )
+    return root
+
+
 class PlanningUtilityTests(unittest.TestCase):
     def test_protocol_configs_and_profiles_exist(self) -> None:
-        self.assertEqual(set(PROTOCOLS), {"http", "mqtt", "coap", "smtp"})
+        self.assertEqual(set(PROTOCOLS), {"mqtt"})
         for config in PROTOCOLS.values():
             self.assertTrue(config.facts_path.is_file(), config.facts_path)
             self.assertTrue(config.target_profile_path.is_file(), config.target_profile_path)
-            profile, diagnostics = load_target_profile(config.target_profile_path)
-            self.assertIsNotNone(profile)
-            self.assertFalse([diag for diag in diagnostics if diag.level == "error"])
+            profile = load_target_profile(config.target_profile_path)
+            self.assertEqual(profile["target_role"], "broker")
+            self.assertEqual(profile["scope"], "minimum_v1")
+
+    def test_target_profile_failures_are_explicit(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            root = Path(raw_tmp)
+            with self.assertRaisesRegex(ValueError, "target_profile_missing"):
+                load_target_profile(root / "missing.json")
+            malformed = root / "malformed.json"
+            malformed.write_text("{not-json", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "target_profile_invalid_json"):
+                load_target_profile(malformed)
+            incomplete = root / "incomplete.json"
+            write_json(incomplete, {"target_role": "broker"})
+            with self.assertRaisesRegex(ValueError, "target_profile_missing_fields"):
+                load_target_profile(incomplete)
+
+    def test_full_specforge_candidate_is_preserved_but_formally_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            root = Path(raw_tmp)
+            config = _toy_config(root / "inputs")
+            source = _planning_fixture(root / "source", qualified=False)
+            original_manifest = (source / "_planning" / "run_manifest.json").read_bytes()
+            commands: list[list[str]] = []
+
+            def fake_run(cmd, *, log_dir, name):
+                del log_dir
+                commands.append(cmd)
+                return {
+                    "name": name,
+                    "command": cmd,
+                    "returncode": 0,
+                    "started_at": "start",
+                    "ended_at": "end",
+                    "stdout_path": "stdout",
+                    "stderr_path": "stderr",
+                    "stdout": "",
+                    "stderr": "",
+                }
+
+            with patch("evaluation.planning_utility.full_specforge_adapter._run_command", side_effect=fake_run):
+                summary = full_specforge_adapter.run_full_specforge(
+                    config,
+                    root / "out",
+                    api_key_env="UNUSED",
+                    max_repair_rounds=0,
+                    existing_planning_dir=source,
+                )
+
+            self.assertEqual(summary["failure_stage"], "planning_qualification")
+            self.assertEqual(summary["planning_status"], "candidate_only")
+            self.assertFalse(summary["qualification_passed"])
+            self.assertTrue(summary["specs_generated"])
+            self.assertEqual(summary["nonfatal_no_specs_count"], 0)
+            self.assertFalse(summary["fatal"])
+            self.assertFalse(summary["target_profile_visible_to_planner"])
+            self.assertEqual(len(commands), 1)
+            self.assertIn("--run-dir", commands[0])
+            self.assertNotIn("--target-profile", commands[0])
+            self.assertNotIn("verify", commands[0])
+            self.assertFalse(any("agent.coder" in command for command in commands))
+            self.assertEqual((source / "_planning" / "run_manifest.json").read_bytes(), original_manifest)
+
+    def test_full_specforge_uses_manifest_specs_root_and_current_cli(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            root = Path(raw_tmp)
+            config = _toy_config(root / "inputs")
+            source = _planning_fixture(root / "source", qualified=True)
+            commands: list[list[str]] = []
+
+            def fake_run(cmd, *, log_dir, name):
+                del log_dir
+                commands.append(cmd)
+                return {
+                    "name": name,
+                    "command": cmd,
+                    "returncode": int("agent.coder" in cmd),
+                    "started_at": "start",
+                    "ended_at": "end",
+                    "stdout_path": "stdout",
+                    "stderr_path": "stderr",
+                    "stdout": "",
+                    "stderr": "fixture coder stop",
+                }
+
+            with patch("evaluation.planning_utility.full_specforge_adapter._run_command", side_effect=fake_run):
+                summary = full_specforge_adapter.run_full_specforge(
+                    config,
+                    root / "out",
+                    api_key_env="UNUSED",
+                    max_repair_rounds=0,
+                    existing_planning_dir=source,
+                )
+
+            self.assertEqual(summary["failure_stage"], "coder_validate")
+            self.assertTrue(summary["qualification_passed"])
+            self.assertEqual(len(commands), 2)
+            coder_command = commands[1]
+            self.assertIn("agent.coder", coder_command)
+            self.assertIn(str(root / "out" / "planning_run" / "_planning" / "candidate_planning_package" / "specs"), coder_command)
+            serialized = json.dumps(commands)
+            for stale in ("--target-profile", "--output-dir\", \"planning_run", "verify", "spec_bundle"):
+                self.assertNotIn(stale, serialized)
+
+    def test_full_specforge_distinguishes_fatal_and_nonfatal_no_specs(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            root = Path(raw_tmp)
+            config = _toy_config(root / "inputs")
+
+            def fake_run(cmd, *, log_dir, name):
+                del log_dir
+                return {
+                    "name": name,
+                    "command": cmd,
+                    "returncode": 1,
+                    "started_at": "start",
+                    "ended_at": "end",
+                    "stdout_path": "stdout",
+                    "stderr_path": "stderr",
+                    "stdout": "",
+                    "stderr": "fixture failure",
+                }
+
+            for name, fatal_reason, expected_stage, expected_count in (
+                ("nonfatal", None, "planning_stability", 1),
+                ("fatal", "candidate_serialization_impossible", "planning_fatal", 0),
+            ):
+                source = _planning_fixture(
+                    root / name,
+                    qualified=False,
+                    specs_generated=False,
+                    fatal_reason_code=fatal_reason,
+                )
+                with patch("evaluation.planning_utility.full_specforge_adapter._run_command", side_effect=fake_run):
+                    summary = full_specforge_adapter.run_full_specforge(
+                        config,
+                        root / f"out_{name}",
+                        api_key_env="UNUSED",
+                        max_repair_rounds=0,
+                        existing_planning_dir=source,
+                    )
+                self.assertEqual(summary["failure_stage"], expected_stage)
+                self.assertEqual(summary["nonfatal_no_specs_count"], expected_count)
+                self.assertEqual(summary["fatal"], fatal_reason is not None)
+
+    def test_full_specforge_source_uses_only_current_planning_contract(self) -> None:
+        source = inspect.getsource(full_specforge_adapter)
+        for stale in ("--target-profile", '"verify"', "spec_bundle"):
+            self.assertNotIn(stale, source)
+        for current in ('"--out"', '"--run-dir"', 'manifest.get("specs_root")', '"qualification_passed"'):
+            self.assertIn(current, source)
 
     def test_minimum_requirements_are_extracted_and_sanitized(self) -> None:
         for config in PROTOCOLS.values():

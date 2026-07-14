@@ -88,7 +88,16 @@ def _closed_plan() -> dict:
     )
     main["call_contracts"] = [
         {"NAME": "fixture_handle_create", "SIGNATURE": create["signature"]["RAW"]},
-        {"NAME": "fixture_handle_destroy", "SIGNATURE": destroy["signature"]["RAW"]},
+        {
+            "NAME": "fixture_handle_destroy",
+            "SIGNATURE": destroy["signature"]["RAW"],
+            "argument_semantics": [
+                {
+                    "parameter": "handle", "source_kind": "prior_result",
+                    "source_ref": create["id"], "source_type": "fixture_handle_t*",
+                }
+            ],
+        },
     ]
     return {
         "protocol": {"name": "Fixture", "slug": "fixture", "spec_version": "1", "roles": ["SERVER"]},
@@ -137,6 +146,7 @@ def _closed_plan() -> dict:
         "open_assumptions": [],
         "architecture": {},
         "structured_planning_stages": [],
+        "test_vectors": [{"NAME": "runtime_fixture", "INPUT": {}, "EXPECT": {"exit": 0}, "LEVEL": "RUNTIME"}],
     }
 
 
@@ -203,6 +213,9 @@ class ImplementabilityTests(unittest.TestCase):
             [],
             calls=["fixture_handle_use"],
         )
+        route["call_contracts"] = [
+            {"NAME": "fixture_handle_use", "SIGNATURE": use["signature"]["RAW"], "argument_semantics": []}
+        ]
         plan["functions"].extend([use, route])
         plan["files"][0]["functions"].append(use["id"])
         plan["files"][1]["functions"].append(route["id"])
@@ -249,8 +262,18 @@ class ImplementabilityTests(unittest.TestCase):
         )
         plan["functions"].append(bad)
         plan["files"][1]["functions"].append(bad["id"])
-        plan["functions"][2]["rely"]["FUNC"].append({"NAME": "bad_callback", "KIND": "CALL", "ROLE": "Callback candidate."})
-        plan["functions"][2]["logic"]["ACTION"] = "Register bad_callback."
+        plan["callback_bindings"] = [
+            {
+                "binding_id": "binding:bad",
+                "owner_function_id": plan["functions"][2]["id"],
+                "consumer_function_id": register["id"],
+                "consumer_parameter": "on_event",
+                "callback_type_id": "type:inline_callback",
+                "provider_function_id": bad["id"],
+                "user_data_source": "none",
+                "trace_refs": ["fact:fixture"],
+            }
+        ]
         self.assertIn("callback_signature_mismatch", _codes(plan))
 
     def test_executable_requires_exactly_one_main(self) -> None:
@@ -258,6 +281,116 @@ class ImplementabilityTests(unittest.TestCase):
         plan["functions"] = plan["functions"][:2]
         plan["files"][1]["functions"] = []
         self.assertIn("runtime_entrypoint_missing", _codes(plan))
+
+        plan = _closed_plan()
+        duplicate = dict(plan["functions"][-1])
+        duplicate["id"] = "function:fixture/app/duplicate_main"
+        plan["functions"].append(duplicate)
+        plan["files"][1]["functions"].append(duplicate["id"])
+        self.assertIn("runtime_entrypoint_ambiguous", _codes(plan))
+
+    def test_enum_values_must_be_nonempty_and_grounded(self) -> None:
+        plan = _closed_plan()
+        enum_type = {
+            "id": "type:fixture_kind_t",
+            "file": "file:fixture/provider",
+            "name": "fixture_kind_t",
+            "visibility": "PUBLIC",
+            "role": "Fixture discriminant.",
+            "type_spec": {"TYPE_KIND": "ENUM", "ENUM_VALUES": []},
+        }
+        plan["types"].append(enum_type)
+        plan["files"][0]["types"].append(enum_type["id"])
+        self.assertIn("empty_enum_values", _codes(plan))
+
+        enum_type["type_spec"]["ENUM_VALUES"] = [{"NAME": "FIXTURE_ONE", "VALUE": 1, "ROLE": "one"}]
+        self.assertIn("enum_value_grounding_missing", _codes(plan))
+        enum_type["trace_refs"] = ["fact:fixture_kind"]
+        self.assertNotIn("enum_value_grounding_missing", _codes(plan))
+
+    def test_opaque_type_cannot_cross_function_or_callback_abi_by_value(self) -> None:
+        plan = _closed_plan()
+        destroy = plan["functions"][1]
+        destroy["signature"]["RAW"] = "void fixture_handle_destroy(fixture_handle_t handle)"
+        destroy["signature"]["PARAMS"][0]["TYPE"] = "fixture_handle_t"
+        self.assertIn("opaque_type_by_value", _codes(plan))
+        destroy["signature"]["RAW"] = "void fixture_handle_destroy(fixture_handle_t* handle)"
+        destroy["signature"]["PARAMS"][0]["TYPE"] = "fixture_handle_t*"
+
+        callback = {
+            "id": "type:fixture_callback_t",
+            "file": "file:fixture/provider",
+            "name": "fixture_callback_t",
+            "visibility": "PUBLIC",
+            "role": "Fixture callback.",
+            "type_spec": {
+                "TYPE_KIND": "CALLBACK",
+                "CALLBACK_SIGNATURE": "void (*fixture_callback_t)(fixture_handle_t handle)",
+            },
+        }
+        plan["types"].append(callback)
+        plan["files"][0]["types"].append(callback["id"])
+        self.assertIn("opaque_type_by_value", _codes(plan))
+
+    def test_wire_functions_and_call_edges_reject_semantic_placeholders(self) -> None:
+        plan = _closed_plan()
+        decoder = _function(
+            "function:fixture/provider/decode_frame",
+            "file:fixture/provider",
+            "decode_frame",
+            "bool decode_frame(const uint8_t* bytes, size_t len)",
+            "bool",
+            [
+                {"TYPE": "const uint8_t*", "NAME": "bytes", "NULLABLE": False, "OWNERSHIP": "BORROWED"},
+                {"TYPE": "size_t", "NAME": "len", "NULLABLE": False, "OWNERSHIP": "BORROWED"},
+            ],
+        )
+        decoder["role"] = "Decode one wire frame."
+        decoder["wire_obligation"] = {"required": True, "trace_refs": ["fact:minimum_v1"]}
+        plan["functions"].append(decoder)
+        plan["files"][0]["functions"].append(decoder["id"])
+        self.assertIn("required_wire_mapping_missing", _codes(plan))
+        decoder["wire_mapping"] = [
+            {"PACKET": "fixture", "WIRE_FIELD": "frame", "STRATEGY": "parse_and_skip"}
+        ]
+        self.assertNotIn("required_wire_mapping_missing", _codes(plan))
+
+        decoder.pop("wire_mapping")
+        decoder.pop("wire_obligation")
+        self.assertNotIn("required_wire_mapping_missing", _codes(plan))
+
+        contract = plan["functions"][-2]["call_contracts"][0]
+        contract.update({"condition": "never", "call_purpose": "register callback", "relation_kind": "CALL"})
+        codes = _codes(plan)
+        self.assertIn("placeholder_call_edge", codes)
+
+    def test_empty_inventory_has_explicit_task_evaporation_codes(self) -> None:
+        plan = _closed_plan()
+        plan["functions"] = []
+        plan["types"] = []
+        plan["test_vectors"] = []
+        for file_item in plan["files"]:
+            file_item["functions"] = []
+            file_item["types"] = []
+            file_item["test_vectors"] = []
+        diagnostics = analyze_implementability(plan)
+        codes = {item["code"] for item in diagnostics}
+        self.assertIn("task_evaporation_function_inventory_empty", codes)
+        self.assertIn("task_evaporation_type_inventory_empty", codes)
+        self.assertIn("task_evaporation_test_inventory_empty", codes)
+        stages = {item["code"]: item["authoritative_stage"] for item in diagnostics}
+        self.assertEqual(stages["task_evaporation_function_inventory_empty"], "public_artifact_inventory")
+        self.assertEqual(stages["task_evaporation_type_inventory_empty"], "public_artifact_inventory")
+        self.assertEqual(stages["task_evaporation_test_inventory_empty"], "function_test_vector_design")
+
+    def test_rely_contract_drift_is_a_nonfatal_semantic_diagnostic(self) -> None:
+        plan = _closed_plan()
+        plan["functions"][-1]["call_contracts"] = []
+        diagnostic = next(
+            item for item in analyze_implementability(plan) if item["code"] == "call_contract_rely_drift"
+        )
+        self.assertEqual(diagnostic["owner_layer"], "semantic_closure")
+        self.assertEqual(diagnostic["authoritative_stage"], "function_call_contract_closure")
 
     def test_deterministic_completion_derives_file_and_module_dependencies(self) -> None:
         plan = _closed_plan()
@@ -268,6 +401,44 @@ class ImplementabilityTests(unittest.TestCase):
         self.assertIn("provider.h", plan["files"][1]["source_dependencies"])
         self.assertIn("provider", plan["modules"][1]["dependencies"])
         self.assertEqual(analyze_implementability(plan), [])
+
+    def test_typed_callback_binding_derives_provider_dependencies(self) -> None:
+        plan = _closed_plan()
+        provider = _function(
+            "function:fixture/callbacks/on_event",
+            "file:fixture/callbacks",
+            "on_event",
+            "void on_event(int value)",
+            "void",
+            [{"TYPE": "int", "NAME": "value", "NULLABLE": False, "OWNERSHIP": "BORROWED"}],
+        )
+        plan["modules"].insert(1, {"id": "module:callbacks", "name": "callbacks", "role": "Callbacks.", "dependencies": []})
+        plan["files"].append(
+            {
+                "id": "file:fixture/callbacks", "module": "callbacks", "trace_id": "fixture/callbacks",
+                "role": "Callback providers.", "header_path": "callbacks.h", "source_path": "callbacks.c",
+                "header_dependencies": [], "source_dependencies": ["callbacks.h"], "types": [],
+                "functions": [provider["id"]],
+            }
+        )
+        plan["functions"].append(provider)
+        plan["callback_bindings"] = [
+            {
+                "binding_id": "binding:event",
+                "owner_function_id": "function:fixture/app/main",
+                "consumer_function_id": "function:fixture/provider/fixture_handle_create",
+                "consumer_parameter": "callback",
+                "callback_type_id": "type:event_callback_t",
+                "provider_function_id": provider["id"],
+                "user_data_source": "none",
+                "trace_refs": ["fact:fixture"],
+            }
+        ]
+        complete_deterministic_dependencies(plan)
+        app_file = next(item for item in plan["files"] if item["id"] == "file:fixture/app")
+        app_module = next(item for item in plan["modules"] if item["name"] == "app")
+        self.assertIn("callbacks.h", app_file["source_dependencies"])
+        self.assertIn("callbacks", app_module["dependencies"])
 
     def test_call_contract_signature_is_recovered_only_from_canonical_callee(self) -> None:
         plan = _closed_plan()
@@ -397,6 +568,24 @@ class ImplementabilityTests(unittest.TestCase):
         errors = validate_semantic_patch(plan, patch)
         self.assertTrue(any("unknown stable ID" in item for item in errors))
         self.assertTrue(any("forbidden fields" in item for item in errors))
+
+        dependency_patch = {
+            "patch_id": "patch:derived-dependency",
+            "operations": [
+                {
+                    "op": "update",
+                    "artifact_kind": "file",
+                    "artifact_id": "file:fixture/app",
+                    "changes": {"source_dependencies": []},
+                    "reason": "Invalidly delete a derived edge.",
+                    "provenance": {"kind": "engineering_decision", "refs": ["RULE_FIXTURE"]},
+                    "affected_artifact_ids": ["file:fixture/app"],
+                }
+            ],
+        }
+        self.assertTrue(
+            any("forbidden fields" in item for item in validate_semantic_patch(plan, dependency_patch))
+        )
 
     def test_bounded_patch_correction_can_restore_closure(self) -> None:
         plan = _closed_plan()

@@ -73,6 +73,7 @@ class ValidationLayerTests(unittest.TestCase):
                 "canonical_artifact_mutation",
                 "pipeline_state_corruption",
                 "deterministic_internal_invariant",
+                "candidate_serialization_impossible",
             },
         )
         self.assertEqual(classify_hard_failure(ValueError("bad facts"), facts_read=True), "facts_read_failure")

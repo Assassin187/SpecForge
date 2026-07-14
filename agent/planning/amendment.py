@@ -21,10 +21,8 @@ REQUIRED_REQUEST_FIELDS = {
     "reason",
     "provenance",
     "preferred_visibility",
+    "proposed_name",
 }
-ALLOWED_REQUEST_FIELDS = REQUIRED_REQUEST_FIELDS | {"proposed_name"}
-
-
 class InventoryAmendmentProcessor:
     def __init__(self, registry: CanonicalPlanningRegistry | None = None, *, log_path: Path | None = None) -> None:
         self.registry = registry
@@ -175,12 +173,14 @@ def validate_artifact_request(
 ) -> str | None:
     if not isinstance(request, dict):
         return "artifact_request_invalid_shape"
-    if not REQUIRED_REQUEST_FIELDS <= set(request) or set(request) - ALLOWED_REQUEST_FIELDS:
+    if set(request) != REQUIRED_REQUEST_FIELDS:
         return "artifact_request_invalid_fields"
     if registry is None:
         return "artifact_request_registry_unavailable"
     if str(request.get("requested_kind")) not in {"type", "callback", "function", "constant"}:
         return "artifact_request_kind_unsupported"
+    if str(request.get("requested_kind")) == "constant":
+        return "artifact_request_constant_requires_stage4_regeneration"
     name = str(request.get("proposed_name", ""))
     if not name or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
         return "artifact_request_proposed_name_invalid"

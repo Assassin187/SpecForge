@@ -28,11 +28,27 @@ def _iter_spec_json(specs_root: Path) -> list[tuple[Path, dict[str, Any]]]:
 
 
 def _error(code: str, message: str, path: str | Path | None = None) -> Diagnostic:
-    return Diagnostic("error", code, message, str(path) if path is not None else None)
+    return Diagnostic(
+        "error",
+        code,
+        message,
+        str(path) if path is not None else None,
+        "post_planning_validation",
+        "compile_specs",
+        "regenerate_authoritative_partition",
+    )
 
 
 def _warning(code: str, message: str, path: str | Path | None = None) -> Diagnostic:
-    return Diagnostic("warning", code, message, str(path) if path is not None else None)
+    return Diagnostic(
+        "warning",
+        code,
+        message,
+        str(path) if path is not None else None,
+        "post_planning_validation",
+        "compile_specs",
+        "inspect_and_regenerate_authoritative_partition",
+    )
 
 
 def schema_shape_check(specs_root: str | Path) -> list[Diagnostic]:
@@ -169,6 +185,23 @@ def plan_to_spec_preservation_check(plan: dict[str, Any], specs_root: str | Path
     spec_modules = {module.get("NAME") for module in module_raw.get("MODULES", []) if isinstance(module, dict)}
     if plan_modules != spec_modules:
         diagnostics.append(_error("plan_to_spec_module_drift", f"Plan modules {sorted(plan_modules)} differ from specs {sorted(spec_modules)}", root))
+    spec_module_items = {
+        str(item.get("NAME")): item
+        for item in module_raw.get("MODULES", [])
+        if isinstance(item, dict)
+    }
+    for module in plan.get("modules", []):
+        if not isinstance(module, dict):
+            continue
+        emitted = spec_module_items.get(str(module.get("name")), {})
+        if emitted.get("DEPENDENCIES", []) != module.get("dependencies", []):
+            diagnostics.append(
+                _error(
+                    "plan_to_spec_module_dependency_drift",
+                    f"Module {module.get('id')} dependencies differ after lowering",
+                    root,
+                )
+            )
     plan_files = {file_item["trace_id"] for file_item in plan.get("files", [])}
     spec_files = {raw.get("FILE", {}).get("TRACE_ID") for _, raw in specs if raw.get("KIND") == "FILE_SPEC" and isinstance(raw.get("FILE"), dict)}
     if plan_files != spec_files:
@@ -177,6 +210,152 @@ def plan_to_spec_preservation_check(plan: dict[str, Any], specs_root: str | Path
     spec_functions = {raw.get("TRACE_ID") for _, raw in specs if raw.get("KIND") == "FUNCTION_SPEC"}
     if plan_functions != spec_functions:
         diagnostics.append(_error("plan_to_spec_function_drift", f"Plan functions {sorted(plan_functions)} differ from specs {sorted(spec_functions)}", root))
+        for trace_id in sorted(plan_functions - spec_functions):
+            diagnostics.append(
+                _error(
+                    "required_function_spec_not_materialized",
+                    f"Required FUNCTION_SPEC {trace_id} was not materialized",
+                    root,
+                )
+            )
+
+    file_specs = {
+        str(raw.get("FILE", {}).get("TRACE_ID")): raw
+        for _, raw in specs
+        if raw.get("KIND") == "FILE_SPEC" and isinstance(raw.get("FILE"), dict)
+    }
+    function_specs = {
+        str(raw.get("TRACE_ID")): raw for _, raw in specs if raw.get("KIND") == "FUNCTION_SPEC"
+    }
+    data_by_name = {
+        str(item.get("NAME")): item
+        for raw in file_specs.values()
+        for block in (raw.get("HEADER"), raw.get("SOURCE"))
+        if isinstance(block, dict)
+        for item in block.get("DATA", [])
+        if isinstance(item, dict)
+    }
+    for type_item in plan.get("types", []):
+        if not isinstance(type_item, dict):
+            continue
+        emitted = data_by_name.get(str(type_item.get("name")), {})
+        planned_type_spec = deepcopy(type_item.get("type_spec"))
+        if isinstance(planned_type_spec, dict) and planned_type_spec.get("TYPE_KIND") == "ENUM":
+            planned_type_spec["ENUM_VALUES"] = [
+                {key: value[key] for key in ("NAME", "VALUE", "ROLE") if key in value}
+                for value in planned_type_spec.get("ENUM_VALUES", [])
+                if isinstance(value, dict)
+            ]
+        if emitted.get("TYPE_SPEC") != planned_type_spec:
+            diagnostics.append(
+                _error(
+                    "plan_to_spec_type_semantic_drift",
+                    f"Type {type_item.get('id')} TYPE_SPEC differs after lowering",
+                    root,
+                )
+            )
+    for item in plan.get("constants_or_macros", []):
+        if not isinstance(item, dict):
+            continue
+        emitted = data_by_name.get(str(item.get("name")))
+        if emitted is None or ("value" in item and emitted.get("VALUE") != item.get("value")):
+            diagnostics.append(
+                _error("plan_to_spec_constant_drift", f"Constant {item.get('id')} was not preserved", root)
+            )
+    for function in plan.get("functions", []):
+        if not isinstance(function, dict):
+            continue
+        emitted = function_specs.get(str(function.get("trace_id")))
+        if emitted is None:
+            continue
+        expected = {
+            "SIGNATURE": function.get("signature", {}),
+            "RELY": function.get("rely", {}),
+            "CALL_CONTRACTS": function.get("call_contracts", []),
+            "ACCESS_PATHS": function.get("access_paths", []),
+            "FORBIDDEN_SYMBOLS": function.get("forbidden_symbols", []),
+            "TEST_VECTORS": function.get("test_vectors", []),
+        }
+        if function.get("wire_mapping"):
+            expected["WIRE_MAPPING"] = function["wire_mapping"]
+        if function.get("function_type") == "EVENT":
+            expected["EVENT"] = function.get("event")
+        else:
+            expected["LOGIC"] = function.get("logic")
+        drifted = [key for key, value in expected.items() if emitted.get(key, []) != value]
+        if drifted:
+            diagnostics.append(
+                _error(
+                    "plan_to_spec_function_semantic_drift",
+                    f"Function {function.get('id')} differs in {sorted(drifted)}",
+                    root,
+                )
+            )
+        expected_public = str(function.get("visibility", "")).lower() == "public"
+        emitted_public = any(
+            isinstance(item, dict) and item.get("NAME") == function.get("name")
+            for item in emitted.get("PUBLIC_SYMBOLS", [])
+        )
+        if emitted_public != expected_public:
+            diagnostics.append(
+                _error(
+                    "plan_to_spec_function_visibility_drift",
+                    f"Function {function.get('id')} visibility differs after lowering",
+                    root,
+                )
+            )
+    for file_item in plan.get("files", []):
+        if not isinstance(file_item, dict):
+            continue
+        emitted = file_specs.get(str(file_item.get("trace_id")))
+        if emitted is None:
+            continue
+        dependency_drift = (
+            emitted.get("SOURCE", {}).get("DEPENDENCY", []) != file_item.get("source_dependencies", [])
+            or (
+                bool(file_item.get("header_path"))
+                and emitted.get("HEADER", {}).get("DEPENDENCY", []) != file_item.get("header_dependencies", [])
+            )
+        )
+        if dependency_drift:
+            diagnostics.append(
+                _error("plan_to_spec_file_dependency_drift", f"File {file_item.get('id')} dependencies differ", root)
+            )
+        if emitted.get("FORBIDDEN_SYMBOLS", []) != file_item.get("forbidden_symbols", []):
+            diagnostics.append(
+                _error("plan_to_spec_file_forbidden_symbol_drift", f"File {file_item.get('id')} forbidden symbols differ", root)
+            )
+        if emitted.get("TEST_VECTORS", []) != file_item.get("test_vectors", []):
+            diagnostics.append(
+                _error("plan_to_spec_file_test_vector_drift", f"File {file_item.get('id')} test vectors differ", root)
+            )
+    if module_raw.get("CONSISTENCY_RULES", []) != plan.get("consistency_rules", []):
+        diagnostics.append(_error("plan_to_spec_consistency_rule_drift", "Consistency rules differ", root))
+    if module_raw.get("FORBIDDEN_SYMBOLS", []) != plan.get("forbidden_symbols", []):
+        diagnostics.append(_error("plan_to_spec_protocol_forbidden_symbol_drift", "Protocol forbidden symbols differ", root))
+    if module_raw.get("TEST_VECTORS", []) != plan.get("test_vectors", []):
+        diagnostics.append(_error("plan_to_spec_runtime_test_vector_drift", "Runtime test vectors differ", root))
+
+    sidecar_path = root / "planning_semantic_mapping.json"
+    if sidecar_path.is_file():
+        sidecar = _load_json(sidecar_path)
+        mappings = {str(item.get("plan_id")): item for item in sidecar.get("artifacts", []) if isinstance(item, dict)}
+        for collection in ("modules", "files", "types", "constants_or_macros", "functions"):
+            for item in plan.get(collection, []):
+                if not isinstance(item, dict) or not item.get("id"):
+                    continue
+                mapping = mappings.get(str(item["id"]))
+                expected_refs = {
+                    "trace_refs": [str(ref) for ref in item.get("trace_refs", [])],
+                    "decision_refs": [str(ref) for ref in item.get("decision_refs", [])],
+                    "rule_refs": [str(ref) for ref in item.get("rule_refs", [])],
+                }
+                if mapping is None or any(mapping.get(key, []) != value for key, value in expected_refs.items()):
+                    diagnostics.append(
+                        _error("plan_to_spec_traceability_drift", f"Artifact {item['id']} traceability differs", sidecar_path)
+                    )
+    else:
+        diagnostics.append(_error("plan_to_spec_traceability_sidecar_missing", "Planning traceability sidecar is missing", root))
     return diagnostics
 
 
@@ -265,7 +444,19 @@ def validate_planning_run(
     plan: dict[str, Any],
     specs_root: str | Path,
 ) -> list[Diagnostic]:
-    diagnostics: list[Diagnostic] = []
+    diagnostics = [
+        Diagnostic(
+            str(item.get("level", "error")),
+            str(item.get("code", "semantic_lowering_error")),
+            str(item.get("message", "Compiler could not losslessly lower planning semantics")),
+            str(item.get("path")) if item.get("path") else None,
+            str(item.get("owner_layer", "compiler")),
+            str(item.get("authoritative_stage", "final_plan_assembly")),
+            str(item.get("recovery_action", "regenerate_authoritative_partition")),
+        )
+        for item in plan.get("lowering_diagnostics", [])
+        if isinstance(item, dict)
+    ]
     diagnostics.extend(closure_diagnostics_as_models(analyze_implementability(plan)))
     diagnostics.extend(schema_shape_check(specs_root))
     diagnostics.extend(structural_consistency_check(plan, specs_root))

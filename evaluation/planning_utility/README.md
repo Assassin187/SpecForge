@@ -1,11 +1,11 @@
-# RQ3: MQTT Planning Utility Evaluation
+# RQ1: MQTT Planning Utility Evaluation
 
 ## 1. 实验目标
 
-本实验用于回答 SpecForge 的 RQ3：
+本实验用于回答 SpecForge 的 RQ1：
 
 ```text
-RQ3: For the MQTT minimum broker profile, do implementation-oriented protocol specs
+RQ1: For the MQTT minimum broker profile, do implementation-oriented protocol specs
 produced by the planning agent improve the downstream utility of generated implementations?
 ```
 
@@ -114,7 +114,7 @@ protocol facts
 
 | protocol | 被测角色 | transport | facts | target profile | binary / argv contract |
 | --- | --- | --- | --- | --- | --- |
-| MQTT | broker | TCP | `agent/facts/gold_facts/mqtt_min/protocol_facts.json` | `agent/planning/planning_target_profile_mqtt.json` | `./mqtt_broker <port>` |
+| MQTT | broker | TCP | `agent/facts/gold_facts/mqtt_min/protocol_facts.json` | `evaluation/planning_utility/target_profiles/planning_target_profile_mqtt.json` | `./mqtt_broker <port>` |
 
 MQTT 用于检验以下 implementation challenges：
 
@@ -123,7 +123,7 @@ MQTT:
   binary framing, variable-length fields, broker session state, pub/sub routing
 ```
 
-`configs.py` 和 runner 当前仍保留 HTTP、CoAP、SMTP 配置，便于后续扩展或工程回归测试，但这些协议不进入本实验的样本、统计分析或论文结论。
+`configs.py` 和 runner 当前只注册 MQTT，避免其他协议被误纳入本实验的样本、统计分析或论文结论。
 
 ## 5. 实验变量
 
@@ -152,6 +152,8 @@ behavior verifier
 ```
 
 `input_hashes.json` 记录 protocol facts 和 target profile 的 SHA-256。只有 input hashes 一致的 runs 才能进入同一比较组。
+
+target profile 是 evaluation-owned controlled input。M0/M1 的 generation prompt 可以看到它；M2 planning agent 只接收 `protocol_facts.json`，其 manifest 必须记录 `target_profile_visible_to_planner=false`。因此该 profile 用于固定实验角色和运行约束，而不是向 M2 planner 注入额外语义。
 
 ### 5.3 Experimental unit
 
@@ -339,14 +341,15 @@ planning agent 生成的 implementation-oriented、schema-constrained protocol s
 M2 的完整流程为：
 
 ```text
-planning validate
--> planning plan
--> planning verify
--> spec_bundle
+planning plan --facts ... --out ...
+-> planning validate --run-dir ...
+-> inspect run_manifest qualification/specs_root
 -> coder validate
 -> coder generate/compile/repair
 -> behavior verification
 ```
+
+`planning validate` 在临时副本上执行，避免覆盖 plan-time manifest 和 diagnostics。只有 `qualification_passed=true` 的 run 才进入正式 downstream comparison；candidate-only specs 必须保留用于诊断，但不得伪装为正式 M2 样本。任何非致命 planning 错误仍必须物化 schema-valid、coder-loadable protocol specs，`nonfatal_no_specs_count` 必须保持为 0。
 
 planning agent 的预期产物包括：
 
@@ -371,7 +374,7 @@ TRACE_ID / DOC_REF / TRACE_REFS where supported
 Full SpecForge 使用现有 coder pipeline：
 
 ```text
-load and validate spec_bundle
+load and validate manifest.specs_root
 -> deterministic header rendering
 -> LLM source generation, including main.c
 -> deterministic Makefile
@@ -399,7 +402,7 @@ planning artifact debugging
 | stage | M0 FS-Direct-Coder | M1 NL-Plan-Code | M2 Full-SpecForge |
 | --- | --- | --- | --- |
 | facts source | gold protocol facts | same | same |
-| explicit planning artifact | none | `nl_plan.md` | structured `spec_bundle` |
+| explicit planning artifact | none | `nl_plan.md` | structured protocol specs |
 | planning representation | none | prose + brief | schema-constrained JSON specs |
 | source layout | LLM skeleton | LLM skeleton guided by brief | module spec generation order |
 | headers | LLM-generated pair headers | same | deterministic from specs |
@@ -435,7 +438,7 @@ M0/M1 禁止读取或调用：
 
 ```text
 planning agent
-spec_bundle
+structured protocol specs
 specs-example
 gold_specs
 PROTOCOL_MODULE_SPEC
@@ -666,7 +669,7 @@ initial compile success
 runtime_start_status
 optional interop pass/fail/skip
 generation completion rate
-planning/readiness/spec-bundle validation success, for M2
+planning/readiness/protocol-specs validation success, for M2
 JSON retry rate
 failed generation unit
 repaired file count
@@ -696,7 +699,14 @@ portability repairs
 final root causes
 ```
 
-这些 C1-C5 counts 当前不是 M2 adapter 的统一输出。若用于三方法横向比较，必须在保存的 pre-repair projects 上运行同一版本的 read-only diagnostic snapshot，并冻结 classifier revision。否则 C1-C5 只能用于 M0/M1 内部失败分析。
+这些 C1-C5 counts 当前不是 M2 adapter 的统一输出。若用于三方法横向比较，必须在保存的 pre-repair projects 上运行同一版本的 read-only diagnostic snapshot，并冻结 classifier revision。否则 C1-C5 只能用于 M0/M1 内部失败分析。M2 的 generate-only 产物可用以下只读命令生成统一 snapshot、specified-function definition coverage、placeholder 和 near-empty source 报告；命令在临时副本中编译并校验原始源码 hash 不变：
+
+```bash
+python3 -m evaluation.planning_utility.no_repair_analysis \
+  --project-dir <coder-project-dir> \
+  --specs-root <planning-manifest-specs-root> \
+  --binary-name mqtt_broker
+```
 
 ### 15.4 Cost metrics
 
@@ -1001,7 +1011,10 @@ evaluation/planning_utility/out/<timestamp>/
     └── full-specforge/
         ├── allowed_inputs/
         ├── planning_run/
-        │   └── spec_bundle/
+        │   ├── mqtt_specs/                 # qualified run
+        │   └── _planning/
+        │       ├── run_manifest.json
+        │       └── candidate_planning_package/specs/
         ├── coder_out/
         ├── logs/
         └── summary.json
@@ -1045,7 +1058,7 @@ planning_dependent_remaining_count
 C1-C5 repair metrics
 ```
 
-M1 额外记录 `nl_plan_status`、`nl_plan_guard_status` 和 `nl_plan_guard`。M2 额外记录 planning/readiness、spec bundle、coder validation 和 command logs。
+M1 额外记录 `nl_plan_status`、`nl_plan_guard_status` 和 `nl_plan_guard`。M2 额外记录 `planning_run_status`、`qualification_passed`、`specs_generated`、`coder_loader_passed`、`fatal`、`fatal_reason_code`、`nonfatal_no_specs_count`、planning/readiness、coder validation 和 command logs。
 
 ## 25. Tests
 

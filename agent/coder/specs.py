@@ -509,6 +509,14 @@ def _validate_machine_constraints(bundle: SpecBundle) -> None:
 
     protocol_codec_with_vectors: set[str] = set()
     for function_spec in bundle.function_specs_by_trace.values():
+        typed_output_targets = {
+            str(param.get("NAME"))
+            for param in function_spec.signature.params
+            if isinstance(param, dict)
+            and "*" in str(param.get("TYPE", ""))
+            and str(param.get("ROLE", "")).lower().startswith("output")
+            and param.get("NAME")
+        }
         call_contract_names = {
             str(contract.get("NAME", "")).strip()
             for contract in function_spec.raw.get("CALL_CONTRACTS", [])
@@ -541,7 +549,7 @@ def _validate_machine_constraints(bundle: SpecBundle) -> None:
             target = str(mapping.get("TARGET", "")).strip()
             if strategy == "store_in_field" and target:
                 canonical = _canonical_access_path(target)
-                if canonical not in public_paths:
+                if canonical not in public_paths and target not in typed_output_targets:
                     bundle.diagnostics.append(Diagnostic("error", "unknown_wire_mapping_target", f"WIRE_MAPPING target '{target}' does not match a public access path", str(function_spec.source_path)))
         if function_spec.raw.get("WIRE_MAPPING") and not function_spec.raw.get("TEST_VECTORS"):
             bundle.diagnostics.append(Diagnostic("warning", "missing_wire_mapping_test_vectors", f"Function '{function_spec.trace_id}' has WIRE_MAPPING but no TEST_VECTORS anchor", str(function_spec.source_path)))
