@@ -14,6 +14,7 @@ from agent.coder import generation
 from agent.coder.cli import build_parser
 from agent.coder.generation import (
     ProjectGenerator,
+    _classify_repair_targets,
     _compact_compile_diagnostics,
     _validate_repair_candidate,
     render_header,
@@ -442,6 +443,81 @@ class CoderRepairTests(unittest.TestCase):
 
         self.assertLessEqual(len(compact.encode("utf-8")), 1024)
         self.assertIn("diagnostics truncated", compact)
+
+    def test_fresh02_linker_diagnostics_route_broker_source_with_full_context(self) -> None:
+        stderr = """/usr/bin/ld: /tmp/ccuDJMka.o: in function `mqtt_decoder_feed':
+mqtt_broker.c:(.text+0x20): multiple definition of `mqtt_decoder_feed'; /tmp/ccJ6pape.o:mqtt_decoder.c:(.text+0x0): first defined here
+/usr/bin/ld: /tmp/ccuDJMka.o: in function `mqtt_decoder_feed':
+mqtt_broker.c:(.text+0x32): undefined reference to `mqtt_decode_and_dispatch'
+collect2: error: ld returned 1 exit status
+"""
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            project_dir = Path(raw_tmp)
+            broker = _file_spec("mqtt_broker.c", "mqtt_broker.h")
+            decoder = _file_spec("mqtt_decoder.c", "mqtt_decoder.h")
+            bundle = _bundle(project_dir)
+            bundle.file_specs_by_source_path = {
+                "mqtt_broker.c": broker,
+                "mqtt_decoder.c": decoder,
+            }
+            repairable, blocking = _classify_repair_targets("", stderr, project_dir, bundle)
+            compact = _compact_compile_diagnostics(
+                "", stderr, "mqtt_broker.c", project_dir
+            )
+
+        self.assertEqual(repairable, ["mqtt_broker.c"])
+        self.assertEqual(blocking, [])
+        self.assertIn("multiple definition of `mqtt_decoder_feed'", compact)
+        self.assertIn("mqtt_decoder.c:(.text+0x0): first defined here", compact)
+        self.assertIn("undefined reference to `mqtt_decode_and_dispatch'", compact)
+
+    def test_unmapped_linker_diagnostic_has_explicit_stop_reason(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            tmp = Path(raw_tmp)
+            llm = FakeLLM("int changed;\n")
+            generator = self._generator(tmp, llm)
+            fail = _completed(
+                1,
+                stderr="/usr/bin/ld: Scrt1.o: undefined reference to `main'\n",
+            )
+
+            with patch("agent.coder.generation._compile_project", return_value=fail):
+                outcome = generator._repair_until_compiles([], "coap_server")
+
+        self.assertEqual(outcome.stop_reason, "unmapped_linker_diagnostics")
+        self.assertEqual(llm.requests, [])
+
+    def test_repair_candidate_adding_linker_root_is_rolled_back(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            tmp = Path(raw_tmp)
+            llm = FakeLLM("int fixed(void) { return missing_symbol(); }\n")
+            generator = self._generator(tmp, llm)
+            generator.max_repair_rounds = 1
+            source = generator.project_dir / "protocol/coap_message.c"
+            original = source.read_text(encoding="utf-8")
+            compile_error = _completed(
+                1, stderr="protocol/coap_message.c:1:1: error: bad source\n"
+            )
+            linker_error = _completed(
+                1,
+                stderr=(
+                    "/usr/bin/ld: /tmp/coap.o: in function `fixed':\n"
+                    "protocol/coap_message.c:(.text+0x1): undefined reference to `missing_symbol'\n"
+                ),
+            )
+
+            with patch(
+                "agent.coder.generation._compile_project",
+                side_effect=[compile_error, linker_error],
+            ):
+                repaired_files: list[str] = []
+                outcome = generator._repair_until_compiles(repaired_files, "coap_server")
+            restored = source.read_text(encoding="utf-8")
+
+        self.assertEqual(outcome.stop_reason, "max_rounds_exhausted")
+        self.assertEqual(restored, original)
+        self.assertEqual(repaired_files, [])
+        self.assertIn("new_linker_roots", outcome.rejected_candidates[0]["reason"])
 
     def test_repair_candidate_validation_rejects_header_like_and_self_include(self) -> None:
         self.assertEqual(_validate_repair_candidate("protocol/coap_message.c", "old", "#pragma once\n")[1], "header_like_response")

@@ -53,6 +53,19 @@ def build_run_metrics(
     prompt_characters = sum(int(record.get("prompt_characters", 0)) for record in records)
     semantic_requests = int((semantic_patch_usage or {}).get("request_count", 0))
     semantic_prompt_characters = int((semantic_patch_usage or {}).get("prompt_characters", 0))
+    token_accounting_complete = all(
+        (
+            int(record.get("request_count", 0)) == 0
+            or sum(int(record.get(field, {}).get("total_tokens", 0)) for field in USAGE_FIELDS) > 0
+        )
+        and int(record.get("local_corrections", 0))
+        <= int(record.get("semantic_correction_usage", {}).get("request_count", 0))
+        and (
+            not record.get("repaired_json")
+            or int(record.get("repair_usage", {}).get("request_count", 0)) > 0
+        )
+        for record in records
+    ) and (semantic_requests == 0 or int((semantic_patch_usage or {}).get("total_tokens", 0)) > 0)
 
     repair_attempts = sum(bool(record.get("repaired_json")) for record in records)
     truncation_failures = sum("truncat" in str(item).lower() for item in diagnostic_items)
@@ -93,7 +106,11 @@ def build_run_metrics(
             "total_requests": stage_requests + semantic_requests,
             "prompt_characters": prompt_characters + semantic_prompt_characters,
         },
-        "token_accounting": {**usage, "observable_lower_bound": usage["total_tokens"]},
+        "token_accounting": {
+            **usage,
+            "observable_lower_bound": usage["total_tokens"],
+            "complete": token_accounting_complete,
+        },
     }
 
 

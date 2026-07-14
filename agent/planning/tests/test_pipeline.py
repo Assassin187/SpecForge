@@ -7,7 +7,7 @@ from copy import deepcopy
 from pathlib import Path
 from unittest.mock import patch
 
-from agent.common.llm_client import LLMResponse, LLMUsage
+from agent.common.llm_client import LLMRequest, LLMResponse, LLMUsage
 from agent.coder.specs import load_spec_bundle_from_root
 from agent.planning.compiler import compile_specs, normalize_plan_for_compiler
 from agent.planning.facts import read_json, select_fact_slice, stable_json_hash, write_json
@@ -20,15 +20,18 @@ from agent.planning.planner import (
     LLMStructuredPlanner,
     PLANNING_STAGES,
     RecoverablePlanningError,
+    TokenBudgetExceeded,
     _attach_required_callback_bindings,
     _canonicalize_wire_target_copies,
     _assemble_final_plan_candidate,
     _dependency_stage_overlays,
+    _empty_recoverable_stage_artifact,
     _function_behavior_partitions,
     _function_call_partitions,
     _merge_function_artifacts,
     _materialize_typed_stage_artifacts,
     _normalize_stage6_callback_data_flow_interfaces,
+    _normalize_stage4_callback_roles,
     _normalize_public_inventory_dialects,
     _prune_invalid_stage4_lifecycle_relations,
     _preserved_nonfatal_stage_artifact,
@@ -364,6 +367,7 @@ class PlanningPipelineTests(unittest.TestCase):
         self.assertEqual(metrics["binding"], {"unknown_id_count": 1, "artifact_kind_mismatch_count": 1})
         self.assertEqual(metrics["recovery"]["local_correction_rate"], 1.0)
         self.assertEqual(metrics["token_accounting"]["observable_lower_bound"], 30)
+        self.assertFalse(metrics["token_accounting"]["complete"])
         self.assertEqual(metrics["request_accounting"], {
             "structured_requests": 3,
             "semantic_requests": 1,
@@ -376,6 +380,21 @@ class PlanningPipelineTests(unittest.TestCase):
             planner.stage_records = records
             planner._write_run_metrics("completed_with_candidate_only")
             self.assertEqual(read_json(Path(raw) / "run_metrics.json")["token_accounting"]["total_tokens"], 22)
+
+    def test_token_accounting_does_not_require_call_for_deterministic_amendment(self) -> None:
+        metrics = build_run_metrics(
+            [{
+                "status": "completed",
+                "usage": {"prompt_tokens": 2, "completion_tokens": 1, "total_tokens": 3},
+                "request_count": 1,
+                "inventory_amendments": 1,
+                "inventory_amendment_usage": {},
+            }],
+            expected_stages=1,
+            run_status="completed_with_candidate_only",
+        )
+
+        self.assertTrue(metrics["token_accounting"]["complete"])
 
     def test_fresh_failure_regression_stage5_unknown_type_identity(self) -> None:
         artifacts = [
@@ -442,7 +461,7 @@ class PlanningPipelineTests(unittest.TestCase):
         }
         self.assertEqual(
             obligations_by_id["foundation:session_access"]["required_kind_counts"],
-            {"type": 2, "function": 4},
+            {"type": 1, "function": 5},
         )
         self.assertEqual(
             obligations_by_id["foundation:routing"]["required_kind_counts"],
@@ -566,7 +585,9 @@ class PlanningPipelineTests(unittest.TestCase):
             "decode_unit", "encode_unit", "dispatch_unit", "transport_poll", "state_lookup",
             "state_update", "callback_provider", "callback_consumer",
             "transport_accept_callback_provider", "transport_accept_callback_consumer",
-            "transport_queue_output",
+            "transport_queue_output", "connection_buffer_access", "connection_consume_input",
+            "connection_get_fd", "state_is_connected", "routing_create", "routing_destroy",
+            "routing_match",
         ]
         inventory = {
             "types": [
@@ -594,6 +615,14 @@ class PlanningPipelineTests(unittest.TestCase):
                         if name == "transport_accept_callback_provider"
                         else "transport output"
                         if name == "transport_queue_output"
+                        else "access transport input buffer"
+                        if name == "connection_buffer_access"
+                        else "consume decoded bytes from transport input buffer"
+                        if name == "connection_consume_input"
+                        else "access connection fd identity"
+                        if name == "connection_get_fd"
+                        else "query whether session is connected"
+                        if name == "state_is_connected"
                         else f"{name} service"
                     ),
                     "trace_refs": ["fact:minimum_v1"],
@@ -661,10 +690,22 @@ class PlanningPipelineTests(unittest.TestCase):
         )["artifact_ids"] = ["transport_queue_output"]
         next(
             item for item in inventory["implementation_coverage_matrix"]
+            if item["obligation_id"] == "foundation:transport_input_buffer"
+        )["artifact_ids"] = [
+            "connection_buffer_access", "connection_consume_input", "connection_get_fd",
+        ]
+        next(
+            item for item in inventory["implementation_coverage_matrix"]
             if item["obligation_id"] == "foundation:session_access"
         )["artifact_ids"] = [
             "runtime_t", "state_registry_t", "runtime_create", "runtime_cleanup",
-            "state_lookup", "state_update",
+            "state_lookup", "state_update", "state_is_connected",
+        ]
+        next(
+            item for item in inventory["implementation_coverage_matrix"]
+            if item["obligation_id"] == "foundation:routing"
+        )["artifact_ids"] = [
+            "routing_container_t", "routing_create", "routing_destroy", "routing_match",
         ]
         inventory["test_obligations"] = [
             {"obligation_id": item["obligation_id"], "fact_refs": item["fact_refs"], "rule_refs": item["rule_refs"]}
@@ -777,6 +818,47 @@ class PlanningPipelineTests(unittest.TestCase):
             "event_callback_t, event_close_callback_t callback",
             next(item["role"] for item in multi_callback["functions"] if item["symbol"] == "runtime_start"),
         )
+
+        transport_callbacks = {
+            "types": [
+                {"symbol": f"tcp_{event}_callback_t", "owner_file": "transport.c",
+                 "visibility": "public", "kind": "callback", "trace_refs": ["fact:transport"]}
+                for event in ("accept", "data", "close")
+            ],
+            "functions": [
+                {"symbol": "connection_create", "owner_file": "transport.c", "visibility": "public",
+                 "role": "create connection", "trace_refs": ["fact:transport"]},
+                *[
+                    {"symbol": f"broker_on_{event}", "owner_file": "broker.c", "visibility": "public",
+                     "role": f"handle {event} event", "trace_refs": ["fact:transport"]}
+                    for event in ("accept", "data", "close")
+                ],
+            ],
+            "implementation_coverage_matrix": [{
+                "obligation_id": "foundation:callback_provider",
+                "artifact_ids": [
+                    "tcp_accept_callback_t", "connection_create", "broker_on_accept",
+                ],
+                "fact_refs": ["fact:transport"],
+            }],
+        }
+        transport_layout = {
+            "modules": [{"name": "core"}],
+            "files": [
+                {"id": "transport.c", "module": "core", "header_path": "transport.h", "source_path": "transport.c"},
+                {"id": "broker.c", "module": "core", "header_path": "broker.h", "source_path": "broker.c"},
+            ],
+        }
+        transport_registry = build_registry([
+            {"stage_id": "module_file_plan", "artifact": transport_layout},
+            {"stage_id": "public_artifact_inventory", "artifact": transport_callbacks},
+        ], protocol_slug="fixture")
+        _normalize_stage4_callback_roles(transport_callbacks, transport_registry)
+        callback_ids = transport_callbacks["implementation_coverage_matrix"][0]["artifact_ids"]
+        self.assertEqual(len(callback_ids), 7)
+        for item in transport_callbacks["functions"]:
+            if item["symbol"].startswith("broker_on_"):
+                self.assertIn("implement and provide tcp_", item["role"])
 
         orphan_callback = deepcopy(inventory)
         orphan_callback["types"].append({
@@ -2499,6 +2581,21 @@ class PlanningPipelineTests(unittest.TestCase):
             discriminated_payload_artifact["call_edges"][0]["argument_semantics"][0]["source_ref"],
             "((payload_t*)packet)->value",
         )
+        packet_data_previous = deepcopy(discriminated_payload_previous)
+        packet_data_previous[-1]["artifact"]["function_interfaces"][0]["signature"]["PARAMS"][1].update({
+            "NAME": "packet_data", "ROLE": "decoded_payload",
+        })
+        packet_data_artifact = deepcopy(discriminated_payload_artifact)
+        packet_data_artifact["call_edges"][0]["argument_semantics"][0].update({
+            "source_kind": "access_path", "source_ref": "payload_t.value",
+        })
+        _validate_partition_artifact(
+            stage, packet_data_artifact, partition, registry, context, packet_data_previous,
+        )
+        self.assertEqual(
+            packet_data_artifact["call_edges"][0]["argument_semantics"][0]["source_ref"],
+            "((payload_t*)packet_data)->value",
+        )
 
         indexed_field_previous = deepcopy(field_previous)
         indexed_field_previous[2]["artifact"]["type_definition_overlays"][0]["definition_overlay"]["fields"].append(
@@ -2871,6 +2968,14 @@ class PlanningPipelineTests(unittest.TestCase):
         self.assertIn("FILE_SPEC", prompt)
         self.assertIn("FUNCTION_SPEC", prompt)
         self.assertIn("scope_fact_inventory", prompt)
+
+        inventory_stage = next(
+            item for item in PLANNING_STAGES if item.stage_id == "public_artifact_inventory"
+        )
+        inventory_prompt = json.loads(build_stage_prompt(inventory_stage, context, []))
+        opaque_rule = inventory_prompt["stage"]["artifact_boundary"]["runtime_context_rule"]
+        self.assertIn("every state/resource handle used outside its owner", opaque_rule)
+        self.assertIn("cannot expose fields", opaque_rule)
 
         type_stage = next(item for item in PLANNING_STAGES if item.stage_id == "type_and_access_path_design")
         type_prompt = json.loads(
@@ -3770,6 +3875,114 @@ class PlanningPipelineTests(unittest.TestCase):
         self.assertEqual(planner.stage_records[-1]["semantic_correction_usage"]["total_tokens"], 2)
         self.assertEqual(planner.unresolved_partitions, [])
 
+    def test_partition_correction_is_not_blocked_by_retired_stage_ceiling(self) -> None:
+        plan = _minimal_plan()
+        registry = CanonicalPlanningRegistry.from_snapshot(plan["canonical_registry_snapshot"])
+        functions = registry.typed_view({"function"})
+        invalid_callee = registry.typed_view({"type"})[0]["artifact_id"]
+
+        class FakeClient:
+            calls = 0
+
+            def __init__(self, api_key_env: str = "ALI_API") -> None:
+                pass
+
+            def generate_with_usage(self, request):
+                FakeClient.calls += 1
+                content = json.dumps(
+                    {
+                        "call_edges": [{
+                            "caller_function_id": functions[0]["artifact_id"],
+                            "callee_function_id": invalid_callee,
+                            "call_purpose": "fixture",
+                            "condition": "always",
+                            "argument_semantics": "borrow",
+                            "result_usage": "check",
+                        }],
+                        "artifact_requests": [],
+                        "call_diagnostics": [],
+                    }
+                )
+                return LLMResponse(
+                    content=content,
+                    usage=LLMUsage(prompt_tokens=180000, completion_tokens=1, total_tokens=180001),
+                )
+
+        stage = next(item for item in PLANNING_STAGES if item.stage_id == "function_call_contract_closure")
+        context = {
+            "facts": {},
+            "characteristics": {},
+            "engineering_rules": [],
+            "open_assumptions": [],
+        }
+        with tempfile.TemporaryDirectory() as raw, patch(
+            "agent.common.llm_client.FixedQwenClient", FakeClient
+        ):
+            planner = LLMStructuredPlanner(stage_log_dir=Path(raw))
+            planner.registry = registry
+            planner.amendments.set_registry(registry)
+            artifact = planner._run_stage(stage, context, [])
+
+        self.assertEqual(FakeClient.calls, 2)
+        self.assertEqual(artifact["call_edges"], [])
+        self.assertEqual(planner.stage_records[-1]["local_corrections"], 1)
+        self.assertNotIn("stage_token_budget_reserved", planner.unresolved_partitions[0]["diagnostic"])
+
+    def test_whole_fresh_budget_blocks_request_before_client_call(self) -> None:
+        class FakeClient:
+            calls = 0
+
+            def generate_with_usage(self, request):
+                FakeClient.calls += 1
+                return LLMResponse("{}", LLMUsage(1, 1, 2))
+
+        planner = LLMStructuredPlanner()
+        planner._model_tokens_used = 783000
+        request = LLMRequest(
+            messages=[{"role": "user", "content": "fixture"}],
+            top_p=0.1,
+            temperature=0.0,
+            max_completion_tokens=16000,
+        )
+
+        with self.assertRaisesRegex(TokenBudgetExceeded, "whole_fresh_token_ceiling"):
+            planner._generate_with_budget(FakeClient(), request)
+
+        self.assertEqual(FakeClient.calls, 0)
+
+    def test_partition_budget_exhaustion_materializes_nonfatal_stage_artifact(self) -> None:
+        class FakeClient:
+            calls = 0
+
+            def __init__(self, api_key_env: str = "ALI_API") -> None:
+                pass
+
+            def generate_with_usage(self, request):
+                FakeClient.calls += 1
+                return LLMResponse("{}", LLMUsage(1, 1, 2))
+
+        plan = _minimal_plan()
+        registry = CanonicalPlanningRegistry.from_snapshot(plan["canonical_registry_snapshot"])
+        stage = next(item for item in PLANNING_STAGES if item.stage_id == "function_call_contract_closure")
+        context = {"facts": {}, "characteristics": {}, "engineering_rules": [], "open_assumptions": []}
+        with tempfile.TemporaryDirectory() as raw, patch(
+            "agent.common.llm_client.FixedQwenClient", FakeClient
+        ):
+            planner = LLMStructuredPlanner(stage_log_dir=Path(raw))
+            planner.registry = registry
+            planner.amendments.set_registry(registry)
+            planner._model_tokens_used = 783000
+            artifact = planner._run_stage(stage, context, [])
+
+        self.assertEqual(FakeClient.calls, 0)
+        self.assertEqual(artifact["call_edges"], [])
+        self.assertEqual(planner.stage_records[-1]["status"], "completed")
+        self.assertEqual(planner.stage_records[-1]["request_count"], 0)
+        self.assertEqual(
+            planner.unresolved_partitions[0]["diagnostic_code"],
+            "whole_fresh_token_ceiling",
+        )
+
     def test_failed_partition_correction_rolls_back_and_next_partition_commits(self) -> None:
         stage_artifacts = [
             {
@@ -4051,7 +4264,7 @@ class PlanningPipelineTests(unittest.TestCase):
         self.assertEqual(planner.amendments.records[0]["status"], "resolved_after_local_rerun")
         self.assertEqual(planner.unresolved_partitions, [])
 
-    def test_unresolved_plan_skips_semantic_closure_and_publishes_candidate_only(self) -> None:
+    def test_unresolved_plan_runs_deterministic_completion_and_publishes_candidate_only(self) -> None:
         plan = _minimal_plan()
         plan["unresolved_partitions"] = [
             {
@@ -4078,13 +4291,51 @@ class PlanningPipelineTests(unittest.TestCase):
             self.assertTrue(result.specs_root.exists())
             self.assertFalse(report["semantic_patch_attempted"])
             self.assertEqual(report["final_diagnostics"][0]["code"], "unresolved_partition")
-            self.assertEqual(len(report["final_diagnostics"]), 1)
+            self.assertIn(
+                "deterministic_call_contract_completion",
+                {item["code"] for item in report["deterministic_completion"]},
+            )
+            completed_plan = read_json(result.planning_root / "implementation_plan.json")
+            main = next(item for item in completed_plan["functions"] if item["name"] == "main")
+            self.assertEqual(main["call_contracts"][0]["NAME"], "mqtt_core_init")
             self.assertEqual(manifest["unresolved_stage_partition_count"], 1)
             self.assertEqual(manifest["unresolved_stage_partition_attempt_count"], 2)
             self.assertEqual(manifest["diagnostic_counts"]["error"], sum(item["level"] == "error" for item in diagnostics))
             self.assertEqual(diagnostics[0]["authoritative_stage"], "function_call_contract_closure")
             semantic_closure.assert_not_called()
             coder_validate.assert_called_once_with(result.specs_root)
+
+    def test_single_stage_json_repair_failure_after_inventory_is_nonfatal(self) -> None:
+        class FakeClient:
+            def __init__(self, api_key_env: str = "ALI_API") -> None:
+                pass
+
+            def generate_with_usage(self, request):
+                return LLMResponse(
+                    content='{"invalid": [0x48]}',
+                    usage=LLMUsage(prompt_tokens=5, completion_tokens=7, total_tokens=12),
+                )
+
+        plan = _minimal_plan()
+        stage = next(item for item in PLANNING_STAGES if item.stage_id == "function_test_vector_design")
+        with tempfile.TemporaryDirectory() as raw, patch(
+            "agent.common.llm_client.FixedQwenClient", FakeClient
+        ), patch(
+            "agent.planning.planner.build_stage_messages",
+            return_value=[{"role": "user", "content": "fixture"}],
+        ):
+            planner = LLMStructuredPlanner(stage_log_dir=Path(raw))
+            planner.registry = CanonicalPlanningRegistry.from_snapshot(
+                plan["canonical_registry_snapshot"]
+            )
+            artifact = planner._run_stage(stage, {}, [])
+
+        self.assertEqual(artifact, _empty_recoverable_stage_artifact(stage.stage_id))
+        self.assertEqual(planner.stage_records[-1]["status"], "completed")
+        self.assertTrue(planner.stage_records[-1]["nonfatal_fallback"])
+        self.assertEqual(planner.stage_records[-1]["request_count"], 2)
+        self.assertEqual(planner.stage_records[-1]["repair_usage"]["total_tokens"], 12)
+        self.assertEqual(planner.unresolved_partitions[0]["stage_id"], stage.stage_id)
 
     def test_stage10_accepts_only_non_derivable_choices(self) -> None:
         typed = {

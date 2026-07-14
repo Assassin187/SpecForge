@@ -35,6 +35,11 @@ from .validation_layers import (
 )
 
 
+WHOLE_FRESH_TOKEN_CEILING = 783_804
+SINGLE_REQUEST_INPUT_TOKEN_CEILING = 64_000
+SINGLE_RESPONSE_TOKEN_CEILING = 16_000
+
+
 class StructuredPlanner(Protocol):
     def build_plan(self, context: dict[str, Any], *, resume_from: str | None = None) -> dict[str, Any]:
         ...
@@ -45,6 +50,12 @@ class RecoverablePlanningError(RuntimeError):
         super().__init__(diagnostic)
         self.stage_id = stage_id
         self.diagnostic = diagnostic
+
+
+class TokenBudgetExceeded(ValueError):
+    def __init__(self, code: str, diagnostic: str) -> None:
+        super().__init__(diagnostic)
+        self.code = code
 
 
 @dataclass(frozen=True)
@@ -706,6 +717,7 @@ class LLMStructuredPlanner:
         self.registry: CanonicalPlanningRegistry | None = None
         self.unresolved_partitions: list[dict[str, Any]] = []
         self.blocking_diagnostics: list[dict[str, Any]] = []
+        self._model_tokens_used = 0
         amendment_log = self.stage_log_dir.parent / "inventory_amendments.json" if self.stage_log_dir is not None else None
         self.amendments = InventoryAmendmentProcessor(log_path=amendment_log)
         validation_log = self.stage_log_dir.parent / "validation_layers.json" if self.stage_log_dir is not None else None
@@ -722,6 +734,11 @@ class LLMStructuredPlanner:
             start_index = _resume_start_index(resume_from)
             stage_artifacts = _load_logged_stage_artifacts(self.stage_log_dir, start_index)
             self.stage_records = _load_logged_stage_records(self.stage_log_dir, start_index)
+            self._model_tokens_used = sum(
+                int(record.get(field, {}).get("total_tokens", 0))
+                for record in self.stage_records
+                for field in ("usage", "repair_usage", "semantic_correction_usage", "inventory_amendment_usage")
+            )
             if start_index > 3:
                 stage4_artifact = _stage_artifact(stage_artifacts, "public_artifact_inventory")
                 stage_artifacts[3]["artifact"] = _prune_invalid_stage4_lifecycle_relations(
@@ -1171,6 +1188,37 @@ class LLMStructuredPlanner:
             return self._run_partitioned_stage(stage, context, previous_artifacts)
         return self._run_single_stage(stage, context, previous_artifacts)
 
+    def _generate_with_budget(self, client: Any, request: Any) -> Any:
+        from agent.common.llm_client import estimate_message_input_tokens
+
+        input_tokens = estimate_message_input_tokens(request.messages)
+        if input_tokens > SINGLE_REQUEST_INPUT_TOKEN_CEILING:
+            raise TokenBudgetExceeded(
+                "single_request_input_token_ceiling",
+                "single_request_input_token_ceiling: "
+                f"projected_input_tokens={input_tokens}, ceiling={SINGLE_REQUEST_INPUT_TOKEN_CEILING}"
+            )
+        response_reserve = min(
+            int(request.max_completion_tokens or SINGLE_RESPONSE_TOKEN_CEILING),
+            SINGLE_RESPONSE_TOKEN_CEILING,
+        )
+        projected_total = self._model_tokens_used + input_tokens + response_reserve
+        if projected_total > WHOLE_FRESH_TOKEN_CEILING:
+            raise TokenBudgetExceeded(
+                "whole_fresh_token_ceiling",
+                "whole_fresh_token_ceiling: "
+                f"used_tokens={self._model_tokens_used}, projected_input_tokens={input_tokens}, "
+                f"response_reserve={response_reserve}, projected_total={projected_total}, "
+                f"ceiling={WHOLE_FRESH_TOKEN_CEILING}"
+            )
+        response = client.generate_with_usage(request)
+        self._model_tokens_used += int(response.usage.total_tokens)
+        return response
+
+    @property
+    def model_tokens_used(self) -> int:
+        return self._model_tokens_used
+
     def _run_zero_token_stage(
         self, stage: PlanningStage, artifact: dict[str, Any], *, mode: str
     ) -> dict[str, Any]:
@@ -1309,8 +1357,10 @@ class LLMStructuredPlanner:
             "prompt_characters": 0,
             "request_count": 0,
         }
+        primary_request_count = 0
         try:
-            response = client.generate_with_usage(
+            response = self._generate_with_budget(
+                client,
                 LLMRequest(
                     messages=messages,
                     top_p=0.2,
@@ -1320,6 +1370,7 @@ class LLMStructuredPlanner:
                     max_completion_tokens=16000,
                 )
             )
+            primary_request_count = 1
             raw_response = response.content
             usage = {
                 "prompt_tokens": response.usage.prompt_tokens,
@@ -1350,6 +1401,52 @@ class LLMStructuredPlanner:
                 if repair_usage_path.exists():
                     repair_usage = json.loads(repair_usage_path.read_text(encoding="utf-8"))
             elapsed = time.monotonic() - started
+            fallback = _empty_recoverable_stage_artifact(stage.stage_id)
+            has_inventory = self.registry is not None and all(
+                self.registry.typed_view({kind}) for kind in ("module", "file", "function")
+            )
+            if isinstance(exc, (json.JSONDecodeError, TokenBudgetExceeded)) and fallback is not None and has_inventory:
+                budget_exhausted = isinstance(exc, TokenBudgetExceeded)
+                issue = ValidationIssue(
+                    "structural",
+                    exc.code if budget_exhausted else "syntax_repair_failed",
+                    str(exc) if budget_exhausted else f"syntax_repair_failed: {type(exc).__name__}: {exc}",
+                    "materialize_candidate_without_additional_model_calls" if budget_exhausted else "partition_regeneration",
+                )
+                self._record_unresolved_partition(
+                    stage_id=stage.stage_id,
+                    partition_id="whole_stage",
+                    diagnostic=issue.message,
+                    correction_attempted=False,
+                    issue=issue,
+                )
+                record = {
+                    "stage_id": stage.stage_id,
+                    "title": stage.title,
+                    "status": "completed",
+                    "mode": "nonfatal_json_fallback",
+                    "elapsed_seconds": round(elapsed, 3),
+                    "usage": usage,
+                    "repair_usage": repair_usage,
+                    "request_count": primary_request_count + int(repair_usage.get("request_count", 0)),
+                    "prompt_characters": primary_request_count * len(prompt_content) + int(repair_usage.get("prompt_characters", 0)),
+                    "repaired_json": bool(repair_usage.get("request_count", 0)),
+                    "nonfatal_fallback": True,
+                    "unresolved_partitions": 1,
+                    "error": f"{type(exc).__name__}: {exc}",
+                    "artifact_keys": sorted(fallback),
+                }
+                self.stage_records.append(record)
+                if stage_dir is not None:
+                    write_json(stage_dir / "artifact.json", fallback)
+                    write_json(stage_dir / "stage_manifest.json", record)
+                    write_json(self.stage_log_dir / "stage_records.json", self.stage_records)
+                print(
+                    f"[planning] stage {stage_index}/{len(PLANNING_STAGES)} completed with non-fatal JSON fallback: "
+                    f"{stage.stage_id}; {record['error']}",
+                    flush=True,
+                )
+                return fallback
             status = "interrupted" if isinstance(exc, KeyboardInterrupt) else "failed"
             record = {
                 "stage_id": stage.stage_id,
@@ -1358,8 +1455,8 @@ class LLMStructuredPlanner:
                 "elapsed_seconds": round(elapsed, 3),
                 "usage": usage,
                 "repair_usage": repair_usage,
-                "request_count": 1 + int(repair_usage.get("request_count", 0)),
-                "prompt_characters": len(prompt_content) + int(repair_usage.get("prompt_characters", 0)),
+                "request_count": primary_request_count + int(repair_usage.get("request_count", 0)),
+                "prompt_characters": primary_request_count * len(prompt_content) + int(repair_usage.get("prompt_characters", 0)),
                 "error": f"{type(exc).__name__}: {exc}",
             }
             self.stage_records.append(record)
@@ -1518,18 +1615,36 @@ class LLMStructuredPlanner:
                 prompt_content = messages[-1]["content"]
                 if partition_dir is not None:
                     (partition_dir / "prompt.json").write_text(json.dumps(messages, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+                try:
+                    response = self._generate_with_budget(
+                        client,
+                        LLMRequest(
+                            messages=messages,
+                            top_p=0.2,
+                            temperature=0.1,
+                            is_stream=True,
+                            enable_thinking=False,
+                            max_completion_tokens=16000,
+                        )
+                    )
+                except TokenBudgetExceeded as budget_exc:
+                    for deferred in partitions[partition_index - 1 :]:
+                        issue = ValidationIssue(
+                            "structural",
+                            budget_exc.code,
+                            str(budget_exc),
+                            "materialize_candidate_without_additional_model_calls",
+                        )
+                        self._record_unresolved_partition(
+                            stage_id=stage.stage_id,
+                            partition_id=str(deferred["partition_id"]),
+                            diagnostic=str(budget_exc),
+                            correction_attempted=False,
+                            issue=issue,
+                        )
+                    break
                 request_count += 1
                 prompt_characters += len(prompt_content)
-                response = client.generate_with_usage(
-                    LLMRequest(
-                        messages=messages,
-                        top_p=0.2,
-                        temperature=0.1,
-                        is_stream=True,
-                        enable_thinking=False,
-                        max_completion_tokens=16000,
-                    )
-                )
                 raw_response = response.content
                 part_usage = {
                     "prompt_tokens": response.usage.prompt_tokens,
@@ -1544,7 +1659,6 @@ class LLMStructuredPlanner:
                     artifact = _parse_json_response(raw_response)
                     repaired = False
                 except json.JSONDecodeError as parse_exc:
-                    repair_request_count += 1
                     try:
                         artifact, part_repair_usage = self._repair_json_response(
                             client=client,
@@ -1557,10 +1671,19 @@ class LLMStructuredPlanner:
                         usage_path = partition_dir / "repair_usage.json" if partition_dir is not None else None
                         if usage_path is not None and usage_path.exists():
                             part_repair_usage = json.loads(usage_path.read_text(encoding="utf-8"))
+                        repair_request_count += int(part_repair_usage.get("request_count", 0))
                         _add_usage(repair_usage, part_repair_usage)
-                        diagnostic = f"syntax_repair_failed: {type(repair_exc).__name__}: {repair_exc}"
+                        budget_exhausted = isinstance(repair_exc, TokenBudgetExceeded)
+                        diagnostic = (
+                            str(repair_exc)
+                            if budget_exhausted
+                            else f"syntax_repair_failed: {type(repair_exc).__name__}: {repair_exc}"
+                        )
                         issue = ValidationIssue(
-                            "structural", "syntax_repair_failed", diagnostic, "partition_regeneration"
+                            "structural",
+                            repair_exc.code if budget_exhausted else "syntax_repair_failed",
+                            diagnostic,
+                            "materialize_candidate_without_additional_model_calls" if budget_exhausted else "partition_regeneration",
                         )
                         self._record_unresolved_partition(
                             stage_id=stage.stage_id,
@@ -1585,6 +1708,7 @@ class LLMStructuredPlanner:
                                 },
                             )
                         continue
+                    repair_request_count += int(part_repair_usage.get("request_count", 0))
                     _add_usage(repair_usage, part_repair_usage)
                     repaired = True
                     repaired_any = True
@@ -1599,6 +1723,7 @@ class LLMStructuredPlanner:
                     )
                 except LayeredValidationError as exc:
                     validation_issue = exc.issue
+                    correction_usage_added = False
                     correction_attempted = True
                     local_corrections += 1
                     self.validation_ledger.record(
@@ -1607,7 +1732,6 @@ class LLMStructuredPlanner:
                         partition_id=str(partition["partition_id"]),
                         outcome="correction_requested",
                     )
-                    correction_usage_added = False
                     try:
                         artifact, part_correction_usage = self._request_local_semantic_correction(
                             client=client,
@@ -1638,7 +1762,23 @@ class LLMStructuredPlanner:
                             part_correction_usage = json.loads(usage_path.read_text(encoding="utf-8"))
                             _add_usage(semantic_correction_usage, part_correction_usage)
                         correction_error = f"{type(correction_exc).__name__}: {correction_exc}"
-                        if isinstance(correction_exc, LayeredValidationError):
+                        if isinstance(correction_exc, TokenBudgetExceeded):
+                            correction_attempted = False
+                            local_corrections -= 1
+                            validation_issue = ValidationIssue(
+                                "structural",
+                                correction_exc.code,
+                                str(correction_exc),
+                                "materialize_candidate_without_additional_model_calls",
+                            )
+                            correction_error = str(correction_exc)
+                            self.validation_ledger.record(
+                                validation_issue,
+                                stage_id=stage.stage_id,
+                                partition_id=str(partition["partition_id"]),
+                                outcome="deferred_by_token_budget",
+                            )
+                        elif isinstance(correction_exc, LayeredValidationError):
                             validation_issue = correction_exc.issue
                             self.validation_ledger.record(
                                 correction_exc.issue,
@@ -1857,7 +1997,8 @@ class LLMStructuredPlanner:
         prompt_content = messages[-1]["content"]
         if stage_dir is not None:
             (stage_dir / "repair_prompt.json").write_text(json.dumps(messages, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        response = client.generate_with_usage(
+        response = self._generate_with_budget(
+            client,
             LLMRequest(
                 messages=messages,
                 top_p=0.1,
@@ -1913,7 +2054,8 @@ class LLMStructuredPlanner:
             (partition_dir / "semantic_correction_prompt.json").write_text(
                 json.dumps(messages, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
             )
-        response = client.generate_with_usage(
+        response = self._generate_with_budget(
+            client,
             LLMRequest(
                 messages=messages,
                 top_p=0.1,
@@ -1973,7 +2115,8 @@ class LLMStructuredPlanner:
                 (log_dir / "prompt.json").write_text(
                     json.dumps(messages, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
                 )
-            response = client.generate_with_usage(
+            response = self._generate_with_budget(
+                client,
                 LLMRequest(
                     messages=messages,
                     top_p=0.1,
@@ -2695,6 +2838,10 @@ def _validate_typed_call_relations(
             str(param.get("NAME")): c_type(param.get("TYPE"))
             for param in signatures[caller_id].get("PARAMS", []) if isinstance(param, dict)
         }
+        caller_param_roles = {
+            str(param.get("NAME")): str(param.get("ROLE", "")).lower()
+            for param in signatures[caller_id].get("PARAMS", []) if isinstance(param, dict)
+        }
         caller_fields: dict[str, str] = {}
         for caller_parameter, caller_type in caller_params.items():
             base_type = re.sub(r"\bconst\b|\*", "", caller_type).strip()
@@ -2712,6 +2859,11 @@ def _validate_typed_call_relations(
             name for name in void_parameters
             if name.lower() in {"packet", "packet_payload", "payload", "message", "data"}
             or name.lower().endswith(("_packet", "_payload", "_message"))
+            or (name.lower() != "user_data" and name.lower().endswith("_data"))
+            or any(
+                marker in caller_param_roles.get(name, "")
+                for marker in ("decoded_payload", "payload", "message_data")
+            )
         ]
         selected_payload = payload_parameters[0] if len(payload_parameters) == 1 else (
             void_parameters[0] if len(void_parameters) == 1 else ""
@@ -3051,35 +3203,36 @@ def _normalize_stage4_callback_roles(
         callback_role_tokens = {
             name: {
                 token for token in re.findall(r"[a-z]+", name.lower())
-                if token not in {"callback", "cb", "fn", "handler", "mqtt", "tcp"}
+                if token not in {"callback", "cb", "fn", "handler", "mqtt", "tcp", "t"}
             }
             for name in callback_names
         }
-        providers = [
-            entry for entry in all_functions
-            if any(
-                marker in str(functions_by_id.get(entry["artifact_id"], {}).get("role", "")).lower()
-                for marker in ("provide", "implement")
-            )
-            and any(
-                name.lower() in str(functions_by_id.get(entry["artifact_id"], {}).get("role", "")).lower()
-                or callback_role_tokens[name].intersection(re.findall(
+        provider_by_callback: dict[str, dict[str, Any]] = {}
+        for name in callback_names:
+            tokens = callback_role_tokens[name]
+            candidates = [
+                entry for entry in all_functions
+                if entry.get("owner_file_id") != owner_file_id
+                and tokens.intersection(re.findall(
                     r"[a-z]+",
-                    str(functions_by_id.get(entry["artifact_id"], {}).get("role", "")).lower(),
+                    " ".join((
+                        entry["canonical_name"].lower(),
+                        str(functions_by_id.get(entry["artifact_id"], {}).get("role", "")).lower(),
+                    )),
                 ))
-                for name in callback_names
-            )
-        ]
-        provider_roles = [
-            str(functions_by_id.get(entry["artifact_id"], {}).get("role", "")).lower()
-            for entry in providers
-        ]
-        if not all(any(
-            name.lower() in role
-            or callback_role_tokens[name].intersection(re.findall(r"[a-z]+", role))
-            for role in provider_roles
-        ) for name in callback_names):
+                and (
+                    any(marker in entry["canonical_name"].lower() for marker in ("_on_", "_handle_"))
+                    or any(
+                        marker in str(functions_by_id.get(entry["artifact_id"], {}).get("role", "")).lower()
+                        for marker in ("provide", "implement")
+                    )
+                )
+            ]
+            if len(candidates) == 1:
+                provider_by_callback[name] = candidates[0]
+        if len(provider_by_callback) != len(callback_names):
             continue
+        providers = list({entry["artifact_id"]: entry for entry in provider_by_callback.values()}.values())
         covered_owner_consumers = [
             entry for entry in functions
             if entry.get("owner_file_id") == owner_file_id and entry not in providers
@@ -3089,7 +3242,7 @@ def _normalize_stage4_callback_roles(
             if entry.get("owner_file_id") == owner_file_id
             and any(
                 marker in str(functions_by_id.get(entry["artifact_id"], {}).get("role", "")).lower()
-                for marker in ("consume", "register", "accept", "startup", "start", "decoder", "feed")
+                for marker in ("consume", "register", "accept", "startup", "start", "create", "decoder", "feed")
             )
         ]
         if len(consumers) != 1:
@@ -3100,6 +3253,13 @@ def _normalize_stage4_callback_roles(
             marker in role.lower() for marker in ("consume", "register", "accept", "store")
         ):
             consumer["role"] = f"{role}; accept and consume {', '.join(callback_names)} callback".lstrip("; ")
+        for name, entry in provider_by_callback.items():
+            provider = functions_by_id[entry["artifact_id"]]
+            role = str(provider.get("role", "")).strip()
+            if not ("callback" in role.lower() and any(
+                marker in role.lower() for marker in ("provide", "implement")
+            )):
+                provider["role"] = f"{role}; implement and provide {name} callback".lstrip("; ")
         for entry in [*owner_callbacks, consumers[0], *providers]:
             if entry["artifact_id"] not in covered_ids:
                 coverage.setdefault("artifact_ids", []).append(entry["artifact_id"])
@@ -3248,12 +3408,21 @@ def _validate_public_inventory_obligations(
     session_roles = covered_function_texts("foundation:session_access")
     for required, markers in (
         ("create", ("create",)),
-        ("destroy", ("destroy", "cleanup")),
-        ("lookup", ("lookup", "find", "get", "retrieve", "check")),
+        ("destroy", ("destroy", "cleanup", "remove")),
+        ("lookup", ("lookup", "find", "get", "retrieve")),
+        ("state_query", ("check", "query", "is")),
         ("mutation_or_access", ("add", "remove", "mark", "update", "set", "access", "check")),
     ):
         if not has_role(session_roles, markers):
             role_deficits.append(f"foundation:session_access missing {required} role")
+    routing_roles = covered_function_texts("foundation:routing")
+    for required, markers in (
+        ("create", ("create",)),
+        ("destroy", ("destroy", "cleanup")),
+        ("match_or_registry", ("match", "route", "subscribe", "registry")),
+    ):
+        if routing_roles and not has_role(routing_roles, markers):
+            role_deficits.append(f"foundation:routing missing {required} role")
     if "foundation:transport_accept_callback" in obligations:
         accept_entries = [
             registry.resolve(reference)
@@ -3289,6 +3458,17 @@ def _validate_public_inventory_obligations(
             for text in [*output_roles, *output_names]
         ):
             role_deficits.append("foundation:transport_output missing send_or_queue role")
+    if "foundation:transport_input_buffer" in obligations:
+        input_roles = covered_function_texts("foundation:transport_input_buffer")
+        for required, markers in (
+            ("buffer_access", ("buffer", "read", "access")),
+            ("buffer_consume", ("consume", "advance", "discard")),
+            ("connection_identity", ("fd", "descriptor", "identity")),
+        ):
+            if not has_role(input_roles, markers):
+                role_deficits.append(
+                    f"foundation:transport_input_buffer missing {required} role"
+                )
 
     runtime_entrypoint = inventory.get("runtime_entrypoint", {})
     if isinstance(runtime_entrypoint, dict):
@@ -5343,6 +5523,7 @@ def _normalize_stage8_caller_field_dialects(
         parameters_by_type: dict[str, list[str]] = {}
         parameter_types: dict[str, str] = {}
         parameter_c_types: dict[str, str] = {}
+        parameter_roles: dict[str, str] = {}
         for parameter in signature.get("PARAMS", []):
             if not isinstance(parameter, dict):
                 continue
@@ -5351,6 +5532,7 @@ def _normalize_stage8_caller_field_dialects(
             parameters_by_type.setdefault(base_type, []).append(parameter_name)
             parameter_types[parameter_name] = base_type
             parameter_c_types[parameter_name] = str(parameter.get("TYPE", ""))
+            parameter_roles[parameter_name] = str(parameter.get("ROLE", "")).lower()
         for binding in edge.get("argument_semantics", []):
             if not isinstance(binding, dict):
                 continue
@@ -5495,6 +5677,11 @@ def _normalize_stage8_caller_field_dialects(
                 name for name in void_parameters
                 if name.lower() in {"packet", "packet_payload", "payload", "message", "data"}
                 or name.lower().endswith(("_packet", "_payload", "_message"))
+                or (name.lower() != "user_data" and name.lower().endswith("_data"))
+                or any(
+                    marker in parameter_roles.get(name, "")
+                    for marker in ("decoded_payload", "payload", "message_data")
+                )
             ]
             selected_payload = payload_parameters[0] if len(payload_parameters) == 1 else (
                 void_parameters[0] if len(void_parameters) == 1 else ""
@@ -5811,11 +5998,21 @@ def _derive_implementation_obligations(
                 fact_refs=["fact:transport.runtime_implications"],
                 requires_test=True,
             )
+        if "buffer" in transport_text and any(
+            marker in transport_text for marker in ("consume", "unread", "incomplete", "partial")
+        ):
+            add(
+                "foundation:transport_input_buffer",
+                "Provide typed input-buffer access, consumed-byte advancement, and connection identity access.",
+                {"function": 3},
+                fact_refs=["fact:transport.runtime_implications", "fact:connection_buffering"],
+                requires_test=True,
+            )
     if characteristics.statefulness == "stateful":
         add(
             "foundation:session_access",
-            "Provide both owned state and its registry/container handle, plus create, destroy, lookup, and mutation/access services.",
-            {"type": 2, "function": 4},
+            "Provide owned session state plus create, destroy/remove, lookup, state-query, and mutation services.",
+            {"type": 1, "function": 5},
             fact_refs=["fact:state_model", "fact:resource_model"],
             requires_test=True,
         )

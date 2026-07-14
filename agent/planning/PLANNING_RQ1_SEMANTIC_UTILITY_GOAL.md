@@ -4,7 +4,7 @@
 > 本次修订日期：2026-07-14
 > 核心对象：planning agent
 > 当前状态：`IN_PROGRESS`
-> 当前步骤：`Step 7`
+> 当前步骤：`Step 10`
 > 状态标记：`TODO` / `IN_PROGRESS` / `DONE` / `BLOCKED` / `DEFERRED`
 
 ## 0. 使用方式
@@ -18,13 +18,13 @@
 1. 每次 continuation 先读取本文件、最新 fresh manifest、最近 compile/repair summary 和当前 `git diff`。
 2. 同一时刻只允许一个 Step 为 `IN_PROGRESS`。
 3. `Step 0–6` 已冻结为完成基础；除非新 fresh 直接证明 regression，否则不重新展开或重复执行。
-4. `Step 7–9` 各自只有 **1 次** post-change fresh acceptance attempt；不要求连续多次成功，也不得在同一 Step 内换 revision 后继续 fresh。
+4. Step 7 与 Step 8 的首次 attempts 均保留为历史失败证据；用户修订分别额外授权 **1 次** `Step 7-R1` 与 **1 次** `Step 8-R1` repair acceptance。Step 9 仍只有 1 次 post-change fresh acceptance attempt。
 5. 只有最终 `Step 10` 允许并要求多次 fresh，用于验证冻结 revision 的稳定性。
 6. failed fresh 必须保留，不能静默 rerun、覆盖目录或从记录中删除。
 7. resume、replay 和 fixed-spec coder run 只用于定位；不能替代 post-change fresh acceptance。
 8. 不人工修改 fresh/resume specs，不人工修改 generated source 来制造 compile success。
 
-本修订版最多预留 6 个新增 fresh slots：Step 7、8、9 各 1 个，Step 10 固定 3 个。§6.1 的三个历史 fresh 只作证据，不占新版 slots；被最终目标优先规则跳过的 slot 直接取消，不能挪作失败替补。任一 slot 失败均不得在本 Goal 内补跑。
+当前剩余 fresh slots 仅为 Step 10 固定的 3 个；Step 8-R1 已达到单-run compile success，Step 9 slot 按最终目标优先规则取消，不能挪作失败替补。§6.1 的三个历史 fresh、Step 7/Step 8 首次 attempts、Step 7-R1 与 Step 8-R1 只作证据。Step 10 任一 run 失败均不得补跑。
 
 ## 1. 唯一目标、成功语义与非目标
 
@@ -182,13 +182,15 @@ dependency completion、manifest accounting、fatal classification、linker diag
 
 ### 3.3 Token ceiling
 
-历史完整 fresh 曾消耗 `977561` planning tokens；该值仅作为过高成本证据，不再作为允许预算。后续所有 fresh（无论成功、失败或 fatal）冻结为：
+历史完整 fresh 曾消耗 `977561` planning tokens；该值仅作为过高成本证据，不再作为允许预算。最近一次完整 Step 7 fresh 的真实 planning 总量 `681569` 作为后续成本基线。后续所有 fresh（无论成功、失败或 fatal）采用总量相对约束：目标不超过基线的 `110% = 749726`，硬上限不超过基线的 `115% = 783804`。
+
+单 stage token 只记录和诊断，不再作为独立否决门禁；Stage 8 等 partitioned stage 可以超过历史 `220000`，但所有 planning model calls 的合计仍必须满足 whole-fresh 硬上限。冻结约束为：
 
 ```text
 single request input tokens <= 64000
 single response tokens <= 16000
-single stage total tokens <= 220000
-whole fresh planning total tokens <= 800000
+whole fresh planning target tokens <= 749726
+whole fresh planning hard ceiling <= 783804
 JSON repair <= 1 per failed response
 semantic correction <= 1 per partition
 additional JSON repair/semantic correction calls <= 4 per fresh
@@ -196,9 +198,10 @@ additional JSON repair/semantic correction calls <= 4 per fresh
 
 `whole fresh planning total tokens` 必须包含原始 stage calls、JSON repair、semantic correction、semantic patch、失败调用以及任何其他 planning model call；不得只读取遗漏 retry 的旧 manifest 聚合值。
 
+- `749726` 是正常执行目标线；超过目标线但不超过 `783804` 时必须记录原因，仍可继续并接受；超过 `783804` 必须停止后续 model calls；
 - budget 对成功和失败 run 同样生效，且不得因失败而上调；
 - 每次 fresh 必须记录 per-call、per-stage 与 total token usage，并写入 `token_accounting_complete`；
-- 发起下一次 model call 前，使用冻结 tokenizer 计算 projected usage；预计越界时不得调用；
+- 发起下一次 model call 前，使用冻结 tokenizer 计算 projected whole-fresh usage；预计超过 `783804` 时不得调用；
 - 已存在可序列化 inventory 时，budget exhaustion 必须 materialize candidate specs 并记为 non-fatal failure；
 - prompt 修改必须在同一 fixture 上提供 tokenizer tokens 与 characters 的 before/after evidence；
 - 若必要信息无法在 ceiling 内表达，停止扩大 prompt，形成 blocker 报告。
@@ -236,7 +239,7 @@ Token 降低本身不构成 Step success；compile utility 始终是最终 endpo
 -> 更新本文件和 compact ledger
 ```
 
-同一 code/diff revision 不得因结果不理想而重复 fresh。每个 `Step 7–9` 只有 ledger 中预留的 1 次 fresh；该 attempt 失败时保存证据、将 Goal 标记为 `DEFERRED` 并停止自动执行，不在同一 Step 内修改后重试。只有用户明确修订任务书后才可新增 attempt。不得再次形成同一 artifact 的无界 resume 链。
+同一 code/diff revision 不得因结果不理想而重复 fresh。Step 7 首次 attempt 已失败并保留；用户本次明确修订任务书后，ledger 仅新增 1 次 `Step 7-R1`。Step 7-R1、Step 8 或 Step 9 的唯一剩余 attempt 失败时保存证据、将 Goal 标记为 `DEFERRED` 并停止自动执行，不在同一 Step 内修改后重试。不得再次形成同一 artifact 的无界 resume 链。
 
 最终目标优先：若 Step 7 或 Step 8 的唯一 fresh 已满足第 1.2 节单 run compile success，且相关 generic regressions 全部通过，则不再为 semantic-zero 指标消耗 fresh。尚未执行、且只用于建立 compile feasibility 的 pre-final Step 记为 `DONE（earlier fresh already met goal）`，取消其 fresh slot并直接进入 Step 10；不得把取消的 slot用作其他失败 run 的替补。
 
@@ -257,9 +260,9 @@ Token 降低本身不构成 Step success；compile utility 始终是最终 endpo
 当前回归基线（2026-07-14 本次复核）：
 
 ```text
-planning tests: 141/141 passed
+planning tests: 145/145 passed
 planning utility tests: 27/27 passed
-coder tests: 26/26 passed
+coder tests: 29/29 passed
 compileall: passed
 git diff --check: passed
 ```
@@ -278,7 +281,7 @@ Step 0–6 只在新 fresh 出现直接 regression 时回到对应最早 Step；
 | `mqtt_semantic_fresh02_20260714_current` | 11/11，16/17，22 union errors | 1/7/30 specs，loader passed | initial 29/30 definitions、12 roots；repair 1/3 后剩 2 linker roots，final compile failed | 977561 | artifact quality 明显提升，但未达到 compile 目标 |
 | `mqtt_prompt_dedup_fresh_20260714_113738` | 8/11，fatal | 无 specs | 未运行 | >=718154 | Stage 9 原始 JSON 与一次 repair 均非法；失败前已有 Stage 4/8 unresolved |
 
-三个 fresh 累计至少 `1859561` planning tokens，当前为 `0/3` final compile。该数字只记录既有成本与失败，不改变第 0 节预留的 6 个新增 fresh slots，也不授权无变化重跑。
+三个 fresh 累计至少 `1859561` planning tokens，当前为 `0/3` final compile。该数字只记录既有成本与失败，不改变第 0 节本次修订后剩余的 6 个 fresh slots，也不授权无变化重跑。
 
 ### 6.2 代表性 fixed evidence
 
@@ -317,28 +320,25 @@ repair 已清除原有 source/header compile categories，但引入 duplicate `m
 
 ### 6.4 当前最早 root causes
 
-1. `pipeline.py` 在存在 `unresolved_partitions` 时跳过 deterministic normalization/dependency completion，放大后续 dependency diagnostics。
-2. coder repair 只识别 `file:line:column: error`，无法可靠路由 linker 的 multiple-definition/undefined-reference diagnostics，导致 3 轮预算实际只运行 1 轮。
-3. 剩余真实 planning 缺口集中在 callback ABI/provider/user-data 与 compile-relevant runtime call flow。
-4. Stage 9 whole-response JSON failure与 repair usage/fatal classification 需要确定性修正；不应继续扩大 prompt。
+1. 后续 model call 需要按 projected whole-fresh usage 执行 `783804` 硬上限；单 Stage `220000` 不再是 blocker。
+2. protocol specs 没有为 opaque connection/session state 提供 coder 可用的 access paths，bounded repair 因而发明了未声明 accessor。
+3. callback binding/consumer ABI 与 compile-relevant runtime call flow 仍未闭合。
+4. 本次历史 manifest 的 accounting completeness 受错误的 amendment-call 假设影响；代码已增加 regression，但 acceptance evidence 不追溯改写。
 
-### 6.5 当前 worktree 保护
+### 6.5 Step 7 acceptance revision
 
-当前 checkpoint 为 `HEAD 3ccc99f`，已有以下未提交修改：
+Step 7 fresh 启动时冻结为 `HEAD 43b29b8`，execution diff SHA256 为
+`25c23701ead6b0582db086edd3ada5d94e6e101898482b6bf787cc683f305bcb`；planning/coder
+prompt 均无 diff。修改仅涉及现有 deterministic completion、Stage failure classification、token
+accounting、generic linker repair routing 及对应 regression tests，没有增加新 pipeline、adapter 或 prompt。
 
-```text
-M agent/planning/PLANNING_RQ1_SEMANTIC_UTILITY_GOAL.md
-M agent/planning/facts.py
-M agent/planning/planner.py
-M agent/planning/prompts.py
-M agent/planning/tests/test_pipeline.py
-```
-
-除本任务书重构外，其余修改属于 fresh3 后的 fact-slice/prompt 去重与 JSON repair usage 记账，尚未经过新 fresh 验证。后续不得丢弃、覆盖或重复实现；Step 7 必须先审计并复用其中仍然必要的最小改动。
+fresh 完成后发现 accounting 对“有 amendment 记录但无 amendment model call”的判断错误，随后对
+`metrics.py` 做了最小修正，并补齐 machine report 去重与 regression。因此历史 manifest 保持原样且仍为
+`token_accounting_complete=false`；不得用 post-run code 重算并覆盖该 acceptance evidence。
 
 ## Step 7：修复 deterministic completion、repair routing 与失败记账
 
-**状态：IN_PROGRESS**
+**状态：DONE（Step 7-R1 accepted）**
 
 ### 目标
 
@@ -392,14 +392,52 @@ required module/file/function inventory 非空
 deterministically derivable dependency errors = 0
 unresolved 与 residual diagnostics 均完整记录
 coder generation/repair/compile outcome 已归档
-planning total tokens <= 800000 且 token_accounting_complete=true
+planning total tokens <= 783804 且 token_accounting_complete=true
 ```
 
 final compile 在本 Step 记录但不要求成功。
 
+### Step 7 执行记录（2026-07-14）
+
+- 离线门禁：planning `145/145`、planning utility `27/27`、coder `29/29`；`compileall` 与
+  `git diff --check` 通过。fresh02/semantic45 只读 replay 均保持原 artifact hash；安全 dependency
+  completion 生效，可能形成 cycle 的推导被拒绝；真实 linker stderr 可定位 project `.c` 并保留关联 block。
+- Fresh：`mqtt_step7_fresh_20260714_165310`，`fresh/resume/replay=true/false/false`，11/11 stages；
+  materialize 1 个 module、6 个 `FILE_SPEC`、35 个 `FUNCTION_SPEC`，schema 与 coder loader 通过，
+  `nonfatal_no_specs_count=0`。
+- Planning diagnostics：`qualification_passed=false`，4 个 unresolved partitions、7 个 union errors；
+  residual 包括 callback binding/ABI、unsafe cyclic dependency、runtime call chain 和 constant drift。
+- Token：whole fresh 为 `681569`；Stage 8 primary partition generation 为 `254599`。按当时任务书，单 Stage
+  超过 `220000` 且历史 manifest 的 `token_accounting_complete=false`，因此首次 Step 7 token 门禁未通过。
+- Coder：initial clean compile 失败（10 roots，均归为 C5）；3/3 bounded repair 后仍失败
+  （6 roots，stop reason `max_rounds_exhausted`）。definition coverage 保持 `34/35`，placeholder 为 1，
+  near-empty required source 为 0。最终缺口集中于 opaque connection/session access paths，以及与之相连的 callback ABI。
+- Artifact：planning 位于
+  `agent/planning/out/mqtt_step7_fresh_20260714_165310/`；coder evidence 位于
+  `evaluation/planning_utility/out/step7_fresh_20260714_165310/`。
+- 历史结论：首次 Step 7 acceptance attempt 未通过当时门禁，已按 §4.3/C.2 保存并标记
+  `DEFERRED`；该历史结果不得改写或覆盖。
+- 本次修订：用户明确授权 Step 7 在新 total-token contract 下进行一次 `Step 7-R1` 修复与 fresh
+  acceptance。其 revision、artifact directory 与 ledger row 必须独立；若失败则再次 `DEFERRED`，不得补跑。
+- Step 7-R1：冻结 `HEAD 43b29b8`，execution diff SHA256 为 `42cc12fb…`，planning/coder
+  prompt diff 为空；fresh artifact 为 `mqtt_step7_r1_fresh_20260714_175600`。
+- R1 planning：11/11 stages，17/18 partitions，materialize 1/6/33 module/file/function specs；显式
+  coder schema/loader validation 为 `No diagnostics`，`nonfatal_no_specs_count=0`。deterministic
+  completion 补齐 8 条 file dependencies 与 1 条 module dependency，未残留 dependency error；Stage 4
+  grounding、runtime entrypoint、constant drift 与 budget stop residual 均已保留，candidate 未误标 qualified。
+- R1 token：29 次 structured requests，`771279` total，超过 `749726` target 但未超过 `783804`
+  hard ceiling，`token_accounting_complete=true`；最后一次 dependency-closure model call 在 projected
+  total `797937` 时被 preflight 阻止并 materialize candidate。
+- R1 coder：initial generation 完成，33/33 required definitions、0 placeholder、0 near-empty source；initial
+  compile 为 6 个 C5 roots。3/3 native bounded repair 后仍失败，剩余 4 个 C5 roots，stop reason
+  `max_rounds_exhausted`；根因是 opaque `mqtt_session_t` 缺少 coder 可用 access contract。artifact 位于
+  `evaluation/planning_utility/out/step7_r1_fresh_20260714_175600/`。
+- R1 post-run regression：planning `148/148`、planning utility `27/27`、coder `29/29`；`compileall` 与
+  `git diff --check` 通过。final compile 在 Step 7 不作否决，因此 Step 7-R1 满足本 Step 门禁并标记 `DONE`。
+
 ## Step 8：闭合 compile-relevant callback、ABI 与 call flow
 
-**状态：TODO**
+**状态：DONE（Step 8-R1 accepted）**
 
 ### 启动条件
 
@@ -429,14 +467,66 @@ Step 7 artifact gates 保持通过
 其余 compile diagnostics 均映射到 planning-owned 或 coder-owned authoritative source
 compile-relevant artifact/ABI/dependency metrics 已完整记录
 initial compile 与 bounded-repair final compile 均已测量并归档
-planning total tokens <= 800000 且 token_accounting_complete=true
+planning total tokens <= 783804 且 token_accounting_complete=true
 ```
 
 initial compile 和 final compile 在本 Step 仍是反馈，不要求 final pass；不影响 compile 的 semantic diagnostics 不得阻止本 Step。若 final compile 已通过，按第 4.3 节的最终目标优先规则执行。
 
+### Step 8 执行记录（2026-07-14）
+
+- 选定 family：R1 compile 中 opaque cross-module state access contract 缺失。最小修复只替换 Stage 4
+  `runtime_context_rule`，未增加 prompt 段落；真实 R1 Stage 4 representative request 为
+  `16706 -> 16696` tokenizer tokens（`-10`），characters `-56`。
+- 冻结 revision：`HEAD 43b29b8`，execution diff SHA256 `155de867…`，prompt diff SHA256
+  `21ae6755…`。fresh artifact 为 `mqtt_step8_fresh_20260714_194208`。
+- Planning：11/11 stages、18/19 partitions，materialize 1/7/29 module/file/function specs；schema/coder
+  loader passed，`nonfatal_no_specs_count=0`。9 个 union errors 已归档；`713321` total planning tokens，
+  `token_accounting_complete=true`，低于 `749726` target 与 `783804` hard ceiling。
+- Root-cause evidence：fresh inventory 新增 runtime child accessors，但没有 session connected/connection query
+  accessor。initial code 不再直接访问 `mqtt_session_t` opaque fields，却调用未声明的
+  `mqtt_session_is_connected`；因此同一 access/service contract family 只改变表现，未被消除。
+- Coder：initial compile failed，20 classifier roots（C1=2/C2=6/C3=10/C5=2），definition coverage
+  26/29、placeholder 1。3/3 bounded repair 后仍 failed，10 C3 roots、coverage 29/29、placeholder 0，
+  stop reason `max_rounds_exhausted`；最终缺失 `message_router_create/destroy`、`connection_get_fd`、
+  `connection_set_input_buffer_length`、`mqtt_session_is_connected` 等 inventory services。
+- Artifact：planning 位于 `agent/planning/out/mqtt_step8_fresh_20260714_194208/`；coder evidence 位于
+  `evaluation/planning_utility/out/step8_fresh_20260714_194208/`。post-run regression 为 planning
+  `148/148`、planning utility `27/27`、coder `29/29`，`compileall` 与 `git diff --check` 通过。
+- 结论：选定 family 未消除且 compile 已证明仍是 blocker，Step 8 唯一 fresh 未通过本 Step 门禁；按
+  §4.3/C.2 标记 `DEFERRED`，不得在本 Goal 内补跑或自动进入 Step 9。
+- Step 8-R1 授权：用户于 2026-07-14 明确授权 1 次 repair acceptance。修复范围仅限 Step 8 artifact
+  已证明的 protocol-agnostic compile-contract defects：decoded `const void* *_data` provider 绑定、同 owner
+  多 callback 的 consumer/provider role 闭合，以及从既有 facts 派生 routing lifecycle、transport input-buffer
+  access/consume/identity、session state-query callable obligations；不得人工补 MQTT inventory、修改
+  facts/generated source 或无变化重跑。
+- Step 8-R1 离线新增门禁已通过：历史 uncommitted broker partition replay 保留 11 条合法 call edges 与
+  typed `runtime_flow`，原 `filter_count` provider 错误消失；历史 Stage 4 correction replay 可闭合全部三组
+  TCP callback。新增 regressions 后 planning `148/148`、planning utility `32/32`（含 workspace 中既有未跟踪
+  evaluation tests）、coder `29/29` 通过。Stage 4 representative prompt 为 `16409 -> 16516` tokenizer
+  tokens（`+0.65%`）、`79712 -> 80223` characters，未修改 `prompts.py`，远低于 10%–15% 增幅限制。
+- Step 8-R1 fresh：冻结 `HEAD 43b29b8`，execution diff SHA256 `84b31049…`，prompt diff SHA256
+  `21ae6755…`；artifact 为 `mqtt_step8_r1_fresh_20260714_204807`。11/11 stages 完成，materialize
+  1/6/34 module/file/function specs，schema/coder loader passed；6 个 unresolved partitions 与 22 个 union
+  errors 完整保留，candidate 未误标 qualified。
+- R1 inventory 已包含上轮缺失的 `mqtt_topic_router_create/destroy`、`mqtt_connection_consume_input`、
+  `mqtt_connection_get_fd` 与 `mqtt_session_is_connected`。planning 总量 `746305`，
+  `token_accounting_complete=true`，低于 `749726` target 与 `783804` hard ceiling。
+- Coder initial：clean compile failed，统一 snapshot 为 46 roots（C2=38/C3=6/C4=2），主要是 transport
+  source 的重复完整实现；required definition 为 24/34、placeholder=1、near-empty=0。未再出现上轮 5 个
+  未注册 lifecycle/access service roots。
+- Bounded repair：第 1 轮处理 transport/broker/main 后只剩 broker；第 2/3 轮后 compile succeeded，
+  stop reason `compile_succeeded`。独立 `make clean && make` 再次返回 0；manual edit count=0。最终 snapshot
+  0 roots、33/34 definitions、placeholder=0、near-empty=0；缺失的 router match definition 不影响本 Goal
+  冻结的 compile endpoint，按 §C.3 保留为非否决 evidence。
+- Coder artifact 位于 `evaluation/planning_utility/out/step8_r1_fresh_20260714_204807/`，repair manifest 位于
+  `mqtt_repair_20260714_211059/_agent_logs/011_repair_manifest.json`。Step 8-R1 已满足本 Step 门禁并首次达到
+  第 1.2 节单-run compile success；post-run regression 为 planning `148/148`、planning utility
+  `33/33`、coder `29/29`，`compileall` 与 `git diff --check` 通过。按最终目标优先规则取消 Step 9
+  fresh，下一步直接进入 Step 10。
+
 ## Step 9：单次 fresh 打通 bounded-repair final compile
 
-**状态：TODO**
+**状态：DONE（Step 8-R1 already met goal；fresh slot cancelled）**
 
 ### 启动条件
 
@@ -464,7 +554,7 @@ repair_rounds_used <= 3
 repair 没有因可路由 linker diagnostics 提前停止
 final clean compile passed
 manual edit count = 0
-planning total tokens <= 800000 且 token_accounting_complete=true
+planning total tokens <= 783804 且 token_accounting_complete=true
 ```
 
 Step 9 第一次满足上述条件即为 `DONE`，不要求连续 fresh。
@@ -521,7 +611,7 @@ prompt-token baseline、frozen tokenizer 与 token ceiling
 3/3 repair_rounds_used <= 3
 3/3 final clean compile passed
 3/3 manual edit count = 0
-3/3 planning total tokens <= 800000 且 token_accounting_complete=true
+3/3 planning total tokens <= 783804 且 token_accounting_complete=true
 ```
 
 Step 10 只执行这一组预声明的 3-run sequence。任一 run 失败仍完成并保存本 sequence 的其余预声明 runs，最终将 Goal 标记为 `DEFERRED`；不得自动修改、重新冻结或从 0/3 重启。只有用户明确修订任务书后才可开启新的 sequence。
@@ -536,9 +626,11 @@ Step 10 只执行这一组预声明的 3-run sequence。任一 run 失败仍完�
 
 | Step | Run | Revision | fresh/resume/replay | Fatal/reason | Specs/schema/loader | Qualified/union | Manifest root / actual root / stale | Initial compile | Repair rounds | Final compile | Tokens/complete | Result |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | ---: | --- | --- | --- |
-| 7 | 待运行 |  | true/false/false |  |  |  |  |  |  |  |  |  |
-| 8 | 待运行 |  | true/false/false |  |  |  |  |  |  |  |  |  |
-| 9 | 待运行 |  | true/false/false |  |  |  |  |  |  |  |  |  |
+| 7 | `mqtt_step7_fresh_20260714_165310` | `43b29b8` + diff `25c23701…` | true/false/false | non-fatal | 1/6/35；schema/loader passed | false/7 | manifest=actual；false | failed；10 roots | 3 | failed；6 roots | 681569/false | DEFERRED |
+| 7-R1 | `mqtt_step7_r1_fresh_20260714_175600` | `43b29b8` + diff `42cc12fb…` | true/false/false | non-fatal | 1/6/33；schema/loader passed | false/4 | manifest=actual；false | failed；6 roots | 3 | failed；4 roots | 771279/true | DONE |
+| 8 | `mqtt_step8_fresh_20260714_194208` | `43b29b8` + diff `155de867…` | true/false/false | non-fatal | 1/7/29；schema/loader passed | false/9 | manifest=actual；false | failed；20 roots | 3 | failed；10 roots | 713321/true | DEFERRED |
+| 8-R1 | `mqtt_step8_r1_fresh_20260714_204807` | `43b29b8` + diff `84b31049…` | true/false/false | non-fatal | 1/6/34；schema/loader passed | false/22 | manifest=actual；false | failed；46 roots | 2 | passed；0 roots | 746305/true | DONE |
+| 9 | cancelled | Step 8-R1 revision | false/false/false | earlier fresh met goal | Step 8-R1 evidence | n/a | n/a | n/a | 0 | Step 8-R1 passed | 0/true | DONE |
 | 10.1 | 待运行 |  | true/false/false |  |  |  |  |  |  |  |  |  |
 | 10.2 | 待运行 |  | true/false/false |  |  |  |  |  |  |  |  |  |
 | 10.3 | 待运行 |  | true/false/false |  |  |  |  |  |  |  |  |  |
@@ -616,7 +708,7 @@ tests、diff、pruning 和 final hashes 完成
 
 以下 acceptance 失败标记 `DEFERRED` 并保存完整证据，不伪装成外部 blocker：
 
-- Step 7、8 或 9 的唯一 post-change fresh 未通过本 Step 门禁；此时标记 `DEFERRED`，不自动重试；
+- Step 7-R1、Step 8 或 Step 9 的唯一剩余 post-change fresh 未通过本 Step 门禁；此时标记 `DEFERRED`，不自动重试；
 - Step 10 预声明 sequence 未达到 3/3；此时标记 `DEFERRED`，不自动开启新 sequence。
 
 `BLOCKED` report 必须包含 3 次一致证据、最小复现、最早失败 stage、已尝试的最小修复、当前 tests/worktree 状态和需要用户决定的具体事项。单次 acceptance failure 使用 `DEFERRED`，不伪标为外部 blocker。

@@ -3,12 +3,15 @@ from __future__ import annotations
 import os
 import time
 from dataclasses import dataclass
+from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
 from openai import APIConnectionError, OpenAI, OpenAIError
 
 
 FIXED_MODEL = "qwen3-max-2026-01-23"
+FIXED_TOKENIZER_PATH = Path.home() / "models/Qwen3-30B-A3B"
 # FIXED_MODEL = "qwen3.7-max-2026-05-20"
 QWEN_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 DEFAULT_API_KEY_ENV = "ALI_API"
@@ -37,6 +40,23 @@ class LLMUsage:
 class LLMResponse:
     content: str
     usage: LLMUsage
+
+
+@lru_cache(maxsize=1)
+def _fixed_tokenizer() -> Any:
+    from transformers import AutoTokenizer
+
+    return AutoTokenizer.from_pretrained(FIXED_TOKENIZER_PATH, local_files_only=True)
+
+
+def estimate_message_input_tokens(messages: list[dict[str, str]]) -> int:
+    return len(
+        _fixed_tokenizer().apply_chat_template(
+            messages,
+            tokenize=True,
+            add_generation_prompt=True,
+        )
+    )
 
 
 def _coerce_usage(usage_obj: Any) -> LLMUsage:

@@ -228,6 +228,14 @@ def _compile_project(output_dir: Path, binary_name: str) -> subprocess.Completed
 
 
 _DIAGNOSTIC_RE = re.compile(r"^(.+\.(?:c|h)):\d+:\d+: ((?:fatal )?error|warning|note):")
+_LINKER_SOURCE_DIAGNOSTIC_RE = re.compile(
+    r"(?:^|[;:\s])(?P<path>[^;:\s]+\.c):\([^)]*\):\s*"
+    r"(?P<kind>multiple definition of|undefined reference to)"
+)
+_LINKER_ROOT_RE = re.compile(
+    r"(?P<kind>multiple definition of|undefined reference to)\s+[`'‘]"
+    r"(?P<symbol>[^`'’]+)[`'’]"
+)
 
 
 def _project_relative_path(raw_path: str, project_dir: Path) -> str | None:
@@ -248,12 +256,23 @@ def _extract_project_error_files(stdout: str, stderr: str, project_dir: Path) ->
     found: list[str] = []
     for line in combined.splitlines():
         match = _DIAGNOSTIC_RE.match(line)
-        if not match or "error" not in match.group(2):
-            continue
-        relative = _project_relative_path(match.group(1), project_dir)
-        if relative and relative not in found:
-            found.append(relative)
+        raw_paths = (
+            [match.group(1)]
+            if match and "error" in match.group(2)
+            else [item.group("path") for item in _LINKER_SOURCE_DIAGNOSTIC_RE.finditer(line)]
+        )
+        for raw_path in raw_paths:
+            relative = _project_relative_path(raw_path, project_dir)
+            if relative and relative not in found:
+                found.append(relative)
     return found
+
+
+def _linker_error_roots(stdout: str, stderr: str) -> set[str]:
+    return {
+        f"{match.group('kind').replace(' ', '_')}:{match.group('symbol')}"
+        for match in _LINKER_ROOT_RE.finditer(f"{stdout}\n{stderr}")
+    }
 
 
 def _classify_repair_targets(
@@ -280,6 +299,7 @@ def _diagnostic_blocks(stdout: str, stderr: str, project_dir: Path) -> list[tupl
     current_path: str | None = None
     current_level = ""
     current_lines: list[str] = []
+    pending_linker_lines: list[str] = []
 
     def flush() -> None:
         nonlocal current_path, current_level, current_lines
@@ -293,12 +313,26 @@ def _diagnostic_blocks(stdout: str, stderr: str, project_dir: Path) -> list[tupl
         match = _DIAGNOSTIC_RE.match(line)
         if match:
             flush()
+            pending_linker_lines = []
             relative = _project_relative_path(match.group(1), project_dir)
             if relative is None:
                 continue
             current_path = relative
             current_level = match.group(2)
             current_lines = [line]
+        elif linker_match := _LINKER_SOURCE_DIAGNOSTIC_RE.search(line):
+            flush()
+            relative = _project_relative_path(linker_match.group("path"), project_dir)
+            if relative is None:
+                pending_linker_lines = []
+                continue
+            current_path = relative
+            current_level = "error"
+            current_lines = [*pending_linker_lines, line]
+            pending_linker_lines = []
+        elif line.startswith("/usr/bin/ld:"):
+            flush()
+            pending_linker_lines = [line]
         elif current_path:
             current_lines.append(line)
     flush()
@@ -761,10 +795,16 @@ class ProjectGenerator:
                 print(f"[agent.repair] blocked=headers files={','.join(blocking_headers)}", flush=True)
                 return RepairOutcome(last_result, "deterministic_header_compile_error", round_idx - 1, blocking_headers, rejected_candidates)
             if not repairable_sources:
-                return RepairOutcome(last_result, "no_repairable_sources", round_idx - 1, [], rejected_candidates)
+                reason = (
+                    "unmapped_linker_diagnostics"
+                    if _linker_error_roots(last_result.stdout, last_result.stderr)
+                    else "no_repairable_sources"
+                )
+                return RepairOutcome(last_result, reason, round_idx - 1, [], rejected_candidates)
 
             print(f"[agent.repair] round={round_idx} files={','.join(repairable_sources)}", flush=True)
             changed = False
+            original_contents: dict[str, str] = {}
             for relative_path in repairable_sources:
                 file_spec = self.bundle.file_specs_by_source_path[relative_path]
                 print(f"[agent.repair] file={relative_path} start", flush=True)
@@ -844,17 +884,36 @@ class ProjectGenerator:
                     rejected_candidates.append({"path": relative_path, "reason": reject_reason})
                     print(f"[agent.repair] file={relative_path} rejected={reject_reason}", flush=True)
                     continue
+                original_contents[relative_path] = current_content
                 current_path.write_text(candidate, encoding="utf-8")
                 print(f"[agent.repair] file={relative_path} file_written", flush=True)
                 changed = True
-                if relative_path not in repaired_files:
-                    repaired_files.append(relative_path)
             if not changed:
                 return RepairOutcome(last_result, "no_repair_progress", round_idx, [], rejected_candidates)
+            previous_result = last_result
             last_result = _compile_project(self.project_dir, binary_name)
             print(f"[agent.repair] compile=round_{round_idx} returncode={last_result.returncode}", flush=True)
             self.logs.write(f"compile_stdout_{round_idx}", last_result.stdout)
             self.logs.write(f"compile_stderr_{round_idx}", last_result.stderr)
+            new_linker_roots = _linker_error_roots(last_result.stdout, last_result.stderr) - _linker_error_roots(
+                previous_result.stdout, previous_result.stderr
+            )
+            if new_linker_roots:
+                reason = "new_linker_roots:" + ",".join(sorted(new_linker_roots))
+                for relative_path, original_content in original_contents.items():
+                    (self.project_dir / relative_path).write_text(original_content, encoding="utf-8")
+                    rejected_candidates.append({"path": relative_path, "reason": reason})
+                self.logs.write(
+                    f"repair_candidate_rejected_{round_idx}",
+                    json.dumps({"reason": reason, "files": sorted(original_contents)}, indent=2),
+                    ".json",
+                )
+                print(f"[agent.repair] round={round_idx} rejected={reason}", flush=True)
+                last_result = previous_result
+                continue
+            for relative_path in original_contents:
+                if relative_path not in repaired_files:
+                    repaired_files.append(relative_path)
             if last_result.returncode == 0:
                 return RepairOutcome(last_result, "compile_succeeded", round_idx, [], rejected_candidates)
         return RepairOutcome(last_result, "max_rounds_exhausted", self.max_repair_rounds, [], rejected_candidates)

@@ -402,6 +402,21 @@ class ImplementabilityTests(unittest.TestCase):
         self.assertIn("provider", plan["modules"][1]["dependencies"])
         self.assertEqual(analyze_implementability(plan), [])
 
+    def test_deterministic_completion_does_not_create_module_cycle(self) -> None:
+        plan = _closed_plan()
+        provider, app = plan["modules"]
+        provider["dependencies"] = ["app"]
+        app["dependencies"] = []
+
+        changes = complete_deterministic_dependencies(plan)
+
+        self.assertEqual(app["dependencies"], [])
+        self.assertNotIn(
+            "deterministic_module_dependency_completion",
+            {item["code"] for item in changes},
+        )
+        self.assertIn("module_dependency_conflict", _codes(plan))
+
     def test_typed_callback_binding_derives_provider_dependencies(self) -> None:
         plan = _closed_plan()
         provider = _function(
@@ -715,6 +730,31 @@ class ImplementabilityTests(unittest.TestCase):
         self.assertEqual(task["required_dependency_update_checklist"][0]["required_provider_return_type"], "fixture_handle_t")
         self.assertNotIn("previous_patch", task)
         self.assertIn("diagnostic_groups", task)
+
+    def test_semantic_patch_respects_remaining_whole_fresh_budget(self) -> None:
+        class FakeClient:
+            calls = 0
+
+            def __init__(self, api_key_env: str) -> None:
+                pass
+
+            def generate_with_usage(self, request):
+                FakeClient.calls += 1
+                raise AssertionError("budget guard must run before the model call")
+
+        with tempfile.TemporaryDirectory() as raw, patch(
+            "agent.common.llm_client.FixedQwenClient", FakeClient
+        ):
+            with self.assertRaisesRegex(ValueError, "whole_fresh_token_ceiling"):
+                request_semantic_patch(
+                    {"related_artifacts": {}},
+                    api_key_env="UNUSED",
+                    log_dir=Path(raw),
+                    tokens_used=783000,
+                    token_ceiling=783804,
+                )
+
+        self.assertEqual(FakeClient.calls, 0)
 
     def test_truncated_patch_records_usage_and_parse_failure(self) -> None:
         class FakeClient:

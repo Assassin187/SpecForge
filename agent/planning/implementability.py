@@ -361,6 +361,22 @@ def complete_deterministic_dependencies(plan: dict[str, Any]) -> list[dict[str, 
     header_owner = {str(item.get("header_path")): item for item in files.values() if item.get("header_path")}
     modules, modules_by_name = _index(plan, "module")
     del modules
+
+    def introduces_module_cycle(module_name: str, dependency_name: str) -> bool:
+        pending = [dependency_name]
+        seen: set[str] = set()
+        while pending:
+            current = pending.pop()
+            if current == module_name:
+                return True
+            if current in seen:
+                continue
+            seen.add(current)
+            owners = modules_by_name.get(current, [])
+            if len(owners) == 1:
+                pending.extend(str(item) for item in _items(owners[0].get("dependencies")))
+        return False
+
     for file_item in files.values():
         module_name = str(file_item.get("module", ""))
         module_matches = modules_by_name.get(module_name, [])
@@ -370,7 +386,12 @@ def complete_deterministic_dependencies(plan: dict[str, Any]) -> list[dict[str, 
         for dependency in _unique(_items(file_item.get("header_dependencies")) + _items(file_item.get("source_dependencies"))):
             owner = header_owner.get(str(dependency))
             dependency_module = str(owner.get("module", "")) if owner else ""
-            if dependency_module and dependency_module != module_name and dependency_module not in module.setdefault("dependencies", []):
+            if (
+                dependency_module
+                and dependency_module != module_name
+                and dependency_module not in module.setdefault("dependencies", [])
+                and not introduces_module_cycle(module_name, dependency_module)
+            ):
                 module["dependencies"].append(dependency_module)
                 changes.append(
                     {
@@ -1422,8 +1443,11 @@ def request_semantic_patch(
     previous_patch: dict[str, Any] | None = None,
     validation_errors: list[str] | None = None,
     correction_partition: str | None = None,
+    tokens_used: int = 0,
+    token_ceiling: int | None = None,
 ) -> tuple[dict[str, Any], dict[str, int]]:
-    from agent.common.llm_client import FixedQwenClient, LLMRequest
+    from agent.common.llm_client import FixedQwenClient, LLMRequest, estimate_message_input_tokens
+    from agent.planning.planner import SINGLE_REQUEST_INPUT_TOKEN_CEILING
 
     correction = previous_patch is not None
     related_functions = {
@@ -1542,6 +1566,19 @@ def request_semantic_patch(
         },
         {"role": "user", "content": json.dumps(task, ensure_ascii=False, separators=(",", ":"))},
     ]
+    input_tokens = estimate_message_input_tokens(messages)
+    if input_tokens > SINGLE_REQUEST_INPUT_TOKEN_CEILING:
+        raise ValueError(
+            "single_request_input_token_ceiling: "
+            f"projected_input_tokens={input_tokens}, ceiling={SINGLE_REQUEST_INPUT_TOKEN_CEILING}"
+        )
+    if token_ceiling is not None and tokens_used + input_tokens + 8_000 > token_ceiling:
+        raise ValueError(
+            "whole_fresh_token_ceiling: "
+            f"used_tokens={tokens_used}, projected_input_tokens={input_tokens}, "
+            f"response_reserve=8000, projected_total={tokens_used + input_tokens + 8_000}, "
+            f"ceiling={token_ceiling}"
+        )
     root = Path(log_dir)
     root.mkdir(parents=True, exist_ok=True)
     prefix = f"02_patch_correction_{correction_partition}" if correction and correction_partition else "02_patch_correction" if correction else "01_semantic_patch"

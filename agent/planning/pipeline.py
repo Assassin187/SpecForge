@@ -23,7 +23,13 @@ from .implementability import (
 from .knowledge import activate_engineering_rules, extract_open_assumptions, normalize_characteristics
 from .metrics import build_run_metrics
 from .models import Diagnostic, PlanningResult, to_jsonable
-from .planner import LLMStructuredPlanner, PLANNING_STAGES, RecoverablePlanningError, build_planning_context
+from .planner import (
+    LLMStructuredPlanner,
+    PLANNING_STAGES,
+    WHOLE_FRESH_TOKEN_CEILING,
+    RecoverablePlanningError,
+    build_planning_context,
+)
 from .registry import CanonicalPlanningRegistry, RegistryInvariantError, register_semantic_patch_additions
 from .validation import diagnostics_to_json, validate_planning_run
 from .validation_layers import (
@@ -70,6 +76,17 @@ def _distinct_unresolved_partitions(values: list[dict[str, Any]]) -> list[dict[s
             str(item.get("partition_id", "")),
             str(item.get("diagnostic", "")),
         )
+        if identity not in seen:
+            seen.add(identity)
+            out.append(item)
+    return out
+
+
+def _distinct_diagnostic_dicts(values: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str, str]] = set()
+    for item in values:
+        identity = tuple(str(item.get(key, "")) for key in ("level", "code", "message", "path"))
         if identity not in seen:
             seen.add(identity)
             out.append(item)
@@ -475,6 +492,7 @@ def _write_planning_artifacts(
         "stage_survival": metrics.get("stage_survival", {}),
         "partition_survival": metrics.get("partition_survival", {}),
         "token_accounting": metrics.get("token_accounting", {}),
+        "token_accounting_complete": bool(metrics.get("token_accounting", {}).get("complete")),
         "fresh": resume_from is None,
         "resume": resume_from is not None,
         "resume_from": resume_from,
@@ -521,6 +539,7 @@ def _close_implementability(
     *,
     api_key_env: str,
     resume_from: str | None,
+    planning_tokens_used: int = 0,
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, int]]:
     semantic_root = planning_root / "semantic_closure"
     semantic_root.mkdir(parents=True, exist_ok=True)
@@ -603,7 +622,13 @@ def _close_implementability(
         payload = build_semantic_patch_slice(normalized, context, initial_diagnostics)
         write_json(semantic_root / "input_slice.json", payload)
         try:
-            patch, call_usage = request_semantic_patch(payload, api_key_env=api_key_env, log_dir=semantic_root)
+            patch, call_usage = request_semantic_patch(
+                payload,
+                api_key_env=api_key_env,
+                log_dir=semantic_root,
+                tokens_used=planning_tokens_used,
+                token_ceiling=WHOLE_FRESH_TOKEN_CEILING,
+            )
             _add_usage(usage, call_usage)
             patch_errors = validate_candidate(patch)
         except (ValueError, TypeError) as exc:
@@ -640,6 +665,8 @@ def _close_implementability(
                         previous_patch=patch,
                         validation_errors=group_errors,
                         correction_partition=partition,
+                        tokens_used=planning_tokens_used + usage["total_tokens"],
+                        token_ceiling=WHOLE_FRESH_TOKEN_CEILING,
                     )
                     _add_usage(usage, correction_usage)
                     patch = merge_semantic_patches(patch, correction)
@@ -810,6 +837,7 @@ def run_planning(
                 "stage_survival": metrics.get("stage_survival", {}),
                 "partition_survival": metrics.get("partition_survival", {}),
                 "token_accounting": metrics.get("token_accounting", {}),
+                "token_accounting_complete": bool(metrics.get("token_accounting", {}).get("complete")),
                 "fresh": resume_from is None,
                 "resume": resume_from is not None,
                 "resume_from": resume_from,
@@ -833,7 +861,13 @@ def run_planning(
         if not isinstance(plan.get("canonical_registry_snapshot"), dict):
             raise RuntimeError("registry_snapshot_missing: structured planning completed without canonical registry")
         if plan.get("unresolved_partitions"):
-            semantic_patch_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+            semantic_patch_usage = {
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "total_tokens": 0,
+                "prompt_characters": 0,
+                "request_count": 0,
+            }
             distinct_unresolved = _distinct_unresolved_partitions(plan["unresolved_partitions"])
             unresolved_diagnostics = [
                 {
@@ -848,26 +882,39 @@ def run_planning(
                 }
                 for item in distinct_unresolved
             ]
+            plan = normalize_plan_for_compiler(plan)
+            deterministic_changes = complete_deterministic_dependencies(plan)
+            validate_deterministic_change_log(deterministic_changes)
+            residual_diagnostics = analyze_implementability(plan)
+            final_diagnostics = _distinct_diagnostic_dicts([*unresolved_diagnostics, *residual_diagnostics])
             implementability_report = {
                 "kind": "IMPLEMENTABILITY_REPORT",
-                "initial_diagnostics": [],
-                "deterministic_completion": [],
+                "initial_diagnostics": residual_diagnostics,
+                "deterministic_completion": deterministic_changes,
                 "semantic_patch_attempted": False,
                 "semantic_patch_reused": False,
                 "semantic_patch_validation_errors": [],
                 "semantic_patch_usage": semantic_patch_usage,
-                "final_diagnostics": unresolved_diagnostics,
+                "final_diagnostics": final_diagnostics,
                 "validation_layers": semantic_layer_summary(
-                    unresolved_diagnostics, plan["unresolved_partitions"]
+                    final_diagnostics,
+                    plan["unresolved_partitions"],
                 ),
                 "success": False,
             }
             semantic_root = planning_root / "semantic_closure"
+            write_json(semantic_root / "initial_diagnostics.json", residual_diagnostics)
+            write_json(semantic_root / "deterministic_completion.json", deterministic_changes)
             write_json(semantic_root / "implementability_report.json", implementability_report)
             write_json(semantic_root / "semantic_patch_usage.json", semantic_patch_usage)
         else:
             plan, implementability_report, semantic_patch_usage = _close_implementability(
-                plan, context, planning_root, api_key_env=api_key_env, resume_from=resume_from
+                plan,
+                context,
+                planning_root,
+                api_key_env=api_key_env,
+                resume_from=resume_from,
+                planning_tokens_used=provider.model_tokens_used,
             )
         snapshot = plan.get("canonical_registry_snapshot")
         if isinstance(snapshot, dict):
