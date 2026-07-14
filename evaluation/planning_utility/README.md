@@ -685,6 +685,20 @@ wall-clock time
 
 ### 15.3 Diagnostic metrics
 
+RQ1 的 supplementary mechanism analysis 使用冻结的
+`target_profiles/mqtt_obligation_rubric.json`，对三种方法统一计算：
+
+```text
+required obligation realization
+executable call-path closure
+semantic grounding closure
+```
+
+这些指标的分母来自 evaluation-owned MQTT obligations/capabilities，而不是各工程自行生成的
+API/type 数量。它们用于解释 planning 如何影响 code-level engineering closure，不能替代
+compile、runtime behavior 或 E2E primary endpoints。原有 header/API/dependency/ownership 指标仅作为
+code-internal diagnostics 保留。
+
 M0/M1 的 `repair_summary.json` 自动记录：
 
 ```text
