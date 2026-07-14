@@ -934,7 +934,13 @@ class PlanningPipelineTests(unittest.TestCase):
         }
         corrected = deepcopy(invalid)
         corrected["types"][0]["visibility"] = "public"
-        usage = {"prompt_tokens": 3, "completion_tokens": 1, "total_tokens": 4}
+        usage = {
+            "prompt_tokens": 3,
+            "completion_tokens": 1,
+            "total_tokens": 4,
+            "prompt_characters": 7,
+            "request_count": 1,
+        }
 
         with tempfile.TemporaryDirectory() as raw:
             stage_root = Path(raw) / "stage_logs"
@@ -964,6 +970,8 @@ class PlanningPipelineTests(unittest.TestCase):
                         "status": "completed",
                         "usage": {"prompt_tokens": 2, "completion_tokens": 1, "total_tokens": 3},
                         "repair_usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+                        "request_count": 1,
+                        "prompt_characters": 10,
                     }
                 )
                 return invalid
@@ -978,6 +986,8 @@ class PlanningPipelineTests(unittest.TestCase):
             self.assertEqual(record["local_corrections"], 1)
             self.assertEqual(record["local_correction_successes"], 1)
             self.assertEqual(record["semantic_correction_usage"], usage)
+            self.assertEqual(record["request_count"], 2)
+            self.assertEqual(record["prompt_characters"], 17)
             self.assertEqual(
                 planner.registry.resolve("codec_t", expected_kinds={"type"})["visibility"], "public"
             )
@@ -2911,6 +2921,40 @@ class PlanningPipelineTests(unittest.TestCase):
         self.assertEqual(sliced["fact_slices"][0]["value"], "PING")
         self.assertEqual([item["evidence_id"] for item in sliced["evidence_index"]], ["EV1"])
 
+    def test_fact_slice_groups_equivalent_resolved_subtrees_without_losing_refs(self) -> None:
+        facts = {
+            "messages": [
+                {"name": "CONNECT", "evidence_refs": ["EV1"]},
+                {"name": "PUBLISH", "evidence_refs": ["EV2"]},
+            ],
+            "same_values": {"left": 1, "right": 1},
+            "evidence_index": [
+                {"evidence_id": "EV1", "text": "connect"},
+                {"evidence_id": "EV2", "text": "publish"},
+            ],
+        }
+        sliced = select_fact_slice(
+            facts,
+            [
+                "fact:messages.CONNECT",
+                "fact:messages.PUBLISH",
+                "fact:same_values.left",
+                "fact:same_values.right",
+            ],
+        )
+        message_slice = sliced["fact_slices"][0]
+        self.assertEqual(message_slice["fact_ref"], "fact:messages.CONNECT")
+        self.assertEqual(message_slice["equivalent_fact_refs"], ["fact:messages.PUBLISH"])
+        self.assertEqual(message_slice["resolved_path"], "messages")
+        self.assertEqual(message_slice["value"], facts["messages"])
+        self.assertEqual(
+            [(item["resolved_path"], item["value"]) for item in sliced["fact_slices"][1:]],
+            [("same_values.left", 1), ("same_values.right", 1)],
+        )
+        self.assertEqual(
+            [item["evidence_id"] for item in sliced["evidence_index"]], ["EV1", "EV2"]
+        )
+
     def test_stage5_prompt_preserves_unprefixed_evidence_ids(self) -> None:
         plan = _minimal_plan()
         registry = CanonicalPlanningRegistry.from_snapshot(plan["canonical_registry_snapshot"])
@@ -3067,6 +3111,23 @@ class PlanningPipelineTests(unittest.TestCase):
         self.assertEqual(
             {item["function_id"] for item in boundary["function_signature_catalog"]},
             {item["id"] for item in plan["functions"]},
+        )
+        projected_interfaces = next(
+            item["artifact"]["function_interfaces"]
+            for item in prompt["previous_stage_artifacts"]
+            if item["stage_id"] == "function_interface_design"
+        )
+        self.assertTrue(all("signature" not in item for item in projected_interfaces))
+        self.assertTrue(all("visibility" not in item for item in projected_interfaces))
+        self.assertEqual(
+            {
+                item["function_id"]: (item["signature"], item["visibility"])
+                for item in boundary["function_signature_catalog"]
+            },
+            {
+                item["id"]: (item["signature"], item["visibility"])
+                for item in plan["functions"]
+            },
         )
         self.assertIn(
             "exact canonical function ID",
@@ -4137,6 +4198,30 @@ class PlanningPipelineTests(unittest.TestCase):
         self.assertTrue(planner.stage_records[-1]["repaired_json"])
         self.assertEqual(planner.stage_records[-1]["usage"]["total_tokens"], 12)
         self.assertEqual(planner.stage_records[-1]["repair_usage"]["total_tokens"], 24)
+
+    def test_failed_json_repair_usage_is_still_accounted(self) -> None:
+        class FakeClient:
+            def __init__(self, api_key_env: str = "ALI_API") -> None:
+                self.calls = 0
+
+            def generate_with_usage(self, request):
+                self.calls += 1
+                usage = LLMUsage(prompt_tokens=5 * self.calls, completion_tokens=7, total_tokens=5 * self.calls + 7)
+                return LLMResponse(content='{"payload": [0x48]}', usage=usage)
+
+        stage = PLANNING_STAGES[0]
+        with tempfile.TemporaryDirectory() as raw, patch("agent.common.llm_client.FixedQwenClient", FakeClient):
+            planner = LLMStructuredPlanner(stage_log_dir=Path(raw))
+            with self.assertRaises(json.JSONDecodeError):
+                planner._run_stage(
+                    stage,
+                    {"facts": {}, "characteristics": {}, "engineering_rules": [], "open_assumptions": []},
+                    [],
+                )
+        record = planner.stage_records[-1]
+        self.assertEqual(record["request_count"], 2)
+        self.assertEqual(record["repair_usage"]["total_tokens"], 17)
+        self.assertGreater(record["prompt_characters"], 0)
 
     def test_compile_specs_normalizes_coder_facing_plan(self) -> None:
         plan = {

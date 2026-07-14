@@ -1028,11 +1028,13 @@ class LLMStructuredPlanner:
     ) -> None:
         if self.stage_records and self.stage_records[-1].get("stage_id") == stage.stage_id:
             record = self.stage_records[-1]
+            first_record = "semantic_correction_usage" not in record
             record["semantic_correction_usage"] = usage
-            record["request_count"] = int(record.get("request_count", 0)) + 1
-            record["prompt_characters"] = int(record.get("prompt_characters", 0)) + int(
-                usage.get("prompt_characters", 0)
-            )
+            if first_record:
+                record["request_count"] = int(record.get("request_count", 0)) + 1
+                record["prompt_characters"] = int(record.get("prompt_characters", 0)) + int(
+                    usage.get("prompt_characters", 0)
+                )
             record["local_corrections"] = 1
             record["local_correction_successes"] = int(success)
         stage_dir = self._stage_dir(stage)
@@ -1343,6 +1345,10 @@ class LLMStructuredPlanner:
                 artifact = _prune_invalid_stage4_lifecycle_relations(artifact)
             self._process_artifact_requests(stage, artifact)
         except BaseException as exc:
+            if stage_dir is not None and not repair_usage["request_count"]:
+                repair_usage_path = stage_dir / "repair_usage.json"
+                if repair_usage_path.exists():
+                    repair_usage = json.loads(repair_usage_path.read_text(encoding="utf-8"))
             elapsed = time.monotonic() - started
             status = "interrupted" if isinstance(exc, KeyboardInterrupt) else "failed"
             record = {
@@ -1352,7 +1358,7 @@ class LLMStructuredPlanner:
                 "elapsed_seconds": round(elapsed, 3),
                 "usage": usage,
                 "repair_usage": repair_usage,
-                "request_count": 1,
+                "request_count": 1 + int(repair_usage.get("request_count", 0)),
                 "prompt_characters": len(prompt_content) + int(repair_usage.get("prompt_characters", 0)),
                 "error": f"{type(exc).__name__}: {exc}",
             }

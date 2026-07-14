@@ -465,7 +465,14 @@ def _filter_function_partition_context(
         elif item["stage_id"] == "function_interface_design":
             item["artifact"] = {
                 "function_interfaces": [
-                    value for value in artifact.get("function_interfaces", [])
+                    (
+                        {
+                            key: child for key, child in value.items()
+                            if key not in {"signature", "visibility"}
+                        }
+                        if include_all_interfaces else value
+                    )
+                    for value in artifact.get("function_interfaces", [])
                     if include_all_interfaces or _registry_item_id(value, "function", registry) in function_ids
                 ]
             }

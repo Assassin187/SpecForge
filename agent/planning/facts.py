@@ -141,7 +141,7 @@ def select_fact_slice(facts: JsonObject, refs: list[str]) -> JsonObject:
     """Return exact fact subtrees and evidence for a bounded planning prompt."""
     slices: list[JsonObject] = []
     evidence_ids: set[str] = set()
-    seen: set[tuple[str, str]] = set()
+    slices_by_value: dict[tuple[str, str], JsonObject] = {}
     for raw_ref in refs:
         fact_ref = str(raw_ref).strip()
         if not fact_ref.startswith("fact:"):
@@ -149,16 +149,20 @@ def select_fact_slice(facts: JsonObject, refs: list[str]) -> JsonObject:
         requested_path = fact_ref.removeprefix("fact:").strip(".")
         resolved_path, value = _resolve_longest_fact_path(facts, requested_path)
         if resolved_path:
-            key = (fact_ref, resolved_path)
-            if key not in seen:
-                slices.append(
-                    {
-                        "fact_ref": fact_ref,
-                        "resolved_path": resolved_path,
-                        "value": deepcopy(value),
-                    }
-                )
-                seen.add(key)
+            key = (resolved_path, stable_json_hash(value))
+            existing = slices_by_value.get(key)
+            if existing is None:
+                existing = {
+                    "fact_ref": fact_ref,
+                    "resolved_path": resolved_path,
+                    "value": deepcopy(value),
+                }
+                slices_by_value[key] = existing
+                slices.append(existing)
+            elif fact_ref != existing["fact_ref"]:
+                aliases = existing.setdefault("equivalent_fact_refs", [])
+                if fact_ref not in aliases:
+                    aliases.append(fact_ref)
             evidence_ids.update(collect_evidence_refs(value))
         else:
             evidence_ids.add(requested_path)
