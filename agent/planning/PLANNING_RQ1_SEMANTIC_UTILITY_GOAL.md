@@ -1,10 +1,10 @@
 # SpecForge Planning Specs-to-Bounded-Repair Compile Goal 任务书
 
 > 初始制定日期：2026-07-13
-> 本次修订日期：2026-07-14
+> 本次修订日期：2026-07-15
 > 核心对象：planning agent
-> 当前状态：`IN_PROGRESS`
-> 当前步骤：`Step 10`
+> 当前状态：`DONE（feasibility achieved；stability not achieved）`
+> 当前步骤：`总结分析报告（DONE）`
 > 状态标记：`TODO` / `IN_PROGRESS` / `DONE` / `BLOCKED` / `DEFERRED`
 
 ## 0. 使用方式
@@ -24,7 +24,7 @@
 7. resume、replay 和 fixed-spec coder run 只用于定位；不能替代 post-change fresh acceptance。
 8. 不人工修改 fresh/resume specs，不人工修改 generated source 来制造 compile success。
 
-当前剩余 fresh slots 仅为 Step 10 固定的 3 个；Step 8-R1 已达到单-run compile success，Step 9 slot 按最终目标优先规则取消，不能挪作失败替补。§6.1 的三个历史 fresh、Step 7/Step 8 首次 attempts、Step 7-R1 与 Step 8-R1 只作证据。Step 10 任一 run 失败均不得补跑。
+当前剩余 fresh slots 为 0。Step 8-R1 已达到单-run compile success，Step 9 slot 按最终目标优先规则取消；Step 10 固定的 3 次 fresh 已全部执行，任一失败均不得补跑。§6.1 的三个历史 fresh、Step 7/Step 8 首次 attempts、Step 7-R1、Step 8-R1 与 Step 10.1–10.3 均只作已归档证据。
 
 ## 1. 唯一目标、成功语义与非目标
 
@@ -260,8 +260,8 @@ Token 降低本身不构成 Step success；compile utility 始终是最终 endpo
 当前回归基线（2026-07-14 本次复核）：
 
 ```text
-planning tests: 145/145 passed
-planning utility tests: 27/27 passed
+planning tests: 148/148 passed
+planning utility tests: 33/33 passed
 coder tests: 29/29 passed
 compileall: passed
 git diff --check: passed
@@ -561,7 +561,7 @@ Step 9 第一次满足上述条件即为 `DONE`，不要求连续 fresh。
 
 ## Step 10：冻结 revision、最终稳定性与 pruning
 
-**状态：TODO**
+**状态：DONE（sequence executed）**
 
 ### 启动条件
 
@@ -596,29 +596,61 @@ max_repair_rounds = 3
 prompt-token baseline、frozen tokenizer 与 token ceiling
 ```
 
-### 最终验收
+### Step 10 freeze record（2026-07-14）
+
+```text
+HEAD = 5891e2449a0854c5b7fbe274a69088416c1f17f1
+execution-source tree SHA256 = 9e6abdf442162bb96065e847dcdcb071d73b2e3c99233f58417bc0f32b6fa4fc
+pre-run taskbook SHA256 = 5d3de4ed9e818f8cd0d6121f11a6020a62381b752e472dbf05cbda58bbd2e5d3
+facts raw SHA256 = 2842e52800f85da836eb9c4d2f0768757e376315da0a6b608d619088df5905be
+schema bundle SHA256 = d85d130ff906962a008a8b76efb65044cda4f95427303699d05d8765217a5979
+planning/coder prompts SHA256 = 29310ba89f8b… / 198b8761460d…
+compiler = cc (Ubuntu 12.3.0-1ubuntu1~22.04.3) 12.3.0; Python = 3.12.9
+model = qwen3-max-2026-01-23; max_repair_rounds = 3
+frozen tokenizer baseline = Step 8-R1 Stage 4 representative request 16516 tokens / 80223 characters
+whole-fresh target/hard ceiling = 749726 / 783804 tokens
+```
+
+### 固定验证与结束规则
 
 在不修改代码、prompt、facts、schema、coder、budget 的条件下，运行 3 次独立 fresh。禁止 resume、replay、fixed-spec 替代或失败后无痕重跑。
 
-最终成功条件：
+三次 run 都必须记录以下字段；这些是 evidence completeness 条件，而非要求三次都通过的成功门槛：
 
 ```text
-3/3 fresh specs materialized
-3/3 schema validation passed
-3/3 coder loader passed
-3/3 required inventory 非空
-3/3 coder generation completed
+3/3 specs materialization outcome recorded
+3/3 schema/coder-loader outcome recorded
+3/3 required-inventory outcome recorded
+3/3 coder generation outcome recorded
 3/3 repair_rounds_used <= 3
-3/3 final clean compile passed
+3/3 final clean compile outcome recorded
 3/3 manual edit count = 0
 3/3 planning total tokens <= 783804 且 token_accounting_complete=true
 ```
 
-Step 10 只执行这一组预声明的 3-run sequence。任一 run 失败仍完成并保存本 sequence 的其余预声明 runs，最终将 Goal 标记为 `DEFERRED`；不得自动修改、重新冻结或从 0/3 重启。只有用户明确修订任务书后才可开启新的 sequence。
+Step 10 只执行这一组预声明的 3-run sequence。任一 run 即使 final clean compile failed，仍必须完成并保存其余预声明 runs。第 3 次 run 完成后立即结束 Step 10，标记为 `DONE（sequence executed）`，不得自动修改、重新冻结、补跑或从 0/3 重启；随后进入总结分析报告阶段。Step 10 的结果可以是 3/3 passed、部分 passed 或 0/3 passed，均不改变本次 sequence 的结束语义。
 
 ### Evidence-only 交付
 
 3-run 后只允许写 run artifacts、compact ledger 和最终报告；不得再 prune 或修改 execution source。记录 post-run taskbook/evidence hash、冻结的 execution-source hash和可复现命令。
+
+### Step 10 执行记录（2026-07-14）
+
+- 执行规则：冻结 revision 下恰好运行 3 次 fresh；没有 resume、replay、fixed-spec 替代或失败重跑。三次后按本 Step 的固定结束规则停止。
+- Step 10.1：`mqtt_step10_1_fresh_20260714_213220`，11/11 stages、15/16 partitions，1/5/33 module/file/function specs，schema/coder loader passed，planning `602042` tokens 且 accounting complete。coder repair 用满 3/3 轮，final compile failed，stop reason `max_rounds_exhausted`；最终错误集中于 session/router ABI 和未声明的 `mqtt_session_manager_get_connection`。
+- Step 10.2：`mqtt_step10_2_fresh_20260714_215355`，11/11 stages、16/19 partitions，1/7/38 module/file/function specs，schema/coder loader passed。Stage 9 受到 whole-fresh preflight 阻止并 non-fatal fallback；planning `727172` tokens 且 accounting complete。coder repair 第 1/3 轮 final compile passed；独立 `make clean && make` 再次返回 0。
+- Step 10.3：`mqtt_step10_3_fresh_20260714_221315`，11/11 stages、17/20 partitions，planning `726377` tokens 且 accounting complete。Stage 9 同样被 whole-fresh preflight 阻止；最终 candidate materialization 在未注册 canonical `mqtt_transport_t` 上触发 `RegistryBindingError`，因此无 specs、schema/loader 与 coder generation/repair 均为 `not run`。此为第三次已记录的 fresh 结果，不补跑。
+- 结果：final compile outcomes 为 `failed / passed / not-run`。Step 10 已按固定 sequence 完成并结束；execution source 未在 freeze 后修改。不再执行 planning/coder fresh。
+
+## 总结分析报告
+
+**状态：DONE（2026-07-15）**
+
+- 报告：`agent/planning/PLANNING_RQ1_SEMANTIC_OPTIMIZATION_REPORT.md`
+- 报告 SHA256：`e48378991dbed3383b5d56bca46d63268ea219347c1f01b627deb48267ed0f90`
+- Frozen-sequence evidence：`agent/planning/out/step10_sequence_20260714/EVIDENCE.md`，SHA256 `863dc1aec0678c877e8ec3169e9b9468bf30f12f58a8d795ac8eb2bf0dec6c62`
+- 最终判定：Step 8-R1 与 Step 10.2 证明 fresh planning specs 经 coder bounded repair 后 clean compile 可达；Step 10 的 `failed / passed / materialization failed` 证明 frozen revision 尚未稳定。
+- 结束决定：任务执行和报告均已完成。按 Step 10 固定结束规则不补跑、不扩大 prompt、不继续修改本任务的 execution source；未来若修复 registry/materialization 或 ABI consistency，须另立任务。
 
 ## 附录 A：Compact run ledger
 
@@ -631,9 +663,9 @@ Step 10 只执行这一组预声明的 3-run sequence。任一 run 失败仍完�
 | 8 | `mqtt_step8_fresh_20260714_194208` | `43b29b8` + diff `155de867…` | true/false/false | non-fatal | 1/7/29；schema/loader passed | false/9 | manifest=actual；false | failed；20 roots | 3 | failed；10 roots | 713321/true | DEFERRED |
 | 8-R1 | `mqtt_step8_r1_fresh_20260714_204807` | `43b29b8` + diff `84b31049…` | true/false/false | non-fatal | 1/6/34；schema/loader passed | false/22 | manifest=actual；false | failed；46 roots | 2 | passed；0 roots | 746305/true | DONE |
 | 9 | cancelled | Step 8-R1 revision | false/false/false | earlier fresh met goal | Step 8-R1 evidence | n/a | n/a | n/a | 0 | Step 8-R1 passed | 0/true | DONE |
-| 10.1 | 待运行 |  | true/false/false |  |  |  |  |  |  |  |  |  |
-| 10.2 | 待运行 |  | true/false/false |  |  |  |  |  |  |  |  |  |
-| 10.3 | 待运行 |  | true/false/false |  |  |  |  |  |  |  |  |  |
+| 10.1 | `mqtt_step10_1_fresh_20260714_213220` | frozen `5891e244` | true/false/false | non-fatal | 1/5/33；schema/loader passed | false/7 | manifest=actual；false | failed | 3 | failed | 602042/true | DONE（sequence evidence） |
+| 10.2 | `mqtt_step10_2_fresh_20260714_215355` | frozen `5891e244` | true/false/false | non-fatal Stage 9 budget fallback | 1/7/38；schema/loader passed | false/10 | manifest=actual；false | failed | 1 | passed | 727172/true | DONE（sequence evidence） |
+| 10.3 | `mqtt_step10_3_fresh_20260714_221315` | frozen `5891e244` | true/false/false | materialization `RegistryBindingError` | no specs；coder not run | false/internal | no candidate | not run | 0 | not run | 726377/true | DONE（sequence evidence） |
 
 每个 run 至少保留：
 
@@ -681,18 +713,19 @@ per-call/per-stage/total tokens + token_accounting_complete
 
 ## 附录 C：Goal 停止条件
 
-### C.1 成功停止
+### C.1 执行完成停止
 
-只有以下条件全部满足才标记 `complete`：
+以下条件全部满足时标记 `DONE`；该状态表示任务序列完成，不等价于 frozen-revision stability achieved：
 
 ```text
 Step 0–10 全部 DONE
-non-fatal specs materialization 无 regression
 Step 7–9 至少一次真实 fresh bounded-repair final compile passed
-Step 10 frozen sequence 3/3 passed
+Step 10 frozen sequence 3/3 completed and evidence archived
+Step 10 materialization/loader/coder/compile outcomes 均已如实记录
 manual-edit gate passed
 token ceiling passed
 tests、diff、pruning 和 final hashes 完成
+总结分析报告已完成
 ```
 
 ### C.2 允许 BLOCKED/DEFERRED
@@ -709,7 +742,7 @@ tests、diff、pruning 和 final hashes 完成
 以下 acceptance 失败标记 `DEFERRED` 并保存完整证据，不伪装成外部 blocker：
 
 - Step 7-R1、Step 8 或 Step 9 的唯一剩余 post-change fresh 未通过本 Step 门禁；此时标记 `DEFERRED`，不自动重试；
-- Step 10 预声明 sequence 未达到 3/3；此时标记 `DEFERRED`，不自动开启新 sequence。
+- Step 10 单次或多次 final compile failed、materialization failed 或 coder not-run 不构成 `BLOCKED` 或 `DEFERRED`；完成第 3 次并归档真实 outcome 后结束验证并进入总结分析报告。
 
 `BLOCKED` report 必须包含 3 次一致证据、最小复现、最早失败 stage、已尝试的最小修复、当前 tests/worktree 状态和需要用户决定的具体事项。单次 acceptance failure 使用 `DEFERRED`，不伪标为外部 blocker。
 
@@ -718,8 +751,8 @@ tests、diff、pruning 和 final hashes 完成
 - initial compile 失败，但 bounded repair final compile 成功；
 - `qualification_passed=false`，但 specs 完整且最终 compile 成功；
 - diagnostics、definition coverage、placeholder 或 near-empty 指标不理想，但不影响 nonempty specs 和 final compile；
-- 单次 fresh 失败不等于外部 blocker，但按本任务书触发 `DEFERRED`；
+- Step 10 的 final compile 或 upstream materialization failure 仅作为稳定性验证结果，不触发重跑或阻塞；
 - fixed-spec 或 resume 失败；
 - token 降低不明显，但未超过 ceiling。
 
-这些结果不得驱动无界 prompt 扩充或无变化重跑。若已触发 `DEFERRED`，保存证据并等待用户决定是否修订任务书。
+这些结果不得驱动无界 prompt 扩充或无变化重跑。Step 10 第 3 次后只保存证据并完成总结分析报告；本任务现已结束。

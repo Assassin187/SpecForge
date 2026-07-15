@@ -1289,6 +1289,10 @@ def write_flat_csv(path: str | Path, results: list[dict[str, Any]]) -> None:
         "qualification_passed",
         "freshness",
         "phase",
+        "selection_basis",
+        "final_compile_passed",
+        "repair_rounds_used",
+        "planning_run_id",
     ]
     fields = ["run_id", "method", "sample_status", *metadata_fields, "project_dir"]
     for metric in metric_names:
