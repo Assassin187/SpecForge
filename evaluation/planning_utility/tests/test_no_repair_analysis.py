@@ -7,7 +7,10 @@ from pathlib import Path
 from unittest.mock import patch
 
 from evaluation.planning_utility.no_repair_analysis import analyze_no_repair
-from evaluation.planning_utility.repair_diagnostics import create_diagnostic_snapshot
+from evaluation.planning_utility.repair_diagnostics import (
+    create_diagnostic_snapshot,
+    high_risk_diagnostic_audit,
+)
 
 
 def _write_specs(root: Path, files: dict[str, str], functions: list[tuple[str, str]]) -> None:
@@ -176,6 +179,54 @@ class NoRepairAnalysisTests(unittest.TestCase):
 
             self.assertEqual((project / "core.c").read_text(encoding="utf-8"), original)
             self.assertTrue(result["source_hash_preservation"]["preserved"])
+
+    def test_native_compile_pass_with_conflicting_shared_layout_is_not_sound(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            project = Path(raw) / "project"
+            project.mkdir()
+            _write_makefile(project, "first.c second.c main.c")
+            (project / "first.c").write_text(
+                "struct shared_buffer { char *data; unsigned long len; };\n"
+                "int first(void) { return (int)sizeof(struct shared_buffer); }\n",
+                encoding="utf-8",
+            )
+            (project / "second.c").write_text(
+                "struct shared_buffer { char *data; unsigned long capacity; unsigned long length; };\n"
+                "int second(void) { return (int)sizeof(struct shared_buffer); }\n",
+                encoding="utf-8",
+            )
+            (project / "main.c").write_text(
+                "int first(void); int second(void);\n"
+                "int main(void) { return first() == second(); }\n",
+                encoding="utf-8",
+            )
+
+            snapshot = create_diagnostic_snapshot(project, "fixture_app")
+
+        self.assertEqual(snapshot["build"]["returncode"], 0)
+        self.assertFalse(snapshot["shared_type_layout_audit"]["passed"])
+        self.assertEqual(snapshot["shared_type_layout_audit"]["conflicts"][0]["type"], "struct shared_buffer")
+        self.assertFalse(snapshot["sound_build"]["passed"])
+        self.assertIn("shared_type_layout_conflict", snapshot["sound_build"]["diagnostic_codes"])
+
+    def test_high_risk_warning_is_a_sound_build_blocker(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            project = Path(raw)
+            result = high_risk_diagnostic_audit(
+                project,
+                {
+                    "stdout": "",
+                    "stderr": (
+                        "core.c:10:5: warning: ‘free’ called on pointer ‘owner’ with nonzero offset 8 "
+                        "[-Wfree-nonheap-object]\n"
+                    ),
+                },
+                [],
+                [],
+            )
+
+        self.assertFalse(result["passed"])
+        self.assertEqual({item["code"] for item in result["items"]}, {"free_nonheap_object"})
 
 
 if __name__ == "__main__":

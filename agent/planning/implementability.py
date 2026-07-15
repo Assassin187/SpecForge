@@ -6,6 +6,16 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
+from agent.common.c_types import (
+    STANDARD_C_TYPES,
+    c_type_references,
+    compatible_c_type,
+    is_system_type,
+    required_system_headers,
+    type_is_by_value,
+    type_use_mode,
+)
+
 from .facts import write_json
 from .models import Diagnostic
 
@@ -13,22 +23,31 @@ from .models import Diagnostic
 _PATCH_KINDS = ("module", "file", "type", "function")
 _PROVENANCE_KINDS = {"protocol_fact", "engineering_decision", "open_assumption"}
 _LIFECYCLE_DESTROY = ("destroy", "free", "deinit", "close", "cleanup", "release", "remove", "stop")
-_TYPE_TOKEN = re.compile(r"\b[A-Za-z_][A-Za-z0-9_]*_t\b")
-_C_STANDARD_TYPES = {
-    "bool",
-    "int8_t",
-    "int16_t",
-    "int32_t",
-    "int64_t",
-    "intptr_t",
-    "ptrdiff_t",
-    "size_t",
-    "ssize_t",
-    "uint8_t",
-    "uint16_t",
-    "uint32_t",
-    "uint64_t",
-    "uintptr_t",
+_C_STANDARD_TYPES = STANDARD_C_TYPES
+_COMPILE_CRITICAL_CODES = {
+    "access_service_missing",
+    "callback_provider_missing",
+    "callback_signature_mismatch",
+    "call_argument_provider_mismatch",
+    "call_argument_source_unresolved",
+    "call_argument_type_mismatch",
+    "call_contract_signature_mismatch",
+    "callee_dependency_missing",
+    "cross_file_private_function",
+    "cross_file_private_type",
+    "file_header_missing",
+    "foreign_type_dependency_missing",
+    "function_owner_missing",
+    "missing_system_header_dependency",
+    "opaque_cross_owner_access_unproven",
+    "opaque_type_by_value",
+    "runtime_call_chain_incomplete",
+    "runtime_entrypoint_missing",
+    "runtime_entrypoint_signature_invalid",
+    "type_owner_missing",
+    "unresolved_callee",
+    "unresolved_header_dependency",
+    "unresolved_type",
 }
 
 
@@ -98,6 +117,7 @@ def _diag(code: str, message: str, artifact_ids: list[str], **details: Any) -> d
         "owner_layer": "semantic_closure",
         "authoritative_stage": authoritative_stage,
         "recovery_action": f"regenerate_{authoritative_stage}_partition",
+        "compile_critical": code in _COMPILE_CRITICAL_CODES,
         "details": details,
     }
 
@@ -141,7 +161,10 @@ def _function_type_refs(function: dict[str, Any]) -> list[str]:
             *[str(item.get("TYPE", "")) for item in signature.get("PARAMS", []) if isinstance(item, dict)],
         ]
     )
-    refs = [item for item in _TYPE_TOKEN.findall(text) if item not in _C_STANDARD_TYPES]
+    refs = [
+        item for item in c_type_references(text)
+        if item not in _C_STANDARD_TYPES and not is_system_type(item)
+    ]
     rely = function.get("rely", {}) if isinstance(function.get("rely"), dict) else {}
     refs.extend(_name_items(rely.get("STRUCT")))
     return _unique(refs)
@@ -160,8 +183,14 @@ def _type_members(type_item: dict[str, Any]) -> list[str]:
     for key in ("FIELDS", "VARIANTS"):
         for member in spec.get(key, []):
             if isinstance(member, dict):
-                refs.extend(item for item in _TYPE_TOKEN.findall(str(member.get("TYPE", ""))) if item not in _C_STANDARD_TYPES)
-    refs.extend(item for item in _TYPE_TOKEN.findall(str(spec.get("ALIAS_OF", ""))) if item not in _C_STANDARD_TYPES)
+                refs.extend(
+                    item for item in c_type_references(str(member.get("TYPE", "")))
+                    if item not in _C_STANDARD_TYPES and not is_system_type(item)
+                )
+    refs.extend(
+        item for item in c_type_references(str(spec.get("ALIAS_OF", "")))
+        if item not in _C_STANDARD_TYPES and not is_system_type(item)
+    )
     return _unique(refs)
 
 
@@ -300,6 +329,51 @@ def complete_deterministic_dependencies(plan: dict[str, Any]) -> list[dict[str, 
                         "source_artifact_id": file_item.get("id"),
                     }
                 )
+
+    for function in plan.get("functions", []):
+        if not isinstance(function, dict) or function.get("visibility") != "public":
+            continue
+        owner_file = files.get(str(function.get("file", "")))
+        if owner_file is None:
+            continue
+        system_dependencies = owner_file.setdefault("header_system_dependencies", [])
+        for header in required_system_headers(str(_signature(function).get("RAW", ""))):
+            if header in system_dependencies:
+                continue
+            system_dependencies.append(header)
+            changes.append(
+                {
+                    "code": "deterministic_system_dependency_completion",
+                    "artifact_id": owner_file.get("id"),
+                    "field": "header_system_dependencies",
+                    "value": header,
+                    "reason": f"public signature {function.get('name')} requires a complete system type",
+                    "source_artifact_id": function.get("id"),
+                }
+            )
+
+    for type_item in plan.get("types", []):
+        if not isinstance(type_item, dict) or str(type_item.get("visibility", "")).upper() != "PUBLIC":
+            continue
+        owner_file = files.get(str(type_item.get("file", "")))
+        if owner_file is None:
+            continue
+        system_dependencies = owner_file.setdefault("header_system_dependencies", [])
+        serialized_spec = json.dumps(type_item.get("type_spec", {}), sort_keys=True)
+        for header in required_system_headers(serialized_spec):
+            if header in system_dependencies:
+                continue
+            system_dependencies.append(header)
+            changes.append(
+                {
+                    "code": "deterministic_system_dependency_completion",
+                    "artifact_id": owner_file.get("id"),
+                    "field": "header_system_dependencies",
+                    "value": header,
+                    "reason": f"public type {type_item.get('name')} requires a complete system type",
+                    "source_artifact_id": type_item.get("id"),
+                }
+            )
 
     for function in plan.get("functions", []):
         if not isinstance(function, dict):
@@ -694,7 +768,85 @@ def _function_matches_callback(function: dict[str, Any], callback: tuple[str, li
 
 
 def _type_is_by_value(c_type: str, type_name: str) -> bool:
-    return bool(re.search(rf"\b{re.escape(type_name)}\b", c_type)) and "*" not in c_type
+    return type_is_by_value(c_type, type_name)
+
+
+def _compatible_c_type(expected: str, actual: str) -> bool:
+    return compatible_c_type(expected, actual)
+
+
+def _call_argument_diagnostics(
+    caller: dict[str, Any],
+    callee: dict[str, Any],
+    relation: dict[str, Any],
+    functions: dict[str, dict[str, Any]],
+    functions_by_name: dict[str, list[dict[str, Any]]],
+) -> list[dict[str, Any]]:
+    params = [item for item in _signature(callee).get("PARAMS", []) if isinstance(item, dict)]
+    bindings = [item for item in relation.get("argument_semantics", []) if isinstance(item, dict)]
+    expected_names = [str(item.get("NAME", "")) for item in params]
+    actual_names = [str(item.get("parameter", "")) for item in bindings]
+    diagnostics: list[dict[str, Any]] = []
+    if expected_names != actual_names:
+        diagnostics.append(
+            _diag(
+                "call_argument_provider_mismatch",
+                f"Function {caller.get('name')}->{callee.get('name')} must bind every callee parameter in canonical order",
+                [str(caller.get("id", "")), str(callee.get("id", ""))],
+                expected_parameters=expected_names,
+                provided_parameters=actual_names,
+            )
+        )
+    params_by_name = {str(item.get("NAME", "")): item for item in params}
+    caller_params = {
+        str(item.get("NAME", "")): item
+        for item in _signature(caller).get("PARAMS", [])
+        if isinstance(item, dict)
+    }
+    for binding in bindings:
+        parameter = params_by_name.get(str(binding.get("parameter", "")))
+        if parameter is None:
+            continue
+        expected_type = str(parameter.get("TYPE", ""))
+        source_type = str(binding.get("source_type", ""))
+        if not source_type or not _compatible_c_type(expected_type, source_type):
+            diagnostics.append(
+                _diag(
+                    "call_argument_type_mismatch",
+                    f"Argument provider for {caller.get('name')}->{callee.get('name')}:{parameter.get('NAME')} has an incompatible source type",
+                    [str(caller.get("id", "")), str(callee.get("id", ""))],
+                    parameter=parameter.get("NAME"),
+                    expected_type=expected_type,
+                    source_type=source_type,
+                )
+            )
+        source_kind = str(binding.get("source_kind", ""))
+        source_ref = str(binding.get("source_ref", ""))
+        if source_kind == "caller_param":
+            source = caller_params.get(source_ref)
+            if source is None or not _compatible_c_type(source_type, str(source.get("TYPE", ""))):
+                diagnostics.append(
+                    _diag(
+                        "call_argument_source_unresolved",
+                        f"Caller parameter provider {source_ref!r} is not proven by {caller.get('name')} signature",
+                        [str(caller.get("id", "")), str(callee.get("id", ""))],
+                        source_kind=source_kind,
+                        source_ref=source_ref,
+                    )
+                )
+        elif source_kind in {"prior_result", "access_path"}:
+            providers = [functions[source_ref]] if source_ref in functions else functions_by_name.get(source_ref, [])
+            if len(providers) != 1 or not _compatible_c_type(source_type, str(_signature(providers[0]).get("RETURN", ""))):
+                diagnostics.append(
+                    _diag(
+                        "call_argument_source_unresolved",
+                        f"Function result provider {source_ref!r} is not a unique compatible planned function",
+                        [str(caller.get("id", "")), str(callee.get("id", "")), *[str(item.get("id", "")) for item in providers]],
+                        source_kind=source_kind,
+                        source_ref=source_ref,
+                    )
+                )
+    return diagnostics
 
 
 def analyze_implementability(plan: dict[str, Any]) -> list[dict[str, Any]]:
@@ -843,6 +995,38 @@ def analyze_implementability(plan: dict[str, Any]) -> list[dict[str, Any]]:
                     [str(function.get("id", ""))],
                 )
             )
+        if _items(function.get("wire_mapping", function.get("WIRE_MAPPING"))):
+            for field, c_type in signature_parts:
+                for type_name in _function_type_refs(function):
+                    owners = types_by_name.get(type_name, [])
+                    if len(owners) != 1:
+                        continue
+                    type_item = owners[0]
+                    type_spec = type_item.get("type_spec", {}) if isinstance(type_item.get("type_spec"), dict) else {}
+                    if (
+                        str(type_spec.get("TYPE_KIND", "")).upper() != "OPAQUE"
+                        or type_item.get("file") == function.get("file")
+                        or type_name not in c_type
+                    ):
+                        continue
+                    access_evidence = json.dumps(
+                        function.get("access_paths", function.get("ACCESS_PATHS", [])),
+                        sort_keys=True,
+                    )
+                    if type_name in access_evidence:
+                        continue
+                    diagnostics.append(
+                        _diag(
+                            "opaque_cross_owner_access_unproven",
+                            f"Wire-facing function {function.get('name')} cannot read foreign opaque type {type_name} without a typed access path",
+                            [str(function.get("id", "")), str(type_item.get("id", ""))],
+                            symbol=type_name,
+                            signature_field=field,
+                            owner_header=_owner_header(type_item, files),
+                            use_mode=type_use_mode(c_type, dereferenced=True),
+                            required_type=type_name,
+                        )
+                    )
 
     header_owner = {str(item.get("header_path")): item for item in files.values() if item.get("header_path")}
     module_positions = {str(item.get("name", "")): index for index, item in enumerate(plan.get("modules", [])) if isinstance(item, dict)}
@@ -872,6 +1056,41 @@ def analyze_implementability(plan: dict[str, Any]) -> list[dict[str, Any]]:
         if owner_file is None:
             diagnostics.append(_diag("function_owner_missing", f"Function {function.get('name')} has no resolvable owner file", [str(function.get("id", ""))], owner_file=function.get("file")))
             continue
+        if function.get("visibility") == "public":
+            signature = _signature(function)
+            signature_uses = [
+                str(signature.get("RETURN", "")),
+                *[
+                    str(parameter.get("TYPE", ""))
+                    for parameter in signature.get("PARAMS", [])
+                    if isinstance(parameter, dict)
+                ],
+            ]
+            declared_system_headers = set(_items(owner_file.get("header_system_dependencies")))
+            for c_type in signature_uses:
+                for required_header in required_system_headers(c_type):
+                    if required_header in declared_system_headers:
+                        continue
+                    diagnostics.append(
+                        _diag(
+                            "missing_system_header_dependency",
+                            f"Public function {function.get('name')} requires system header {required_header}",
+                            [str(owner_file.get("id", "")), str(function.get("id", ""))],
+                            dependency=required_header,
+                            field="header_system_dependencies",
+                            owner_header=owner_file.get("header_path"),
+                            use_mode=type_use_mode(c_type),
+                            required_header=required_header,
+                            required_type=next(
+                                (
+                                    type_name
+                                    for type_name in c_type_references(c_type)
+                                    if required_header in required_system_headers(type_name)
+                                ),
+                                "",
+                            ),
+                        )
+                    )
         for type_name in _function_type_refs(function):
             owners = types_by_name.get(type_name, [])
             if not owners:
@@ -941,6 +1160,9 @@ def analyze_implementability(plan: dict[str, Any]) -> list[dict[str, Any]]:
                     diagnostics.append(_diag("call_contract_signature_missing", f"Call contract for {contract.get('NAME')} has no canonical signature", [str(function.get("id", "")), str(callees[0].get("id", ""))]))
                 elif planned != declared:
                     diagnostics.append(_diag("call_contract_signature_mismatch", f"Call contract for {contract.get('NAME')} does not match its planned signature", [str(function.get("id", "")), str(callees[0].get("id", ""))], declared=contract.get("SIGNATURE"), planned=planned_raw))
+                diagnostics.extend(
+                    _call_argument_diagnostics(function, callees[0], contract, functions, functions_by_name)
+                )
         rely = function.get("rely", {}) if isinstance(function.get("rely"), dict) else {}
         rely_names = set(_name_items(rely.get("FUNC")))
         contract_names = set(_name_items(function.get("call_contracts")))

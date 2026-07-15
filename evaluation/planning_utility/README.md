@@ -343,13 +343,15 @@ M2 的完整流程为：
 ```text
 planning plan --facts ... --out ...
 -> planning validate --run-dir ...
--> inspect run_manifest qualification/specs_root
+-> inspect physical specs and module/file/function inventory
 -> coder validate
--> coder generate/compile/repair
--> behavior verification
+-> coder --skip-repair generate into coder_original
+-> hash original sources and compile a temporary no-repair copy
+-> repair the original project into a separate copy, with at most 3 rounds
+-> final clean compile
 ```
 
-`planning validate` 在临时副本上执行，避免覆盖 plan-time manifest 和 diagnostics。只有 `qualification_passed=true` 的 run 才进入正式 downstream comparison；candidate-only specs 必须保留用于诊断，但不得伪装为正式 M2 样本。任何非致命 planning 错误仍必须物化 schema-valid、coder-loadable protocol specs，`nonfatal_no_specs_count` 必须保持为 0。
+`planning validate` 在临时副本上执行，避免覆盖 plan-time manifest 和 diagnostics。只要 physical specs 中至少各有一个 `PROTOCOL_MODULE_SPEC`、`FILE_SPEC` 和 `FUNCTION_SPEC`，无论 `qualification_passed`、planning validate return code 或 fatal 标记如何，都进入 coder validate。`qualification_passed` 保留原值，不能把 candidate-only 伪装为 qualified。Coder validate passed 后才生成原始代码；repair 只操作独立副本。本 workflow 的 endpoint 是 final clean compile，behavior smoke 记录为 `not_run_out_of_scope`。
 
 planning agent 的预期产物包括：
 
@@ -1029,7 +1031,15 @@ evaluation/planning_utility/out/<timestamp>/
         │   └── _planning/
         │       ├── run_manifest.json
         │       └── candidate_planning_package/specs/
-        ├── coder_out/
+        ├── coder_validate/
+        ├── coder_original/
+        │   ├── mqtt/
+        │   ├── mqtt_repair_<timestamp>/mqtt/
+        │   └── _agent_logs/
+        │       ├── run_manifest.json
+        │       ├── pre_repair_source_hashes.json
+        │       ├── pre_repair_diagnostics.json
+        │       └── post_repair_original_source_hashes.json
         ├── logs/
         └── summary.json
 ```

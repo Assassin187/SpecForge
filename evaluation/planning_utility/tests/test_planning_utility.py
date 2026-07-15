@@ -206,6 +206,9 @@ def _planning_fixture(
     specs_root = planning_root / "candidate_planning_package" / "specs"
     if specs_generated:
         specs_root.mkdir(parents=True)
+        write_json(specs_root / "toy_module_spec.json", {"KIND": "PROTOCOL_MODULE_SPEC"})
+        write_json(specs_root / "toy_file_spec.json", {"KIND": "FILE_SPEC"})
+        write_json(specs_root / "toy_function_spec.json", {"KIND": "FUNCTION_SPEC"})
     manifest = {
         "kind": "PLANNING_RUN_MANIFEST",
         "run_status": (
@@ -262,7 +265,7 @@ class PlanningUtilityTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "target_profile_missing_fields"):
                 load_target_profile(incomplete)
 
-    def test_full_specforge_candidate_is_preserved_but_formally_rejected(self) -> None:
+    def test_full_specforge_candidate_always_enters_coder_validate(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:
             root = Path(raw_tmp)
             config = _toy_config(root / "inputs")
@@ -276,7 +279,7 @@ class PlanningUtilityTests(unittest.TestCase):
                 return {
                     "name": name,
                     "command": cmd,
-                    "returncode": 0,
+                    "returncode": int(name in {"02_planning_validate", "03_coder_validate"}),
                     "started_at": "start",
                     "ended_at": "end",
                     "stdout_path": "stdout",
@@ -294,19 +297,126 @@ class PlanningUtilityTests(unittest.TestCase):
                     existing_planning_dir=source,
                 )
 
-            self.assertEqual(summary["failure_stage"], "planning_qualification")
+            self.assertEqual(summary["failure_stage"], "coder_validate")
             self.assertEqual(summary["planning_status"], "candidate_only")
             self.assertFalse(summary["qualification_passed"])
             self.assertTrue(summary["specs_generated"])
+            self.assertTrue(summary["candidate_through_eligible"])
+            self.assertEqual(summary["coder_validate_status"], "failed")
             self.assertEqual(summary["nonfatal_no_specs_count"], 0)
             self.assertFalse(summary["fatal"])
             self.assertFalse(summary["target_profile_visible_to_planner"])
-            self.assertEqual(len(commands), 1)
+            self.assertEqual(len(commands), 2)
             self.assertIn("--run-dir", commands[0])
             self.assertNotIn("--target-profile", commands[0])
             self.assertNotIn("verify", commands[0])
-            self.assertFalse(any("agent.coder" in command for command in commands))
+            self.assertIn("agent.coder", commands[1])
             self.assertEqual((source / "_planning" / "run_manifest.json").read_bytes(), original_manifest)
+
+    def test_full_specforge_freezes_original_then_repairs_separate_copy(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            root = Path(raw_tmp)
+            config = _toy_config(root / "inputs")
+            source = _planning_fixture(root / "source", qualified=False)
+            commands: list[list[str]] = []
+
+            def fake_run(cmd, *, log_dir, name):
+                del log_dir
+                commands.append(cmd)
+                if name == "04_coder_generate":
+                    coder_root = Path(cmd[cmd.index("--output-dir") + 1])
+                    project = coder_root / "toy"
+                    project.mkdir(parents=True)
+                    (project / "main.c").write_text("int main(void) { return 0; }\n", encoding="utf-8")
+                    (project / "toy.h").write_text("int toy(void);\n", encoding="utf-8")
+                    (project / "Makefile").write_text("toy_app:\n\tcc main.c -o toy_app\n", encoding="utf-8")
+                    write_json(
+                        coder_root / "_agent_logs" / "run_manifest.json",
+                        {
+                            "project_dir": str(project),
+                            "binary_name": "toy_app",
+                            "generation_success": True,
+                            "skip_repair": True,
+                            "llm_call_usage": [],
+                            "stage_token_usage": {},
+                            "workflow_token_usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+                        },
+                    )
+                elif name == "05_coder_repair":
+                    project = Path(cmd[cmd.index("--project-dir") + 1])
+                    repair_root = project.parent / "toy_repair_20260715_000000"
+                    repaired_project = repair_root / "toy"
+                    repaired_project.mkdir(parents=True)
+                    write_json(
+                        repair_root / "_agent_logs" / "001_repair_manifest.json",
+                        {
+                            "source_project_dir": str(project.resolve()),
+                            "project_dir": str(repaired_project),
+                            "compile_success": True,
+                            "repaired_files": ["main.c"],
+                            "repair": {"rounds_attempted": 1, "stop_reason": "compile_succeeded", "blocking_files": []},
+                            "llm_call_usage": [],
+                            "stage_token_usage": {},
+                            "workflow_token_usage": {"prompt_tokens": 2, "completion_tokens": 2, "total_tokens": 4},
+                        },
+                    )
+                return {
+                    "name": name,
+                    "command": cmd,
+                    "returncode": 0,
+                    "started_at": "start",
+                    "ended_at": "end",
+                    "stdout_path": "stdout",
+                    "stderr_path": "stderr",
+                    "stdout": "",
+                    "stderr": "",
+                }
+
+            pre_analysis = {
+                "diagnostic_snapshot": {
+                    "build": {"returncode": 1},
+                    "sound_build": {"passed": False, "diagnostic_codes": []},
+                }
+            }
+            post_analysis = {
+                "diagnostic_snapshot": {
+                    "build": {"returncode": 0},
+                    "sound_build": {"passed": True, "diagnostic_codes": []},
+                }
+            }
+            with (
+                patch("evaluation.planning_utility.full_specforge_adapter._run_command", side_effect=fake_run),
+                patch(
+                    "evaluation.planning_utility.full_specforge_adapter.analyze_no_repair",
+                    side_effect=[pre_analysis, post_analysis],
+                ),
+            ):
+                summary = full_specforge_adapter.run_full_specforge(
+                    config,
+                    root / "out",
+                    api_key_env="UNUSED",
+                    max_repair_rounds=3,
+                    existing_planning_dir=source,
+                )
+
+            self.assertEqual(summary["failure_stage"], "")
+            self.assertFalse(summary["qualification_passed"])
+            self.assertEqual(summary["coder_validate_status"], "passed")
+            self.assertEqual(summary["initial_compile_status"], "failed")
+            self.assertEqual(summary["compile_status"], "passed")
+            self.assertTrue(summary["sound_build_passed"])
+            self.assertEqual(summary["sound_build_diagnostics"], [])
+            self.assertEqual(summary["repair_iterations"], 1)
+            self.assertTrue(summary["original_source_hashes_preserved"])
+            self.assertEqual(summary["smoke_status"], "not_run_out_of_scope")
+            self.assertEqual([record[2] for record in commands], ["agent.planning", "agent.coder", "agent.coder", "agent.coder"])
+            generate = commands[2]
+            self.assertLess(generate.index("--skip-repair"), generate.index("generate"))
+            repair = commands[3]
+            self.assertEqual(repair[-3], "repair")
+            self.assertEqual(repair[repair.index("--max-repair-rounds") + 1], "3")
+            self.assertTrue((root / "out" / "coder_original" / "_agent_logs" / "pre_repair_source_hashes.json").is_file())
+            self.assertTrue((root / "out" / "coder_original" / "_agent_logs" / "pre_repair_diagnostics.json").is_file())
 
     def test_full_specforge_uses_manifest_specs_root_and_current_cli(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:

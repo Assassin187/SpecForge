@@ -12,7 +12,7 @@ from agent.coder.specs import load_spec_bundle_from_root
 from agent.planning.compiler import compile_specs, normalize_plan_for_compiler
 from agent.planning.facts import read_json, select_fact_slice, stable_json_hash, write_json
 from agent.planning.knowledge import activate_engineering_rules, extract_open_assumptions, normalize_characteristics
-from agent.planning.implementability import analyze_implementability
+from agent.planning.implementability import analyze_implementability, complete_deterministic_dependencies
 from agent.planning.metrics import build_run_metrics
 from agent.planning.models import Diagnostic
 from agent.planning.pipeline import run_planning, validate_existing_run
@@ -219,6 +219,21 @@ def _minimal_plan() -> dict:
         {"stage_id": "function_interface_design", "artifact": {"function_interfaces": plan["functions"]}},
     ]
     plan["canonical_registry_snapshot"] = build_registry(registry_artifacts, protocol_slug="mqtt").snapshot()
+    return plan
+
+
+def _qualified_minimal_plan() -> dict:
+    plan = _minimal_plan()
+    main = next(item for item in plan["functions"] if item["name"] == "main")
+    init = next(item for item in plan["functions"] if item["name"] == "mqtt_core_init")
+    main["call_contracts"] = [{
+        "NAME": init["name"],
+        "SIGNATURE": init["signature"]["RAW"],
+        "argument_semantics": [{
+            "parameter": "core", "source_kind": "local_value",
+            "source_ref": "core", "source_type": "mqtt_core_t*",
+        }],
+    }]
     return plan
 
 
@@ -1840,6 +1855,21 @@ class PlanningPipelineTests(unittest.TestCase):
                 registry=registry, allow_incomplete=True,
             )
 
+        unknown_tagged_type = deepcopy(artifacts)
+        dispatch = next(
+            item for item in unknown_tagged_type[-1]["artifact"]["function_interfaces"]
+            if item["function_id"] == "dispatch_unit"
+        )
+        dispatch["signature"] = signature(
+            "dispatch_unit", "bool",
+            [{"TYPE": "struct missing_runtime*", "NAME": "runtime", "NULLABLE": False, "OWNERSHIP": "BORROWED"}],
+        )
+        with self.assertRaisesRegex(ValueError, "unknown_artifact_id"):
+            _validate_completed_stage(
+                "function_interface_design", unknown_tagged_type, context,
+                registry=registry, allow_incomplete=True,
+            )
+
         missing_interface = deepcopy(artifacts)
         missing_interface[-1]["artifact"]["function_interfaces"] = [
             item for item in missing_interface[-1]["artifact"]["function_interfaces"]
@@ -1976,7 +2006,7 @@ class PlanningPipelineTests(unittest.TestCase):
         }
         self.assertIn("runtime_entrypoint_signature_invalid", {item["code"] for item in analyze_implementability(bad_main)})
 
-    def test_nonfatal_stage6_abi_failure_preserves_candidate_specs(self) -> None:
+    def test_nonfatal_stage6_abi_failure_preserves_candidate_specs_but_fails_header_gate(self) -> None:
         plan = _minimal_plan()
         registry = CanonicalPlanningRegistry.from_snapshot(plan["canonical_registry_snapshot"])
         interfaces = deepcopy(plan["functions"])
@@ -2008,7 +2038,8 @@ class PlanningPipelineTests(unittest.TestCase):
             specs_root = Path(raw) / "mqtt_specs"
             compile_specs(normalize_plan_for_compiler(plan), specs_root)
             bundle = load_spec_bundle_from_root(specs_root, validate_rendered_headers=True)
-        self.assertFalse(bundle.has_errors(), bundle.diagnostics)
+            self.assertTrue(specs_root.exists())
+            self.assertIn("rendered_header_compile_error", {item.code for item in bundle.diagnostics})
 
     def test_stage6_nonfatal_unknown_type_preserves_complete_interface_inventory(self) -> None:
         plan = _minimal_plan()
@@ -3399,7 +3430,7 @@ class PlanningPipelineTests(unittest.TestCase):
     def test_pipeline_uses_staged_llm_output_without_local_planner(self) -> None:
         def fake_stage(self, stage, context, previous_artifacts):
             if stage.stage_id == "final_plan_assembly":
-                return _minimal_plan()
+                return _qualified_minimal_plan()
             return _empty_stage_artifact(stage.stage_id)
 
         with tempfile.TemporaryDirectory() as raw, patch(
@@ -3559,7 +3590,7 @@ class PlanningPipelineTests(unittest.TestCase):
     def test_qualification_error_keeps_specs_inside_candidate_package(self) -> None:
         def fake_stage(self, stage, context, previous_artifacts):
             del self, context, previous_artifacts
-            return _minimal_plan() if stage.stage_id == "final_plan_assembly" else _empty_stage_artifact(stage.stage_id)
+            return _qualified_minimal_plan() if stage.stage_id == "final_plan_assembly" else _empty_stage_artifact(stage.stage_id)
 
         qualification_error = Diagnostic("error", "fixture_qualification_error", "fixture gate remains strict")
         with tempfile.TemporaryDirectory() as raw, patch(
@@ -3983,6 +4014,45 @@ class PlanningPipelineTests(unittest.TestCase):
             "whole_fresh_token_ceiling",
         )
 
+    def test_budget_preflight_preserves_last_committed_plan_for_specs_materialization(self) -> None:
+        class FakeClient:
+            calls = 0
+
+            def __init__(self, api_key_env: str = "ALI_API") -> None:
+                pass
+
+            def generate_with_usage(self, request):
+                FakeClient.calls += 1
+                return LLMResponse("{}", LLMUsage(1, 1, 2))
+
+        plan = _minimal_plan()
+        registry = CanonicalPlanningRegistry.from_snapshot(plan["canonical_registry_snapshot"])
+        stage = next(item for item in PLANNING_STAGES if item.stage_id == "function_test_vector_design")
+        context = {"facts": {}, "characteristics": {}, "engineering_rules": [], "open_assumptions": []}
+        with tempfile.TemporaryDirectory() as raw, patch(
+            "agent.common.llm_client.FixedQwenClient", FakeClient
+        ):
+            root = Path(raw)
+            planner = LLMStructuredPlanner(stage_log_dir=root / "logs")
+            planner.registry = registry
+            planner.amendments.set_registry(registry)
+            planner._model_tokens_used = 783000
+            fallback = planner._run_stage(stage, context, [])
+            plan.setdefault("structured_planning_stages", []).append({"stage_id": stage.stage_id, "artifact": fallback})
+            plan["unresolved_partitions"] = planner.unresolved_partitions
+            manifest = compile_specs(plan, root / "specs")
+            kinds = [
+                read_json(path).get("KIND")
+                for path in (root / "specs").rglob("*_spec.json")
+            ]
+
+        self.assertEqual(FakeClient.calls, 0)
+        self.assertEqual(planner.unresolved_partitions[0]["diagnostic_code"], "whole_fresh_token_ceiling")
+        self.assertTrue(manifest["written_files"])
+        self.assertIn("PROTOCOL_MODULE_SPEC", kinds)
+        self.assertIn("FILE_SPEC", kinds)
+        self.assertIn("FUNCTION_SPEC", kinds)
+
     def test_failed_partition_correction_rolls_back_and_next_partition_commits(self) -> None:
         stage_artifacts = [
             {
@@ -4278,9 +4348,28 @@ class PlanningPipelineTests(unittest.TestCase):
                 "diagnostic": "artifact_kind_mismatch",
             },
         ]
+        complete_deterministic_dependencies(plan)
+        closure_report = {
+            "kind": "IMPLEMENTABILITY_REPORT",
+            "initial_diagnostics": [],
+            "deterministic_completion": [
+                {"code": "deterministic_call_contract_completion"}
+            ],
+            "semantic_patch_attempted": True,
+            "semantic_patch_reused": False,
+            "semantic_patch_validation_errors": [],
+            "semantic_patch_usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+            "final_diagnostics": [],
+            "validation_layers": {},
+            "success": True,
+        }
+        usage = {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
         with tempfile.TemporaryDirectory() as raw, patch(
             "agent.planning.planner.LLMStructuredPlanner.build_plan", return_value=plan
-        ), patch("agent.planning.pipeline._close_implementability") as semantic_closure, patch(
+        ), patch(
+            "agent.planning.pipeline._close_implementability",
+            return_value=(plan, closure_report, usage),
+        ) as semantic_closure, patch(
             "agent.planning.pipeline._coder_validate"
         ) as coder_validate:
             result = run_planning(FACTS, Path(raw) / "run")
@@ -4289,7 +4378,7 @@ class PlanningPipelineTests(unittest.TestCase):
             diagnostics = json.loads((result.planning_root / "diagnostics.json").read_text(encoding="utf-8"))
             self.assertEqual(result.run_status, "completed_with_candidate_only")
             self.assertTrue(result.specs_root.exists())
-            self.assertFalse(report["semantic_patch_attempted"])
+            self.assertTrue(report["semantic_patch_attempted"])
             self.assertEqual(report["final_diagnostics"][0]["code"], "unresolved_partition")
             self.assertIn(
                 "deterministic_call_contract_completion",
@@ -4302,7 +4391,7 @@ class PlanningPipelineTests(unittest.TestCase):
             self.assertEqual(manifest["unresolved_stage_partition_attempt_count"], 2)
             self.assertEqual(manifest["diagnostic_counts"]["error"], sum(item["level"] == "error" for item in diagnostics))
             self.assertEqual(diagnostics[0]["authoritative_stage"], "function_call_contract_closure")
-            semantic_closure.assert_not_called()
+            semantic_closure.assert_called_once()
             coder_validate.assert_called_once_with(result.specs_root)
 
     def test_single_stage_json_repair_failure_after_inventory_is_nonfatal(self) -> None:
@@ -4968,6 +5057,51 @@ class PlanningPipelineTests(unittest.TestCase):
         )
         self.assertEqual(diagnostic["authoritative_stage"], "type_and_access_path_design")
         self.assertEqual(emitted["SIGNATURE"]["RAW"], "bool mqtt_core_init(void *callback)")
+        self.assertFalse(bundle.has_errors(), bundle.diagnostics)
+
+    def test_inferred_opaque_handle_is_registered_before_repeat_normalization(self) -> None:
+        plan = _minimal_plan()
+        for name, raw in (
+            ("mqtt_transport_create", "mqtt_transport_t* mqtt_transport_create(void)"),
+            ("mqtt_transport_destroy", "void mqtt_transport_destroy(mqtt_transport_t* transport)"),
+        ):
+            artifact_id = f"function:mqtt/core/{name}"
+            plan["files"][0]["functions"].append(artifact_id)
+            plan["functions"].append({
+                "id": artifact_id,
+                "file": "file:mqtt/core",
+                "name": name,
+                "visibility": "public",
+                "role": f"Lifecycle function {name}.",
+                "signature": raw,
+                "trace_refs": ["fact:minimum_v1"],
+            })
+            plan["canonical_registry_snapshot"]["entries"].append({
+                "artifact_id": artifact_id,
+                "artifact_kind": "function",
+                "canonical_name": name,
+                "owner_module_id": "module:core_runtime",
+                "owner_file_id": "file:mqtt/core",
+                "visibility": "public",
+                "definition_stage": "function_interface_design",
+                "status": "defined",
+                "provenance": {"kind": "fixture", "refs": ["fact:minimum_v1"]},
+                "aliases": [artifact_id, name],
+            })
+
+        normalized = normalize_plan_for_compiler(plan)
+        normalized = normalize_plan_for_compiler(normalized)
+        inferred = next(item for item in normalized["types"] if item["name"] == "mqtt_transport_t")
+        registry = CanonicalPlanningRegistry.from_snapshot(normalized["canonical_registry_snapshot"])
+        registered = registry.resolve(inferred["id"], expected_kinds={"type"})
+
+        self.assertEqual(inferred["id"], "type:mqtt_transport_t")
+        self.assertEqual(registered["owner_file_id"], "file:mqtt/core")
+        self.assertEqual(registered["provenance"]["kind"], "deterministic_abi_completion")
+        with tempfile.TemporaryDirectory() as raw:
+            specs_root = Path(raw) / "specs"
+            compile_specs(normalized, specs_root)
+            bundle = load_spec_bundle_from_root(specs_root, validate_rendered_headers=True)
         self.assertFalse(bundle.has_errors(), bundle.diagnostics)
 
     def test_structured_callback_signature_takes_precedence_over_type_identity(self) -> None:

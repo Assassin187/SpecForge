@@ -32,6 +32,17 @@ _FUNC_DECL_RE = re.compile(
 _DIAG_START_RE = re.compile(r"^(.+\.(?:c|h)):\d+:\d+:\s*((?:fatal\s+)?error|warning|note):\s*(.*)")
 _LINK_UNDEF_RE = re.compile(r"undefined reference to [`'‘]([^`'’]+)[`'’]")
 _LINK_MULTI_RE = re.compile(r"multiple definition of [`'‘]([^`'’]+)[`'’]")
+_TAG_DEFINITION_RE = re.compile(
+    r"\b(?P<kind>struct|union)\s+(?P<tag>[A-Za-z_][A-Za-z0-9_]*)\s*\{(?P<body>.*?)\}\s*;",
+    re.DOTALL,
+)
+_C_COMMENT_RE = re.compile(r"/\*.*?\*/|//[^\n]*", re.DOTALL)
+_HIGH_RISK_PATTERNS = {
+    "free_nonheap_object": re.compile(r"free.*(?:nonzero offset|non-heap object)|Wfree-nonheap-object", re.IGNORECASE),
+    "implicit_function_declaration": re.compile(r"implicit declaration of function", re.IGNORECASE),
+    "incompatible_pointer_type": re.compile(r"incompatible pointer type|Wincompatible-pointer-types", re.IGNORECASE),
+    "incompatible_public_declaration": re.compile(r"conflicting types|previous declaration", re.IGNORECASE),
+}
 
 
 @dataclass
@@ -287,6 +298,81 @@ def diagnostic_blocks(stdout: str, stderr: str, project_dir: Path) -> list[dict[
     return blocks
 
 
+def shared_type_layout_audit(project_dir: Path) -> dict[str, Any]:
+    definitions: dict[str, list[dict[str, Any]]] = {}
+    for path in iter_project_files(project_dir):
+        if path.suffix not in {".c", ".h"}:
+            continue
+        relative = relpath(path, project_dir)
+        text = _C_COMMENT_RE.sub(" ", _read(path))
+        for match in _TAG_DEFINITION_RE.finditer(text):
+            members = [
+                re.sub(r"\s+", " ", member).strip()
+                for member in match.group("body").split(";")
+                if member.strip()
+            ]
+            identity = f"{match.group('kind')} {match.group('tag')}"
+            definitions.setdefault(identity, []).append(
+                {
+                    "path": relative,
+                    "line": text.count("\n", 0, match.start()) + 1,
+                    "members": members,
+                    "layout": ";".join(members),
+                }
+            )
+    conflicts = []
+    for identity, items in sorted(definitions.items()):
+        layouts = sorted({item["layout"] for item in items})
+        if len(layouts) > 1:
+            conflicts.append(
+                {
+                    "type": identity,
+                    "layouts": layouts,
+                    "definitions": items,
+                }
+            )
+    return {
+        "passed": not conflicts,
+        "conflict_count": len(conflicts),
+        "conflicts": conflicts,
+        "definitions": definitions,
+    }
+
+
+def high_risk_diagnostic_audit(
+    project_dir: Path,
+    build_result: dict[str, Any],
+    header_checks: list[dict[str, Any]],
+    source_checks: list[dict[str, Any]],
+) -> dict[str, Any]:
+    items: list[dict[str, str]] = []
+
+    def collect(phase: str, path: str, stdout: str, stderr: str) -> None:
+        blocks = diagnostic_blocks(stdout, stderr, project_dir)
+        if not blocks and (stdout or stderr):
+            blocks = [{"path": path, "level": "", "message": "", "text": f"{stdout}\n{stderr}"}]
+        for block in blocks:
+            text = str(block.get("text", ""))
+            for code, pattern in _HIGH_RISK_PATTERNS.items():
+                if not pattern.search(text):
+                    continue
+                item = {
+                    "code": code,
+                    "phase": phase,
+                    "path": str(block.get("path") or path),
+                    "message": " ".join(text.split())[:500],
+                }
+                if item not in items:
+                    items.append(item)
+
+    collect("build", "Makefile", str(build_result.get("stdout", "")), str(build_result.get("stderr", "")))
+    for check in header_checks:
+        collect("header", str(check.get("path", "")), str(check.get("stdout", "")), str(check.get("stderr", "")))
+    for check in source_checks:
+        collect("source", str(check.get("path", "")), str(check.get("stdout", "")), str(check.get("stderr", "")))
+    return {"passed": not items, "count": len(items), "items": items}
+
+
 def _symbol_from_text(text: str) -> str:
     for pattern in (
         r"function [`'‘]([^`'’]+)[`'’]",
@@ -438,6 +524,9 @@ def create_diagnostic_snapshot(project_dir: Path, binary_name: str) -> dict[str,
     sources = run_source_checks(project_dir, plan)
     index = build_repair_index(project_dir, plan, build)
     causes = classify_diagnostics(project_dir, build, headers, sources, index)
+    shared_layout = shared_type_layout_audit(project_dir)
+    high_risk = high_risk_diagnostic_audit(project_dir, build, headers, sources)
+    sound_build_passed = int(build.get("returncode", 1)) == 0 and shared_layout["passed"] and high_risk["passed"]
     return {
         "build": build,
         "header_checks": headers,
@@ -446,4 +535,14 @@ def create_diagnostic_snapshot(project_dir: Path, binary_name: str) -> dict[str,
         "root_causes": causes,
         "category_counts": category_counts(causes),
         "error_counts": error_counts(headers, sources, build),
+        "shared_type_layout_audit": shared_layout,
+        "high_risk_diagnostic_audit": high_risk,
+        "sound_build": {
+            "passed": sound_build_passed,
+            "native_compile_passed": int(build.get("returncode", 1)) == 0,
+            "diagnostic_codes": [
+                *(["shared_type_layout_conflict"] if not shared_layout["passed"] else []),
+                *[item["code"] for item in high_risk["items"]],
+            ],
+        },
     }

@@ -7,15 +7,18 @@ import shutil
 from pathlib import Path
 from typing import Any
 
+from agent.common.c_types import (
+    STANDARD_C_TYPES,
+    c_type_references,
+    is_system_type,
+    required_system_headers,
+)
+
 from .facts import write_json
 from .registry import CanonicalPlanningRegistry
 
 
-_CUSTOM_TYPE = re.compile(r"\b[A-Za-z_][A-Za-z0-9_]*_t\b")
-_STANDARD_TYPES = {
-    "bool", "int8_t", "int16_t", "int32_t", "int64_t", "intptr_t", "ptrdiff_t",
-    "size_t", "ssize_t", "uint8_t", "uint16_t", "uint32_t", "uint64_t", "uintptr_t",
-}
+_STANDARD_TYPES = STANDARD_C_TYPES
 
 
 def _by_id(items: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
@@ -281,8 +284,14 @@ def _lower_unresolved_type_members(
         for index, member in enumerate(normalized.get(key, [])):
             if not isinstance(member, dict):
                 continue
-            refs = set(_CUSTOM_TYPE.findall(str(member.get("TYPE", ""))))
-            unresolved = sorted(refs - known_types - _STANDARD_TYPES)
+            refs = set(c_type_references(str(member.get("TYPE", ""))))
+            unresolved = sorted(
+                type_name
+                for type_name in refs
+                if type_name not in known_types
+                and type_name not in _STANDARD_TYPES
+                and not is_system_type(type_name)
+            )
             if unresolved:
                 diagnostics.append(
                     _lowering_diagnostic(
@@ -658,6 +667,7 @@ def normalize_plan_for_compiler(plan: dict[str, Any]) -> dict[str, Any]:
                 "header_path": None,
                 "source_path": None,
                 "header_dependencies": [],
+                "header_system_dependencies": [],
                 "source_dependencies": [],
                 "types": [],
                 "functions": [],
@@ -686,6 +696,7 @@ def normalize_plan_for_compiler(plan: dict[str, Any]) -> dict[str, Any]:
         intent = item.get("dependency_intent", {}) if isinstance(item.get("dependency_intent"), dict) else {}
         closure = dep_files.get(str(item.get("id")), {})
         group["header_dependencies"].extend(_as_list(item.get("header_dependencies")))
+        group["header_system_dependencies"].extend(_as_list(item.get("header_system_dependencies")))
         group["source_dependencies"].extend(_as_list(item.get("source_dependencies")))
         if item.get("header_path"):
             group["header_dependencies"].extend(_as_list(intent.get("public_includes")) + _as_list(closure.get("header_dependencies")))
@@ -742,6 +753,9 @@ def normalize_plan_for_compiler(plan: dict[str, Any]) -> dict[str, Any]:
             ]
         )
         group["source_dependencies"] = _unique([header_aliases.get(str(dep), str(dep)) for dep in group["source_dependencies"] if str(dep).strip()])
+        group["header_system_dependencies"] = _unique(
+            [str(dep).strip().strip("<>") for dep in group["header_system_dependencies"] if str(dep).strip()]
+        )
         files.append(
             {
                 "id": group["id"],
@@ -752,6 +766,7 @@ def normalize_plan_for_compiler(plan: dict[str, Any]) -> dict[str, Any]:
                 "header_path": group["header_path"],
                 "source_path": group["source_path"],
                 "header_dependencies": group["header_dependencies"],
+                "header_system_dependencies": group["header_system_dependencies"],
                 "source_dependencies": group["source_dependencies"],
                 "types": group["types"],
                 "functions": group["functions"],
@@ -983,18 +998,45 @@ def normalize_plan_for_compiler(plan: dict[str, Any]) -> dict[str, Any]:
     unknown_signature_types = sorted({
         type_name
         for function in functions
-        for type_name in _CUSTOM_TYPE.findall(function["signature"]["RAW"])
-        if type_name not in known_types and type_name not in _STANDARD_TYPES
+        for type_name in c_type_references(function["signature"]["RAW"])
+        if type_name not in known_types and type_name not in _STANDARD_TYPES and not is_system_type(type_name)
     })
     functions_by_name = {function["name"]: function for function in functions}
     for type_name in unknown_signature_types:
+        if not type_name.endswith("_t"):
+            continue
         stem = type_name[:-2]
         create = functions_by_name.get(f"{stem}_create")
         destroy = functions_by_name.get(f"{stem}_destroy")
         if create is None or destroy is None or create["file"] != destroy["file"]:
             continue
+        registered = None
+        if registry is not None:
+            registered = next(
+                (
+                    item for item in registry.typed_view({"type", "callback"})
+                    if item["canonical_name"] == type_name
+                ),
+                None,
+            )
+            if registered is not None and registered["artifact_kind"] != "type":
+                continue
+            if registered is None:
+                registered = registry.register_amendment(
+                    requested_kind="type",
+                    proposed_name=type_name,
+                    requested_owner=create["file"],
+                    preferred_visibility="public",
+                    provenance={
+                        "kind": "deterministic_abi_completion",
+                        "create_function_id": create["id"],
+                        "destroy_function_id": destroy["id"],
+                        "trace_refs": _unique([*create["trace_refs"], *destroy["trace_refs"]]),
+                    },
+                )
         inferred = {
-            "id": f"type:lowering/{slug}/{type_name}", "file": create["file"],
+            "id": registered["artifact_id"] if registered is not None else f"type:lowering/{slug}/{type_name}",
+            "file": registered["owner_file_id"] if registered is not None else create["file"],
             "name": type_name, "kind": "TYPE", "visibility": "PUBLIC",
             "role": f"Opaque owned handle recovered from the {stem}_create/{stem}_destroy ABI pair.",
             "type_spec": {"TYPE_KIND": "OPAQUE"},
@@ -1169,6 +1211,12 @@ def normalize_plan_for_compiler(plan: dict[str, Any]) -> dict[str, Any]:
         if function["visibility"] != "public" or function["file"] not in files_by_id:
             continue
         function_file = files_by_id[function["file"]]
+        function_file["header_system_dependencies"] = _unique(
+            [
+                *function_file.get("header_system_dependencies", []),
+                *required_system_headers(function["signature"]["RAW"]),
+            ]
+        )
         for type_item in types:
             owner_header = files_by_id.get(type_item["file"], {}).get("header_path")
             if (
@@ -1177,6 +1225,17 @@ def normalize_plan_for_compiler(plan: dict[str, Any]) -> dict[str, Any]:
             ):
                 function_file["header_dependencies"].append(owner_header)
         function_file["header_dependencies"] = _unique(function_file["header_dependencies"])
+
+    for type_item in types:
+        if type_item["visibility"] != "PUBLIC" or type_item["file"] not in files_by_id:
+            continue
+        type_file = files_by_id[type_item["file"]]
+        type_file["header_system_dependencies"] = _unique(
+            [
+                *type_file.get("header_system_dependencies", []),
+                *required_system_headers(json.dumps(type_item.get("type_spec", {}), sort_keys=True)),
+            ]
+        )
 
     for _, owner_header, callback, type_item in callback_abi_edges:
         callback_file = files_by_id.get(callback["file"])
@@ -1245,6 +1304,7 @@ def normalize_plan_for_compiler(plan: dict[str, Any]) -> dict[str, Any]:
             "forbidden_symbols": _normalize_forbidden(raw.get("forbidden_symbols", [])),
             "test_vectors": _normalize_vectors(raw.get("test_vectors", []), "protocol", "RUNTIME"),
             "lowering_diagnostics": lowering_diagnostics,
+            "canonical_registry_snapshot": registry.snapshot() if registry is not None else raw.get("canonical_registry_snapshot"),
         }
     )
     return out
@@ -1471,6 +1531,7 @@ def _file_spec(
         data["HEADER"] = {
             "PATH": file_item["header_path"],
             "DEPENDENCY": file_item["header_dependencies"],
+            "SYSTEM_DEPENDENCY": file_item.get("header_system_dependencies", []),
             "DATA": [*[_type_spec(item) for item in type_items], *[_constant_spec(item) for item in public_constants]],
             "INTERFACE": [_header_interface(function) for function in functions if function["visibility"] == "public"],
         }

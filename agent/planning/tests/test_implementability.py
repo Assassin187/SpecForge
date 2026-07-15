@@ -7,6 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from agent.common.c_types import compatible_c_type
 from agent.planning.implementability import (
     analyze_implementability,
     apply_semantic_patch,
@@ -158,6 +159,103 @@ class ImplementabilityTests(unittest.TestCase):
     def test_closed_fixture_is_implementable(self) -> None:
         self.assertEqual(analyze_implementability(_closed_plan()), [])
 
+    def test_direct_call_arguments_require_ordered_typed_providers(self) -> None:
+        plan = _closed_plan()
+        destroy_call = plan["functions"][-1]["call_contracts"][1]
+        destroy_call["argument_semantics"] = [{
+            "parameter": "wrong_parameter",
+            "source_kind": "prior_result",
+            "source_ref": "function:fixture/provider/fixture_handle_create",
+            "source_type": "int",
+        }]
+
+        codes = _codes(plan)
+        self.assertIn("call_argument_provider_mismatch", codes)
+
+        destroy_call["argument_semantics"][0]["parameter"] = "handle"
+        codes = _codes(plan)
+        self.assertIn("call_argument_type_mismatch", codes)
+        self.assertIn("call_argument_source_unresolved", codes)
+
+    def test_tagged_type_is_not_silently_ignored(self) -> None:
+        plan = _closed_plan()
+        create = plan["functions"][0]
+        create["signature"] = {
+            "RAW": "struct shared_buffer *fixture_handle_create(void)",
+            "NAME": "fixture_handle_create",
+            "RETURN": "struct shared_buffer *",
+            "PARAMS": [],
+        }
+
+        diagnostics = analyze_implementability(plan)
+
+        unresolved = [item for item in diagnostics if item["code"] == "unresolved_type"]
+        self.assertTrue(any(item["details"].get("symbol") == "struct shared_buffer" for item in unresolved))
+
+    def test_system_aggregate_header_is_completed_deterministically(self) -> None:
+        plan = _closed_plan()
+        provider = plan["functions"][0]
+        provider["signature"] = {
+            "RAW": "struct iovec fixture_handle_create(void)",
+            "NAME": "fixture_handle_create",
+            "RETURN": "struct iovec",
+            "PARAMS": [],
+        }
+
+        missing = [item for item in analyze_implementability(plan) if item["code"] == "missing_system_header_dependency"]
+        self.assertEqual(missing[0]["details"]["required_type"], "struct iovec")
+        self.assertEqual(missing[0]["details"]["required_header"], "sys/uio.h")
+        self.assertEqual(missing[0]["details"]["use_mode"], "by_value")
+        changes = complete_deterministic_dependencies(plan)
+
+        self.assertIn("sys/uio.h", plan["files"][0]["header_system_dependencies"])
+        self.assertTrue(any(item["code"] == "deterministic_system_dependency_completion" for item in changes))
+        self.assertNotIn("missing_system_header_dependency", _codes(plan))
+
+    def test_const_pointer_provider_is_compatible_only_in_safe_direction(self) -> None:
+        plan = _closed_plan()
+        destroy = plan["functions"][1]
+        destroy["signature"]["RAW"] = "void fixture_handle_destroy(const fixture_handle_t* handle)"
+        destroy["signature"]["PARAMS"][0]["TYPE"] = "const fixture_handle_t*"
+        destroy_call = plan["functions"][-1]["call_contracts"][1]
+        destroy_call["SIGNATURE"] = destroy["signature"]["RAW"]
+
+        self.assertNotIn("call_argument_type_mismatch", _codes(plan))
+
+        destroy["signature"]["PARAMS"][0]["TYPE"] = "fixture_handle_t*"
+        destroy["signature"]["RAW"] = "void fixture_handle_destroy(fixture_handle_t* handle)"
+        destroy_call["SIGNATURE"] = destroy["signature"]["RAW"]
+        destroy_call["argument_semantics"][0]["source_type"] = "const fixture_handle_t*"
+        self.assertIn("call_argument_type_mismatch", _codes(plan))
+
+        self.assertFalse(compatible_c_type("const fixture_handle_t**", "fixture_handle_t**"))
+
+    def test_wire_consumer_requires_typed_view_of_foreign_opaque_type(self) -> None:
+        plan = _closed_plan()
+        consumer = plan["functions"][-1]
+        consumer["signature"] = {
+            "RAW": "int main(fixture_handle_t* handle)",
+            "NAME": "main",
+            "RETURN": "int",
+            "PARAMS": [
+                {"TYPE": "fixture_handle_t*", "NAME": "handle", "NULLABLE": False, "OWNERSHIP": "BORROWED"}
+            ],
+        }
+        consumer["wire_mapping"] = [{"PACKET": "fixture", "WIRE_FIELD": "value", "STRATEGY": "parse_and_skip"}]
+
+        opaque = [item for item in analyze_implementability(plan) if item["code"] == "opaque_cross_owner_access_unproven"]
+        self.assertEqual(opaque[0]["details"]["required_type"], "fixture_handle_t")
+        self.assertEqual(opaque[0]["details"]["use_mode"], "requires_complete_representation")
+
+        consumer["access_paths"] = [
+            {
+                "TARGET": "fixture_handle_t.bytes",
+                "TYPE": "const uint8_t *",
+                "ACCESSOR": "fixture_handle_data",
+            }
+        ]
+        self.assertNotIn("opaque_cross_owner_access_unproven", _codes(plan))
+
     def test_private_symbol_cannot_cross_files(self) -> None:
         plan = _closed_plan()
         plan["functions"][1]["visibility"] = "private"
@@ -180,6 +278,22 @@ class ImplementabilityTests(unittest.TestCase):
         plan = _closed_plan()
         plan["functions"][2]["rely"]["FUNC"].append({"NAME": "missing_service", "KIND": "CALL", "ROLE": "Missing."})
         self.assertIn("unresolved_callee", _codes(plan))
+
+    def test_closed_world_reports_every_missing_provider_service(self) -> None:
+        plan = _closed_plan()
+        caller = plan["functions"][-1]
+        caller["rely"]["FUNC"] = [
+            {"NAME": name, "SIGNATURE": f"void {name}(void)"}
+            for name in ("lookup_record", "record_session", "session_channel", "channel_metadata")
+        ]
+
+        missing = [item for item in analyze_implementability(plan) if item["code"] == "unresolved_callee"]
+
+        self.assertEqual(
+            {item["details"]["symbol"] for item in missing},
+            {"lookup_record", "record_session", "session_channel", "channel_metadata"},
+        )
+        self.assertTrue(all(item["compile_critical"] for item in missing))
 
     def test_opaque_type_requires_constructor(self) -> None:
         plan = _closed_plan()
@@ -835,6 +949,41 @@ class ImplementabilityTests(unittest.TestCase):
         self.assertEqual(repair.call_count, 2)
         self.assertFalse(report["success"])
         self.assertIn("semantic_patch_invalid", {item["code"] for item in report["final_diagnostics"]})
+
+    def test_compile_critical_patch_cannot_update_outside_targeted_slice(self) -> None:
+        plan = _closed_plan()
+        plan["functions"].pop()
+        plan["files"][1]["functions"] = []
+        out_of_scope = {
+            "patch_id": "out-of-scope",
+            "operations": [
+                {
+                    "op": "update",
+                    "artifact_kind": "function",
+                    "artifact_id": "function:fixture/provider/fixture_handle_create",
+                    "changes": {"role": "Unrelated update."},
+                    "reason": "Exercise the targeted slice gate.",
+                    "provenance": {"kind": "engineering_decision", "refs": ["RULE_FIXTURE"]},
+                    "affected_artifact_ids": ["function:fixture/provider/fixture_handle_create"],
+                }
+            ],
+        }
+        zero = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        with tempfile.TemporaryDirectory() as raw, patch(
+            "agent.planning.pipeline.request_semantic_patch",
+            return_value=(out_of_scope, zero),
+        ) as repair:
+            _, report, _ = _close_implementability(
+                plan,
+                {"engineering_rules": [], "open_assumptions": []},
+                Path(raw),
+                api_key_env="UNUSED",
+                resume_from=None,
+            )
+        self.assertEqual(repair.call_count, 2)
+        self.assertTrue(
+            any("outside targeted diagnostic slice" in item for item in report["semantic_patch_validation_errors"])
+        )
 
 
 if __name__ == "__main__":

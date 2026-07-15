@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
+from agent.common.c_types import c_type_references, is_system_type
+
 from .facts import write_json
 from .amendment import InventoryAmendmentProcessor
 from .metrics import build_run_metrics
@@ -2912,9 +2914,11 @@ def _validate_typed_call_relations(
             elif source_kind == "constant":
                 registry.resolve(source_ref, expected_kinds={"constant"})
             elif source_kind == "literal":
-                custom_types = set(
-                    re.findall(r"\b[A-Za-z_][A-Za-z0-9_]*_t\b", expected_type)
-                ) - _STANDARD_TYPES
+                custom_types = {
+                    type_name
+                    for type_name in c_type_references(expected_type)
+                    if type_name not in _STANDARD_TYPES and not is_system_type(type_name)
+                }
                 if custom_types:
                     raise ValueError(f"stage8_custom_type_literal_forbidden: {caller_id}->{callee_id}:{parameter}")
             elif source_kind in {"access_path", "owned_state"} and source_ref not in access_refs:
@@ -3713,8 +3717,8 @@ def _validate_type_definition_semantics(
             if len(member_names) != len(members) or any(not name for name in member_names) or len(member_names) != len(set(member_names)):
                 raise ValueError(f"stage5_member_names_invalid: {entry['artifact_id']}")
             for member in members:
-                for type_name in re.findall(r"\b[A-Za-z_][A-Za-z0-9_]*_t\b", str(member.get("TYPE", ""))):
-                    if type_name not in _STANDARD_TYPES:
+                for type_name in c_type_references(str(member.get("TYPE", ""))):
+                    if type_name not in _STANDARD_TYPES and not is_system_type(type_name):
                         referenced = registry.resolve(type_name, expected_kinds={"type", "callback"})
                         if entry["visibility"] == "public" and referenced["visibility"] != "public":
                             raise ValueError(
@@ -3732,8 +3736,8 @@ def _validate_type_definition_semantics(
                 or not callback_match.group("params").strip()
             ):
                 raise ValueError(f"stage5_callback_signature_invalid: {entry['artifact_id']}")
-            for type_name in re.findall(r"\b[A-Za-z_][A-Za-z0-9_]*_t\b", signature):
-                if type_name not in _STANDARD_TYPES and type_name != entry["canonical_name"]:
+            for type_name in c_type_references(signature):
+                if type_name not in _STANDARD_TYPES and not is_system_type(type_name) and type_name != entry["canonical_name"]:
                     referenced = registry.resolve(type_name, expected_kinds={"type", "callback"})
                     if entry["visibility"] == "public" and referenced["visibility"] != "public":
                         raise ValueError(
@@ -3830,8 +3834,8 @@ def _validate_function_interface_abi(
             *[str(param.get("TYPE", "")) for param in signature.get("PARAMS", []) if isinstance(param, dict)],
         ]
         for c_type in slots:
-            for type_name in set(re.findall(r"\b[A-Za-z_][A-Za-z0-9_]*_t\b", c_type)):
-                if type_name in _STANDARD_TYPES:
+            for type_name in c_type_references(c_type):
+                if type_name in _STANDARD_TYPES or is_system_type(type_name):
                     continue
                 type_entry = registry.resolve(type_name, expected_kinds={"type", "callback"})
                 if type_name in opaque_names and "*" not in c_type:
@@ -3908,7 +3912,7 @@ def _validate_function_interface_abi(
                 continue
             if not str(param.get("ROLE", "")).lower().startswith("output"):
                 source_fields.add(str(param.get("NAME", "")))
-            for type_name in re.findall(r"\b[A-Za-z_][A-Za-z0-9_]*_t\b", str(param.get("TYPE", ""))):
+            for type_name in c_type_references(str(param.get("TYPE", ""))):
                 spec = type_specs.get(type_name, {})
                 if spec.get("TYPE_KIND") == "STRUCT":
                     source_fields.update(
@@ -3986,9 +3990,11 @@ def _validate_function_interface_abi(
                 "void*" for value in expected_params if value in {"void*", "const void*"}
             }
             for value in expected_params:
-                custom_names = set(
-                    re.findall(r"\b[A-Za-z_][A-Za-z0-9_]*_t\b", value)
-                ) - _STANDARD_TYPES
+                custom_names = {
+                    type_name
+                    for type_name in c_type_references(value)
+                    if type_name not in _STANDARD_TYPES and not is_system_type(type_name)
+                }
                 for custom_name in custom_names:
                     type_owner = registry.resolve(
                         custom_name, expected_kinds={"type", "callback"}
@@ -4072,9 +4078,10 @@ def _validate_function_interface_loader_safety(
         for type_name in {
             value
             for slot in slots
-            for value in re.findall(r"\b[A-Za-z_][A-Za-z0-9_]*_t\b", slot)
+            for value in c_type_references(slot)
+            if not value.startswith(("struct ", "union ", "enum "))
         }:
-            if type_name not in _STANDARD_TYPES:
+            if type_name not in _STANDARD_TYPES and not is_system_type(type_name):
                 type_entry = registry.resolve(type_name, expected_kinds={"type", "callback"})
                 if item.get("visibility") == "public" and type_entry["visibility"] != "public":
                     raise ValueError(

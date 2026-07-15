@@ -557,8 +557,54 @@ def _close_implementability(
     deterministic_changes = complete_deterministic_dependencies(normalized)
     validate_deterministic_change_log(deterministic_changes)
     initial_diagnostics = analyze_implementability(normalized)
+    stage_positions = {
+        stage_id: index
+        for index, stage_id in enumerate(
+            (
+                "scope_fact_inventory",
+                "architecture_boundaries",
+                "module_file_plan",
+                "public_artifact_inventory",
+                "type_and_access_path_design",
+                "function_interface_design",
+                "function_behavior_design",
+                "function_call_contract_closure",
+                "function_test_vector_design",
+                "dependency_closure",
+                "final_plan_assembly",
+            )
+        )
+    }
+    compile_critical = [item for item in initial_diagnostics if item.get("compile_critical") is True]
+    if compile_critical:
+        earliest_position = min(
+            stage_positions.get(str(item.get("authoritative_stage", "")), len(stage_positions))
+            for item in compile_critical
+        )
+        targeted_diagnostics = [
+            item
+            for item in compile_critical
+            if stage_positions.get(str(item.get("authoritative_stage", "")), len(stage_positions)) == earliest_position
+        ]
+    else:
+        targeted_diagnostics = initial_diagnostics
     write_json(semantic_root / "initial_diagnostics.json", initial_diagnostics)
+    write_json(semantic_root / "targeted_diagnostics.json", targeted_diagnostics)
     write_json(semantic_root / "deterministic_completion.json", deterministic_changes)
+    payload = build_semantic_patch_slice(normalized, context, targeted_diagnostics)
+    write_json(semantic_root / "input_slice.json", payload)
+    related_artifact_ids = {
+        str(item.get("id", ""))
+        for values in payload.get("related_artifacts", {}).values()
+        for item in values
+        if isinstance(item, dict) and item.get("id")
+    }
+    targeted_artifact_ids = {
+        str(value)
+        for item in targeted_diagnostics
+        for value in item.get("artifact_ids", [])
+        if value
+    }
 
     usage = {
         "prompt_tokens": 0,
@@ -572,8 +618,25 @@ def _close_implementability(
     reused_patch = False
     applied_patch_path = semantic_root / "applied_patch.json"
 
+    def diagnostic_identity(item: dict[str, Any]) -> tuple[str, tuple[str, ...]]:
+        return str(item.get("code", "")), tuple(sorted(str(value) for value in item.get("artifact_ids", [])))
+
+    initial_identities = {diagnostic_identity(item) for item in initial_diagnostics}
+    targeted_identities = {diagnostic_identity(item) for item in targeted_diagnostics}
+
     def validate_candidate(candidate: dict[str, Any]) -> list[str]:
         errors = validate_semantic_patch(normalized, candidate)
+        operations = candidate.get("operations", [])
+        for index, operation in enumerate(operations if isinstance(operations, list) else []):
+            if not isinstance(operation, dict):
+                continue
+            artifact_id = str(operation.get("artifact_id", ""))
+            if operation.get("op") == "update" and artifact_id not in related_artifact_ids:
+                errors.append(f"operations[{index}] updates artifact outside targeted diagnostic slice: {artifact_id}")
+            if operation.get("op") == "add" and targeted_artifact_ids.isdisjoint(
+                str(value) for value in operation.get("affected_artifact_ids", [])
+            ):
+                errors.append(f"operations[{index}] adds artifact without a targeted affected artifact")
         try:
             trial = apply_semantic_patch(normalized, candidate)
             _apply_registry_additions(trial, candidate)
@@ -582,7 +645,16 @@ def _close_implementability(
             residual = analyze_implementability(trial)
         except (KeyError, TypeError, ValueError, RegistryInvariantError) as exc:
             return [*errors, f"patch application failed: {type(exc).__name__}: {exc}"]
-        return [*errors, *[f"residual closure {item['code']}: {item['message']}" for item in residual]]
+        blocking_residual = [
+            item
+            for item in residual
+            if diagnostic_identity(item) in targeted_identities
+            or (item.get("compile_critical") is True and diagnostic_identity(item) not in initial_identities)
+        ]
+        return [
+            *errors,
+            *[f"residual closure {item['code']}: {item['message']}" for item in blocking_residual],
+        ]
 
     def add_logged_usage(prefix: str) -> None:
         path = semantic_root / f"{prefix}_usage.json"
@@ -619,8 +691,6 @@ def _close_implementability(
             patch = {}
             patch_errors = ["no stored semantic patch candidate is available for compile_specs resume"]
     elif initial_diagnostics and resume_from != "compile_specs":
-        payload = build_semantic_patch_slice(normalized, context, initial_diagnostics)
-        write_json(semantic_root / "input_slice.json", payload)
         try:
             patch, call_usage = request_semantic_patch(
                 payload,
@@ -654,7 +724,7 @@ def _close_implementability(
                 correction_groups["patch_structure"] = structural_feedback
             patch = retained_patch
             correction_records: list[dict[str, Any]] = []
-            for index, (group, group_errors) in enumerate(correction_groups.items(), 1):
+            for index, (group, group_errors) in enumerate(list(correction_groups.items())[:1], 1):
                 partition = f"{index:02d}_{group}" if len(correction_groups) > 1 else None
                 prefix = f"02_patch_correction_{partition}" if partition else "02_patch_correction"
                 try:
@@ -715,6 +785,7 @@ def _close_implementability(
     report = {
         "kind": "IMPLEMENTABILITY_REPORT",
         "initial_diagnostics": initial_diagnostics,
+        "targeted_diagnostics": targeted_diagnostics,
         "deterministic_completion": deterministic_changes,
         "semantic_patch_attempted": patch is not None and not reused_patch,
         "semantic_patch_reused": reused_patch,
@@ -860,15 +931,16 @@ def run_planning(
     try:
         if not isinstance(plan.get("canonical_registry_snapshot"), dict):
             raise RuntimeError("registry_snapshot_missing: structured planning completed without canonical registry")
-        if plan.get("unresolved_partitions"):
-            semantic_patch_usage = {
-                "prompt_tokens": 0,
-                "completion_tokens": 0,
-                "total_tokens": 0,
-                "prompt_characters": 0,
-                "request_count": 0,
-            }
-            distinct_unresolved = _distinct_unresolved_partitions(plan["unresolved_partitions"])
+        unresolved_partitions = _distinct_unresolved_partitions(plan.get("unresolved_partitions", []))
+        plan, implementability_report, semantic_patch_usage = _close_implementability(
+            plan,
+            context,
+            planning_root,
+            api_key_env=api_key_env,
+            resume_from=resume_from,
+            planning_tokens_used=provider.model_tokens_used,
+        )
+        if unresolved_partitions:
             unresolved_diagnostics = [
                 {
                     "level": "error",
@@ -880,41 +952,20 @@ def run_planning(
                     "recovery_action": "resume_or_regenerate_failed_partition",
                     "details": item,
                 }
-                for item in distinct_unresolved
+                for item in unresolved_partitions
             ]
-            plan = normalize_plan_for_compiler(plan)
-            deterministic_changes = complete_deterministic_dependencies(plan)
-            validate_deterministic_change_log(deterministic_changes)
-            residual_diagnostics = analyze_implementability(plan)
-            final_diagnostics = _distinct_diagnostic_dicts([*unresolved_diagnostics, *residual_diagnostics])
-            implementability_report = {
-                "kind": "IMPLEMENTABILITY_REPORT",
-                "initial_diagnostics": residual_diagnostics,
-                "deterministic_completion": deterministic_changes,
-                "semantic_patch_attempted": False,
-                "semantic_patch_reused": False,
-                "semantic_patch_validation_errors": [],
-                "semantic_patch_usage": semantic_patch_usage,
-                "final_diagnostics": final_diagnostics,
-                "validation_layers": semantic_layer_summary(
-                    final_diagnostics,
-                    plan["unresolved_partitions"],
-                ),
-                "success": False,
-            }
-            semantic_root = planning_root / "semantic_closure"
-            write_json(semantic_root / "initial_diagnostics.json", residual_diagnostics)
-            write_json(semantic_root / "deterministic_completion.json", deterministic_changes)
-            write_json(semantic_root / "implementability_report.json", implementability_report)
-            write_json(semantic_root / "semantic_patch_usage.json", semantic_patch_usage)
-        else:
-            plan, implementability_report, semantic_patch_usage = _close_implementability(
-                plan,
-                context,
-                planning_root,
-                api_key_env=api_key_env,
-                resume_from=resume_from,
-                planning_tokens_used=provider.model_tokens_used,
+            final_diagnostics = _distinct_diagnostic_dicts(
+                [*unresolved_diagnostics, *implementability_report.get("final_diagnostics", [])]
+            )
+            implementability_report["final_diagnostics"] = final_diagnostics
+            implementability_report["validation_layers"] = semantic_layer_summary(
+                final_diagnostics,
+                unresolved_partitions,
+            )
+            implementability_report["success"] = False
+            write_json(
+                planning_root / "semantic_closure" / "implementability_report.json",
+                implementability_report,
             )
         snapshot = plan.get("canonical_registry_snapshot")
         if isinstance(snapshot, dict):

@@ -1,296 +1,323 @@
-# SpecForge Planning Agent 当前状态、优化进展与稳定性报告
+# SpecForge Planning Agent 当前状态与稳定性报告
 
-> 更新时间：2026-07-13  
-> 本文件是 planning agent 当前实现、优化效果、实际运行结果和后续工作的唯一权威进度报告。`PLANNING_EVALUATION_STABILITY_PLAN.md` 记录本轮逐步执行证据；历史 replay 只作为非回归证据，不计作 fresh stability success。
+> 更新时间：2026-07-15
+> 核心对象：planning agent
+> 文档地位：planning 当前实现、历史优化、真实运行结果和后续边界的唯一权威状态报告
+> 当前结论：final root-fix pilot 的 materialization/Candidate-through 为 3/3，但 compile-contract ready 仅 1/3、sound build 为 0/3；稳定性未收敛
+> 当前执行模式：root-fix tranche 已永久停止；不启动正式 RQ1
 
-## 1. 研究定位与范围
+## 1. 研究定位与当前范围
 
-SpecForge 的核心研究贡献是 planning agent：它填补 technical documents -> protocol facts 与 engineering specifications -> code 之间的缺口，把 facts agent 输出的 protocol facts 转换为 coder agent 可直接消费的 implementation-oriented protocol specs。
+SpecForge 的核心研究贡献是 planning agent。它位于 protocol facts 与 coder agent 之间，把 facts agent 提取的 factual protocol knowledge 转换为 implementation-oriented protocol specs：
 
 ```text
 technical documents
-  -> facts agent
-  -> protocol facts
-  -> planning agent
-  -> protocol specs
-  -> coder agent
-  -> protocol implementation
+-> facts agent
+-> protocol facts
+-> planning agent
+-> protocol specs
+-> coder agent
+-> protocol implementation
 ```
 
-本轮优化范围仅限 `agent/planning`：重构跨Stage identity、typed overlay、局部恢复、semantic closure、candidate/qualified lifecycle、prompt成本控制及观测能力。未修改protocol facts、facts agent、coder、coder schema、`specs-example`或generated C/H；未运行coder source generation/repair、最终项目compile或runtime behavior tests。
+Planning 的目标不是生成开放式 prose，而是产生 coder 可直接消费的 `SUMMARY.md`、`PROTOCOL_MODULE_SPEC`、`FILE_SPEC` 和 `FUNCTION_SPEC`，并保留 type、wire、ownership、dependency、callback、call contract、test surface 与 traceability 信息。
+
+本报告合并并替代原 `PLANNING_RQ1_SEMANTIC_OPTIMIZATION_REPORT.md`。早期 artifact-stability 证据与后续 specs-to-code compile 证据统一保留在本文；重复的架构说明、逐轮流水账和已过时结论已删除。
 
 ## 2. 当前结论
 
-本轮 **evaluation artifact stability 目标已经完成**。
+当前 planning 已经具备以下能力：
 
-- 保留了canonical registry、typed overlays、partition transaction、bounded recovery、diagnostics、provenance、resume、token metrics和deterministic compiler，没有另建strict/evaluation双模式。
-- 只要facts、pipeline state、registry和final structural lowering正常，pipeline现在即使存在semantic diagnostics或semantic patch failure，也会执行`compile_specs`并保存candidate specs。
-- semantic diagnostics、planning validation和qualification结论保持原severity并进入manifest；candidate specs可由现有coder loader读取，不会被误发布为qualified specs。
-- Bootstrap fresh首次暴露coder array spelling问题；两次compile-only resume依次修复array lowering和generation-order lowering后，真实路径首次产出coder-loadable specs。
-- 第一组acceptance因Stage 6尾分号和后续semantic patch异常两次清零；通过失败run的resume定位并修复后，重新从全新输出目录开始第二组验收。
-- 第二组3次独立fresh运行均为11/11 stages、`specs_generated=true`、`coder_loader_passed=true`，形成连续3/3。
-- 三次最终fresh均为candidate-only且`qualification_passed=false`；semantic qualification、generated code compile和behavior tests仍未完成，也不属于本轮目标。
+- 独立 fresh run 可以完成 11 个 structured stages，并生成非空 protocol specs；
+- candidate specs 可以通过 schema/coder loader，被 coder 用于 source generation；
+- semantic diagnostics、unresolved partitions 与 `qualification_passed` 能够保留，而不是通过清空 artifacts 制造成功；
+- 历史 run 证明 coder generation 后的代码存在 bounded-repair clean-compile feasibility，但 final root-fix pilot 未复现；
+- planning whole-fresh token accounting 与 hard-ceiling preflight 已生效。
 
-最准确的状态是：
+当前尚不能声称：
 
-> planning 已达到连续3次fresh生成coder-loadable specs的artifact stability，可用于RQ1后续coder生成实验；该结论不代表specs已qualified、compile-ready或behavior-correct。
+- 同一冻结 revision 每次都能 materialize specs；
+- 每次 candidate specs 都能让 coder 在 bounded repair 内 compile；
+- `qualification_passed=true` 已稳定；
+- runtime startup 或 MQTT minimum behavior 已通过；
+- 当前两个 compile-success M2 工程可以直接用于正式 RQ1 方法比较。
 
-## 3. 已实现架构与实际效果
+最准确的表述是：
 
-### 3.1 Candidate/qualified lifecycle
+> Planning 的 materialization 与 Candidate-through 已稳定发生，但 compile-critical contracts、cross-file ABI 与 closed-world provider/runtime graph 仍跨 run 复现；最终 sound-build rate 为 0/3，因此当前路线在预声明的最后一次 root-fix 后判定未收敛。
 
-当前运行状态分为：
+## 3. 当前 Planning 架构
 
-- `completed_with_qualified_specs`：semantic、planning schema、coder loader与rendered-header checks全部通过后，才发布`<protocol>_specs/`；
-- `completed_with_candidate_only`：保留registry、committed overlays、unresolved partitions、diagnostics、provenance、metrics与manifests；
-- `failed_internal`：用于facts read、registry/canonical/pipeline-state/deterministic invariant等不可恢复错误。
+### 3.1 Structured planning 与 canonical registry
 
-效果：validator error不会被降级，错误运行仍保留完整审计材料；semantic closure失败时，只要structural lowering条件成立，`candidate_specs_root`会指向实际生成的specs。只有qualification全部通过时才发布qualified specs。
+Planning 使用多阶段 structured workflow，从 scope、architecture、module/file layout、public artifacts、types、functions、behavior、call contracts、test vectors和dependency closure逐步形成 `implementation_plan.json`。
 
-### 3.2 Canonical Symbol Registry
+`registry.py` 维护 module/file/type/callback/function/constant/test 等 canonical artifacts：
 
-`registry.py`维护module/file/type/callback/function/constant/test七类artifact：
+- identity、kind、owner、visibility 与 definition stage 默认 immutable；
+- typed resolve 拒绝 unknown ID、ambiguous alias 与 kind mismatch；
+- Stage 5/7/8 使用 typed overlays 和 partition transaction；
+- inventory amendment 必须显式、bounded 且带 provenance；
+- final plan assembly 只整合已提交 artifacts，不应引入新的 semantic identity。
 
-- canonical identity、kind、owner、visibility与definition stage默认immutable；
-- typed resolve拒绝unknown ID、ambiguous alias和artifact kind mismatch；
-- snapshot支持resume/replay；
-- split header/source identity不会互相占用header alias；
-- semantic patch与`ArtifactRequest`新增identity必须显式且带provenance。
+### 3.2 Validation、recovery 与 candidate lifecycle
 
-效果：最近两次token优化run的Stage 5/8均未出现unknown ID或artifact kind mismatch。缺口是`typed_view()`只原生支持kind/module/file过滤，没有完整stage/partition scope接口。
+当前 validation 分为 structural、binding 和 semantic 三层。Partition 按 `generate -> parse -> bind -> validate -> commit` 执行，失败时 rollback 当前 partition、记录 unresolved，并继续安全且独立的后续工作。
 
-### 3.3 Typed high-risk stages
+运行状态区分：
 
-- Stage 5采用`{type_id, definition_overlay}`，identity来自registry；
-- Stage 7按module/file生成behavior overlays；
-- Stage 8按caller file分区，只接受六字段function-to-function call edges；name、signature、`RELY.FUNC`、`CALL_CONTRACTS`与dependency确定性派生；
-- Stage 10只接受无法唯一推导的ordering/architecture choices，禁止重复inventory；
-- Stage 11是0-token deterministic reconciliation，不新增identity。
+- `completed_with_qualified_specs`：全部 qualification gates 通过；
+- `completed_with_candidate_only`：specs 可物化，但仍保留 semantic/unresolved diagnostics；
+- `failed_internal`：facts、registry、pipeline state 或 deterministic invariant 无法继续。
 
-效果：最近两次token优化run的high-risk partitions分别为18/18和15/15完成。缺口包括：typed enum目前是prompt contract加post-generation validation，并非LLM API级JSON Schema；Stage 8只验证edge shape和function kind，没有拒绝`condition=never`、`no call occurs`、方向反转、跨文件private callee或缺少参数provider的调用边。
+Non-fatal diagnostics 默认不阻止 candidate specs materialization。Compiler 负责 deterministic lowering，不应在 registry 外临时发明 module/file/type/function identity。
 
-### 3.4 Controlled Inventory Amendment
+### 3.3 Coder-facing contract
 
-`ArtifactRequest`会校验kind、semantic role、owner、required-by、reason、provenance与visibility；每个scope最多一轮。系统只bind已有artifact或注册`status=requested` identity，不自动生成signature、fields、behavior或API family。
+Coder 从 specs 确定性生成 headers，使用 LLM 生成 sources 和 `main.c`，再执行 compile 与最多 3 轮 repair。Planning 必须提供足够稳定的：
 
-已覆盖Stage 5 type/callback amendment和Stage 8 function amendment的局部rerun。缺口是executor没有完整覆盖所有允许kind/stage组合，特别是constant及非预期stage来源；文档层将`proposed_name`视为可选，而当前validator实际要求非空。
+- public C ABI 与 type ownership；
+- callback typedef、consumer、provider 与 user-data contract；
+- direct-call argument provider 与 result usage；
+- cross-file visibility 和 header/source dependencies；
+- opaque resource create/destroy/access paths；
+- exactly-one runtime entrypoint；
+- wire constants、parser/encoder mappings 与 minimum behavior obligations。
 
-### 3.5 Transaction与局部恢复
+## 4. 已完成优化与阶段性证据
 
-Stage 5/7/8按`generate -> parse -> bind -> validate -> commit`执行：
+### 4.1 Artifact-stability 阶段
 
-- syntax repair、semantic correction、inventory amendment独立计费与落盘；
-- typed failure最多一次local correction；
-- correction失败则rollback当前partition，保留blocking diagnostic并继续独立partitions；
-- non-partition whole-stage structural/binding failure最多一次correction；
-- unresolved结果不会进入qualified publication。
+2026-07-13 的第二组 acceptance 连续三次 fresh 均完成 11/11 stages、生成 specs 并通过 coder loader：
 
-效果：partition rollback、survival和状态隔离已有fixtures；recoverable whole-stage或partition failure会物化schema-valid empty artifact、写入unresolved ledger并继续后续独立stage。Essential final assembly、registry或pipeline invariant仍属于不可恢复失败。Unresolved/semantic diagnostics不再跳过specs compilation。
+| Run | Stage/partition | Module/File/Function | Coder loader | Tokens |
+| --- | --- | --- | --- | ---: |
+| `mqtt_evaluation_acceptance_r2_fresh_01_20260713` | 11/11；16/16 | 1/6/30 | passed | 429947 |
+| `mqtt_evaluation_acceptance_r2_fresh_02_20260713` | 11/11；17/17 | 1/6/30 | passed | 483783 |
+| `mqtt_evaluation_acceptance_r2_fresh_03_20260713` | 11/11；18/18 | 1/8/32 | passed | 455323 |
 
-### 3.6 三层Validation与Semantic Closure
+这证明 artifact materialization 与 coder discovery 曾达到连续稳定，但三次均为 candidate-only，不能推导 compile 或 behavior utility。
 
-当前显式区分：
+该阶段还完成了：
 
-| Layer | Recovery |
+- semantic failure 后继续 candidate compilation；
+- recoverable whole-stage/partition continuation；
+- array、dependency、signature、entrypoint、custom type 和 shared-header lowering；
+- manifest 中 artifact success、qualification、survival 和 token accounting 分离；
+- compact context projection，使完整 fresh 从早期约 879389 tokens 降到约 405000–408000 tokens，同时保留 stage artifacts。
+
+### 4.2 Compile hardening 阶段
+
+Step 7 修复了 deterministic completion、linker diagnostics routing、repair rollback 与 whole-fresh token accounting。Step 7-R1 完成 11/11 stages，生成 1/6/33 specs，schema/loader passed；planning 使用 771279 tokens。Coder 3/3 repair 后仍因 opaque session access contract 不闭合而 compile failed。
+
+Step 8-R1 对 callback provider/consumer、decoded-data provider、routing lifecycle、transport input-buffer access/consume/identity 和 session state-query obligations进行了最小修复。代表性 Stage 4 请求为 16409 → 16516 tokenizer tokens，仅增加 0.65%，没有修改 `prompts.py`。
+
+Step 8-R1 首次打通完整链路：
+
+| 指标 | 结果 |
 | --- | --- |
-| structural | syntax repair或current partition/stage regeneration |
-| binding | local correction或`ArtifactRequest` |
-| semantic | 完整candidate plan上的bounded semantic closure |
+| Planning | 11/11 stages；1/6/34 specs |
+| Specs | schema/coder loader passed |
+| Planning tokens | 746305；accounting complete |
+| Initial compile | failed |
+| Bounded repair | 2/3 rounds；`compile_succeeded` |
+| Final compile | passed；独立 clean rebuild passed |
+| Manual edits | 0 |
 
-`validation_layers.json`记录diagnostic ID、owner layer、recovery与outcomes；deterministic changes必须带`code`、`artifact_id`、`field`、`reason`和`source_artifact_id`。
+### 4.3 Frozen Step 10 稳定性验证
 
-Semantic closure执行primary patch和按diagnostic group分区的一轮correction。只有整个patch通过residual closure才会应用；失败时保留原plan并追加`semantic_patch_invalid`。`RegistryInvariantError`等invalid semantic patch现在转为可审计diagnostic，而不是逃逸为`failed_internal`；无论patch是否成功，只要结构可lower，都会继续生成candidate specs。
+冻结条件：
 
-### 3.7 Prompt成本控制
+```text
+HEAD = 5891e2449a0854c5b7fbe274a69088416c1f17f1
+execution-source SHA256 = 9e6abdf442162bb96065e847dcdcb071d73b2e3c99233f58417bc0f32b6fa4fc
+model = qwen3-max-2026-01-23
+compiler = cc 12.3.0
+max_repair_rounds = 3
+planning target/hard ceiling = 749726 / 783804 tokens
+```
 
-当前API prompt使用compact JSON；Stage 3以后不再无条件携带完整raw facts和全部累计artifacts，而是根据Stage/partition投影直接依赖、registry catalog及trace refs对应的原始fact slice。Local correction复用同一slice，Stage 10在没有open assumptions和上游diagnostics时可0-token完成；metrics记录request count和prompt characters。
+三次 independent fresh 没有 resume、replay、fixed-spec 替代或失败补跑：
 
-两次Fresh验证均通过550,000-token目标；第二次run即使触发syntax repair和local correction，仍保持相同量级，说明降耗对partition数量和局部恢复具有一定稳定性。生成效果对比及具体数据统一见5.4节。
+| Run | Planning | Specs/loader | Tokens | Repair | Final outcome |
+| --- | --- | --- | ---: | ---: | --- |
+| Step 10.1 | 11/11；15/16 partitions | 1/5/33；passed | 602042 | 3/3 | compile failed |
+| Step 10.2 | 11/11；16/19 partitions | 1/7/38；passed | 727172 | 1/3 | compile passed |
+| Step 10.3 | 11/11；17/20 partitions | materialization failed | 726377 | 0/3 | coder not run |
 
-## 4. Evaluation artifact stability执行状态
+聚合结果：
 
-以下状态对应`PLANNING_EVALUATION_STABILITY_PLAN.md`的Step 0-9：
+| Gate | 结果 |
+| --- | ---: |
+| Fixed fresh sequence completed | 3/3 |
+| 11/11 stages executed | 3/3 |
+| Token accounting complete and <= target | 3/3 |
+| Specs materialized and coder-loadable | 2/3 |
+| Coder generation entered | 2/3 |
+| Bounded-repair final compile passed | 1/3 overall；1/2 coder-started |
+| Manual artifact/source edits | 0 |
 
-| Step | 状态 | 结论 |
-| --- | --- | --- |
-| 0 控制流与基线 | DONE | 冻结83项tests及旧行为，定位semantic gate阻断`compile_specs` |
-| 1 specs物化 | DONE | structural lowering正常时始终编译candidate specs |
-| 2 recoverable continuation | DONE | 可恢复whole-stage/partition失败写ledger并继续11 stages |
-| 3 coder-loadable lowering | DONE | 修复array、dependency、signature、entrypoint、custom type和shared header lowering |
-| 4 manifest/可观测性 | DONE | artifact success与qualification分离，manifest记录specs/loader/semantic/survival/token |
-| 5 静态与回归 | DONE | 94项tests覆盖anti-hardcoding、reference isolation、replay和新增failure fixtures |
-| 6 bootstrap fresh | DONE | 11/11并生成specs；首次loader失败后进入resume定位 |
-| 7 bootstrap resume | DONE | 两次compile-only resume后独立coder loader通过 |
-| 8 连续3次fresh | DONE | 第二组acceptance连续3/3生成coder-loadable specs |
-| 9 冻结与报告 | DONE | 报告、最终回归、定向门禁、scope和完整diff审计均完成 |
+Step 10.2 再次证明 candidate-only specs 可以在一轮 repair 后 compile；Step 10.1 和 Step 10.3 则证明当前 revision 尚未稳定。
 
-本轮完成的是artifact stability，不是qualification stability；原研究架构和严格semantic diagnostics均保留。
+## 5. 当前确认的 Candidate-through 模式
 
-## 5. Replay与Fresh运行结果
+从 2026-07-15 起，后续 planning stability 与 RQ1 M2 workflow 使用 Candidate-through：
 
-### 5.1 Run 3 deterministic replay
+```text
+planning fresh
+-> 若 physical specs 已生成且 inventory 非空，始终进入 coder validate
+-> coder validate passed 后执行 coder source generation
+-> qualification_passed 只记录，不作为 early-stop 条件
+-> 保存 repair 前原始代码
+-> 在原始代码副本上执行 <= 3 rounds repair
+-> 记录 final clean compile outcome
+```
 
-| 项目 | 结果 |
-| --- | --- |
-| 模型调用 | 0；复用已落盘stage artifacts与semantic patch |
-| Registry | 111 entries，覆盖七类artifact |
-| Typed overlays | Stage 5为8个definitions；Stage 8为21条六字段call edges |
-| Plan | 5 modules / 10 files / 31 functions |
-| Specs | 43 files，含Module/File/Function specs与`SUMMARY.md` |
-| Validation | planning、coder loader、rendered headers均0 errors / 0 warnings |
-| Non-regression | 与冻结specs逐文件无差异 |
+具体语义：
 
-该结果证明deterministic pipeline可以处理一组引用一致的artifacts，但不是fresh success。
+- `qualification_passed=false`、semantic diagnostics 或 unresolved partitions 不得单独阻止 coder；
+- physical specs 不存在、inventory 为空时不能伪造 coder run；
+- coder validate/schema/loader 失败是 Candidate-through 的真实 downstream outcome，必须保留；
+- coder generation 只在 coder validate passed 后开始；
+- 所有 runs 都进入分母，不能只选择 compile-success candidate；
+- Candidate-through 不把 candidate 描述为 qualified，也不降低 diagnostics severity。
 
-### 5.2 原预算Goal的4次Fresh runs
+当前 `evaluation/planning_utility/full_specforge_adapter.py` 仍会在 `planning validate` return code 或 `qualification_passed=false` 时 early-stop，因此该决定尚需在下一份稳定化计划中实现和测试。
 
-| Run | Stage/partition survival | Candidate | Qualified | Tokens | 阻断 |
-| --- | --- | ---: | ---: | ---: | --- |
-| 1 | 3/11；未进入partition | 是 | 否 | 75,072 | split source占用header alias，Stage 4 owner binding ambiguous |
-| 2 | 3/11；未进入partition | 是 | 否 | 70,330 | Stage 4输出`visibility=opaque`，当时whole-stage correction未接通 |
-| 3 | 11/11；16/17 partitions | 是 | 否 | 892,243 | Stage 8把payload type伪造成function callee，correction失败 |
-| 4 | 9/11；17/17 partitions | 是 | 否 | 854,631 | Stage 10 choices遗漏`affected_artifact_ids`，correction重复遗漏 |
+## 6. 已暴露的稳定性问题
 
-Goal累计1,892,276 planning LLM tokens。Run 4启动前累计1,037,645，符合1.5M启动门禁；Run 4自然完成后超过阈值，因此没有再启动Goal内planning进程。
+### 6.1 Registry/materialization deterministic failure
 
-### 5.3 优化前独立观察run
+Step 10.3 触发：
 
-位置：`agent/planning/out/mqtt_observation_fresh_20260711_01`。
+```text
+RegistryBindingError: unknown_artifact_id: cannot bind
+'type:lowering/mqtt/mqtt_transport_t' as ['callback', 'type']
+```
 
-| 项目 | 结果 |
-| --- | --- |
-| Run status | `completed_with_candidate_only` |
-| Stage survival | 11/11 |
-| Partition survival | 16/16 |
-| Plan inventory | 6 modules / 6 files / 10 types / 25 functions |
-| Structured usage | 789,174 tokens |
-| Stage 9 syntax repair | 11,999 tokens；非法hex JSON修复成功 |
-| Semantic patch | 78,216 tokens；primary + 5个correction groups |
-| 总usage | 879,389 tokens |
-| Initial semantic diagnostics | 12 |
-| Final report | 原12项 + `semantic_patch_invalid`，共13 errors |
-| Candidate specs / qualified specs | 0 / 0 |
-| Coder validation | 未运行 |
+Compiler 从 create/destroy ABI 临时推导 opaque handle，却没有把该 identity 注册到 canonical registry，随后 canonical resolve 失败。这是 deterministic pipeline defect，不是 token、model service 或 coder failure。
 
-Initial diagnostics包括3个module generation-order conflicts、5个callback signature mismatches、1个opaque destructor缺失和3个access-service缺失。试验patch经过5组correction后仍有6个residual errors，因此整体未应用。
+### 6.2 ABI、access 与 call-contract variance
 
-该run暴露的主要问题不是ID binding，而是Stage 8语义：模型输出了`condition=never`、`no call occurs`的placeholder edges，以及codec/session/transport -> broker的反向调用边。它们结构合法，却产生虚假的callback关系、反向module dependencies和generation-order cycles。Semantic patch只删除派生dependency而未删除源call edges，deterministic completion会重新生成这些dependency。
+Step 10.1 的最终 compile errors 包括：
 
-### 5.4 Token优化Fresh runs与生成质量对比
+- `mqtt_session_manager_is_connected` caller/callee 参数不一致；
+- `mqtt_session_manager_mark_connected` 参数语义不一致；
+- topic-router subscription argument ordering 漂移；
+- generated/repair code调用 specs 未声明的 `mqtt_session_manager_get_connection`。
 
-位置：
+Planning 尚未稳定证明 session、router 与 connection 之间的 owner handle、access provider 和 result propagation。
 
-- Run 1：`agent/planning/out/mqtt_token_optimization_fresh_01_20260711`
-- Run 2：`agent/planning/out/mqtt_token_optimization_fresh_02_20260711`
+### 6.3 Opaque type、runtime flow 与 test surface
 
-两次均为独立fresh运行，没有使用resume。
+Step 10.2 虽然最终 compile passed，planning diagnostics 仍包含 `opaque_type_by_value`、`runtime_flow_missing`、empty test inventory 和 wire-mapping test-vector缺口。这些问题没有阻止本次 compile，但仍会影响不同 fresh decomposition 下的稳定性和后续 behavior evaluation。
 
-| 项目 | 优化前观察run | Token Run 1 | Token Run 2 |
-| --- | ---: | ---: | ---: |
-| Run status | candidate-only | candidate-only | candidate-only |
-| Stage / partition survival | 11/11；16/16 | 11/11；18/18 | 11/11；15/15 |
-| Modules / files | 6 / 6 | 5 / 8 | 5 / 7 |
-| Types / functions | 10 / 25 | 10 / 27 | 12 / 33 |
-| Structured usage | 789,174 | 367,217 | 344,321 |
-| Repair / local correction | 11,999 / 0 | 0 / 0 | 3,189 / 19,687 |
-| Semantic patch | 78,216 | 38,190 | 41,143 |
-| 总usage | 879,389 | 405,407 | 408,340 |
-| Initial / final diagnostics | 12 / 13 | 22 / 23 | 38 / 39 |
-| Binding errors | 0 | 0 | 0 |
-| Candidate specs / qualified specs | 0 / 0 | 0 / 0 | 0 / 0 |
+### 6.4 Budget-edge fallback
 
-Token验收线为550,000，两次均通过；相对优化前分别下降53.9%和53.6%。Run 2即使发生syntax repair和local correction，总usage仍仅比Run 1高0.7%，说明降耗效果可重复。
+Step 10.2 与 Step 10.3 的下一次 Stage 9 model call都被 hard-ceiling preflight阻止。预算控制本身正确，且三次 Step 10 均低于 749726 target；风险在于 fallback state 必须始终可 materialize，不能在 budget stop 后因 registry/compiler invariant 丢失 specs。
 
-严格来说，三次Fresh run均没有生成`*_spec.json`或`SUMMARY.md`：`candidate_specs_root`与`specs_root`均为`null`，因此当前只能比较spec compiler之前的candidate plan和Stage artifacts，不能宣称最终protocol specs质量已经验证。
+### 6.5 Repair 前原始代码没有统一 workflow contract
 
-表面完整度保持稳定：三个run的所有functions均有signature、behavior、trace refs和test vectors；token优化后artifact数量甚至增加。但implementation-oriented semantic quality明显下降：
+Coder `generate` 默认在同一 project directory 内编译并 repair。虽然 `repair_existing` 会复制 source project，但 current Full-SpecForge adapter 尚未强制使用 `--skip-repair generate -> source hash/snapshot -> repair existing copy` 的两阶段流程，因此正式 runs 不能稳定保证 pre-repair code 与 post-repair code同时归档。
 
-- 优化前不存在跨文件private调用；Run 1有4项，Run 2有8项。
-- `access_service_missing`从3项增至5项和23项，新增call edges没有同步证明session/router/decoder/connection等参数provider。
-- Run 1出现4项`unresolved_type`，包括signature引用未登记的`mqtt_transport_t`。
-- Run 2的Stage 4声明`runtime_entrypoint.main_function=main`，但function inventory没有`main`，产生`runtime_entrypoint_missing`。
-- Stage 8仍把callback binding、lifecycle pairing或状态前置关系表示成普通call edge，持续产生反向dependency和generation-order conflict。
+## 7. Token 与 Prompt 约束
 
-因此，当前最准确的判断是：compact JSON和context slicing稳定降低了token，且没有破坏schema字段生成；但两次token优化run均未保持优化前的semantic基线。由于Fresh LLM存在随机性，现有样本不能把全部退化严格归因于context裁剪，但已足以判定语义非回归没有通过。
+当前 whole-fresh baseline 使用 Step 7 的 681569 tokens，后续目标与硬上限保持：
 
-### 5.5 Evaluation artifact stability修复与最终验收
+```text
+target <= 749726  (baseline +10%)
+hard ceiling <= 783804  (baseline +15%)
+single request input <= 64000
+single response <= 16000
+```
 
-本节记录本轮新目标的真实运行路径。所有fresh run均使用同一MQTT protocol facts，不使用resume/replay、不复制历史artifacts、不人工修改运行产物。
+Prompt 修改仍是最后手段。优先顺序为：
 
-Bootstrap路径：
+```text
+deterministic control flow
+-> registry/typed validation
+-> compiler preservation
+-> Candidate-through adapter orchestration
+-> protocol-agnostic coder contract bug
+-> earliest authoritative prompt stage
+```
 
-| Run | Stage survival | Specs | Coder loader | Tokens | 结论 |
-| --- | --- | --- | --- | ---: | --- |
-| `mqtt_evaluation_bootstrap_01_20260713` | 11/11 | 1/7/30 | Failed：array type spelling | 384,702 | 进入resume定位 |
-| 同run compile-only resume 1 | 11/11 | 1/7/30 | Failed：3 generation-order errors | +0 | 继续lowering修复 |
-| 同run compile-only resume 2 | 11/11 | 1/7/30 | Passed，独立0 errors | +0 | 首次真实路径打通 |
+不得通过增加重复全量 facts、plan、diagnostics 或 inventory context修复 deterministic defects。若确需 prompt replacement，同一 representative fixture 的 tokenizer input增长目标不超过10%，硬上限不超过15%。
 
-第一组acceptance未计入最终结果：`mqtt_evaluation_fresh_01_20260713`在Stage 6因signature尾分号误判失败；resume修复尾分号、entrypoint path和unresolved member lowering后loader通过。随后`mqtt_evaluation_acceptance_fresh_01_20260713`、`..._02_...`先后成功，但`..._03_...`发生semantic patch noncanonical ID内部异常，连续计数清零。该失败run的resume又暴露duplicate shared header owner；修复semantic exception与shared-header lowering、重新通过94项tests后，才启动第二组全新验收。
+## 8. 当前 RQ1 Readiness
 
-最终连续3次fresh证据：
+当前能力足以进入独立 stabilization pilot，但不足以直接开始正式 RQ1 publication runs：
 
-| Run | Stage / partition survival | Module/File/Function | Planning / Qualification | Coder loader | Semantic diagnostics | Tokens |
-| --- | --- | --- | --- | --- | ---: | ---: |
-| `mqtt_evaluation_acceptance_r2_fresh_01_20260713` | 11/11；16/16 | 1/6/30 | Failed / Failed | Passed，独立0 errors / 0 warnings | 23 | 429,947 |
-| `mqtt_evaluation_acceptance_r2_fresh_02_20260713` | 11/11；17/17 | 1/6/30 | Failed / Failed | Passed，独立0 errors / 0 warnings | 68 | 483,783 |
-| `mqtt_evaluation_acceptance_r2_fresh_03_20260713` | 11/11；18/18 | 1/8/32 | Failed / Failed | Passed，独立0 errors / 0 warnings | 3 semantic；72 total；3 unresolved | 455,323 |
+- 两个 M2 compile-success 工程都是 `qualification_passed=false`、按 final compile success 选择的 post-repair candidates；
+- 当前 contract-closure 表混合 M0/M1 pre-repair 与 M2 selected post-repair，不能估计方法效应；
+- 两个 M2 的 required-obligation realization 为 100%，semantic-grounding closure 为 60%，但 executable call-path closure 为 0%；
+- 当前两个 compiled M2 没有统一 runtime/behavior evidence；
+- Candidate-through 尚未在正式 adapter 中实现；
+- known deterministic materialization defect 尚未修复。
 
-三轮均满足`fresh=true`、`resume=false`、`replay=false`、`specs_generated=true`、exactly one module spec、可发现FILE_SPEC/FUNCTION_SPEC、`coder_loader_passed=true`。最终sequence累计1,369,053 planning LLM tokens，连续成功计数为3/3。
+正式 RQ1 必须在稳定化修改完成、三次预声明 fresh sequence结束、revision/inputs/verifier/measurement冻结后另行启动。正式数据不得挑选成功样本，也不得把本报告中的工程调试 runs混入 publication denominator。
 
-## 6. 优化效果评估
+## 9. 当前验证基线与证据
 
-### 已取得的效果
+Step 10 freeze 前验证：
 
-- Fresh流程已从早期Stage 4/5/8 binding失败推进到连续3次11/11 stages、完整specs materialization和coder loader pass。
-- High-risk partitions可独立commit/rollback；recoverable whole-stage失败也可生成empty artifact、记录unresolved并继续。
-- Semantic patch failure不会吞掉diagnostics，也不会在结构可lower时阻止candidate specs生成。
-- Candidate/qualified publication边界保持明确：artifact success不伪装成qualification success。
-- Compiler以通用结构规则lower array、dependency、signature、entrypoint、自定义member和shared header，没有复制MQTT示例inventory或发明协议行为。
-- Run 3 replay和新增fixtures共同证明registry -> deterministic plan -> specs compiler -> coder loader链路非回归。
-- 最终连续3次fresh分别产出1/6/30、1/6/30和1/8/32 specs，coder loader均通过。
-- 当前代码基线为94项tests；freeze时已再次执行`compileall`、全量tests、anti-hardcoding/reference isolation、replay/coder-loader/header定向fixtures和`git diff --check`，全部通过。
+```text
+planning tests: 148/148 passed
+planning utility tests: 33/33 passed
+coder tests: 29/29 passed
+compileall: passed
+git diff --check: passed
+```
 
-### 尚未达到的效果
+关键 evidence：
 
-- 最终三次fresh均未生成qualified specs，qualification成功率仍为0%。
-- Semantic diagnostics分别为23、68、3，第三轮另有3个unresolved partitions；semantic closure仍未稳定。
-- Stage 8 typed IDs解决了kind问题，但没有解决call direction、callback binding和placeholder edge语义真实性。
-- Semantic patch correction仍可能修复症状而非源关系，并因原子应用策略丢弃可用的局部改进。
-- Dependency source-edge repair、access-service provider闭包、runtime entrypoint质量仍是后续semantic qualification工作。
-- 本轮没有运行coder source generation/repair、generated code compile或behavior tests，不能据此判断protocol implementation质量。
+- Step 8-R1 planning：`agent/planning/out/mqtt_step8_r1_fresh_20260714_204807/`
+- Step 8-R1 coder：`evaluation/planning_utility/out/step8_r1_fresh_20260714_204807/`
+- Step 10.1：`agent/planning/out/mqtt_step10_1_fresh_20260714_213220/` 与 `evaluation/planning_utility/out/step10_1_fresh_20260714_213220/`
+- Step 10.2：`agent/planning/out/mqtt_step10_2_fresh_20260714_215355/` 与 `evaluation/planning_utility/out/step10_2_fresh_20260714_215355/`
+- Step 10.3：`agent/planning/out/mqtt_step10_3_fresh_20260714_221315/`
+- Frozen sequence：`agent/planning/out/step10_sequence_20260714/EVIDENCE.md`
+- RQ1 contract closure：`evaluation/planning_utility/out/data/contract_closure_metrics_summary.md`
 
-## 7. 当前最新进度与下一步
+## 10. 下一步
 
-当前没有运行中的planning进程。最新状态是：第二组3次独立fresh均完成11/11 stages、生成candidate specs并通过现有coder loader，evaluation artifact stability目标已达到。
+`PLANNING_CANDIDATE_THROUGH_STABILITY_PLAN.md` 已按预声明完成，恰好执行3次 fresh planning → coder sequence，没有补跑或运行间修改。后续若继续研究，应作为新目标处理 compile-contract variance 和正式RQ1 readiness；不得把本 sequence 中唯一 compile-success Run 1单独选作正式样本。
 
-后续工作必须作为独立目标授权，不能混入本轮结论：
+## 11. Candidate-through Stability Sequence 最终结果
 
-1. 提升semantic qualification稳定率，处理call direction、callback/lifecycle relation和placeholder edges。
-2. 修复dependency source-edge、access-service provider、signature type和runtime entrypoint语义闭包。
-3. 评估candidate specs的semantic密度和跨协议迁移能力。
-4. 另行执行coder source generation/repair、generated code compile和behavior tests。
+冻结 revision下三次独立运行均为 `fresh=true`、`resume=false`、`replay=false`：
 
-## 8. 修改与验证摘要
+| Run | Stage/partition | Specs | Qualified | Coder validate | Original preserved | Repair | Final compile | Planning tokens |
+| --- | --- | --- | --- | --- | --- | --- | --- | ---: |
+| 1 | 11/11；15/16 | 1/7/29 | false | passed | true | 2/3 | passed | 606486 |
+| 2 | 11/11；16/18 | 1/6/33 | false | passed | true | 3/3 | failed | 684815 |
+| 3 | 11/11；16/20 | 1/9/36 | false | passed | true | 3/3 | failed | 763558 |
 
-本轮evaluation artifact stability实际修改文件：
+分层结论：
 
-- `pipeline.py`：无条件candidate compilation、planning/coder validation、manifest和artifact-success lifecycle；
-- `planner.py`：recoverable whole-stage continuation、empty artifacts、unresolved ledger及semantic patch invariant diagnostic；
-- `compiler.py`：coder-loadable structural lowering；
-- `models.py`、`cli.py`：artifact success语义和CLI结果输出；
-- `tests/test_pipeline.py`：新增lifecycle、continuation、lowering、semantic exception和shared header fixtures；
-- `README.md`：同步candidate/qualified行为与manifest contract；
-- `PLANNING_EVALUATION_STABILITY_PLAN.md`、本报告：逐Step执行与freeze证据。
+- materialization stability为3/3，且没有`deterministic_internal_invariant`；
+- Candidate-through stability为3/3：所有specs-bearing run均通过 coder validate、生成original code并保持hash不变；
+- 三次initial clean compile均failed，bounded repair后final clean compile为1/3；
+- `qualification_passed`为0/3，Run 3超过749726 token target但低于783804 hard ceiling；
+- runtime/behavior smoke按预声明未运行，因此不能声称behavior correctness；
+- 当前不具备直接进入正式RQ1的充分条件，原因是compile stability仍只有1/3。
 
-删除或替换的旧行为包括：semantic diagnostics直接跳过`compile_specs`、validation失败后移除candidate specs、recoverable whole-stage错误直接终止、coder-facing forward/cyclic dependency以及未规范化的array/signature/header owner输出。没有引入strict/evaluation平行模式。
+Machine-readable evidence位于`agent/planning/out/candidate_through_stability_20260715/freeze_record.json`与`sequence_summary.json`。Adapter summary 的initial compile字段使用legacy flat key；最终ledger以`pre_repair_diagnostics.json`中的`diagnostic_snapshot.build.returncode`为权威值，三次均为2，未改变本次分类。Sequence结束后没有修改execution或measurement source。
 
-当前验证基线：
+## 12. Final Root-fix Pilot 最终结果
 
-- `python -m compileall -q agent/planning`：pass；
-- `python -m unittest discover -s agent/planning/tests -p 'test_*.py'`：94/94 pass；
-- anti-hardcoding：pass；
-- reference isolation：pass；
-- `git diff --check -- agent/planning`：pass；
-- protocol facts与generated run artifacts未被手工修改以制造成功。
+2026-07-15 按 `PLANNING_CANDIDATE_THROUGH_STABILITY_PLAN.md` 完成最后一次 root-fix。R0–R5 在 0 fresh、0 planning model call 条件下完成 shared C type/header closure、opaque/provider diagnostics、unresolved-partition isolation、bounded compile-critical slice、repair fingerprint monotonicity与 sound-build measurement；冻结前验证为 planning `157/157`、coder `33/33`、planning utility `36/36`。
 
-冻结结论：planning已达到连续3次fresh生成coder-loadable specs的artifact stability，可用于RQ1后续coder生成实验。该freeze point不包含semantic qualification、generated code compile或behavior correctness保证。
+冻结后恰好执行三次 independent fresh planning → coder sequence，无 resume、replay、replacement run、run 间 source 修改或人工 artifact/code 编辑：
+
+| Run | Stage/partition | Specs | Contract ready | Initial compile | Repair stop | Final compile | Sound build | Tokens |
+| --- | --- | --- | --- | --- | --- | --- | --- | ---: |
+| 1 | 11/11；16/17 | 1/6/33 | true | failed | `spec_contract_blocked`，0 rounds | failed | failed | 702824 |
+| 2 | 11/11；16/17 | 1/6/29 | false | failed | `repair_stagnated`，1 round rollback | failed | failed | 675871 |
+| 3 | 11/11；13/16 | 1/5/31 | false | failed | `spec_contract_blocked`，0 rounds | failed | failed | 636364 |
+
+聚合结果：physical specs、coder validate、original hash preservation 均为 `3/3`；compile-contract ready=`1/3`；initial/final raw compile=`0/3`；sound build=`0/3`；qualification=`0/3`；planning target 与 hard ceiling 均为 `3/3`。
+
+问题性质相较旧 sequence 进一步变化：repair 不再用三轮猜名掩盖 planning/spec contract gap，两个 run 在 0 rounds 明确停止，另一个 run 因 fingerprints 未形成严格子集而立即 rollback。这说明 bounded failure detection 已收敛；但 RF2 cross-file ABI 与 RF3 closed-world provider/runtime family 仍跨 run 复现，compile stability 本身没有收敛。
+
+最终判定为 `NEGATIVE_STABILITY_RESULT`。当前只允许陈述“materialization/Candidate-through 优于早期版本，且错误阻断更 sound”；不能陈述 M2 compile stability 优于 M0/M1，也不具备启动 formal RQ1 的工程条件。本优化方向到此永久停止，不追加 fresh、不继续 prompt tuning。权威 machine-readable evidence：`agent/planning/out/final_root_fix_pilot_20260715/freeze_record.json` 与 `sequence_summary.json`。

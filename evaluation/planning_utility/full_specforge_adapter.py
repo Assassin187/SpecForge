@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -11,6 +12,8 @@ from pathlib import Path
 from typing import Any
 
 from .configs import ProtocolConfig, REPO_ROOT, rel_to_repo
+from .no_repair_analysis import analyze_no_repair
+from .repair_diagnostics import iter_project_files
 from .requirements import build_allowed_inputs, read_json, write_json
 
 
@@ -57,32 +60,6 @@ def _first_diagnostic(*texts: str) -> str:
     return ""
 
 
-def _manifest_compile_status(path: Path) -> tuple[str, int | None, str]:
-    if not path.is_file():
-        return "not_run", None, ""
-    manifest = read_json(path)
-    repair = manifest.get("repair", {}) if isinstance(manifest.get("repair"), dict) else {}
-    rounds = repair.get("rounds_attempted")
-    if manifest.get("compile_success") is True:
-        return "passed", int(rounds or 0), ""
-    if manifest.get("compile_success") is False:
-        return "failed", int(rounds or 0), str(repair.get("stop_reason") or "")
-    return "unknown", int(rounds or 0) if rounds is not None else None, ""
-
-
-def _scenario_counts_from_stdout(stdout: str) -> dict[str, int]:
-    counts = {"passed": 0, "failed": 0, "skipped": 0}
-    for line in stdout.splitlines():
-        status = line.split(":", 1)[0].strip().lower()
-        if status.startswith("passed"):
-            counts["passed"] += 1
-        elif status.startswith("failed"):
-            counts["failed"] += 1
-        elif status.startswith("skipped"):
-            counts["skipped"] += 1
-    return counts
-
-
 def _project_and_binary(coder_out: Path, config: ProtocolConfig) -> tuple[Path, str]:
     manifest_path = coder_out / "_agent_logs" / "run_manifest.json"
     if manifest_path.is_file():
@@ -92,6 +69,40 @@ def _project_and_binary(coder_out: Path, config: ProtocolConfig) -> tuple[Path, 
         if project_dir:
             return Path(project_dir), str(binary)
     return coder_out / config.protocol, config.binary_name
+
+
+def _spec_inventory(specs_root: Path | None) -> dict[str, int]:
+    counts = {"module": 0, "file": 0, "function": 0}
+    kinds = {"PROTOCOL_MODULE_SPEC": "module", "FILE_SPEC": "file", "FUNCTION_SPEC": "function"}
+    if specs_root is None or not specs_root.is_dir():
+        return counts
+    for path in specs_root.rglob("*_spec.json"):
+        try:
+            kind = json.loads(path.read_text(encoding="utf-8")).get("KIND")
+        except (OSError, json.JSONDecodeError):
+            continue
+        if kind in kinds:
+            counts[kinds[kind]] += 1
+    return counts
+
+
+def _source_hashes(project_dir: Path) -> dict[str, str]:
+    return {
+        path.relative_to(project_dir).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in iter_project_files(project_dir)
+    }
+
+
+def _repair_manifest_for_source(coder_original: Path, source_project_dir: Path) -> Path | None:
+    matches: list[Path] = []
+    for path in coder_original.glob("*_repair_*/_agent_logs/*repair_manifest.json"):
+        try:
+            manifest = read_json(path)
+            if Path(str(manifest.get("source_project_dir", ""))).resolve() == source_project_dir.resolve():
+                matches.append(path)
+        except (OSError, ValueError, json.JSONDecodeError):
+            continue
+    return max(matches, key=lambda path: path.stat().st_mtime_ns) if matches else None
 
 
 def _copy_existing_planning(source: Path, dest: Path) -> tuple[Path, str]:
@@ -190,6 +201,14 @@ def run_full_specforge(
         "qualification_passed": None,
         "specs_generated": False,
         "specs_root": "",
+        "spec_inventory": {"module": 0, "file": 0, "function": 0},
+        "candidate_through_eligible": False,
+        "candidate_through_reason": "not_evaluated",
+        "coder_validate_status": "not_run",
+        "original_generation_status": "not_run",
+        "initial_compile_status": "not_run",
+        "repair_status": "not_run",
+        "original_source_hashes_preserved": None,
         "coder_loader_passed": None,
         "fatal": False,
         "fatal_reason_code": None,
@@ -199,8 +218,10 @@ def run_full_specforge(
         "readiness_status": "not_run",
         "schema_loader_rendered_header_status": "not_run",
         "compile_status": "not_run",
+        "sound_build_passed": None,
+        "sound_build_diagnostics": [],
         "repair_iterations": None,
-        "smoke_status": "not_run",
+        "smoke_status": "not_run_out_of_scope",
         "verification_success": None,
         "scenario_counts": {"passed": 0, "failed": 0, "skipped": 0},
         "llm_call_usage": [],
@@ -261,17 +282,23 @@ def run_full_specforge(
     summary["planning_run_status"] = str(plan_manifest.get("run_status", "unknown"))
     summary["planning_validation_passed"] = plan_manifest.get("planning_validation_passed")
     summary["qualification_passed"] = bool(plan_manifest.get("qualification_passed"))
-    summary["specs_generated"] = bool(plan_manifest.get("specs_generated"))
+    summary["manifest_specs_generated"] = bool(plan_manifest.get("specs_generated"))
     summary["coder_loader_passed"] = plan_manifest.get("coder_loader_passed")
     summary["diagnostic_counts"] = plan_manifest.get("diagnostic_counts", summary["diagnostic_counts"])
     summary["planning_token_usage"] = plan_manifest.get("token_accounting", {})
     summary["fatal"] = bool(plan_manifest.get("fatal")) or summary["planning_run_status"] == "failed_internal"
     summary["fatal_reason_code"] = plan_manifest.get("fatal_reason_code") or plan_manifest.get("hard_failure_code")
-    summary["nonfatal_no_specs_count"] = int(not summary["fatal"] and not summary["specs_generated"])
-
-    specs_root = _path_in_copied_run(plan_manifest.get("specs_root"), planning_run)
+    specs_root = _path_in_copied_run(
+        plan_manifest.get("specs_root") or plan_manifest.get("candidate_specs_root"), planning_run
+    )
     if specs_root is not None:
         summary["specs_root"] = rel_to_repo(specs_root)
+    inventory = _spec_inventory(specs_root)
+    summary["spec_inventory"] = inventory
+    summary["specs_generated"] = all(inventory[kind] >= 1 for kind in ("module", "file", "function"))
+    summary["candidate_through_eligible"] = summary["specs_generated"]
+    summary["candidate_through_reason"] = "physical_nonempty_specs" if summary["specs_generated"] else "missing_or_empty_specs"
+    summary["nonfatal_no_specs_count"] = int(not summary["fatal"] and not summary["specs_generated"])
 
     with tempfile.TemporaryDirectory(prefix="specforge_planning_validate_") as validate_tmp:
         validation_run = Path(validate_tmp) / "planning_run"
@@ -300,28 +327,19 @@ def run_full_specforge(
     summary["diagnostic_counts"] = validated_manifest.get("diagnostic_counts", summary["diagnostic_counts"])
 
     stored_diagnostic = _stored_planning_diagnostic(planning_run)
+    if not summary["candidate_through_eligible"]:
+        summary["planning_status"] = "failed"
+        summary["readiness_status"] = "failed"
+        stage = "planning_fatal" if summary["fatal"] else "planning_stability"
+        reason = summary["fatal_reason_code"] if summary["fatal"] else "planning run produced no physical nonempty specs"
+        return fail(stage, stored_diagnostic or str(reason))
     if summary["fatal"]:
-        summary["planning_status"] = "failed"
-        summary["readiness_status"] = "failed"
-        return fail("planning_fatal", stored_diagnostic or str(summary["fatal_reason_code"] or "fatal planning failure"))
-    if summary["nonfatal_no_specs_count"]:
-        summary["planning_status"] = "failed"
-        summary["readiness_status"] = "failed"
-        return fail("planning_stability", stored_diagnostic or "non-fatal planning run produced no specs")
-    if validate["returncode"] != 0:
-        summary["planning_status"] = "failed"
-        summary["readiness_status"] = "failed"
-        return fail("planning_validate", _first_diagnostic(validate["stdout"], validate["stderr"]) or stored_diagnostic)
-    if not summary["qualification_passed"]:
+        summary["planning_status"] = "fatal_with_candidate"
+    elif not summary["qualification_passed"] or validate["returncode"] != 0:
         summary["planning_status"] = "candidate_only"
-        summary["readiness_status"] = "failed"
-        return fail("planning_qualification", stored_diagnostic or "qualification_passed=false")
-    if specs_root is None or not specs_root.is_dir():
-        summary["planning_status"] = "failed"
-        summary["readiness_status"] = "failed"
-        return fail("specs_root", "qualified planning manifest references a missing specs_root")
-    summary["planning_status"] = "passed_existing" if existing_planning_dir is not None else "passed"
-    summary["readiness_status"] = "passed"
+    else:
+        summary["planning_status"] = "passed_existing" if existing_planning_dir is not None else "passed"
+    summary["readiness_status"] = "candidate_through_eligible"
 
     coder_validate_cmd = [
         sys.executable,
@@ -338,11 +356,13 @@ def run_full_specforge(
     coder_validate = _run_command(coder_validate_cmd, log_dir=log_dir, name="03_coder_validate")
     summary["command_log"].append({key: coder_validate[key] for key in ("name", "command", "returncode", "started_at", "ended_at", "stdout_path", "stderr_path")})
     if coder_validate["returncode"] != 0:
+        summary["coder_validate_status"] = "failed"
         summary["schema_loader_rendered_header_status"] = "failed"
         return fail("coder_validate", _first_diagnostic(coder_validate["stdout"], coder_validate["stderr"]))
+    summary["coder_validate_status"] = "passed"
     summary["schema_loader_rendered_header_status"] = "passed"
 
-    coder_out = output_dir / "coder_out"
+    coder_out = output_dir / "coder_original"
     generate_cmd = [
         sys.executable,
         "-m",
@@ -351,8 +371,7 @@ def run_full_specforge(
         str(specs_root),
         "--output-dir",
         str(coder_out),
-        "--max-repair-rounds",
-        str(max_repair_rounds),
+        "--skip-repair",
         "--api-key-env",
         api_key_env,
         "generate",
@@ -360,40 +379,87 @@ def run_full_specforge(
     generate = _run_command(generate_cmd, log_dir=log_dir, name="04_coder_generate")
     summary["command_log"].append({key: generate[key] for key in ("name", "command", "returncode", "started_at", "ended_at", "stdout_path", "stderr_path")})
     coder_manifest_path = coder_out / "_agent_logs" / "run_manifest.json"
-    compile_status, rounds, manifest_reason = _manifest_compile_status(coder_manifest_path)
-    if coder_manifest_path.is_file():
-        coder_manifest = read_json(coder_manifest_path)
-        summary["coder_manifest_path"] = rel_to_repo(coder_manifest_path)
-        summary["llm_call_usage"] = coder_manifest.get("llm_call_usage", [])
-        summary["stage_token_usage"] = coder_manifest.get("stage_token_usage", {})
-        summary["workflow_token_usage"] = coder_manifest.get("workflow_token_usage", summary["workflow_token_usage"])
-        summary["repair_stop_reason"] = (coder_manifest.get("repair") or {}).get("stop_reason", "")
-        summary["repaired_files"] = coder_manifest.get("repaired_files", [])
-        summary["blocking_files"] = (coder_manifest.get("repair") or {}).get("blocking_files", [])
-    summary["compile_status"] = "passed" if generate["returncode"] == 0 and compile_status == "passed" else compile_status
-    summary["repair_iterations"] = rounds
-    if generate["returncode"] != 0 or summary["compile_status"] != "passed":
-        return fail("coder_generate", _first_diagnostic(generate["stdout"], generate["stderr"]) or manifest_reason)
-
+    if generate["returncode"] != 0 or not coder_manifest_path.is_file():
+        summary["original_generation_status"] = "failed"
+        return fail("coder_generate", _first_diagnostic(generate["stdout"], generate["stderr"]) or "generation manifest is missing")
+    coder_manifest = read_json(coder_manifest_path)
+    if not coder_manifest.get("generation_success") or not coder_manifest.get("skip_repair"):
+        summary["original_generation_status"] = "failed"
+        return fail("coder_generate", "coder generation did not preserve the required skip-repair contract")
+    summary["original_generation_status"] = "passed"
+    summary["coder_manifest_path"] = rel_to_repo(coder_manifest_path)
+    summary["llm_call_usage"] = coder_manifest.get("llm_call_usage", [])
+    summary["stage_token_usage"] = coder_manifest.get("stage_token_usage", {})
+    summary["workflow_token_usage"] = coder_manifest.get("workflow_token_usage", summary["workflow_token_usage"])
     project_dir, binary = _project_and_binary(coder_out, config)
-    smoke_cmd = [
+    if not project_dir.is_dir():
+        return fail("coder_generate", "generated original project directory is missing")
+    before_hashes = _source_hashes(project_dir)
+    write_json(coder_out / "_agent_logs" / "pre_repair_source_hashes.json", before_hashes)
+    no_repair = analyze_no_repair(project_dir, specs_root, binary)
+    write_json(coder_out / "_agent_logs" / "pre_repair_diagnostics.json", no_repair)
+    summary["original_project_dir"] = rel_to_repo(project_dir)
+    summary["pre_repair_source_hashes_path"] = rel_to_repo(coder_out / "_agent_logs" / "pre_repair_source_hashes.json")
+    summary["pre_repair_diagnostics_path"] = rel_to_repo(coder_out / "_agent_logs" / "pre_repair_diagnostics.json")
+    summary["initial_compile_status"] = (
+        "passed"
+        if (no_repair["diagnostic_snapshot"].get("build") or {}).get("returncode") == 0
+        else "failed"
+    )
+
+    repair_cmd = [
         sys.executable,
         "-m",
         "agent.coder",
-        "test",
-        "--protocol",
-        config.protocol,
+        "--spec-root",
+        str(specs_root),
+        "--max-repair-rounds",
+        str(max_repair_rounds),
+        "--api-key-env",
+        api_key_env,
+        "repair",
         "--project-dir",
         str(project_dir),
-        "--binary",
-        binary,
     ]
-    smoke = _run_command(smoke_cmd, log_dir=log_dir, name="05_smoke")
-    summary["command_log"].append({key: smoke[key] for key in ("name", "command", "returncode", "started_at", "ended_at", "stdout_path", "stderr_path")})
-    summary["smoke_status"] = "passed" if smoke["returncode"] == 0 else "failed"
-    summary["verification_success"] = smoke["returncode"] == 0
-    summary["scenario_counts"] = _scenario_counts_from_stdout(smoke["stdout"])
-    if smoke["returncode"] != 0:
-        return fail("smoke", _first_diagnostic(smoke["stdout"], smoke["stderr"]))
+    repair = _run_command(repair_cmd, log_dir=log_dir, name="05_coder_repair")
+    summary["command_log"].append({key: repair[key] for key in ("name", "command", "returncode", "started_at", "ended_at", "stdout_path", "stderr_path")})
+    repair_manifest_path = _repair_manifest_for_source(coder_out, project_dir)
+    if repair_manifest_path is None:
+        summary["repair_status"] = "failed"
+        return fail("coder_repair", _first_diagnostic(repair["stdout"], repair["stderr"]) or "repair manifest is missing")
+    repair_manifest = read_json(repair_manifest_path)
+    repair_data = repair_manifest.get("repair") or {}
+    after_hashes = _source_hashes(project_dir)
+    preserved = before_hashes == after_hashes
+    write_json(coder_out / "_agent_logs" / "post_repair_original_source_hashes.json", after_hashes)
+    summary["repair_manifest_path"] = rel_to_repo(repair_manifest_path)
+    summary["repair_project_dir"] = rel_to_repo(Path(str(repair_manifest["project_dir"])))
+    summary["source_project_dir"] = rel_to_repo(Path(str(repair_manifest["source_project_dir"])))
+    summary["repair_iterations"] = int(repair_data.get("rounds_attempted") or 0)
+    summary["repair_stop_reason"] = str(repair_data.get("stop_reason") or "")
+    summary["repair_fingerprint_history"] = repair_data.get("fingerprint_history", [])
+    summary["repaired_files"] = repair_manifest.get("repaired_files", [])
+    summary["blocking_files"] = repair_data.get("blocking_files", [])
+    summary["original_source_hashes_preserved"] = preserved
+    summary["compile_status"] = "passed" if repair_manifest.get("compile_success") is True else "failed"
+    summary["repair_status"] = summary["compile_status"]
+    summary["repair_llm_call_usage"] = repair_manifest.get("llm_call_usage", [])
+    summary["repair_stage_token_usage"] = repair_manifest.get("stage_token_usage", {})
+    summary["repair_workflow_token_usage"] = repair_manifest.get("workflow_token_usage", {})
+    if not preserved:
+        return fail("original_hash_preservation", "repair changed the original generated source tree")
+    repair_project_dir = Path(str(repair_manifest["project_dir"]))
+    if not repair_project_dir.is_dir():
+        return fail("coder_repair", "repair manifest references a missing project directory")
+    post_repair = analyze_no_repair(repair_project_dir, specs_root, binary)
+    post_repair_path = coder_out / "_agent_logs" / "post_repair_diagnostics.json"
+    write_json(post_repair_path, post_repair)
+    sound_build = (post_repair.get("diagnostic_snapshot", {}).get("sound_build") or {})
+    summary["post_repair_diagnostics_path"] = rel_to_repo(post_repair_path)
+    summary["sound_build_passed"] = sound_build.get("passed") is True
+    summary["sound_build_diagnostics"] = sound_build.get("diagnostic_codes", [])
+    summary["verification_success"] = summary["sound_build_passed"]
+    if repair["returncode"] != 0 or summary["compile_status"] != "passed":
+        return fail("coder_repair", _first_diagnostic(repair["stdout"], repair["stderr"]) or summary["repair_stop_reason"])
     write_json(output_dir / "summary.json", summary)
     return summary
