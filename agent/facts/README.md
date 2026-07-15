@@ -32,6 +32,7 @@ facts agent 的主要输出是一个**可被下游工程规划/规范定义消�
 输入：
 
 - 同一协议的一组技术文档路径
+- 描述目标角色、最小能力和功能边界的 `target profile`
 - 当前支持 `.txt`
 
 输出：
@@ -78,6 +79,8 @@ facts/
 ├── __main__.py
 ├── cli.py
 ├── models.py
+├── target_profile.py
+├── target_profiles/
 ├── document_loader.py
 ├── preprocess.py
 ├── prompts.py
@@ -108,30 +111,31 @@ facts/
 在 `~/SpecForge` 下运行：
 
 ```bash
-python3 -m agent facts validate --protocol-name coap --doc ~/SpecForge/document/rfc7252.txt --skip-llm-check
-python3 -m agent facts extract --protocol-name coap --doc ~/SpecForge/document/rfc7252.txt
+python3 -m agent facts validate --protocol-name mqtt --doc ~/SpecForge/document/MQTT_3.1.1.txt --target-profile ~/SpecForge/agent/facts/target_profiles/mqtt_min.json --skip-llm-check
+python3 -m agent facts extract --protocol-name mqtt --doc ~/SpecForge/document/MQTT_3.1.1.txt --target-profile ~/SpecForge/agent/facts/target_profiles/mqtt_min.json
 python3 -m agent facts verify --output-dir ~/SpecForge/agent/facts/out/coap
 ```
 
 使用 `.bashrc` 中的另一个 Qwen API key 环境变量：
 
 ```bash
-python3 -m agent facts extract --protocol-name coap --doc ~/SpecForge/document/rfc7252.txt --api-key-env ALI_API_2
+python3 -m agent facts extract --protocol-name mqtt --doc ~/SpecForge/document/MQTT_3.1.1.txt --target-profile ~/SpecForge/agent/facts/target_profiles/mqtt_min.json --api-key-env ALI_API_2
 ```
 
 也可以直接使用子包入口：
 
 ```bash
-python3 -m agent.facts validate --protocol-name ftp --doc ~/SpecForge/document/rfc959.txt --skip-llm-check
+python3 -m agent.facts validate --protocol-name mqtt --doc ~/SpecForge/document/MQTT_3.1.1.txt --target-profile ~/SpecForge/agent/facts/target_profiles/mqtt_min.json --skip-llm-check
 ```
 
 ### 命令说明
 
 - `validate`
-  - 校验文档路径、文件类型、预处理是否正常
+  - 校验文档路径、`target profile`、文件类型和预处理是否正常
   - 可通过 `--skip-llm-check` 跳过模型环境检查
 - `extract`
   - 执行完整事实抽取流程
+  - 必须通过 `--target-profile` 指定本次抽取的目标边界
   - 默认输出到 `~/SpecForge/agent/facts/out/<protocol_name>`
 - `verify`
   - 检查 `protocol_facts.json` 是否满足后续工程规划所需的最小结构

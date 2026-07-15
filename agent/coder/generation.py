@@ -4,7 +4,7 @@ import json
 import re
 import shutil
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
@@ -54,6 +54,7 @@ class RepairOutcome:
     rounds_attempted: int
     blocking_files: list[str]
     rejected_candidates: list[dict[str, str]]
+    fingerprint_history: list[dict[str, Any]] = field(default_factory=list)
 
 
 class GenerationLogger:
@@ -273,6 +274,47 @@ def _linker_error_roots(stdout: str, stderr: str) -> set[str]:
         f"{match.group('kind').replace(' ', '_')}:{match.group('symbol')}"
         for match in _LINKER_ROOT_RE.finditer(f"{stdout}\n{stderr}")
     }
+
+
+def _compile_error_fingerprints(stdout: str, stderr: str, project_dir: Path) -> set[str]:
+    fingerprints = set(_linker_error_roots(stdout, stderr))
+    for path, level, block in _diagnostic_blocks(stdout, stderr, project_dir):
+        if "error" not in level:
+            continue
+        first_line = block.splitlines()[0]
+        message = first_line.split(": error:", 1)[-1]
+        message = re.sub(r"\b0x[0-9A-Fa-f]+\b", "<address>", message)
+        message = re.sub(r"\s+", " ", message).strip()
+        fingerprints.add(f"compile:{path}:{message}")
+    return fingerprints
+
+
+def _canonical_function_symbols(bundle: SpecBundle) -> set[str]:
+    symbols = {
+        interface.name
+        for file_spec in bundle.file_specs_by_trace.values()
+        for interface in [*file_spec.header_interfaces, *file_spec.source_interfaces]
+        if interface.name
+    }
+    symbols.update(
+        function.signature.name
+        for function in bundle.function_specs_by_trace.values()
+        if function.signature.name
+    )
+    return symbols
+
+
+def _unknown_external_symbols(stdout: str, stderr: str, bundle: SpecBundle) -> set[str]:
+    combined = f"{stdout}\n{stderr}"
+    referenced = {
+        match.group("symbol")
+        for match in _LINKER_ROOT_RE.finditer(combined)
+        if match.group("kind") == "undefined reference to"
+    }
+    referenced.update(
+        re.findall(r"implicit declaration of function\s+[`'‘]([A-Za-z_][A-Za-z0-9_]*)[`'’]", combined)
+    )
+    return referenced - _canonical_function_symbols(bundle)
 
 
 def _classify_repair_targets(
@@ -692,6 +734,7 @@ class ProjectGenerator:
                 "rounds_attempted": repair_outcome.rounds_attempted,
                 "blocking_files": repair_outcome.blocking_files,
                 "rejected_candidates": repair_outcome.rejected_candidates,
+                "fingerprint_history": repair_outcome.fingerprint_history,
             },
             "llm_call_usage": self.llm_call_usage,
             "stage_token_usage": self.stage_token_usage,
@@ -756,6 +799,7 @@ class ProjectGenerator:
                 "rounds_attempted": outcome.rounds_attempted,
                 "blocking_files": outcome.blocking_files,
                 "rejected_candidates": outcome.rejected_candidates,
+                "fingerprint_history": outcome.fingerprint_history,
             },
             "llm_call_usage": self.llm_call_usage,
             "stage_token_usage": self.stage_token_usage,
@@ -783,6 +827,7 @@ class ProjectGenerator:
             return RepairOutcome(last_result, "compile_succeeded", 0, [], [])
 
         rejected_candidates: list[dict[str, str]] = []
+        fingerprint_history: list[dict[str, Any]] = []
 
         for round_idx in range(1, self.max_repair_rounds + 1):
             repairable_sources, blocking_headers = _classify_repair_targets(
@@ -793,14 +838,29 @@ class ProjectGenerator:
             )
             if blocking_headers:
                 print(f"[agent.repair] blocked=headers files={','.join(blocking_headers)}", flush=True)
-                return RepairOutcome(last_result, "deterministic_header_compile_error", round_idx - 1, blocking_headers, rejected_candidates)
+                return RepairOutcome(last_result, "deterministic_header_compile_error", round_idx - 1, blocking_headers, rejected_candidates, fingerprint_history)
             if not repairable_sources:
                 reason = (
                     "unmapped_linker_diagnostics"
                     if _linker_error_roots(last_result.stdout, last_result.stderr)
                     else "no_repairable_sources"
                 )
-                return RepairOutcome(last_result, reason, round_idx - 1, [], rejected_candidates)
+                return RepairOutcome(last_result, reason, round_idx - 1, [], rejected_candidates, fingerprint_history)
+            unknown_symbols = _unknown_external_symbols(last_result.stdout, last_result.stderr, self.bundle)
+            if unknown_symbols:
+                blocking = sorted(unknown_symbols)
+                rejected_candidates.extend(
+                    {"path": "", "reason": f"spec_contract_gap:{symbol}"}
+                    for symbol in blocking
+                )
+                return RepairOutcome(
+                    last_result,
+                    "spec_contract_blocked",
+                    round_idx - 1,
+                    blocking,
+                    rejected_candidates,
+                    fingerprint_history,
+                )
 
             print(f"[agent.repair] round={round_idx} files={','.join(repairable_sources)}", flush=True)
             changed = False
@@ -856,7 +916,7 @@ class ProjectGenerator:
                             indent=2,
                         ),
                     )
-                    return RepairOutcome(last_result, "repair_request_too_large", round_idx - 1, [], rejected_candidates)
+                    return RepairOutcome(last_result, "repair_request_too_large", round_idx - 1, [], rejected_candidates, fingerprint_history)
                 print(f"[agent.repair] file={relative_path} prompt_built messages={len(messages)}", flush=True)
                 self.logs.write(f"repair_prompt_{round_idx}_{relative_path}", json.dumps(messages, ensure_ascii=False, indent=2))
                 print(f"[agent.repair] file={relative_path} prompt_logged", flush=True)
@@ -873,7 +933,7 @@ class ProjectGenerator:
                         f"repair_llm_error_{round_idx}_{relative_path}",
                         f"{type(exc).__name__}: {exc}\n",
                     )
-                    return RepairOutcome(last_result, "repair_llm_error", round_idx - 1, [], rejected_candidates)
+                    return RepairOutcome(last_result, "repair_llm_error", round_idx - 1, [], rejected_candidates, fingerprint_history)
                 print(
                     f"[agent.repair] file={relative_path} llm_response_done chars={len(response.content)} tokens={response.usage.total_tokens}",
                     flush=True,
@@ -889,17 +949,34 @@ class ProjectGenerator:
                 print(f"[agent.repair] file={relative_path} file_written", flush=True)
                 changed = True
             if not changed:
-                return RepairOutcome(last_result, "no_repair_progress", round_idx, [], rejected_candidates)
+                return RepairOutcome(last_result, "no_repair_progress", round_idx, [], rejected_candidates, fingerprint_history)
             previous_result = last_result
             last_result = _compile_project(self.project_dir, binary_name)
             print(f"[agent.repair] compile=round_{round_idx} returncode={last_result.returncode}", flush=True)
             self.logs.write(f"compile_stdout_{round_idx}", last_result.stdout)
             self.logs.write(f"compile_stderr_{round_idx}", last_result.stderr)
-            new_linker_roots = _linker_error_roots(last_result.stdout, last_result.stderr) - _linker_error_roots(
-                previous_result.stdout, previous_result.stderr
+            previous_fingerprints = _compile_error_fingerprints(
+                previous_result.stdout, previous_result.stderr, self.project_dir
             )
-            if new_linker_roots:
-                reason = "new_linker_roots:" + ",".join(sorted(new_linker_roots))
+            current_fingerprints = _compile_error_fingerprints(
+                last_result.stdout, last_result.stderr, self.project_dir
+            )
+            accepted = last_result.returncode == 0 or current_fingerprints < previous_fingerprints
+            fingerprint_history.append(
+                {
+                    "round": round_idx,
+                    "before": sorted(previous_fingerprints),
+                    "after": sorted(current_fingerprints),
+                    "accepted": accepted,
+                }
+            )
+            if not accepted:
+                added_roots = current_fingerprints - previous_fingerprints
+                reason = (
+                    "new_compile_roots:" + ",".join(sorted(added_roots))
+                    if added_roots
+                    else "compile_roots_not_reduced"
+                )
                 for relative_path, original_content in original_contents.items():
                     (self.project_dir / relative_path).write_text(original_content, encoding="utf-8")
                     rejected_candidates.append({"path": relative_path, "reason": reason})
@@ -909,11 +986,17 @@ class ProjectGenerator:
                     ".json",
                 )
                 print(f"[agent.repair] round={round_idx} rejected={reason}", flush=True)
-                last_result = previous_result
-                continue
+                return RepairOutcome(
+                    previous_result,
+                    "repair_stagnated",
+                    round_idx,
+                    [],
+                    rejected_candidates,
+                    fingerprint_history,
+                )
             for relative_path in original_contents:
                 if relative_path not in repaired_files:
                     repaired_files.append(relative_path)
             if last_result.returncode == 0:
-                return RepairOutcome(last_result, "compile_succeeded", round_idx, [], rejected_candidates)
-        return RepairOutcome(last_result, "max_rounds_exhausted", self.max_repair_rounds, [], rejected_candidates)
+                return RepairOutcome(last_result, "compile_succeeded", round_idx, [], rejected_candidates, fingerprint_history)
+        return RepairOutcome(last_result, "max_rounds_exhausted", self.max_repair_rounds, [], rejected_candidates, fingerprint_history)

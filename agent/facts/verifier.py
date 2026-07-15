@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +33,17 @@ REQUIRED_PLANNING_ITEMS = {
     "存储或资源抽象",
     "最小可运行功能集",
     "测试与验证方式",
+}
+
+REQUIRED_CATEGORY_KEYS = {
+    "protocol_meta": {"protocol_name", "source_documents", "document_count", "fact_source_type", "target_scope"},
+    "transport": {"channels", "connection_model", "network_stack", "runtime_implications"},
+    "interaction_model": {"core_flows", "interaction_units", "roles", "style"},
+    "message_model": {"field_constraints", "framing", "message_or_command_entries", "surface_catalog"},
+    "state_model": {"invariants", "state_nodes", "timers_and_constants", "transitions"},
+    "routing_model": {"dispatch_keys", "dispatch_targets", "matching_rules"},
+    "resource_model": {"lifecycle_rules", "persistence_scope", "resource_objects"},
+    "error_and_limits": {"error_matrix", "limits", "security"},
 }
 
 
@@ -111,6 +123,18 @@ def verify_facts_output(output_dir: str | Path) -> VerificationResult:
     for key in sorted(REQUIRED_TOP_LEVEL_KEYS):
         if key not in raw:
             diagnostics.append(FactDiagnostic("error", "missing_top_level_key", f"Missing top-level key '{key}'", str(facts_path)))
+
+    for key, expected_keys in REQUIRED_CATEGORY_KEYS.items():
+        value = raw.get(key)
+        if isinstance(value, dict) and set(value) != expected_keys:
+            diagnostics.append(
+                FactDiagnostic(
+                    "error",
+                    "schema_error",
+                    f"{key} keys must be exactly {sorted(expected_keys)}, got {sorted(value)}",
+                    str(facts_path),
+                )
+            )
 
     for category in (
         "transport",
@@ -257,6 +281,16 @@ def verify_facts_output(output_dir: str | Path) -> VerificationResult:
             if ref not in evidence_ids:
                 diagnostics.append(FactDiagnostic("error", "traceability_gap", f"Unknown evidence ref '{ref}'", str(facts_path)))
 
+    for category in ("transport", "interaction_model", "message_model", "state_model", "routing_model", "resource_model", "error_and_limits"):
+        for node in _collect_nested_dicts(raw.get(category)):
+            if not _looks_like_fact_item(node):
+                continue
+            refs = node.get("evidence_refs", [])
+            if isinstance(refs, list) and refs and all(str(ref).startswith("profile_") for ref in refs):
+                diagnostics.append(
+                    FactDiagnostic("error", "profile_evidence_misuse", f"Normative {category} fact uses only profile evidence", str(facts_path))
+                )
+
     must_support_surface = minimum_v1.get("must_support_surface", [])
     for item in must_support_surface if isinstance(must_support_surface, list) else []:
         if not isinstance(item, dict):
@@ -272,5 +306,36 @@ def verify_facts_output(output_dir: str | Path) -> VerificationResult:
                     str(facts_path),
                 )
             )
+
+    manifest_path = out_dir / "run_manifest.json"
+    if not manifest_path.exists():
+        diagnostics.append(FactDiagnostic("error", "missing_manifest", "Missing run_manifest.json", str(manifest_path)))
+    else:
+        try:
+            manifest = _load_json(manifest_path)
+            profile_meta = manifest.get("target_profile", {})
+            profile_path = Path(profile_meta.get("path", ""))
+            if not profile_path.exists() or hashlib.sha256(profile_path.read_bytes()).hexdigest() != profile_meta.get("sha256"):
+                diagnostics.append(FactDiagnostic("error", "profile_hash_mismatch", "Target profile path/hash mismatch", str(manifest_path)))
+            scope_meta = manifest.get("scope_resolution", {})
+            scope_path = Path(scope_meta.get("path", ""))
+            if not scope_path.exists() or hashlib.sha256(scope_path.read_bytes()).hexdigest() != scope_meta.get("sha256"):
+                diagnostics.append(FactDiagnostic("error", "scope_hash_mismatch", "Scope resolution path/hash mismatch", str(manifest_path)))
+            else:
+                scope = _load_json(scope_path)
+                if scope.get("profile_sha256") != profile_meta.get("sha256"):
+                    diagnostics.append(FactDiagnostic("error", "scope_profile_mismatch", "Scope resolution used a different profile", str(scope_path)))
+                if scope.get("closure_status") != "complete" or scope.get("unresolved_capabilities"):
+                    diagnostics.append(FactDiagnostic("error", "scope_incomplete", "Capability/dependency closure is incomplete", str(scope_path)))
+                included = set(scope.get("included_surface", []))
+                minimum_names = {item.get("name") for item in must_support_surface if isinstance(item, dict)}
+                if not included.issubset(minimum_names):
+                    diagnostics.append(FactDiagnostic("error", "scope_coverage_gap", f"minimum_v1 misses included surfaces: {sorted(included - minimum_names)}", str(facts_path)))
+                excluded = set(scope.get("excluded_surface", []))
+                leaked = minimum_names & excluded
+                if leaked:
+                    diagnostics.append(FactDiagnostic("error", "excluded_surface_leakage", f"minimum_v1 includes excluded surfaces: {sorted(leaked)}", str(facts_path)))
+        except Exception as exc:  # noqa: BLE001
+            diagnostics.append(FactDiagnostic("error", "invalid_manifest", str(exc), str(manifest_path)))
 
     return VerificationResult(not any(diag.level == "error" for diag in diagnostics), diagnostics)

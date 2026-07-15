@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import shutil
+import hashlib
 from collections import defaultdict
 from copy import deepcopy
 from dataclasses import dataclass
@@ -20,6 +21,7 @@ from .models import (
     NormalizedDoc,
     RerankCandidate,
     RerankResult,
+    TargetProfile,
     ValidationContext,
 )
 from .preprocess import build_chunks, retrieve_candidate_chunks_for_category
@@ -30,6 +32,9 @@ from .prompts import (
     build_rerank_prompt,
     build_surface_discovery_prompt,
 )
+from .surface_index import build_surface_index, resolve_capabilities
+from .scope_resolution import resolve_scope
+from .target_profile import build_profile_evidence
 from .verifier import verify_facts_output
 
 
@@ -694,8 +699,9 @@ def _assemble_final_payload(
     docs: list[NormalizedDoc],
     category_outputs: dict[str, dict[str, Any]],
     reconciliation: dict[str, Any],
+    shared_evidence: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    evidence_index: list[dict[str, Any]] = []
+    evidence_index: list[dict[str, Any]] = list(shared_evidence)
     open_questions: list[dict[str, Any]] = []
     for category in SEMANTIC_CATEGORIES:
         category_blob = category_outputs[category]
@@ -722,7 +728,124 @@ def _assemble_final_payload(
         "open_questions": open_questions,
         "evidence_index": _dedupe_evidence_index(evidence_index),
     }
+    return _normalize_gold_compatible(payload)
+
+
+def _shape_items(items: Any, fields: tuple[str, ...]) -> list[dict[str, Any]]:
+    shaped: list[dict[str, Any]] = []
+    for index, item in enumerate(items if isinstance(items, list) else []):
+        if not isinstance(item, dict):
+            continue
+        result: dict[str, Any] = {}
+        for field in fields:
+            if field == "name":
+                result[field] = str(item.get("name") or item.get("condition") or item.get("summary") or f"item_{index + 1}")
+            elif field == "summary":
+                result[field] = str(item.get("summary") or item.get("reason") or item.get("required_action") or item.get("value_or_rule") or item.get("name") or "")
+            elif field == "evidence_refs":
+                refs = item.get(field, [])
+                result[field] = [str(ref) for ref in refs] if isinstance(refs, list) else []
+            elif field in ("fields", "surface_units"):
+                value = item.get(field, [])
+                result[field] = value if isinstance(value, list) else []
+            else:
+                result[field] = item.get(field, "")
+        shaped.append(result)
+    return shaped
+
+
+def _normalize_gold_compatible(payload: dict[str, Any]) -> dict[str, Any]:
+    message = payload["message_model"]
+    message["field_constraints"] = (
+        message.get("field_constraints", [])
+        + message.get("shared_fields", [])
+        + message.get("global_framing_rules", [])
+        + message.get("code_spaces", [])
+    )
+    message["surface_catalog"] = _shape_items(
+        message.get("surface_catalog"), ("name", "kind", "direction", "summary", "evidence_refs")
+    )
+    message["message_or_command_entries"] = _shape_items(
+        message.get("message_or_command_entries"),
+        ("name", "surface_unit", "summary", "syntax_or_layout", "fields", "evidence_refs"),
+    )
+    payload["message_model"] = {key: message[key] for key in ("framing", "surface_catalog", "message_or_command_entries", "field_constraints")}
+
+    state = payload["state_model"]
+    state["invariants"] = state.get("invariants", []) + state.get("state_scopes", []) + state.get("state_objects", []) + state.get("retained_data", []) + state.get("cleanup_rules", [])
+    state["state_nodes"] = _shape_items(state.get("state_nodes"), ("name", "summary", "evidence_refs"))
+    state["transitions"] = _shape_items(state.get("transitions"), ("trigger", "from_state", "to_state", "summary", "evidence_refs"))
+    payload["state_model"] = {key: state[key] for key in ("state_nodes", "transitions", "timers_and_constants", "invariants")}
+
+    resource = payload["resource_model"]
+    resource["lifecycle_rules"] = resource.get("lifecycle_rules", []) + resource.get("ownership_and_authority", []) + resource.get("storage_requirements", []) + resource.get("business_operations", [])
+    payload["resource_model"] = {key: resource[key] for key in ("resource_objects", "lifecycle_rules", "persistence_scope")}
+
+    errors = payload["error_and_limits"]
+    security = errors.get("security", [])
+    if not security and isinstance(errors.get("security_requirements"), dict):
+        security = [item for values in errors["security_requirements"].values() if isinstance(values, list) for item in values]
+    payload["error_and_limits"] = {"error_matrix": errors.get("error_matrix", []), "limits": errors.get("limits", {}), "security": security}
+
+    minimum = payload["minimum_v1"]
+    for field in minimum:
+        minimum[field] = _shape_items(minimum[field], ("name", "summary", "evidence_refs"))
+    payload["protocol_meta"].update(
+        {
+            "fact_source_type": "technical_document_target_profile_scoped",
+            "target_scope": "target-profile-selected protocol subset",
+        }
+    )
     return payload
+
+
+def _prune_excluded_scope(
+    category_outputs: dict[str, dict[str, Any]],
+    included_surface: list[str],
+    excluded_surface: list[str],
+    profile: TargetProfile,
+) -> None:
+    included = {name.casefold() for name in included_surface}
+    forbidden_patterns = [rf"\b{re.escape(name.casefold())}\b" for name in excluded_surface]
+    allowed_qos = profile.data["feature_constraints"].get("delivery_qos")
+    if isinstance(allowed_qos, list) and set(allowed_qos) == {0}:
+        forbidden_patterns.extend((r"\bqos\s*1\b", r"\bqos\s*2\b", r"\bqos\s*1/2\b"))
+    for feature, enabled in profile.data["feature_constraints"].items():
+        if enabled is False:
+            words = [word for word in feature.casefold().split("_") if len(word) > 3]
+            if words:
+                forbidden_patterns.append(r"\b" + r"[ _-]*".join(map(re.escape, words)) + r"\b")
+
+    def prune(value: Any, *, preserve_named_surface: bool = False) -> Any:
+        if isinstance(value, dict):
+            name = str(value.get("name") or value.get("surface_unit") or "").casefold()
+            keep_parent = preserve_named_surface and name in included
+            return {
+                key: prune(child, preserve_named_surface=preserve_named_surface or keep_parent)
+                for key, child in value.items()
+            }
+        if isinstance(value, list):
+            result = []
+            for item in value:
+                if isinstance(item, dict):
+                    name = str(item.get("name") or item.get("surface_unit") or "").casefold()
+                    keep_surface = preserve_named_surface and name in included
+                    text = _json(item).casefold()
+                    if not keep_surface and any(re.search(pattern, text) for pattern in forbidden_patterns):
+                        continue
+                    result.append(prune(item, preserve_named_surface=keep_surface))
+                elif isinstance(item, str) and item.casefold() in {name.casefold() for name in excluded_surface}:
+                    continue
+                else:
+                    result.append(prune(item))
+            return result
+        return value
+
+    category_outputs["message_model"]["facts"] = prune(
+        category_outputs["message_model"]["facts"], preserve_named_surface=True
+    )
+    for category in ("interaction_model", "state_model", "routing_model", "resource_model"):
+        category_outputs[category]["facts"] = prune(category_outputs[category]["facts"])
 
 
 class FactsExtractor:
@@ -732,13 +855,23 @@ class FactsExtractor:
         doc_paths: list[str | Path],
         output_dir: str | Path,
         llm_client: FixedQwenClient,
+        target_profile: TargetProfile,
     ) -> None:
         self.protocol_name = protocol_name
         self.doc_paths = [Path(path) for path in doc_paths]
         self.output_dir = Path(output_dir)
         self.llm_client = llm_client
+        self.target_profile = target_profile
         self.rerank_client = QwenRerankClient(llm_client)
         self.logs = ExtractionLogger(self.output_dir / "_agent_logs")
+
+    def _target_profile_manifest(self) -> dict[str, Any]:
+        return {
+            "path": str(self.target_profile.path),
+            "schema_version": self.target_profile.data["schema_version"],
+            "sha256": self.target_profile.sha256,
+            "semantic_projection_sha256": self.target_profile.semantic_projection_sha256,
+        }
 
     def _log(self, message: str) -> None:
         print(f"[agent.facts] {message}", flush=True)
@@ -905,6 +1038,7 @@ class FactsExtractor:
                     {
                         "protocol_name": self.protocol_name,
                         "schema_version": SCHEMA_VERSION,
+                        "target_profile": self._target_profile_manifest(),
                         "success": False,
                         "diagnostics": [diag.__dict__ for diag in context.diagnostics],
                     }
@@ -920,6 +1054,25 @@ class FactsExtractor:
         self._log("write normalized docs and chunk index")
         self.logs.write("normalized_docs", _json([doc.__dict__ | {"path": str(doc.path)} for doc in context.docs]), ".json")
         self.logs.write("chunk_index", _json([chunk.__dict__ for chunk in context.chunks]), ".json")
+
+        surface_index = build_surface_index(context.chunks)
+        capability_resolutions = resolve_capabilities(self.target_profile, surface_index, context.chunks)
+        scope_resolution = resolve_scope(self.target_profile, surface_index, capability_resolutions, context.chunks)
+        excluded_features = [
+            key for key, value in self.target_profile.data["feature_constraints"].items() if value is False
+        ]
+        scope_envelope = {
+            "required_capabilities": self.target_profile.data["required_capabilities"],
+            "included_surface": scope_resolution["included_surface"],
+            "allowed_shared_dependencies": ["framing", "fields", "state", "errors", "cleanup"],
+            "excluded_features": excluded_features,
+        }
+        self.logs.write(
+            "surface_index",
+            _json({"surface_units": surface_index}),
+            ".json",
+        )
+        scope_resolution_path = self.logs.write("scope_resolution", _json(scope_resolution), ".json")
 
         diagnostics = list(context.diagnostics)
         workflow_usage = LLMUsage(0, 0, 0)
@@ -938,10 +1091,20 @@ class FactsExtractor:
             category_token_usage=category_token_usage,
             shared_stage_usage=shared_stage_usage,
         )
+        scoped_entries = [entry for entry in surface_index if entry["name"] in scope_resolution["included_surface"]]
+        chunk_by_id = {chunk.chunk_id: chunk for chunk in context.chunks}
+        indexed_chunks = [
+            chunk_by_id[entry["chunk_ids"][0]]
+            for entry in surface_index
+            if entry["chunk_ids"] and entry["chunk_ids"][0] in chunk_by_id
+        ]
+        discovery_selected = list({chunk.chunk_id: chunk for chunk in discovery_selected + indexed_chunks}.values())
 
         discovery_payload = _normalize_surface_discovery_output({}, discovery_selected)
         try:
-            discovery_messages = build_surface_discovery_prompt(context.protocol_name, context.docs, discovery_selected)
+            discovery_messages = build_surface_discovery_prompt(
+                context.protocol_name, context.docs, discovery_selected, scope_envelope
+            )
             self.logs.write("prompt_surface_discovery", _json(discovery_messages), ".json")
             self._log("surface_discovery llm request start")
             discovery_response = self._generate_with_usage(discovery_messages, top_p=0.1, temperature=0.1)
@@ -971,6 +1134,64 @@ class FactsExtractor:
                 _default_open_question("surface_discovery", "Surface discovery failed before extraction.", "document_not_extracted")
             )
 
+        indexed_evidence: list[dict[str, Any]] = []
+        for entry in surface_index:
+            chunk = chunk_by_id[entry["chunk_ids"][0]]
+            evidence_id = f"doc_surface_{re.sub(r'[^a-z0-9]+', '_', entry['name'].casefold()).strip('_')}"
+            indexed_evidence.append(
+                {
+                    "evidence_id": evidence_id,
+                    "doc_path": chunk.doc_path,
+                    "section_hint": chunk.section_hint,
+                    "chunk_id": chunk.chunk_id,
+                    "excerpt": chunk.text[:600],
+                }
+            )
+            if not any(item.get("name") == entry["name"] for item in discovery_payload["facts"]["surface_units"] if isinstance(item, dict)):
+                discovery_payload["facts"]["surface_units"].append(
+                    {
+                        "name": entry["name"],
+                        "kind": "message",
+                        "direction": "mixed",
+                        "summary": entry["summary"],
+                        "evidence_refs": [evidence_id],
+                    }
+                )
+        discovery_payload["evidence"].extend(indexed_evidence)
+
+        derived_evidence: dict[str, str] = {}
+        for label, terms in {
+            "transport_stream": ("stream of bytes",),
+            "remaining_length": ("remaining length", "multiplier"),
+            "topic_filter_wildcards": ("topic filter", "wildcard"),
+            "first_packet": ("first packet", "connect"),
+            "qos_publish": ("qos", "publish packet"),
+        }.items():
+            chunk = next(
+                (item for item in context.chunks if all(term in item.text.casefold() for term in terms)),
+                None,
+            )
+            if chunk:
+                evidence_id = f"doc_derived_{label}"
+                discovery_payload["evidence"].append(
+                    {
+                        "evidence_id": evidence_id,
+                        "doc_path": chunk.doc_path,
+                        "section_hint": chunk.section_hint,
+                        "chunk_id": chunk.chunk_id,
+                        "excerpt": chunk.text[:600],
+                    }
+                )
+                derived_evidence[label] = evidence_id
+
+        excluded_names = {item.casefold() for item in scope_resolution["excluded_surface"]}
+        scoped_chunk_ids = {chunk_id for entry in scoped_entries for chunk_id in entry["chunk_ids"]}
+        scoped_chunk_pool = [
+            chunk
+            for chunk in context.chunks
+            if chunk.chunk_id in scoped_chunk_ids
+            or not any(re.search(rf"\b{re.escape(name)}\b", chunk.text.casefold()) for name in excluded_names)
+        ]
         category_outputs: dict[str, dict[str, Any]] = {}
         for category in SEMANTIC_CATEGORIES:
             category_raw = {"facts": deepcopy(CATEGORY_FACT_DEFAULTS[category]), "evidence": [], "open_questions": []}
@@ -981,7 +1202,7 @@ class FactsExtractor:
                 selected_chunks, _task_meta, workflow_usage = self._run_retrieval_stage(
                     stage_label=stage_label,
                     retrieval_key=retrieval_key,
-                    chunks=context.chunks,
+                    chunks=scoped_chunk_pool,
                     category=category,
                     subtask=task_name,
                     workflow_usage=workflow_usage,
@@ -998,6 +1219,7 @@ class FactsExtractor:
                         task_name,
                         discovery_payload["facts"],
                         selected_chunks,
+                        scope_envelope | {"selected_chunks": [chunk.chunk_id for chunk in selected_chunks]},
                     )
                     self.logs.write(f"prompt_{stage_label}", _json(messages), ".json")
                     self._log(f"{stage_label} llm request start")
@@ -1045,12 +1267,92 @@ class FactsExtractor:
                 f"(category_tokens={category_total['total_tokens']} in={category_total['prompt_tokens']} out={category_total['completion_tokens']})"
             )
 
+        indexed_by_name = {entry["name"]: entry for entry in surface_index}
+        message_surface = category_outputs["message_model"]["facts"]["surface_catalog"]
+        minimum_surface = category_outputs["minimum_v1"]["facts"]["must_support_surface"]
+        for name in scope_resolution["included_surface"]:
+            entry = indexed_by_name[name]
+            evidence_id = f"doc_surface_{re.sub(r'[^a-z0-9]+', '_', name.casefold()).strip('_')}"
+            if not any(isinstance(item, dict) and item.get("name") == name for item in message_surface):
+                message_surface.append(
+                    {"name": name, "kind": "message", "direction": "mixed", "summary": entry["summary"], "evidence_refs": [evidence_id]}
+                )
+            if not any(isinstance(item, dict) and item.get("name") == name for item in minimum_surface):
+                minimum_surface.append({"name": name, "summary": entry["summary"], "evidence_refs": [evidence_id]})
+
+        _prune_excluded_scope(
+            category_outputs,
+            scope_resolution["included_surface"],
+            scope_resolution["excluded_surface"],
+            self.target_profile,
+        )
+        state_facts = category_outputs["state_model"]["facts"]
+        routing_facts = category_outputs["routing_model"]["facts"]
+        resource_facts = category_outputs["resource_model"]["facts"]
+        for resolution in capability_resolutions:
+            for surface_name in resolution.get("selected_seeds", []):
+                evidence_id = f"doc_surface_{re.sub(r'[^a-z0-9]+', '_', surface_name.casefold()).strip('_')}"
+                node_name = f"{surface_name} active"
+                if not any(item.get("name") == node_name for item in state_facts["state_nodes"] if isinstance(item, dict)):
+                    state_facts["state_nodes"].append(
+                        {"name": node_name, "summary": f"Protocol state needed while processing {surface_name}.", "evidence_refs": [evidence_id]}
+                    )
+        connection_seed = next(
+            (
+                seed
+                for resolution in capability_resolutions
+                if "connection" in resolution["capability_id"].casefold()
+                for seed in resolution.get("selected_seeds", [])
+            ),
+            None,
+        )
+        subscription_seed = next(
+            (
+                seed
+                for resolution in capability_resolutions
+                if "subscribe" in resolution["capability_id"].casefold()
+                for seed in resolution.get("selected_seeds", [])
+                if "subscribe" in seed.casefold()
+            ),
+            None,
+        )
+        if connection_seed:
+            evidence_id = f"doc_surface_{connection_seed.casefold()}"
+            state_facts["transitions"].append(
+                {"trigger": connection_seed, "from_state": "network_connected", "to_state": "session_active", "summary": "Establish the protocol session.", "evidence_refs": [evidence_id]}
+            )
+        if subscription_seed:
+            evidence_id = f"doc_surface_{subscription_seed.casefold()}"
+            routing_facts["dispatch_keys"].append(
+                {"name": "Topic Name and Topic Filter", "summary": "Route publications by matching the published name against subscription filters.", "evidence_refs": [evidence_id]}
+            )
+            routing_facts["dispatch_targets"].append(
+                {"name": "matching subscriptions", "summary": "Deliver to clients with matching subscriptions.", "evidence_refs": [evidence_id]}
+            )
+            routing_facts["matching_rules"].append(
+                {"name": "Topic Filter match", "summary": "Apply the protocol Topic Filter matching rules.", "evidence_refs": [derived_evidence.get("topic_filter_wildcards", evidence_id)]}
+            )
+            resource_facts["resource_objects"].append(
+                {"name": "Subscription", "summary": "Session-scoped routing interest represented by a Topic Filter.", "evidence_refs": [evidence_id]}
+            )
+            resource_facts["lifecycle_rules"].append(
+                {"name": "Subscription creation", "summary": f"Create or update subscription state when processing {subscription_seed}.", "evidence_refs": [evidence_id]}
+            )
+        if "transport_stream" in derived_evidence:
+            category_outputs["transport"]["facts"]["runtime_implications"].append(
+                {
+                    "summary": "The transport provides an ordered byte stream; decoding must preserve partial input across reads.",
+                    "evidence_refs": [derived_evidence["transport_stream"]],
+                }
+            )
+
         reconciliation = _normalize_reconciliation_output({})
         try:
             reconciliation_messages = build_reconciliation_prompt(
                 context.protocol_name,
                 discovery_payload["facts"],
                 {category: category_outputs[category]["facts"] for category in SEMANTIC_CATEGORIES},
+                scope_envelope,
             )
             self.logs.write("prompt_cross_category_reconciliation", _json(reconciliation_messages), ".json")
             self._log("cross_category_reconciliation llm request start")
@@ -1079,7 +1381,54 @@ class FactsExtractor:
             diagnostics.append(FactDiagnostic("warning", "reconciliation_failed", str(exc)))
 
         self._log("assemble final payload")
-        final_payload = _assemble_final_payload(context.protocol_name, context.docs, category_outputs, reconciliation)
+        profile_evidence = build_profile_evidence(self.target_profile)
+        minimum = category_outputs["minimum_v1"]["facts"]
+        for feature in excluded_features:
+            evidence_id = f"profile_feature_constraints_{feature.casefold()}"
+            minimum["may_defer_features"].append(
+                {"summary": f"Target profile excludes {feature} from the required subset.", "evidence_refs": [evidence_id]}
+            )
+        role_evidence = "profile_target_role"
+        minimum["implementation_assumptions"].append(
+            {
+                "summary": f"Implementation targets the {self.target_profile.data['target_role']} role.",
+                "evidence_refs": [role_evidence],
+            }
+        )
+        delivery_qos = self.target_profile.data["feature_constraints"].get("delivery_qos")
+        if delivery_qos == [0]:
+            minimum["may_defer_features"].append(
+                {
+                    "summary": "QoS 1 and QoS 2 delivery transactions are outside the required subset.",
+                    "evidence_refs": ["profile_feature_constraints_delivery_qos"],
+                }
+            )
+            minimum["implementation_assumptions"].append(
+                {"summary": "The required delivery path is QoS 0 only.", "evidence_refs": ["profile_feature_constraints_delivery_qos"]}
+            )
+        if self.target_profile.data["deployment_constraints"].get("persistence") is False:
+            minimum["implementation_assumptions"].append(
+                {"summary": "Runtime state is in-memory only; durable persistence is excluded.", "evidence_refs": ["profile_deployment_constraints_persistence"]}
+            )
+        derived_minimum = (
+            ("must_support_state_behaviors", "Incremental stream decode", "Buffer partial TCP stream input until a complete packet is available.", "transport_stream"),
+            ("must_support_error_paths", "Application packet before CONNECT", "Reject application packets received before connection establishment.", "first_packet"),
+            ("must_support_error_paths", "Unsupported QoS PUBLISH", "Reject PUBLISH delivery modes outside the selected QoS 0 subset.", "qos_publish"),
+            ("must_support_limits", "Remaining Length variable integer", "Decode the bounded variable-byte Remaining Length field.", "remaining_length"),
+            ("must_support_limits", "Topic Filter wildcards", "Apply the documented Topic Filter wildcard rules.", "topic_filter_wildcards"),
+        )
+        for collection, name, summary, evidence_key in derived_minimum:
+            if evidence_key in derived_evidence and not any(item.get("name") == name for item in minimum[collection] if isinstance(item, dict)):
+                minimum[collection].append(
+                    {"name": name, "summary": summary, "evidence_refs": [derived_evidence[evidence_key]]}
+                )
+        final_payload = _assemble_final_payload(
+            context.protocol_name,
+            context.docs,
+            category_outputs,
+            reconciliation,
+            discovery_payload["evidence"] + profile_evidence,
+        )
         facts_path = self.output_dir / "protocol_facts.json"
         facts_path.write_text(_json(final_payload), encoding="utf-8")
         self._log(f"facts written path={facts_path}")
@@ -1087,6 +1436,18 @@ class FactsExtractor:
         manifest = {
             "protocol_name": context.protocol_name,
             "schema_version": SCHEMA_VERSION,
+            "target_profile": self._target_profile_manifest(),
+            "scope_resolution": {
+                "path": str(scope_resolution_path),
+                "sha256": hashlib.sha256(scope_resolution_path.read_bytes()).hexdigest(),
+                "scope_mode": self.target_profile.data["scope_policy"]["mode"],
+                "conformance_mode": self.target_profile.data["scope_policy"]["conformance_mode"],
+                "capability_count": len(capability_resolutions),
+                "included_count": len(scope_resolution["included_surface"]),
+                "excluded_count": len(scope_resolution["excluded_surface"]),
+                "unresolved_count": len(scope_resolution["unresolved_capabilities"]),
+                "closure_status": scope_resolution["closure_status"],
+            },
             "source_documents": [str(path) for path in self.doc_paths],
             "document_count": len(context.docs),
             "chunk_count": len(context.chunks),

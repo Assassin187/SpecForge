@@ -7,9 +7,9 @@ from .models import Chunk, ChunkScore, NormalizedDoc
 
 
 MAX_CHARS_PER_CHUNK = 1800
-NUMBERED_HEADING_WITH_DOT_RE = re.compile(r"^(?:\d+(?:\.\d+)*)\.\s+.+$")
+NUMBERED_HEADING_WITH_DOT_RE = re.compile(r"^\d+(?:\.\d+)*\.?\s+[A-Z][^\n]{0,180}$")
 APPENDIX_HEADING_RE = re.compile(r"^Appendix\s+[A-Z]\.?\s+.+$", re.IGNORECASE)
-TOC_ENTRY_SUFFIX_RE = re.compile(r"\s(?:\.\s*){2,}\d+\s*$")
+TOC_ENTRY_SUFFIX_RE = re.compile(r"(?:\s(?:\.\s*){2,}|\s{2,})\d+\s*$")
 TOC_MARKERS = {"table of contents", "contents"}
 DEFINITION_CUES = (
     " is defined as ",
@@ -123,8 +123,8 @@ CATEGORY_PROFILES: dict[str, dict[str, tuple[str, ...]]] = {
         "negative_title_terms": ("reference", "acknowledg"),
     },
     "minimum_boundary": {
-        "query_terms": ("must", "minimum", "required", "support", "implementation", "conformance", "obligation"),
-        "title_terms": ("requirements", "conformance", "minimum", "implementation"),
+        "query_terms": ("format", "response", "state", "error", "length", "timeout", "cleanup", "connection"),
+        "title_terms": ("format", "response", "state", "error", "connection"),
         "negative_title_terms": ("reference", "acknowledg"),
     },
 }
@@ -138,7 +138,7 @@ def _canonical_heading_line(line: str) -> str | None:
     cleaned = TOC_ENTRY_SUFFIX_RE.sub("", raw).strip()
     cleaned = re.sub(r"\s+", " ", cleaned)
 
-    if NUMBERED_HEADING_WITH_DOT_RE.match(cleaned):
+    if NUMBERED_HEADING_WITH_DOT_RE.match(cleaned) and cleaned[-1] not in ".;":
         return cleaned
     if APPENDIX_HEADING_RE.match(cleaned):
         return cleaned
@@ -231,9 +231,7 @@ def _split_sections_by_numbered_headings(text: str) -> list[tuple[str, str]]:
         if not line:
             current_lines.append("")
             continue
-        is_heading = raw_line == raw_line.lstrip() and (
-            bool(NUMBERED_HEADING_WITH_DOT_RE.match(line)) or bool(APPENDIX_HEADING_RE.match(line))
-        )
+        is_heading = raw_line == raw_line.lstrip() and _is_body_heading_line(line)
         if is_heading and current_lines:
             flush()
             current_lines = []

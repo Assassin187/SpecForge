@@ -8,6 +8,8 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from agent.common.c_types import c_type_references, required_system_headers, type_is_by_value
+
 from .models import (
     Diagnostic,
     FileSpec,
@@ -400,8 +402,9 @@ def _validate_file_specs(bundle: SpecBundle) -> None:
                     member_type = str(member.get("TYPE", "")).strip()
                     if re.search(r"\[[^\]]+\]", member_type):
                         bundle.diagnostics.append(Diagnostic("error", "unsupported_array_type_spelling", "Array fields must use TYPE plus ARRAY_LEN instead of embedding [] in TYPE", str(file_spec.spec_path)))
-                    if member_type in {"struct sockaddr_storage", "socklen_t"} and "sys/socket.h" not in file_spec.header_system_dependencies:
-                        bundle.diagnostics.append(Diagnostic("error", "missing_system_header_dependency", f"Public header field type '{member_type}' requires HEADER.SYSTEM_DEPENDENCY to include sys/socket.h", str(file_spec.spec_path)))
+                    for required_header in required_system_headers(member_type):
+                        if required_header not in file_spec.header_system_dependencies:
+                            bundle.diagnostics.append(Diagnostic("error", "missing_system_header_dependency", f"Public header field type '{member_type}' requires HEADER.SYSTEM_DEPENDENCY to include {required_header}", str(file_spec.spec_path)))
             if data_item.get("KIND") != "TYPE" or str(data_item.get("VISIBILITY", "")).upper() != "PUBLIC":
                 continue
             if isinstance(data_item.get("TYPE_SPEC"), dict):
@@ -412,6 +415,25 @@ def _validate_file_specs(bundle: SpecBundle) -> None:
             if not is_opaque:
                 name = str(data_item.get("NAME", ""))
                 bundle.diagnostics.append(Diagnostic("warning", "missing_type_spec", f"Public type '{name}' should define TYPE_SPEC or be explicitly described as opaque", str(file_spec.spec_path)))
+        for interface in file_spec.header_interfaces:
+            parsed = _parse_c_function_signature(interface.signature)
+            type_uses = [str(parsed.get("return_type", ""))]
+            type_uses.extend(
+                str(param.get("type", ""))
+                for param in parsed.get("params", [])
+                if isinstance(param, dict)
+            )
+            for type_use in type_uses:
+                for required_header in required_system_headers(type_use):
+                    if required_header not in file_spec.header_system_dependencies:
+                        bundle.diagnostics.append(
+                            Diagnostic(
+                                "error",
+                                "missing_system_header_dependency",
+                                f"Public interface '{interface.name}' type '{type_use}' requires HEADER.SYSTEM_DEPENDENCY to include {required_header}",
+                                str(file_spec.spec_path),
+                            )
+                        )
         for interface in file_spec.source_interfaces:
             linked = bundle.function_specs_by_trace.get(interface.trace_id)
             if linked is None:
@@ -600,7 +622,37 @@ def validate_rendered_headers_compile(bundle: SpecBundle, check_root: str | Path
             if not file_spec.header_path:
                 continue
             check_path = tmp / f"check_{file_spec.header_path.replace('/', '_')}.c"
-            check_source = f'#include "{file_spec.header_path}"\n'
+            complete_types: list[str] = []
+            for data_item in file_spec.header_data:
+                type_spec = data_item.get("TYPE_SPEC") if isinstance(data_item, dict) else None
+                if not isinstance(type_spec, dict):
+                    continue
+                for member in _iter_type_members(type_spec):
+                    member_type = str(member.get("TYPE", ""))
+                    complete_types.extend(
+                        type_name
+                        for type_name in c_type_references(member_type)
+                        if type_is_by_value(member_type, type_name)
+                    )
+            for interface in file_spec.header_interfaces:
+                parsed = _parse_c_function_signature(interface.signature)
+                type_uses = [str(parsed.get("return_type", ""))]
+                type_uses.extend(
+                    str(param.get("type", ""))
+                    for param in parsed.get("params", [])
+                    if isinstance(param, dict)
+                )
+                for type_use in type_uses:
+                    complete_types.extend(
+                        type_name
+                        for type_name in c_type_references(type_use)
+                        if type_is_by_value(type_use, type_name)
+                    )
+            probes = "".join(
+                f'_Static_assert(sizeof({type_name}) > 0, "{type_name} must be complete");\n'
+                for type_name in dict.fromkeys(complete_types)
+            )
+            check_source = f'#include "{file_spec.header_path}"\n{probes}'
             check_path.write_text(check_source, encoding="utf-8")
             check_snapshot = checks_root / check_path.name
             check_snapshot.write_text(check_source, encoding="utf-8")

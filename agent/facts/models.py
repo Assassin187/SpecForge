@@ -19,6 +19,15 @@ class DocumentInput:
 
 
 @dataclass(frozen=True)
+class TargetProfile:
+    path: Path
+    data: dict[str, Any]
+    sha256: str
+    semantic_projection: dict[str, Any]
+    semantic_projection_sha256: str
+
+
+@dataclass(frozen=True)
 class NormalizedDoc:
     path: Path
     title: str

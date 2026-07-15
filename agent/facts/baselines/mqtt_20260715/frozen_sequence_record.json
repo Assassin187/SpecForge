@@ -1,0 +1,64 @@
+{
+  "schema_version": "facts_frozen_sequence/v1",
+  "date": "2026-07-15",
+  "git_head": "afd17c95beefbcbed5c14bdd1bf2eb1656e71033",
+  "inputs": {
+    "document_sha256": "81e11179092d71c69291aafd35c372863d70b3d9bc2ecd6bcaa708a89ab250c4",
+    "target_profile_sha256": "d1fea7e3a88efd003ea02e61d927650745c7e3822c02378f8a166c9a6cf24ad0",
+    "extraction_sha256": "5f68f6f1bb797596c8e05ea09a07a9e3e0009e7998ff6c0f1c74e344ea246f3d",
+    "prompts_sha256": "f14760dedf901333681424b1b40c7d2b1bef40443e6b62bcf258a89a9b46cd1a",
+    "comparator_sha256": "432bd66af114b9081e8d21fb1918a20fd01e83badfba833eb0e169cc228b67a6"
+  },
+  "runs": [
+    {
+      "run": 1,
+      "token_count": 297620,
+      "manifest_sha256": "ed3239865984d58e7a0aae56c6e476bb656b3d44ba1a80ace4012bec2f13a279",
+      "facts_sha256": "96068d1166b6c4f6d1bc77585d291c2619fbfad2ae3a34cbcc75b3d0b0f22867",
+      "comparison_sha256": "3ad8e17f7103576572f55b79e2599e5b7c97a169d8047e58291ddbec1aeda428",
+      "verifier_pass": true,
+      "closure_pass": true,
+      "structural_pass": true,
+      "critical_semantic_pass": true,
+      "semantic_gap_count": 0,
+      "forbidden_scope_count": 0
+    },
+    {
+      "run": 2,
+      "token_count": 296272,
+      "manifest_sha256": "0a6d0e90f21e5d97566721ae72494d1b417c59d47c95fff5bd42064ce53a4f15",
+      "facts_sha256": "329a667ffe4586f150d8f69117ebb99f9175eba82e4d595298c9ffcacee083eb",
+      "comparison_sha256": "b1e4860d88bc996e73fad914d751c4ce85771822a0881b2dd49c68e9a77bbf17",
+      "verifier_pass": true,
+      "closure_pass": true,
+      "structural_pass": true,
+      "critical_semantic_pass": true,
+      "semantic_gap_count": 0,
+      "forbidden_scope_count": 0
+    },
+    {
+      "run": 3,
+      "token_count": 299941,
+      "manifest_sha256": "98f82808b8e3c77c00243bfd2d8c092e0900080311629aff49453982678a6108",
+      "facts_sha256": "214e733ca03fea80eb2c0926790135f487fe2cb9b89176e6434f2fdd0df4145c",
+      "comparison_sha256": "84ce6f2460b62612cd34b6de03d0445a752d7ca5c755b322884a6502ff39642d",
+      "verifier_pass": true,
+      "closure_pass": true,
+      "structural_pass": true,
+      "critical_semantic_pass": true,
+      "semantic_gap_count": 0,
+      "forbidden_scope_count": 0
+    }
+  ],
+  "aggregate": {
+    "verifier_pass_rate": "3/3",
+    "closure_pass_rate": "3/3",
+    "structural_pass_rate": "3/3",
+    "critical_semantic_pass_rate": "3/3",
+    "median_tokens": 297620,
+    "baseline_tokens": 290347,
+    "token_target": 203243,
+    "correctness_gate": "pass",
+    "cost_target": "miss"
+  }
+}

@@ -20,8 +20,8 @@ from agent.coder.generation import (
     render_header,
 )
 from agent.coder.llm_client import LLMRequest, LLMResponse, LLMUsage
-from agent.coder.models import FileSpec, ModuleEntry, ProtocolMeta, SpecBundle
-from agent.coder.specs import load_spec_bundle_from_root
+from agent.coder.models import FileSpec, HeaderInterface, ModuleEntry, ProtocolMeta, SpecBundle
+from agent.coder.specs import load_spec_bundle_from_root, validate_rendered_headers_compile
 from agent.coder.verifier import VerificationResult
 from agent.common.llm_client import _is_retryable_openai_error
 
@@ -514,10 +514,70 @@ collect2: error: ld returned 1 exit status
                 outcome = generator._repair_until_compiles(repaired_files, "coap_server")
             restored = source.read_text(encoding="utf-8")
 
-        self.assertEqual(outcome.stop_reason, "max_rounds_exhausted")
+        self.assertEqual(outcome.stop_reason, "repair_stagnated")
         self.assertEqual(restored, original)
         self.assertEqual(repaired_files, [])
-        self.assertIn("new_linker_roots", outcome.rejected_candidates[0]["reason"])
+        self.assertIn("new_compile_roots", outcome.rejected_candidates[0]["reason"])
+
+    def test_repair_stops_when_compile_fingerprint_does_not_decrease(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            tmp = Path(raw_tmp)
+            llm = FakeLLM("int changed;\n")
+            generator = self._generator(tmp, llm)
+            source = generator.project_dir / "protocol/coap_message.c"
+            original = source.read_text(encoding="utf-8")
+            same_error = _completed(1, stderr="protocol/coap_message.c:1:1: error: same root\n")
+
+            with patch("agent.coder.generation._compile_project", side_effect=[same_error, same_error]):
+                outcome = generator._repair_until_compiles([], "coap_server")
+            restored = source.read_text(encoding="utf-8")
+
+        self.assertEqual(outcome.stop_reason, "repair_stagnated")
+        self.assertEqual(restored, original)
+        self.assertEqual(len(llm.requests), 1)
+        self.assertFalse(outcome.fingerprint_history[0]["accepted"])
+
+    def test_repair_accepts_strict_subset_of_compile_fingerprints(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            tmp = Path(raw_tmp)
+            generator = self._generator(tmp, FakeLLM("int partially_fixed;\n"))
+            generator.max_repair_rounds = 1
+            before = _completed(
+                1,
+                stderr=(
+                    "protocol/coap_message.c:1:1: error: first root\n"
+                    "protocol/coap_message.c:2:1: error: second root\n"
+                ),
+            )
+            after = _completed(1, stderr="protocol/coap_message.c:2:1: error: second root\n")
+
+            with patch("agent.coder.generation._compile_project", side_effect=[before, after]):
+                repaired_files: list[str] = []
+                outcome = generator._repair_until_compiles(repaired_files, "coap_server")
+
+        self.assertEqual(outcome.stop_reason, "max_rounds_exhausted")
+        self.assertEqual(repaired_files, ["protocol/coap_message.c"])
+        self.assertTrue(outcome.fingerprint_history[0]["accepted"])
+
+    def test_unknown_external_accessor_is_spec_contract_blocked(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            tmp = Path(raw_tmp)
+            llm = FakeLLM("int changed;\n")
+            generator = self._generator(tmp, llm)
+            compile_error = _completed(
+                1,
+                stderr=(
+                    "protocol/coap_message.c:3:1: error: implicit declaration of function "
+                    "‘ghost_accessor’ [-Werror=implicit-function-declaration]\n"
+                ),
+            )
+
+            with patch("agent.coder.generation._compile_project", return_value=compile_error):
+                outcome = generator._repair_until_compiles([], "coap_server")
+
+        self.assertEqual(outcome.stop_reason, "spec_contract_blocked")
+        self.assertEqual(outcome.blocking_files, ["ghost_accessor"])
+        self.assertEqual(llm.requests, [])
 
     def test_repair_candidate_validation_rejects_header_like_and_self_include(self) -> None:
         self.assertEqual(_validate_repair_candidate("protocol/coap_message.c", "old", "#pragma once\n")[1], "header_like_response")
@@ -562,6 +622,41 @@ collect2: error: ld returned 1 exit status
         self.assertIn("#include <sys/socket.h>", rendered)
         self.assertIn("#define COAP_MAX_TOKEN_LEN 8", rendered)
         self.assertIn("uint8_t token[COAP_MAX_TOKEN_LEN];", rendered)
+
+    def test_rendered_header_probe_requires_complete_by_value_system_type(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            tmp = Path(raw_tmp)
+            base = _file_spec("protocol/coap_message.c", "protocol/coap_message.h")
+            interface = HeaderInterface(
+                signature="struct iovec coap_message_view(void)",
+                name="coap_message_view",
+                kind="FUNC",
+                function_type="ALGORITHM",
+                role="Return a system scatter/gather view.",
+                visibility="public",
+            )
+
+            def checked_bundle(system_dependencies: list[str]) -> SpecBundle:
+                file_spec = FileSpec(
+                    **{
+                        **base.__dict__,
+                        "header_system_dependencies": system_dependencies,
+                        "header_interfaces": [interface],
+                    }
+                )
+                bundle = _bundle(tmp)
+                bundle.file_specs_by_trace = {file_spec.trace_id: file_spec}
+                bundle.file_specs_by_header_path = {file_spec.header_path: file_spec}
+                bundle.file_specs_by_source_path = {file_spec.source_path: file_spec}
+                return bundle
+
+            missing = checked_bundle([])
+            validate_rendered_headers_compile(missing, tmp / "missing")
+            complete = checked_bundle(["sys/uio.h"])
+            validate_rendered_headers_compile(complete, tmp / "complete")
+
+        self.assertTrue(any(item.code == "rendered_header_compile_error" for item in missing.diagnostics))
+        self.assertFalse(complete.has_errors(), complete.diagnostics)
 
     def test_dependency_headers_expand_project_quoted_includes(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:

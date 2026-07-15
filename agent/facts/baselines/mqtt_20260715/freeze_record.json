@@ -1,0 +1,45 @@
+{
+  "schema_version": "facts_baseline_freeze/v1",
+  "created_at": "2026-07-15T15:32:05+08:00",
+  "git_head": "afd17c95beefbcbed5c14bdd1bf2eb1656e71033",
+  "scope": "agent/facts only",
+  "fresh_run": {
+    "output_dir": "agent/facts/out/mqtt_eval_20260715",
+    "protocol_facts_sha256": "5c4be1b76dc44632ba5d9c969c5ac33894b619de73781345db910f456ec18d7c",
+    "run_manifest_sha256": "03f11285c2973c9b824f559fcbd7b80ad0637aae00b2a961a697c8fc7f54bf58",
+    "protocol_facts_bytes": 130729,
+    "chunk_count": 104,
+    "llm_call_count": 27,
+    "model": "qwen3-max-2026-01-23",
+    "workflow_tokens": 290347,
+    "verifier_errors": {
+      "total": 36,
+      "coverage_gap": 2,
+      "planning_insufficiency": 5,
+      "traceability_gap": 29
+    }
+  },
+  "input_hashes": {
+    "mqtt_document": "81e11179092d71c69291aafd35c372863d70b3d9bc2ecd6bcaa708a89ab250c4",
+    "mqtt_min_gold": "2842e52800f85da836eb9c4d2f0768757e376315da0a6b608d619088df5905be",
+    "prompts_py": "6fac8d313d3549be84cf1ffb4820dc2260008e43bdcf156e5554218d2b6867bc",
+    "preprocess_py": "cae2b04088f503621cc7068f75c0bb46e86d5786faa0d57e2a44d95107ede4ee",
+    "extraction_py": "886f1c5616ed32279a5c794529ee9a3bafba4ab3fa9b93e8d656b21f38629b5e",
+    "verifier_py": "0580fc15bc93167a54a633b3515d1fb84ff56447922e442db6920fb4eff2c413",
+    "plan": "5276c2865d23325b231eedd0e8162eb9ed94249550be38546cca5a40e9e8c051"
+  },
+  "deterministic_findings": [
+    "The current numbered-heading regex recognizes list items such as '1. If ...' but does not recognize body headings such as '3.1 CONNECT ...'.",
+    "The current chunk index therefore has malformed section hints and does not expose the MQTT control-packet section catalog reliably.",
+    "The fresh output references discovery evidence IDs that are absent from the final evidence index."
+  ],
+  "dirty_worktree_policy": {
+    "facts_changes_at_start": [
+      "agent/facts/FACTS_TARGET_PROFILE_MINIMUM_EXTRACTION_PLAN.md"
+    ],
+    "other_existing_changes_are_user_owned": true,
+    "allowed_new_paths": [
+      "agent/facts/"
+    ]
+  }
+}

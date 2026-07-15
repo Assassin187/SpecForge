@@ -324,7 +324,12 @@ def _json(data: Any) -> str:
     return json.dumps(data, ensure_ascii=False, indent=2)
 
 
-def build_surface_discovery_prompt(protocol_name: str, docs: list[NormalizedDoc], chunks: list[Chunk]) -> list[dict[str, str]]:
+def build_surface_discovery_prompt(
+    protocol_name: str,
+    docs: list[NormalizedDoc],
+    chunks: list[Chunk],
+    scope_envelope: dict[str, Any],
+) -> list[dict[str, str]]:
     chunk_payload = [
         {
             "chunk_id": chunk.chunk_id,
@@ -342,6 +347,10 @@ def build_surface_discovery_prompt(protocol_name: str, docs: list[NormalizedDoc]
     content = f"""Discover the implementation-relevant protocol surface for `{protocol_name}`.
 
 This task must stay protocol-generic. Do not assume any protocol-specific vocabulary ahead of time.
+The target profile is a scope directive, not technical-document evidence. Discover the complete lightweight
+surface index, but apply this separate scope envelope to detailed extraction:
+{_json(scope_envelope)}
+
 Identify:
 - surface units: messages, commands, methods, responses, options, field families, code spaces
 - stateful objects
@@ -370,6 +379,7 @@ def build_category_task_prompt(
     task_name: str,
     discovery_facts: dict[str, Any],
     chunks: list[Chunk],
+    scope_envelope: dict[str, Any],
 ) -> list[dict[str, str]]:
     if task_name not in TASK_DEFINITIONS:
         raise KeyError(f"Unknown task_name: {task_name}")
@@ -398,6 +408,12 @@ General constraints:
 - Prefer complete catalogs and explicit implementable constraints over representative examples.
 - If the document set does not define something clearly, emit an open_question rather than guessing.
 - Evidence refs must point to evidence entries returned in this JSON object.
+- Extract only included_surface and allowed_shared_dependencies from the scope envelope.
+- Do not expand into excluded_features merely because a selected chunk mentions them.
+- Return a newly suspected dependency as an open_question instead of silently adding it.
+
+Scope envelope (directive, not document evidence):
+{_json(scope_envelope)}
 
 Document set:
 {_json(doc_meta)}
@@ -421,10 +437,14 @@ def build_reconciliation_prompt(
     protocol_name: str,
     discovery_facts: dict[str, Any],
     category_facts: dict[str, dict[str, Any]],
+    scope_envelope: dict[str, Any],
 ) -> list[dict[str, str]]:
     content = f"""Reconcile extracted protocol facts for `{protocol_name}`.
 
-This is a protocol-generic consistency pass. Do not invent missing facts.
+This is a protocol-generic consistency pass. Do not invent missing facts or reintroduce excluded scope.
+
+Scope envelope:
+{_json(scope_envelope)}
 Check:
 - whether interaction flows reference surface units that are present in message_model
 - whether minimum_v1 items map back to main facts

@@ -1,0 +1,56 @@
+{
+  "schema_version": "facts_gold_structure_contract/v1",
+  "oracle": "agent/facts/gold_facts/mqtt_min/protocol_facts.json",
+  "oracle_sha256": "2842e52800f85da836eb9c4d2f0768757e376315da0a6b608d619088df5905be",
+  "facts_schema_version": "protocol_facts/v2alpha1",
+  "top_level_keys": [
+    "error_and_limits",
+    "evidence_index",
+    "interaction_model",
+    "message_model",
+    "minimum_v1",
+    "open_questions",
+    "planning_inputs",
+    "protocol_meta",
+    "resource_model",
+    "routing_model",
+    "schema_version",
+    "state_model",
+    "transport"
+  ],
+  "object_keys": {
+    "protocol_meta": ["document_count", "fact_source_type", "protocol_name", "source_documents", "target_scope"],
+    "transport": ["channels", "connection_model", "network_stack", "runtime_implications"],
+    "interaction_model": ["core_flows", "interaction_units", "roles", "style"],
+    "message_model": ["field_constraints", "framing", "message_or_command_entries", "surface_catalog"],
+    "state_model": ["invariants", "state_nodes", "timers_and_constants", "transitions"],
+    "routing_model": ["dispatch_keys", "dispatch_targets", "matching_rules"],
+    "resource_model": ["lifecycle_rules", "persistence_scope", "resource_objects"],
+    "error_and_limits": ["error_matrix", "limits", "security"],
+    "minimum_v1": ["implementation_assumptions", "may_defer_features", "must_support_error_paths", "must_support_limits", "must_support_state_behaviors", "must_support_surface"],
+    "planning_inputs": ["consistency_findings", "coverage_gaps", "critical_stateful_behaviors", "error_handling_obligations", "implementation_axes", "implementation_risks", "persistence_and_lifecycle_obligations", "planning_checklist", "planning_trigger_facts", "protocol_summary", "required_codec_scope"]
+  },
+  "critical_item_shapes": {
+    "interaction_model.core_flows": ["evidence_refs", "name", "summary", "surface_units"],
+    "message_model.surface_catalog": ["direction", "evidence_refs", "kind", "name", "summary"],
+    "message_model.message_or_command_entries": ["evidence_refs", "fields", "name", "summary", "surface_unit", "syntax_or_layout"],
+    "state_model.state_nodes": ["evidence_refs", "name", "summary"],
+    "state_model.transitions": ["evidence_refs", "from_state", "summary", "to_state", "trigger"],
+    "minimum_v1.must_support_surface": ["evidence_refs", "name", "summary"],
+    "minimum_v1.must_support_state_behaviors": ["evidence_refs", "name", "summary"],
+    "minimum_v1.must_support_error_paths": ["evidence_refs", "name", "summary"],
+    "minimum_v1.must_support_limits": ["evidence_refs", "name", "summary"],
+    "minimum_v1.may_defer_features": ["evidence_refs", "name", "summary"],
+    "minimum_v1.implementation_assumptions": ["evidence_refs", "name", "summary"],
+    "open_questions": ["blocking_impact", "category", "question", "question_type", "suggested_followup"],
+    "evidence_index": ["chunk_id", "doc_path", "evidence_id", "excerpt", "section_hint"]
+  },
+  "comparison_policy": {
+    "ignore_values": true,
+    "ignore_list_order": true,
+    "ignore_list_length": true,
+    "require_exact_top_level_keys": true,
+    "require_exact_object_keys": true,
+    "require_critical_item_shapes": true
+  }
+}
