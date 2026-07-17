@@ -41,9 +41,13 @@ _COMPILE_CRITICAL_CODES = {
     "missing_system_header_dependency",
     "opaque_cross_owner_access_unproven",
     "opaque_type_by_value",
+    "ownership_contract_contradiction",
     "runtime_call_chain_incomplete",
     "runtime_entrypoint_missing",
     "runtime_entrypoint_signature_invalid",
+    "runtime_failure_cleanup_incomplete",
+    "runtime_flow_missing",
+    "runtime_flow_order_invalid",
     "type_owner_missing",
     "unresolved_callee",
     "unresolved_header_dependency",
@@ -834,6 +838,19 @@ def _call_argument_diagnostics(
                         source_ref=source_ref,
                     )
                 )
+            elif (
+                str(source.get("OWNERSHIP", "")).upper() == "BORROWED"
+                and str(parameter.get("OWNERSHIP", "")).upper() in {"CONSUMED", "OWNED"}
+            ):
+                diagnostics.append(
+                    _diag(
+                        "ownership_contract_contradiction",
+                        f"Borrowed caller parameter {source_ref!r} cannot satisfy owned/consumed parameter {parameter.get('NAME')!r}",
+                        [str(caller.get("id", "")), str(callee.get("id", ""))],
+                        source_ownership=source.get("OWNERSHIP"),
+                        target_ownership=parameter.get("OWNERSHIP"),
+                    )
+                )
         elif source_kind in {"prior_result", "access_path"}:
             providers = [functions[source_ref]] if source_ref in functions else functions_by_name.get(source_ref, [])
             if len(providers) != 1 or not _compatible_c_type(source_type, str(_signature(providers[0]).get("RETURN", ""))):
@@ -859,6 +876,26 @@ def analyze_implementability(plan: dict[str, Any]) -> list[dict[str, Any]]:
         item for item in plan.get("callback_bindings", []) if isinstance(item, dict)
     ]
     del files_by_name, modules
+
+    for function in functions.values():
+        action = str(function.get("logic", function.get("LOGIC", {})).get("ACTION", ""))
+        for parameter in _signature(function).get("PARAMS", []):
+            if not isinstance(parameter, dict) or str(parameter.get("OWNERSHIP", "")).upper() != "BORROWED":
+                continue
+            name = re.escape(str(parameter.get("NAME", "")))
+            if name and re.search(
+                rf"\b(?:allocate|create|construct)\b.{{0,48}}\b{name}\b",
+                action,
+                flags=re.IGNORECASE,
+            ):
+                diagnostics.append(
+                    _diag(
+                        "ownership_contract_contradiction",
+                        f"Function {function.get('name')} claims ownership-changing work for borrowed parameter {parameter.get('NAME')}",
+                        [str(function.get("id", ""))],
+                        parameter=parameter.get("NAME"),
+                    )
+                )
 
     for kind, by_name in (("type", types_by_name), ("function", functions_by_name), ("module", modules_by_name)):
         for name, items in by_name.items():

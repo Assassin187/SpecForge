@@ -791,6 +791,27 @@ int main(int argc, char** argv) {
         self.assertIn("source_generation", manifest["stage_token_usage"])
         self.assertTrue(prompt_logs)
 
+    def test_duplicate_specified_function_is_blocked_before_compile(self) -> None:
+        duplicate_source = """#include <stdint.h>
+static uint16_t parse_port(const char* s) { (void)s; return 0; }
+int main(int argc, char** argv) { (void)argc; (void)argv; return 0; }
+int main(int argc, char** argv) { (void)argc; (void)argv; return 0; }
+"""
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            tmp = Path(raw_tmp)
+            llm = FakeLLM(duplicate_source)
+            generator = ProjectGenerator(_http_main_bundle(), llm, tmp / "out")
+            with patch("agent.coder.generation._compile_project") as compile_project:
+                result = generator.generate()
+            manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+
+        self.assertFalse(result.success)
+        self.assertEqual(len(llm.requests), 2)
+        self.assertEqual(result.repair_stop_reason, "source_integrity_failed")
+        self.assertFalse(manifest["source_integrity"]["passed"])
+        self.assertTrue(manifest["source_integrity"]["retry_used"])
+        compile_project.assert_not_called()
+
     def test_source_only_main_compile_error_is_repairable(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:
             tmp = Path(raw_tmp)

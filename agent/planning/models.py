@@ -81,8 +81,12 @@ class PlanningResult:
     run_status: str
 
     @property
+    def candidate_materialized(self) -> bool:
+        return self.specs_root is not None
+
+    @property
     def success(self) -> bool:
-        return self.run_status != "failed_internal" and self.specs_root is not None and not any(
+        return self.run_status == "completed_with_qualified_specs" and self.candidate_materialized and not any(
             diag.level == "error" and diag.code.startswith("coder_") for diag in self.diagnostics
         )
 

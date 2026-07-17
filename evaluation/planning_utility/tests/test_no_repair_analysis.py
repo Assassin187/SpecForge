@@ -8,6 +8,8 @@ from unittest.mock import patch
 
 from evaluation.planning_utility.no_repair_analysis import analyze_no_repair
 from evaluation.planning_utility.repair_diagnostics import (
+    _FUNC_DECL_RE,
+    _FUNC_DEF_RE,
     create_diagnostic_snapshot,
     high_risk_diagnostic_audit,
 )
@@ -56,6 +58,16 @@ def _write_makefile(project: Path, sources: str = "core.c") -> None:
 
 
 class NoRepairAnalysisTests(unittest.TestCase):
+    def test_function_index_regexes_handle_multiline_callback_arguments(self) -> None:
+        source = "\n".join(f"extern void dependency_{index}(void);" for index in range(200)) + """
+static int run(void (*on_data)(void *, const void *, unsigned long)) {
+    return on_data != 0;
+}
+"""
+
+        self.assertIn(("static ", "run"), _FUNC_DEF_RE.findall(source))
+        self.assertEqual(len(_FUNC_DECL_RE.findall(source)), 200)
+
     def test_complete_project_has_full_definition_coverage_without_mutating_source(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw)

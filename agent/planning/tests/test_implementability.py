@@ -295,6 +295,45 @@ class ImplementabilityTests(unittest.TestCase):
         )
         self.assertTrue(all(item["compile_critical"] for item in missing))
 
+    def test_runtime_flow_missing_is_compile_critical(self) -> None:
+        plan = _closed_plan()
+        plan["runtime_entrypoint"] = {
+            "main_function": plan["functions"][-1]["id"],
+            "startup_services": [plan["functions"][0]["id"]],
+            "run_services": [], "cleanup_services": [],
+        }
+        plan["lifecycle_matrix"] = [{
+            "resource_id": "fixture", "type_id": plan["types"][0]["id"],
+            "create_function": plan["functions"][0]["id"],
+            "use_functions": [], "destroy_function": plan["functions"][1]["id"],
+        }]
+        plan.pop("runtime_flow", None)
+
+        diagnostic = next(
+            item for item in analyze_implementability(plan) if item["code"] == "runtime_flow_missing"
+        )
+        self.assertTrue(diagnostic["compile_critical"])
+
+    def test_borrowed_provider_cannot_feed_consumed_parameter(self) -> None:
+        plan = _closed_plan()
+        main = plan["functions"][-1]
+        destroy = plan["functions"][1]
+        main["signature"]["PARAMS"].append({
+            "TYPE": "fixture_handle_t*", "NAME": "borrowed_handle",
+            "NULLABLE": False, "OWNERSHIP": "BORROWED",
+        })
+        destroy["signature"]["PARAMS"][0]["OWNERSHIP"] = "CONSUMED"
+        main["call_contracts"][1]["argument_semantics"] = [{
+            "parameter": "handle", "source_kind": "caller_param",
+            "source_ref": "borrowed_handle", "source_type": "fixture_handle_t*",
+        }]
+
+        contradiction = next(
+            item for item in analyze_implementability(plan)
+            if item["code"] == "ownership_contract_contradiction"
+        )
+        self.assertTrue(contradiction["compile_critical"])
+
     def test_opaque_type_requires_constructor(self) -> None:
         plan = _closed_plan()
         plan["functions"][0]["signature"]["RETURN"] = "void"

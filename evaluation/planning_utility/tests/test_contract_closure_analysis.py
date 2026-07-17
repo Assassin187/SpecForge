@@ -10,6 +10,7 @@ from evaluation.planning_utility.contract_closure_analysis import (
     analyze_contract_closure,
     write_flat_csv,
 )
+from evaluation.planning_utility.recalculate_saved_rq1_metrics import _aggregate
 
 
 def _write_makefile(project: Path, sources: list[str]) -> None:
@@ -300,6 +301,49 @@ class ContractClosureAnalysisTests(unittest.TestCase):
             self.assertIn("header_self_containment_rate", csv_text)
             self.assertIn("cohort,formal_rq1_replicate,qualification_passed", csv_text)
             self.assertIn("candidate-1,full-specforge,candidate_diagnostic,candidate_test,,False", csv_text)
+
+    def test_saved_rq1_aggregation_uses_uniform_contract_families(self) -> None:
+        def phase(counts: dict[str, int], native: bool, kloc: float) -> dict[str, object]:
+            obligation = {"passed": 1, "total": 2, "rate": 0.5}
+            return {
+                "classifier": {
+                    "category_counts": counts,
+                    "native_compile_passed": native,
+                    "sound_build_passed": False,
+                    "source_kloc": kloc,
+                },
+                "obligations": {
+                    name: obligation
+                    for name in (
+                        "required_obligation_realization",
+                        "executable_call_path_closure",
+                        "semantic_grounding_closure",
+                    )
+                },
+            }
+
+        runs = [
+            {
+                "pre": phase({"C1": 2, "C2": 2, "C3": 4, "C4": 2, "C5": 0}, False, 1.0),
+                "post": phase({"C1": 1, "C2": 1, "C3": 2, "C4": 1, "C5": 0}, True, 1.0),
+                "repair_calls": 2,
+                "repair_tokens": 10_000,
+            },
+            {
+                "pre": phase({"C1": 0, "C2": 2, "C3": 0, "C4": 0, "C5": 2}, False, 2.0),
+                "post": phase({"C1": 0, "C2": 1, "C3": 0, "C4": 0, "C5": 1}, False, 2.0),
+                "repair_calls": 1,
+                "repair_tokens": 5_000,
+            },
+        ]
+
+        result = _aggregate("fixture", runs)
+
+        self.assertEqual(result["C2_C5"], {"before": 12, "after": 6, "closure_rate": 0.5})
+        self.assertEqual(result["categories"]["C1"]["affected_projects_before"], 1)
+        self.assertEqual(result["native_compile_recoveries"], 1)
+        self.assertEqual(result["post_native_compile_success"], 1)
+        self.assertEqual(result["post_C2_C5_diagnostics_per_kloc"]["median"], 2.5)
 
 
 if __name__ == "__main__":

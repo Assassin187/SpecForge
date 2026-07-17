@@ -10,6 +10,7 @@ from unittest.mock import patch
 from agent.common.llm_client import LLMRequest, LLMResponse, LLMUsage
 from agent.coder.specs import load_spec_bundle_from_root
 from agent.planning.compiler import compile_specs, normalize_plan_for_compiler
+from agent.planning.abi_probe import run_abi_skeleton_probe
 from agent.planning.facts import read_json, select_fact_slice, stable_json_hash, write_json
 from agent.planning.knowledge import activate_engineering_rules, extract_open_assumptions, normalize_characteristics
 from agent.planning.implementability import analyze_implementability, complete_deterministic_dependencies
@@ -2404,13 +2405,13 @@ class PlanningPipelineTests(unittest.TestCase):
 
         unknown_callee = deepcopy(artifact)
         unknown_callee["call_edges"][0]["callee_function_id"] = "function:fixture/core/missing"
-        _validate_partition_artifact(stage, unknown_callee, partition, registry, context, previous)
-        self.assertEqual(unknown_callee["call_edges"], [])
+        with self.assertRaisesRegex(ValueError, "stage8_contract_edge_unknown_callee"):
+            _validate_partition_artifact(stage, unknown_callee, partition, registry, context, previous)
 
         escaped_caller = deepcopy(artifact)
         escaped_caller["call_edges"][0]["caller_function_id"] = sink_id
-        _validate_partition_artifact(stage, escaped_caller, partition, registry, context, previous)
-        self.assertEqual(escaped_caller["call_edges"], [])
+        with self.assertRaisesRegex(ValueError, "stage8_contract_edge_partition_escape"):
+            _validate_partition_artifact(stage, escaped_caller, partition, registry, context, previous)
 
         ignored_nonvoid = deepcopy(artifact)
         ignored_nonvoid["call_edges"][0]["result_usage"] = {"usage": "ignored", "target": ""}
@@ -2439,17 +2440,17 @@ class PlanningPipelineTests(unittest.TestCase):
             _validate_partition_artifact(stage, unreachable, partition, registry, context, previous)
         missing_provider = deepcopy(artifact)
         missing_provider["call_edges"][0]["argument_semantics"][0]["source_ref"] = "missing"
-        _validate_partition_artifact(stage, missing_provider, partition, registry, context, previous)
-        self.assertEqual(missing_provider["call_edges"], [])
+        with self.assertRaisesRegex(ValueError, "stage8_call_argument_source_unresolved"):
+            _validate_partition_artifact(stage, missing_provider, partition, registry, context, previous)
 
         missing_access_path = deepcopy(artifact)
         missing_access_path["call_edges"][0]["argument_semantics"][0].update({
             "source_kind": "access_path", "source_ref": "payload_t.missing",
         })
-        _validate_partition_artifact(
-            stage, missing_access_path, partition, registry, context, previous
-        )
-        self.assertEqual(missing_access_path["call_edges"], [])
+        with self.assertRaisesRegex(ValueError, "stage8_call_argument_source_unresolved"):
+            _validate_partition_artifact(
+                stage, missing_access_path, partition, registry, context, previous
+            )
 
         pointer_previous = deepcopy(previous)
         pointer_interfaces = pointer_previous[-1]["artifact"]["function_interfaces"]
@@ -2687,12 +2688,11 @@ class PlanningPipelineTests(unittest.TestCase):
             "requested_kind": "constant",
             "semantic_role": "invalid placeholder for an impossible call",
         }]
-        _validate_partition_artifact(
-            stage, missing_accessor_artifact, partition, registry, context,
-            missing_accessor_previous,
-        )
-        self.assertEqual(missing_accessor_artifact["call_edges"], [])
-        self.assertEqual(missing_accessor_artifact["artifact_requests"], [])
+        with self.assertRaisesRegex(ValueError, "stage8_call_argument_source_unresolved"):
+            _validate_partition_artifact(
+                stage, missing_accessor_artifact, partition, registry, context,
+                missing_accessor_previous,
+            )
 
         const_field_previous = deepcopy(field_previous)
         const_field_previous[2]["artifact"]["type_definition_overlays"][0]["definition_overlay"]["fields"] = [
@@ -2884,7 +2884,12 @@ class PlanningPipelineTests(unittest.TestCase):
         self.assertEqual(callback_partition["required_callback_bindings"], [{
             "callback_type_id": callback_id,
             "consumer_function_id": consumer_id,
-            "provider_function_id": provider_id,
+            "consumer_parameter": "callback",
+            "provider_candidate_ids": [
+                caller_id,
+                provider_id,
+                registry.resolve("feed_decoder", expected_kinds={"function"})["artifact_id"],
+            ],
         }])
         context = {"required_implementation_obligations": [{"obligation_id": "fixture"}]}
         stage = next(item for item in PLANNING_STAGES if item.stage_id == "function_call_contract_closure")
@@ -2943,13 +2948,12 @@ class PlanningPipelineTests(unittest.TestCase):
             "call_edges": [provider_edge], "callback_bindings": [self_binding],
             "artifact_requests": [], "call_diagnostics": [],
         }
-        _validate_partition_artifact(
-            stage, false_registration,
-            {"partition_id": "consumer", "caller_function_ids": [consumer_id]},
-            registry, context, previous,
-        )
-        self.assertEqual(false_registration["call_edges"], [])
-        self.assertEqual(false_registration["callback_bindings"], [])
+        with self.assertRaisesRegex(ValueError, "stage8_callback_provider_direct_call"):
+            _validate_partition_artifact(
+                stage, false_registration,
+                {"partition_id": "consumer", "caller_function_ids": [consumer_id]},
+                registry, context, previous,
+            )
 
     def test_stage8_typed_edge_rejects_type_id_and_canonical_fields(self) -> None:
         plan = _minimal_plan()
@@ -3488,6 +3492,22 @@ class PlanningPipelineTests(unittest.TestCase):
         )
         self.assertTrue(manifest["readiness_metrics"]["runtime_contract_materialized"])
 
+    def test_abi_skeleton_rejects_prose_only_runtime_projection(self) -> None:
+        plan = _implementation_ready_plan()
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            specs_root = root / "specs"
+            compile_specs(plan, specs_root)
+            positive = run_abi_skeleton_probe(plan, specs_root, root / "positive_probe")
+            main = next(item for item in plan["functions"] if item["name"] == "main")
+            main["rely"]["FUNC"] = []
+            main["call_contracts"] = []
+            negative = run_abi_skeleton_probe(plan, specs_root, root / "negative_probe")
+
+        self.assertTrue(positive["passed"], positive)
+        self.assertFalse(negative["passed"])
+        self.assertIn("runtime_contract_projection_missing", negative["blockers"])
+
     def test_failure_before_serializable_inventory_is_fatal_and_materialized(self) -> None:
         def fail_with_committed_stage(planner, context, *, resume_from=None):
             del context, resume_from
@@ -3536,6 +3556,11 @@ class PlanningPipelineTests(unittest.TestCase):
         base = _minimal_plan()
 
         def fake_stage(planner, stage, context, previous_artifacts):
+            planner.stage_records.append({
+                "stage_id": stage.stage_id, "status": "completed",
+                "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+                "repair_usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+            })
             if stage.stage_id == "final_plan_assembly":
                 artifact = _assemble_final_plan_candidate(
                     context, previous_artifacts, registry=planner.registry, allow_incomplete=True
@@ -3635,7 +3660,8 @@ class PlanningPipelineTests(unittest.TestCase):
             result = run_planning(FACTS, Path(raw) / "run")
             manifest = read_json(result.manifest_path)
             self.assertEqual(result.run_status, "completed_with_candidate_only")
-            self.assertTrue(result.success)
+            self.assertFalse(result.success)
+            self.assertTrue(result.candidate_materialized)
             self.assertTrue(result.specs_root.exists())
             self.assertFalse(manifest["qualification_passed"])
             self.assertEqual(manifest["semantic_diagnostic_counts"]["error"], 1)
@@ -3662,7 +3688,8 @@ class PlanningPipelineTests(unittest.TestCase):
             side_effect=RegistryInvariantError("semantic_patch_noncanonical_id: fixture"),
         ) as registry_additions:
             result = run_planning(FACTS, Path(raw) / "run")
-        self.assertTrue(result.success, result.diagnostics)
+        self.assertFalse(result.success, result.diagnostics)
+        self.assertTrue(result.candidate_materialized)
         self.assertIn("semantic_patch_invalid", {item.code for item in result.diagnostics})
         registry_additions.assert_called()
 
@@ -3692,7 +3719,8 @@ class PlanningPipelineTests(unittest.TestCase):
             manifest = read_json(result.manifest_path)
             bundle = load_spec_bundle_from_root(result.specs_root, validate_rendered_headers=True)
             specs = [read_json(path) for path in result.specs_root.rglob("*_spec.json")]
-        self.assertTrue(result.success, result.diagnostics)
+        self.assertFalse(result.success, result.diagnostics)
+        self.assertTrue(result.candidate_materialized)
         self.assertEqual(result.run_status, "completed_with_candidate_only")
         self.assertFalse(manifest["qualification_passed"])
         self.assertTrue(manifest["specs_generated"])
@@ -5417,7 +5445,8 @@ class PlanningPipelineTests(unittest.TestCase):
             write_json(run_dir / "_planning" / "blocking_diagnostics.json", unresolved)
 
             result = run_planning(FACTS, run_dir, coder_validate=False, resume_from="compile_specs")
-            self.assertTrue(result.success, result.diagnostics)
+            self.assertFalse(result.success, result.diagnostics)
+            self.assertTrue(result.candidate_materialized)
             plan = read_json(result.planning_root / "implementation_plan.json")
             self.assertEqual(plan["structured_planning_usage"]["total_tokens"], 22)
             self.assertEqual(plan["unresolved_partitions"], unresolved)

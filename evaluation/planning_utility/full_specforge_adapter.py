@@ -173,6 +173,7 @@ def run_full_specforge(
     api_key_env: str,
     max_repair_rounds: int,
     existing_planning_dir: Path | None = None,
+    diagnostic_only: bool = False,
 ) -> dict[str, Any]:
     output_dir.mkdir(parents=True, exist_ok=True)
     log_dir = output_dir / "logs"
@@ -204,6 +205,9 @@ def run_full_specforge(
         "spec_inventory": {"module": 0, "file": 0, "function": 0},
         "candidate_through_eligible": False,
         "candidate_through_reason": "not_evaluated",
+        "diagnostic_only": diagnostic_only,
+        "coder_release_eligible": False,
+        "coder_release_blockers": ["not_evaluated"],
         "coder_validate_status": "not_run",
         "original_generation_status": "not_run",
         "initial_compile_status": "not_run",
@@ -325,6 +329,10 @@ def run_full_specforge(
     summary["qualification_passed"] = bool(validated_manifest.get("qualification_passed"))
     summary["coder_loader_passed"] = validated_manifest.get("coder_loader_passed")
     summary["diagnostic_counts"] = validated_manifest.get("diagnostic_counts", summary["diagnostic_counts"])
+    summary["coder_release_eligible"] = bool(validated_manifest.get("coder_release_eligible"))
+    summary["coder_release_blockers"] = validated_manifest.get(
+        "coder_release_blockers", ["coder_release_manifest_field_missing"]
+    )
 
     stored_diagnostic = _stored_planning_diagnostic(planning_run)
     if not summary["candidate_through_eligible"]:
@@ -339,7 +347,13 @@ def run_full_specforge(
         summary["planning_status"] = "candidate_only"
     else:
         summary["planning_status"] = "passed_existing" if existing_planning_dir is not None else "passed"
-    summary["readiness_status"] = "candidate_through_eligible"
+    if not summary["coder_release_eligible"] and not diagnostic_only:
+        summary["readiness_status"] = "coder_release_blocked"
+        blockers = ", ".join(map(str, summary["coder_release_blockers"]))
+        return fail("planning_release", stored_diagnostic or blockers)
+    summary["readiness_status"] = (
+        "coder_release_eligible" if summary["coder_release_eligible"] else "diagnostic_candidate_through"
+    )
 
     coder_validate_cmd = [
         sys.executable,

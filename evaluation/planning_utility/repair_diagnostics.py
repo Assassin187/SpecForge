@@ -24,10 +24,14 @@ CONTROL_WORDS = {"if", "for", "while", "switch", "return", "sizeof"}
 
 _INCLUDE_RE = re.compile(r'^\s*#\s*include\s+[<"]([^>"]+)[>"]', re.MULTILINE)
 _FUNC_DEF_RE = re.compile(
-    r"(?m)^\s*(static\s+)?(?:[A-Za-z_][\w\s\*\(\),]*?\s+)+([A-Za-z_]\w*)\s*\([^;{}]*\)\s*\{"
+    r"(?m)^[ \t]*(static[ \t]+)?(?!if\b|for\b|while\b|switch\b|return\b|sizeof\b)"
+    r"[A-Za-z_][\w \t]*?(?:[ \t]+\*+[ \t]*|[ \t]+|\*+[ \t]*)"
+    r"([A-Za-z_]\w*)[ \t]*\([^;{}]*\)[ \t]*\{"
 )
 _FUNC_DECL_RE = re.compile(
-    r"(?m)^\s*(?:extern\s+)?(?:[A-Za-z_][\w\s\*\(\),]*?\s+)+([A-Za-z_]\w*)\s*\([^;{}]*\)\s*;"
+    r"(?m)^[ \t]*(?:extern[ \t]+)?(?!if\b|for\b|while\b|switch\b|return\b|sizeof\b)"
+    r"[A-Za-z_][\w \t]*?(?:[ \t]+\*+[ \t]*|[ \t]+|\*+[ \t]*)"
+    r"([A-Za-z_]\w*)[ \t]*\([^;{}]*\)[ \t]*;"
 )
 _DIAG_START_RE = re.compile(r"^(.+\.(?:c|h)):\d+:\d+:\s*((?:fatal\s+)?error|warning|note):\s*(.*)")
 _LINK_UNDEF_RE = re.compile(r"undefined reference to [`'‘]([^`'’]+)[`'’]")

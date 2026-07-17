@@ -7,6 +7,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
+from .abi_probe import run_abi_skeleton_probe
 from .compiler import compile_specs, normalize_plan_for_compiler
 from .facts import collect_top_level_fact_refs, read_json, stable_json_hash, write_json
 from .implementability import (
@@ -100,6 +101,7 @@ def _readiness_manifest_fields(
     *,
     run_status: str,
     coder_loader_passed: bool | None,
+    abi_skeleton_passed: bool | None = None,
 ) -> dict[str, Any]:
     spec_objects: list[dict[str, Any]] = []
     if specs_root.exists():
@@ -154,6 +156,20 @@ def _readiness_manifest_fields(
 
     error_diagnostics = [item for item in diagnostics if item.level == "error"]
     unresolved = _distinct_unresolved_partitions(plan.get("unresolved_partitions", []))
+    runtime_entrypoint = plan.get("runtime_entrypoint", {})
+    runtime_main_ref = runtime_entrypoint.get("main_function") if isinstance(runtime_entrypoint, dict) else None
+    runtime_main = next(
+        (
+            item for item in required_functions
+            if str(runtime_main_ref) in {str(item.get("id")), str(item.get("name"))}
+        ),
+        None,
+    )
+    runtime_relations_materialized = bool(
+        runtime_main
+        and runtime_main.get("rely", runtime_main.get("RELY", {})).get("FUNC")
+        and runtime_main.get("call_contracts", runtime_main.get("CALL_CONTRACTS", []))
+    )
     plan_drop_count = sum(item.code.startswith("plan_to_spec_") for item in error_diagnostics)
     runtime_error_count = sum(
         item.code.startswith("runtime_entrypoint")
@@ -182,6 +198,7 @@ def _readiness_manifest_fields(
             and plan.get("lifecycle_matrix")
             and isinstance(plan.get("runtime_flow"), dict)
             and plan.get("runtime_flow")
+            and runtime_relations_materialized
         ),
         "union_error_diagnostic_count": len(error_diagnostics),
         "distinct_unresolved_partition_count": len(unresolved),
@@ -208,7 +225,29 @@ def _readiness_manifest_fields(
         and metrics["plan_to_spec_required_field_drop_count"] == 0
         and metrics["runtime_entrypoint_or_flow_error_count"] == 0
         and metrics["runtime_contract_materialized"]
+        and abi_skeleton_passed is True
     )
+    release_blockers: list[str] = []
+    if not specs_root.exists():
+        release_blockers.append("candidate_specs_missing")
+    if coder_loader_passed is not True:
+        release_blockers.append("coder_loader_not_passed")
+    if run_status != QUALIFIED:
+        release_blockers.append("semantic_qualification_not_passed")
+    if error_diagnostics:
+        release_blockers.append("error_diagnostics_present")
+    if unresolved:
+        release_blockers.append("unresolved_partitions_present")
+    if not plan.get("required_implementation_obligations"):
+        release_blockers.append("implementation_obligations_missing")
+    if metrics["runtime_entrypoint_or_flow_error_count"]:
+        release_blockers.append("runtime_contract_errors_present")
+    if not metrics["runtime_contract_materialized"]:
+        release_blockers.append("runtime_contract_not_materialized")
+    if abi_skeleton_passed is not True:
+        release_blockers.append("abi_skeleton_not_passed")
+    if not implementation_ready and not release_blockers:
+        release_blockers.append("readiness_metrics_incomplete")
 
     def counts(values: list[Diagnostic]) -> dict[str, int]:
         return {
@@ -217,9 +256,13 @@ def _readiness_manifest_fields(
         }
 
     return {
+        "candidate_materialized": specs_root.exists(),
         "artifact_success": artifact_success,
         "semantic_qualified": semantic_qualified,
         "implementation_ready": implementation_ready,
+        "coder_release_eligible": implementation_ready,
+        "coder_release_blockers": release_blockers,
+        "abi_skeleton_passed": abi_skeleton_passed,
         "readiness_metrics": metrics,
         "closure_diagnostic_counts": counts(
             [item for item in diagnostics if item.owner_layer == "semantic_closure"]
@@ -448,6 +491,7 @@ def _write_planning_artifacts(
     coder_loader_passed: bool | None,
     semantic_diagnostics: list[dict[str, Any]],
     resume_from: str | None,
+    abi_skeleton_passed: bool,
 ) -> Path:
     write_json(planning_root / "fact_refs.json", fact_refs)
     write_json(planning_root / "normalized_characteristics.json", to_jsonable(characteristics))
@@ -511,6 +555,7 @@ def _write_planning_artifacts(
             diagnostics,
             run_status=run_status,
             coder_loader_passed=coder_loader_passed,
+            abi_skeleton_passed=abi_skeleton_passed,
         )
     )
     manifest_path = planning_root / "run_manifest.json"
@@ -896,6 +941,9 @@ def run_planning(
                 "artifact_success": False,
                 "semantic_qualified": False,
                 "implementation_ready": False,
+                "coder_release_eligible": False,
+                "coder_release_blockers": ["candidate_serialization_impossible"],
+                "abi_skeleton_passed": False,
                 "planning_validation_passed": False,
                 "coder_loader_passed": None,
                 "qualification_passed": False,
@@ -1012,6 +1060,19 @@ def run_planning(
         if coder_validate:
             coder_diagnostics = _coder_validate(candidate_specs_root)
             diagnostics.extend(coder_diagnostics)
+        abi_result = run_abi_skeleton_probe(
+            plan, candidate_specs_root, planning_root / "abi_skeleton"
+        )
+        if not abi_result["passed"]:
+            diagnostics.append(
+                Diagnostic(
+                    "error", "abi_skeleton_failed",
+                    "; ".join(abi_result["blockers"]) or abi_result["stderr"][:1000],
+                    str(planning_root / "abi_skeleton" / "result.json"),
+                    "abi_probe", "function_call_contract_closure",
+                    "regenerate_authoritative_contract_partition",
+                )
+            )
         diagnostics = _dedupe_diagnostics(diagnostics)
         run_status = CANDIDATE_ONLY if any(diag.level == "error" for diag in diagnostics) else QUALIFIED
         if run_status == QUALIFIED:
@@ -1074,6 +1135,7 @@ def run_planning(
         None if not coder_validate else not any(diag.level == "error" for diag in coder_diagnostics),
         closure_diagnostics,
         resume_from,
+        bool(abi_result["passed"]),
     )
     return PlanningResult(
         output_root=output_root,
@@ -1114,6 +1176,17 @@ def validate_existing_run(run_dir: str | Path, *, coder_validate: bool = True) -
     diagnostics = validate_planning_run(facts, stable_json_hash(facts), plan, specs_root)
     if coder_validate:
         diagnostics.extend(_coder_validate(specs_root))
+    abi_result = run_abi_skeleton_probe(plan, specs_root, planning_root / "abi_skeleton")
+    if not abi_result["passed"]:
+        diagnostics.append(
+            Diagnostic(
+                "error", "abi_skeleton_failed",
+                "; ".join(abi_result["blockers"]) or abi_result["stderr"][:1000],
+                str(planning_root / "abi_skeleton" / "result.json"),
+                "abi_probe", "function_call_contract_closure",
+                "regenerate_authoritative_contract_partition",
+            )
+        )
     write_json(planning_root / "diagnostics.json", diagnostics_to_json(diagnostics))
     manifest["diagnostic_counts"] = {
         "error": sum(1 for diag in diagnostics if diag.level == "error"),
@@ -1140,6 +1213,7 @@ def validate_existing_run(run_dir: str | Path, *, coder_validate: bool = True) -
             diagnostics,
             run_status=run_status,
             coder_loader_passed=manifest["coder_loader_passed"],
+            abi_skeleton_passed=bool(abi_result["passed"]),
         )
     )
     write_json(planning_root / "run_manifest.json", manifest)

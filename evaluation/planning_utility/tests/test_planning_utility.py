@@ -222,6 +222,10 @@ def _planning_fixture(
         "qualification_passed": qualified,
         "planning_validation_passed": qualified,
         "coder_loader_passed": specs_generated,
+        "candidate_materialized": specs_generated,
+        "implementation_ready": qualified and specs_generated,
+        "coder_release_eligible": qualified and specs_generated,
+        "coder_release_blockers": [] if qualified and specs_generated else ["semantic_qualification_not_passed"],
         "specs_generated": specs_generated,
         "specs_root": str(specs_root) if specs_generated else None,
         "candidate_specs_root": str(specs_root) if specs_generated else None,
@@ -265,7 +269,7 @@ class PlanningUtilityTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "target_profile_missing_fields"):
                 load_target_profile(incomplete)
 
-    def test_full_specforge_candidate_always_enters_coder_validate(self) -> None:
+    def test_full_specforge_candidate_is_blocked_before_coder_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:
             root = Path(raw_tmp)
             config = _toy_config(root / "inputs")
@@ -297,20 +301,20 @@ class PlanningUtilityTests(unittest.TestCase):
                     existing_planning_dir=source,
                 )
 
-            self.assertEqual(summary["failure_stage"], "coder_validate")
+            self.assertEqual(summary["failure_stage"], "planning_release")
             self.assertEqual(summary["planning_status"], "candidate_only")
             self.assertFalse(summary["qualification_passed"])
             self.assertTrue(summary["specs_generated"])
             self.assertTrue(summary["candidate_through_eligible"])
-            self.assertEqual(summary["coder_validate_status"], "failed")
+            self.assertEqual(summary["coder_validate_status"], "not_run")
+            self.assertFalse(summary["coder_release_eligible"])
             self.assertEqual(summary["nonfatal_no_specs_count"], 0)
             self.assertFalse(summary["fatal"])
             self.assertFalse(summary["target_profile_visible_to_planner"])
-            self.assertEqual(len(commands), 2)
+            self.assertEqual(len(commands), 1)
             self.assertIn("--run-dir", commands[0])
             self.assertNotIn("--target-profile", commands[0])
             self.assertNotIn("verify", commands[0])
-            self.assertIn("agent.coder", commands[1])
             self.assertEqual((source / "_planning" / "run_manifest.json").read_bytes(), original_manifest)
 
     def test_full_specforge_freezes_original_then_repairs_separate_copy(self) -> None:
@@ -397,10 +401,13 @@ class PlanningUtilityTests(unittest.TestCase):
                     api_key_env="UNUSED",
                     max_repair_rounds=3,
                     existing_planning_dir=source,
+                    diagnostic_only=True,
                 )
 
             self.assertEqual(summary["failure_stage"], "")
             self.assertFalse(summary["qualification_passed"])
+            self.assertFalse(summary["coder_release_eligible"])
+            self.assertEqual(summary["readiness_status"], "diagnostic_candidate_through")
             self.assertEqual(summary["coder_validate_status"], "passed")
             self.assertEqual(summary["initial_compile_status"], "failed")
             self.assertEqual(summary["compile_status"], "passed")

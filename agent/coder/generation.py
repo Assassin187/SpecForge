@@ -133,6 +133,34 @@ def _strip_fences(text: str) -> str:
     return result + ("\n" if not result.endswith("\n") else "")
 
 
+def _function_definition_count(content: str, name: str) -> int:
+    pattern = re.compile(
+        rf"(?m)^\s*(?:[A-Za-z_][A-Za-z0-9_]*[\s*]+)+{re.escape(name)}\s*\([^;{{}}]*\)\s*\{{"
+    )
+    return len(pattern.findall(content))
+
+
+def _source_integrity_issues(
+    content: str, source_path: str, function_specs: list[FunctionSpec]
+) -> list[dict[str, Any]]:
+    issues: list[dict[str, Any]] = []
+    for function in function_specs:
+        count = _function_definition_count(content, function.signature.name)
+        if count != 1:
+            issues.append(
+                {
+                    "code": "specified_function_definition_count",
+                    "source_path": source_path,
+                    "function": function.signature.name,
+                    "expected": 1,
+                    "actual": count,
+                }
+            )
+    if re.search(r"(?mi)^\s*(?:TODO|FIXME)\b|\bnot\s+implemented\b", content):
+        issues.append({"code": "placeholder_source", "source_path": source_path})
+    return issues
+
+
 def render_header(bundle: SpecBundle, file_spec: FileSpec) -> str:
     public_declarations = render_public_declarations(file_spec)
     signature_block = [canonical_signature_for_header(bundle, file_spec, item) for item in file_spec.header_interfaces]
@@ -594,6 +622,8 @@ class ProjectGenerator:
             )
 
         generated_headers: dict[str, str] = {}
+        source_integrity_records: list[dict[str, Any]] = []
+        integrity_retry_used = False
         for module in self.bundle.modules_in_order:
             print(f"[agent.generate] module={module.name} start", flush=True)
             header_paths = [path for path in module.files if path.endswith(".h")]
@@ -660,6 +690,36 @@ class ProjectGenerator:
                     flush=True,
                 )
                 content = _strip_fences(response.content)
+                issues = _source_integrity_issues(content, source_path, function_specs)
+                retried = False
+                if issues and not integrity_retry_used:
+                    integrity_retry_used = True
+                    retried = True
+                    self.logs.write(f"source_integrity_first_draft_{source_path}", content)
+                    correction_messages = [
+                        *messages,
+                        {
+                            "role": "user",
+                            "content": (
+                                "Regenerate the complete source file. Fix these source-integrity violations "
+                                "without changing specified signatures: "
+                                + json.dumps(issues, ensure_ascii=False)
+                            ),
+                        },
+                    ]
+                    if self.prompt_observer is not None:
+                        self.prompt_observer("source_integrity_regeneration", source_path, correction_messages)
+                    retry = self._generate_with_usage(
+                        "source_integrity_regeneration",
+                        "regenerate",
+                        source_path,
+                        LLMRequest(messages=correction_messages, top_p=0.2, temperature=0.2, is_stream=True),
+                    )
+                    content = _strip_fences(retry.content)
+                    issues = _source_integrity_issues(content, source_path, function_specs)
+                source_integrity_records.append(
+                    {"source_path": source_path, "retried": retried, "issues": issues}
+                )
                 self._write_file(source_path, content)
                 print(f"[agent.generate] source={source_path} file_written", flush=True)
 
@@ -669,7 +729,33 @@ class ProjectGenerator:
 
         repaired_files: list[str] = []
         binary_name = _bundle_binary_name(self.bundle)
-        if self.skip_repair:
+        owner_by_function = {
+            interface.name: file_spec.source_path
+            for file_spec in self.bundle.file_specs_by_trace.values()
+            for interface in file_spec.source_interfaces
+            if interface.trace_id in self.bundle.function_specs_by_trace
+        }
+        for source_path in sorted(self.project_dir.rglob("*.c")):
+            relative = normalize_repo_path(source_path.relative_to(self.project_dir).as_posix())
+            content = source_path.read_text(encoding="utf-8")
+            for function_name, owner in owner_by_function.items():
+                if relative != owner and _function_definition_count(content, function_name):
+                    source_integrity_records.append(
+                        {
+                            "source_path": relative,
+                            "retried": False,
+                            "issues": [{
+                                "code": "specified_function_wrong_source",
+                                "function": function_name,
+                                "owner_source": owner,
+                            }],
+                        }
+                    )
+        source_integrity_passed = not any(item["issues"] for item in source_integrity_records)
+        if not source_integrity_passed:
+            print("[agent.generate] compile=blocked_by_source_integrity", flush=True)
+            repair_outcome = RepairOutcome(None, "source_integrity_failed", 0, [], [])
+        elif self.skip_repair:
             print("[agent.generate] compile=skipped", flush=True)
             repair_outcome = RepairOutcome(None, "skipped_by_cli", 0, [], [])
         else:
@@ -677,7 +763,7 @@ class ProjectGenerator:
             repair_outcome = self._repair_until_compiles(repaired_files, binary_name)
         compile_result = repair_outcome.compile_result
         compile_run = compile_result is not None
-        success = not compile_run or compile_result.returncode == 0
+        success = source_integrity_passed and (not compile_run or compile_result.returncode == 0)
         verification_run = False
         verification_success: bool | None = None
         verification_scenarios: list[dict[str, str]] = []
@@ -721,6 +807,11 @@ class ProjectGenerator:
             "modules": [module.name for module in self.bundle.modules_in_order],
             "repaired_files": repaired_files,
             "generation_success": success,
+            "source_integrity": {
+                "passed": source_integrity_passed,
+                "retry_used": integrity_retry_used,
+                "records": source_integrity_records,
+            },
             "compile_run": compile_run,
             "compile_success": compile_result.returncode == 0 if compile_result is not None else None,
             "verification_run": verification_run,

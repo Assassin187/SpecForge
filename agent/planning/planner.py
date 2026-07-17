@@ -1021,13 +1021,16 @@ class LLMStructuredPlanner:
                     diagnostic=str(pending["diagnostic"]),
                     correction_attempted=False,
                 )
+        current_stage_unresolved = any(
+            item["stage_id"] == stage.stage_id for item in self.unresolved_partitions
+        )
         _validate_completed_stage(
             stage.stage_id,
             [*stage_artifacts, completed],
             context,
             registry=candidate_registry,
-            allow_incomplete=bool(self.unresolved_partitions),
-            preserve_nonfatal=bool(self.unresolved_partitions),
+            allow_incomplete=current_stage_unresolved,
+            preserve_nonfatal=current_stage_unresolved,
         )
         return candidate_registry
 
@@ -2778,18 +2781,20 @@ def _validate_typed_call_relations(
     for required in partition.get("required_callback_bindings", []):
         if not isinstance(required, dict):
             continue
+        provider_candidates = set(map(str, required.get("provider_candidate_ids", [])))
         matches = [
             binding for binding in callback_bindings.values()
             if binding["callback_type_id"] == required.get("callback_type_id")
             and binding["consumer_function_id"] == required.get("consumer_function_id")
-            and binding["provider_function_id"] == required.get("provider_function_id")
+            and binding["provider_function_id"] in provider_candidates
+            and binding["consumer_parameter"] == required.get("consumer_parameter")
         ]
         if not matches or not any(
             str(binding.get("binding_id", "")) in used_binding_ids for binding in matches
         ):
             missing_required_bindings.append(
                 f"{required.get('callback_type_id')}:{required.get('consumer_function_id')}"
-                f"->{required.get('provider_function_id')}"
+                f".{required.get('consumer_parameter')}->{sorted(provider_candidates)}"
             )
     if missing_required_bindings:
         raise ValueError(
@@ -4815,45 +4820,86 @@ def _attach_required_callback_bindings(
     previous_artifacts: list[dict[str, Any]],
     registry: CanonicalPlanningRegistry,
 ) -> None:
+    from .compiler import _lower_type_spec, _parse_param, _signature, _split_params
+
     inventory = _stage_artifact(previous_artifacts, "public_artifact_inventory")
     callbacks = [
         item for item in inventory.get("types", [])
         if isinstance(item, dict) and str(item.get("kind", "")).lower() == "callback"
     ]
-    functions = [item for item in inventory.get("functions", []) if isinstance(item, dict)]
-    obligations: list[dict[str, str]] = []
+    interface_artifact = _stage_artifact(previous_artifacts, "function_interface_design")
+    interfaces = [
+        item for item in interface_artifact.get("function_interfaces", []) if isinstance(item, dict)
+    ]
+    interface_by_id = {
+        registry.resolve(
+            item.get("function_id") or item.get("id") or item.get("name"),
+            expected_kinds={"function"},
+        )["artifact_id"]: item
+        for item in interfaces
+    }
+    type_designs = {
+        item["id"]: item
+        for item in _canonicalize_registry_types(
+            _stage_artifact(previous_artifacts, "type_and_access_path_design"),
+            registry,
+            allow_missing=True,
+        )
+    }
+
+    def canonical_type(value: Any) -> str:
+        return re.sub(r"\s+", " ", re.sub(r"\s*\*\s*", "*", str(value).strip()))
+
+    obligations: list[dict[str, Any]] = []
     for callback in callbacks:
         callback_id = registry.resolve(
             callback.get("symbol") or callback.get("name") or callback.get("id"),
             expected_kinds={"callback"},
         )["artifact_id"]
         callback_name = registry.resolve(callback_id)["canonical_name"]
-        consumers = [
-            item for item in functions
-            if callback_name in str(item.get("role", ""))
-            and any(marker in str(item.get("role", "")).lower() for marker in ("accept", "consume", "register"))
-        ]
-        providers = [
-            item for item in functions
-            if callback_name in str(item.get("role", ""))
-            and any(marker in str(item.get("role", "")).lower() for marker in ("implement", "provide"))
-        ]
-        if len(consumers) != 1:
+        consumers: list[tuple[dict[str, Any], str]] = []
+        for interface in interfaces:
+            signature = interface.get("signature", {})
+            for parameter in signature.get("PARAMS", []) if isinstance(signature, dict) else []:
+                parameter_type = re.sub(
+                    r"\s+", " ", re.sub(r"\s*\*\s*", "*", str(parameter.get("TYPE", "")).strip())
+                ) if isinstance(parameter, dict) else ""
+                if parameter_type == callback_name:
+                    consumers.append((interface, str(parameter.get("NAME", ""))))
+        if len(consumers) != 1 or not consumers[0][1]:
             continue
         consumer_id = registry.resolve(
-            consumers[0].get("symbol") or consumers[0].get("name"),
+            consumers[0][0].get("function_id") or consumers[0][0].get("id") or consumers[0][0].get("name"),
             expected_kinds={"function"},
         )["artifact_id"]
-        for provider in providers:
-            provider_id = registry.resolve(
-                provider.get("symbol") or provider.get("name"),
-                expected_kinds={"function"},
-            )["artifact_id"]
-            obligations.append({
-                "callback_type_id": callback_id,
-                "consumer_function_id": consumer_id,
-                "provider_function_id": provider_id,
-            })
+        callback_spec = _lower_type_spec(type_designs.get(callback_id, {}))
+        match = re.fullmatch(
+            r"(?P<return>.+?)\(\s*\*\s*[A-Za-z_][A-Za-z0-9_]*\s*\)\s*\((?P<params>.*)\)",
+            str(callback_spec.get("CALLBACK_SIGNATURE", "")),
+        )
+        if match is None:
+            continue
+        expected_return = canonical_type(match.group("return"))
+        expected_params = [
+            canonical_type(_parse_param(value).get("TYPE"))
+            for value in _split_params(match.group("params"))
+        ]
+        provider_ids = [
+            function_id for function_id, interface in interface_by_id.items()
+            if function_id != consumer_id
+            and canonical_type(_signature(interface.get("signature"), function_id).get("RETURN")) == expected_return
+            and [
+                canonical_type(parameter.get("TYPE"))
+                for parameter in _signature(interface.get("signature"), function_id).get("PARAMS", [])
+                if isinstance(parameter, dict)
+            ] == expected_params
+        ]
+        obligations.append({
+            "callback_type_id": callback_id,
+            "consumer_function_id": consumer_id,
+            "consumer_parameter": consumers[0][1],
+            "provider_candidate_ids": provider_ids,
+        })
     for partition in partitions:
         partition["required_callback_bindings"] = []
     run_service_ids = {
@@ -4864,11 +4910,18 @@ def _attach_required_callback_bindings(
     for obligation in obligations:
         by_consumer.setdefault(obligation["consumer_function_id"], []).append(obligation)
     for group in by_consumer.values():
-        provider_ids = {item["provider_function_id"] for item in group}
+        provider_ids = {
+            provider_id for item in group for provider_id in item["provider_candidate_ids"]
+        }
         candidates = [
             partition for partition in partitions
             if provider_ids.intersection(map(str, partition.get("caller_function_ids", [])))
         ]
+        main_candidates = [partition for partition in partitions if partition.get("main_function_id")]
+        if main_candidates:
+            candidates = main_candidates
+        if not candidates:
+            candidates = partitions[:1]
         if not candidates:
             continue
         owner = max(
@@ -5193,10 +5246,12 @@ def _normalize_stage8_caller_field_dialects(
             return True
         return not allowed_callers or caller_id in allowed_callers
 
-    artifact["call_edges"] = [
+    escaped_edges = [
         edge for edge in artifact.get("call_edges", [])
-        if not isinstance(edge, dict) or caller_belongs_to_partition(edge)
+        if isinstance(edge, dict) and not caller_belongs_to_partition(edge)
     ]
+    if escaped_edges:
+        raise ValueError("stage8_contract_edge_partition_escape")
     inventory = _stage_artifact(previous_artifacts, "public_artifact_inventory")
     default_port = _find_named_integer(context.get("facts", {}), "default_port")
     callback_provider_ids = {
@@ -5217,10 +5272,11 @@ def _normalize_stage8_caller_field_dialects(
             return False
         return callee_id in callback_provider_ids
 
-    artifact["call_edges"] = [
-        edge for edge in artifact.get("call_edges", [])
-        if not isinstance(edge, dict) or not calls_callback_provider(edge)
-    ]
+    if any(
+        isinstance(edge, dict) and calls_callback_provider(edge)
+        for edge in artifact.get("call_edges", [])
+    ):
+        raise ValueError("stage8_callback_provider_direct_call")
     flow = artifact.get("runtime_flow")
     runtime = inventory.get("runtime_entrypoint", {})
     if isinstance(flow, dict) and isinstance(runtime, dict):
@@ -5275,10 +5331,11 @@ def _normalize_stage8_caller_field_dialects(
             return not str(reference).startswith("function:")
         return True
 
-    artifact["call_edges"] = [
-        edge for edge in artifact.get("call_edges", [])
-        if not isinstance(edge, dict) or keep_callee(edge.get("callee_function_id"))
-    ]
+    if any(
+        isinstance(edge, dict) and not keep_callee(edge.get("callee_function_id"))
+        for edge in artifact.get("call_edges", [])
+    ):
+        raise ValueError("stage8_contract_edge_unknown_callee")
     artifact["artifact_requests"] = [
         request for request in artifact.get("artifact_requests", [])
         if not isinstance(request, dict)
@@ -5347,9 +5404,10 @@ def _normalize_stage8_caller_field_dialects(
         (
             str(item.get("callback_type_id", "")),
             str(item.get("consumer_function_id", "")),
-            str(item.get("provider_function_id", "")),
+            str(provider_id),
         )
         for item in partition.get("required_callback_bindings", []) if isinstance(item, dict)
+        for provider_id in item.get("provider_candidate_ids", [])
     }
     runtime_run_ids = []
     for reference in inventory.get("runtime_entrypoint", {}).get("run_services", []):
@@ -5432,14 +5490,15 @@ def _normalize_stage8_caller_field_dialects(
         for binding in artifact.get("callback_bindings", [])
         if isinstance(binding, dict)
     }
-    artifact["call_edges"] = [
-        edge for edge in artifact.get("call_edges", [])
-        if not isinstance(edge, dict)
-        or (
+    if any(
+        isinstance(edge, dict)
+        and (
             str(edge.get("caller_function_id", "")),
             str(edge.get("callee_function_id", "")),
-        ) not in callback_pairs
-    ]
+        ) in callback_pairs
+        for edge in artifact.get("call_edges", [])
+    ):
+        raise ValueError("stage8_callback_binding_encoded_as_direct_call")
     used_binding_ids = {
         str(binding.get("source_ref", ""))
         for edge in artifact.get("call_edges", []) if isinstance(edge, dict)
@@ -5702,10 +5761,8 @@ def _normalize_stage8_caller_field_dialects(
                     f"(({match.group(1)}*){selected_payload})->{match.group(2)}"
                 )
 
-    artifact["call_edges"] = [
-        edge for edge in artifact.get("call_edges", [])
-        if not isinstance(edge, dict) or id(edge) not in invalid_caller_field_edges
-    ]
+    if invalid_caller_field_edges:
+        raise ValueError("stage8_call_argument_source_unresolved")
 
     edges = artifact.get("call_edges", [])
     for consumer_edge, accessor_id, parameter_name, parameter_type, field_name in required_accessor_edges:
@@ -5766,7 +5823,7 @@ def _normalize_stage8_caller_field_dialects(
             if isinstance(binding, dict) and binding.get("source_kind") == "prior_result"
         }
         if not required_results <= available_results.get(caller_id, set()):
-            continue
+            raise ValueError("stage8_prior_result_provider_missing")
         retained_edges.append(edge)
         available_results.setdefault(caller_id, set()).add(
             str(edge.get("callee_function_id", ""))

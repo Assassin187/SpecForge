@@ -227,6 +227,41 @@ def plan_to_spec_preservation_check(plan: dict[str, Any], specs_root: str | Path
     function_specs = {
         str(raw.get("TRACE_ID")): raw for _, raw in specs if raw.get("KIND") == "FUNCTION_SPEC"
     }
+    runtime = plan.get("runtime_entrypoint", {})
+    runtime_services = [
+        str(value)
+        for key in ("startup_services", "run_services", "cleanup_services")
+        for value in (runtime.get(key, []) if isinstance(runtime.get(key), list) else [])
+    ] if isinstance(runtime, dict) else []
+    if runtime_services:
+        main_ref = str(runtime.get("main_function", ""))
+        main = next(
+            (
+                item for item in plan.get("functions", [])
+                if isinstance(item, dict)
+                and main_ref in {str(item.get("id", "")), str(item.get("name", ""))}
+            ),
+            None,
+        )
+        emitted_main = function_specs.get(str(main.get("trace_id"))) if main else None
+        plan_rely = main.get("rely", main.get("RELY", {})) if main else {}
+        plan_calls = main.get("call_contracts", main.get("CALL_CONTRACTS", [])) if main else []
+        if (
+            not main
+            or not isinstance(plan_rely, dict)
+            or not plan_rely.get("FUNC")
+            or not plan_calls
+            or not emitted_main
+            or not emitted_main.get("RELY", {}).get("FUNC")
+            or not emitted_main.get("CALL_CONTRACTS")
+        ):
+            diagnostics.append(
+                _error(
+                    "plan_to_spec_runtime_contract_evaporated",
+                    "Structured runtime services require non-empty main RELY.FUNC and CALL_CONTRACTS",
+                    root,
+                )
+            )
     data_by_name = {
         str(item.get("NAME")): item
         for raw in file_specs.values()
