@@ -33,7 +33,7 @@ implementation order
 test obligations
 ```
 
-本实验比较三种从相同协议输入到 runnable C implementation 的方法：
+本实验比较四种从相同协议输入到 runnable C implementation 的方法：
 
 ```text
 M0 FS-Direct-Coder
@@ -42,15 +42,19 @@ M0 FS-Direct-Coder
 M1 NL-Plan-Code
     protocol facts -> natural-language engineering plan -> code generation
 
-M2 Full-SpecForge
+M2 One-shot Structured Planning
+    protocol facts -> one LLM call -> implementation plan -> deterministic specs compiler -> coder agent
+
+M3 Full-SpecForge
     protocol facts -> planning agent -> structured protocol specs -> coder agent
 ```
 
 核心比较为：
 
 1. M0 vs. M1：自然语言工程计划相对 direct coding 是否提供额外价值。
-2. M1 vs. M2：结构化、schema-constrained protocol specs 相对自然语言计划是否提供额外价值。
-3. M0 vs. M2：完整 SpecForge planning pipeline 相对无显式 planning artifact 的总体收益。
+2. M1 vs. M3：结构化、schema-constrained protocol specs 相对自然语言计划是否提供额外价值。
+3. M0 vs. M3：完整 SpecForge planning pipeline 相对无显式 planning artifact 的总体收益。
+4. M3 vs. M2：在 final specs、Coder 和 repair 完全相同的条件下，分阶段 planning 与 validator 是否优于一次性 implementation planning。
 
 ## 2. 研究假设
 
@@ -58,13 +62,13 @@ M2 Full-SpecForge
 
 ```text
 H1:
-M2 的 end-to-end success rate 高于 M0 和 M1。
+M3 的 end-to-end success rate 高于 M0 和 M1。
 
 H2:
-M2 的 required behavior scenario pass rate 高于 M0 和 M1。
+M3 的 required behavior scenario pass rate 高于 M0 和 M1。
 
 H3:
-M2 的 initial/final compile success rate 高于 M0 和 M1，
+M3 的 initial/final compile success rate 高于 M0 和 M1，
 并减少 API contract、type ownership 和 protocol model 相关缺陷。
 
 H4:
@@ -72,8 +76,12 @@ M1 可能优于 M0，但自然语言 plan 不足以稳定替代
 schema-constrained module/file/function specs。
 
 H5:
-M2 可能消耗更多 planning tokens，但其 successful implementation yield
+M3 可能消耗更多 planning tokens，但其 successful implementation yield
 和 behavior-correct yield 更高。
+
+H6:
+M3 的 compiler-ready implementation plan、final compile success 和 required behavior
+scenario pass rate 高于 M2。
 ```
 
 H1 和 H2 是主要假设。H3 用于解释失败机制，H4 用于区分“有无 plan”和“plan 的表示形式”，H5 用于分析质量与成本之间的 trade-off。所有假设均限定于当前 MQTT minimum profile。
@@ -100,13 +108,13 @@ protocol facts
 - `planning_utility` 比较完整 planning method 对 downstream implementation 的效用。
 - `spec_ablation` 从同一套 reference specs 确定性投影不同 coder-facing views，用于更严格地隔离 specification form。
 
-由于 M0/M1 与 M2 使用的 lowering 和 repair pipeline 不完全相同，本实验的主结论应表述为：
+由于 M0/M1 与 M3 使用的 lowering 和 repair pipeline 不完全相同，本实验的主结论应表述为：
 
 ```text
 完整 planning-to-specs-to-code pipeline 的系统级效用。
 ```
 
-不能仅凭本实验把 M2 的全部收益归因于某一个 schema 字段、JSON 格式或 planning prompt。字段级和 specification-form 归因应由 `spec_ablation` 实验完成。
+不能仅凭本实验把 M3 的全部收益归因于某一个 schema 字段、JSON 格式或 planning prompt。字段级和 specification-form 归因应由 `spec_ablation` 实验完成。
 
 ## 4. 实验对象
 
@@ -129,17 +137,18 @@ MQTT:
 
 ### 5.1 Independent variable
 
-主要 independent variable 是 planning method，共三个 levels：
+主要 independent variable 是 planning method，共四个 levels：
 
 ```text
 M0 = fs-direct-coder
 M1 = nl-plan-code
-M2 = full-specforge
+M2 = one-shot-structured-planning
+M3 = full-specforge
 ```
 
 ### 5.2 Controlled inputs
 
-MQTT 的三种方法固定使用同一份：
+MQTT 的四种方法固定使用同一份：
 
 ```text
 protocol_facts.json
@@ -153,7 +162,7 @@ behavior verifier
 
 `input_hashes.json` 记录 protocol facts 和 target profile 的 SHA-256。只有 input hashes 一致的 runs 才能进入同一比较组。
 
-target profile 是 evaluation-owned controlled input。M0/M1 的 generation prompt 可以看到它；M2 planning agent 只接收 `protocol_facts.json`，其 manifest 必须记录 `target_profile_visible_to_planner=false`。因此该 profile 用于固定实验角色和运行约束，而不是向 M2 planner 注入额外语义。
+target profile 是 evaluation-owned controlled input。M0/M1 的 generation prompt 可以看到它；M2/M3 planning agent 只接收 `protocol_facts.json`，其 manifest 必须记录 `target_profile_visible_to_planner=false`。因此该 profile 用于固定实验角色和运行约束，而不是向 M2/M3 planner 注入额外语义。
 
 ### 5.3 Experimental unit
 
@@ -176,7 +185,7 @@ facts/profile hash
 runtime/toolchain environment
 ```
 
-由于实验对象固定为 MQTT，protocol 不再是 blocking factor。replicate index 和 execution environment 用于控制 LLM/API 时间波动；所有结果均按三种 method 分组报告。
+由于实验对象固定为 MQTT，protocol 不再是 blocking factor。replicate index 和 execution environment 用于控制 LLM/API 时间波动；所有结果均按四种 method 分组报告。
 
 ## 6. M0: FS-Direct-Coder
 
@@ -325,11 +334,11 @@ maximum visible brief:
 
 `planning_artifact_guard` 允许 M1 仅生成 `nl_plan.md`，并禁止额外的 inventory、dependency graph、ownership table 或 behavior contract 文件。论文归档时应同时保留原始 prompt/response，以便人工抽查 plan 是否违反自然语言边界。
 
-## 8. M2: Full-SpecForge
+## 8. M3: Full-SpecForge
 
 ### 8.1 设计目标
 
-M2 是完整 SpecForge setting。它用于回答：
+M3 是完整 SpecForge setting。它用于回答：
 
 ```text
 planning agent 生成的 implementation-oriented、schema-constrained protocol specs，
@@ -338,7 +347,7 @@ planning agent 生成的 implementation-oriented、schema-constrained protocol s
 
 ### 8.2 Planning flow
 
-M2 的完整流程为：
+M3 的完整流程为：
 
 ```text
 planning plan --facts ... --out ...
@@ -385,7 +394,7 @@ load and validate manifest.specs_root
 -> behavior verification
 ```
 
-M2 不修改 planning prompt、spec compiler、coder schema、coder generation prompt 或 coder repair prompt。这样可保证 M2 代表实际 Full SpecForge system，而不是为实验单独构造的简化版本。
+M3 不修改 planning prompt、spec compiler、coder schema、coder generation prompt 或 coder repair prompt。这样可保证 M3 代表实际 Full SpecForge system，而不是为实验单独构造的简化版本。
 
 ### 8.4 Reusing an existing planning run
 
@@ -399,23 +408,32 @@ planning artifact debugging
 
 但 fresh planning 与 reused planning 不能混入同一个 end-to-end planning utility estimate。复用 run 的 `planning_status` 为 `passed_existing`，必须单独标记和报告；其 planning token/time 也不能按 0 计入 fresh end-to-end cost。
 
-## 9. 三种方法的流程对比
+## 8.5 M2: One-shot Structured Planning
 
-| stage | M0 FS-Direct-Coder | M1 NL-Plan-Code | M2 Full-SpecForge |
-| --- | --- | --- | --- |
-| facts source | gold protocol facts | same | same |
-| explicit planning artifact | none | `nl_plan.md` | structured protocol specs |
-| planning representation | none | prose + brief | schema-constrained JSON specs |
-| source layout | LLM skeleton | LLM skeleton guided by brief | module spec generation order |
-| headers | LLM-generated pair headers | same | deterministic from specs |
-| source files | LLM pair completion | same + plan brief | existing coder from full specs |
-| `main.c` | separate LLM unit | same | existing coder generation |
-| `Makefile` | deterministic | deterministic | deterministic |
-| generation validation | strict JSON + one retry | same | existing planning/coder validators |
-| repair | Bounded Generic C Repair | same | existing coder repair |
-| behavior verifier | shared | shared | shared |
+M2 直接生成一个 `specforge_planning_ir_v1` implementation plan，而不是直接输出几十份 specs 文件：
 
-该表同时定义了实验的 interpretation boundary：M0 vs. M1 较接近 planning-artifact 增量比较；M1 vs. M2 和 M0 vs. M2 则是完整 method/pipeline comparison。
+```text
+protocol facts
+-> one LLM call: implementation_plan.json
+-> normalize_plan_for_compiler()
+-> compile_specs()
+-> coder validate / generate / repair
+```
+
+M2 使用与 M3 相同的 facts-derived planning context、同一 model snapshot 和相同的 deterministic specs compiler。单次调用固定使用 16,000 completion-token ceiling，与 M3 单个 planning stage 的输出上限一致；不允许 continuation、JSON retry、semantic amendment 或 planning validator。输出 plan 无法被 compiler materialize 时，该 run 在 planning 阶段失败。compiler 成功后，M2 与 M3 进入完全相同的 Coder、header、Makefile、project scaffolding 和 repair path。
+
+## 9. 四种方法的流程对比
+
+| stage | M0 FS-Direct-Coder | M1 NL-Plan-Code | M2 One-shot Structured Planning | M3 Full-SpecForge |
+| --- | --- | --- | --- | --- |
+| facts source | gold protocol facts | same | same | same |
+| planning artifact | none | `nl_plan.md` | one-shot implementation plan | staged implementation plan |
+| specs lowering | n/a | n/a | deterministic `compile_specs()` | same deterministic `compile_specs()` |
+| headers / source / `main.c` / `Makefile` | baseline pipeline | same | existing Coder pipeline | same existing Coder pipeline |
+| planning validation | n/a | plan guard | none; invalid plan fails directly | staged validators and semantic closure |
+| Coder validation and repair | baseline repair | same | existing Coder repair | same existing Coder repair |
+
+M3 vs. M2 是严格的 planning-strategy comparison：两者必须使用同一 compiler、same final specs schema、same Coder 和 same repair budget。其差异只能解释为一次性 planning 相对于分阶段 planning 与 validator 的效用差异，不能单独归因于某个 validator rule 或单个 stage。
 
 ## 10. Anti-Leak 与输入隔离
 
@@ -532,9 +550,9 @@ Bounded repair 使用以下 diagnostic taxonomy：
 
 C4/C5 及无法从局部 declarations 机械推断的 C3 被记录为 `planning_dependent_remaining`，不通过 generic repair 注入协议设计。
 
-### 12.3 M2 repair boundary
+### 12.3 M2/M3 repair boundary
 
-M2 使用现有 coder 的 source-level repair，预算由 `--max-repair-rounds` 控制；M0/M1 使用 `--max-repair-calls`。二者不是同一个 repair algorithm，`repair_iterations` 也不是严格相同的计量单位。
+M2/M3 使用相同的现有 coder source-level repair，预算由 `--max-repair-rounds` 控制；M0/M1 使用 `--max-repair-calls`。二者不是同一个 repair algorithm，`repair_iterations` 也不是严格相同的计量单位。
 
 因此，实验应分成两个互补 tracks：
 
@@ -549,7 +567,7 @@ Track B — Native end-to-end system utility:
   该 track 衡量真实系统方法的最终效用。
 ```
 
-不要把 M0/M1 的 `llm_repair_calls` 与 M2 的 `repair rounds` 直接做均值显著性比较。若需要跨方法比较 repair cost，应统一换算为实际 LLM repair call count、repair tokens 和 wall-clock time。
+不要把 M0/M1 的 `llm_repair_calls` 与 M2/M3 的 `repair rounds` 直接做均值显著性比较。若需要跨方法比较 repair cost，应统一换算为实际 LLM repair call count、repair tokens 和 wall-clock time。
 
 ## 13. Runtime 与 Behavior Verification
 
@@ -560,7 +578,7 @@ MQTT:
   broker process remains alive and its TCP port accepts a connection
 ```
 
-随后三种方法调用同一个 `agent.coder.protocol_behavior_val` MQTT verifier。当前 minimum scenarios 为：
+随后四种方法调用同一个 `agent.coder.protocol_behavior_val` MQTT verifier。当前 minimum scenarios 为：
 
 | protocol | required self-contained scenarios | optional interop scenarios | total |
 | --- | ---: | ---: | ---: |
@@ -575,7 +593,7 @@ MQTT:
 建议论文主实验对 MQTT 的每种 method 至少执行 10 次独立 fresh runs：
 
 ```text
-1 MQTT profile × 3 methods × 10 replicates = 30 runs
+1 MQTT profile × 4 methods × 10 replicates = 40 runs
 ```
 
 当前 `run_matrix.py` 每次对选定 cell 执行一次 run；replicates 通过多次调用 CLI 获得。每个 replicate 必须保存独立 timestamped output，不允许覆盖或挑选最优结果。
@@ -604,6 +622,7 @@ same optional interop tool availability
 
 ```text
 planning validation/generation failure
+one-shot implementation-plan or deterministic spec-compilation failure
 strict JSON generation exhausted after one retry
 source-tree/static-check failure
 compile failure after allowed repair
@@ -617,7 +636,7 @@ optional interop dependency 缺失只产生 `skipped`，不是 infrastructure ex
 
 ### 14.4 Fresh vs. cached planning
 
-主 end-to-end analysis 只使用 fresh M2 planning runs。复用 `--full-planning-dir` 的结果进入单独的 fixed-planning/coder-variance analysis，用于回答：
+主 end-to-end analysis 只使用 fresh M2/M3 planning runs。复用 `--full-planning-dir` 的 M2 结果进入单独的 fixed-planning/coder-variance analysis，用于回答：
 
 ```text
 在 protocol specs 固定时，coder generation 本身有多大随机波动？
@@ -671,7 +690,7 @@ initial compile success
 runtime_start_status
 optional interop pass/fail/skip
 generation completion rate
-planning/readiness/protocol-specs validation success, for M2
+planning/readiness/protocol-specs validation success, for M2; one-shot plan/spec compilation success, for M3
 JSON retry rate
 failed generation unit
 repaired file count
@@ -688,7 +707,7 @@ wall-clock time
 ### 15.3 Diagnostic metrics
 
 RQ1 的 supplementary mechanism analysis 使用冻结的
-`target_profiles/mqtt_obligation_rubric.json`，对三种方法统一计算：
+`target_profiles/mqtt_obligation_rubric.json`，对四种方法统一计算：
 
 ```text
 required obligation realization
@@ -715,7 +734,7 @@ portability repairs
 final root causes
 ```
 
-这些 C1-C5 counts 当前不是 M2 adapter 的统一输出。若用于三方法横向比较，必须在保存的 pre-repair projects 上运行同一版本的 read-only diagnostic snapshot，并冻结 classifier revision。否则 C1-C5 只能用于 M0/M1 内部失败分析。M2 的 generate-only 产物可用以下只读命令生成统一 snapshot、specified-function definition coverage、placeholder 和 near-empty source 报告；命令在临时副本中编译并校验原始源码 hash 不变：
+这些 C1-C5 counts 当前不是 M2/M3 adapter 的统一输出。若用于四方法横向比较，必须在保存的 pre-repair projects 上运行同一版本的 read-only diagnostic snapshot，并冻结 classifier revision。否则 C1-C5 只能用于 M0/M1 内部失败分析。M2/M3 的 generate-only 产物可用以下只读命令生成统一 snapshot、specified-function definition coverage、placeholder 和 near-empty source 报告；命令在临时副本中编译并校验原始源码 hash 不变：
 
 ```bash
 python3 -m evaluation.planning_utility.no_repair_analysis \
@@ -740,7 +759,7 @@ tokens per successful run
 tokens per passed required scenario
 ```
 
-当前 M0/M1 `summary.json` 聚合 generation + bounded repair usage。M2 adapter 的 `workflow_token_usage` 主要来自 coder manifest，不能自动代表 planning + coder 的完整总成本。M2 的 end-to-end cost 必须再从 `planning_run` artifacts 聚合 planning usage；若无法可靠聚合，应把 planning token cost 标为 missing，而不是按 0 计算。
+当前 M0/M1 `summary.json` 聚合 generation + bounded repair usage。M2/M3 adapter 的 `workflow_token_usage` 主要来自 coder manifest，不能自动代表 planning + coder 的完整总成本。M2/M3 的 end-to-end cost 必须再从 planning artifacts 聚合 planning usage；若无法可靠聚合，应把 planning token cost 标为 missing，而不是按 0 计算。
 
 ## 16. 统计分析方法
 
@@ -843,15 +862,15 @@ all run manifests and raw logs
 
 ## 19. 有效性威胁
 
-第一，当前实验只覆盖 MQTT minimum profile。结果能够支持三种 planning methods 在 MQTT 上的相对比较，但不能直接推广到 text protocols、UDP protocols 或其他 network protocol families。跨协议 generalizability 需要独立实验验证。
+第一，当前实验只覆盖 MQTT minimum profile。结果能够支持四种 planning methods 在 MQTT 上的相对比较，但不能直接推广到 text protocols、UDP protocols 或其他 network protocol families。跨协议 generalizability 需要独立实验验证。
 
 第二，实验使用 gold MQTT protocol facts，因此隔离了 facts extraction noise。结果不能证明 facts agent 能从任意 technical documents 生成同等质量的输入。
 
-第三，M0 的 code-generation prompt 使用 compact implementation view，而 M1 的 plan stage 和 M2 planning stage 能够读取更丰富的 facts。该设置衡量完整 method utility，不是 equal-visible-information 的纯表示实验。
+第三，M0 的 code-generation prompt 使用 compact implementation view，而 M1、M2 和 M3 planning 能够读取更丰富的 facts。该设置衡量完整 method utility，不是 equal-visible-information 的纯表示实验。
 
-第四，M0/M1 由 LLM 生成 headers，M2 从 specs deterministic render headers。M2 的收益可能同时来自 planning quality 和 deterministic lowering。该混淆应通过 pre-repair analysis 与 `spec_ablation` 补充解释。
+第四，M0/M1 由 LLM 生成 headers，M2/M3 从 specs deterministic render headers。M2/M3 相对 M0/M1 的收益可能同时来自 planning quality 和 deterministic lowering；M2 vs. M3 则固定该 lowering。该混淆应通过 pre-repair analysis 与 `spec_ablation` 补充解释。
 
-第五，M0/M1 和 M2 使用不同 repair algorithms 和预算单位。raw repair iterations 不可直接比较，native end-to-end result 只能解释为 system-level utility。
+第五，M0/M1 和 M2/M3 使用不同 repair algorithms 和预算单位。raw repair iterations 不可直接比较，native end-to-end result 只能解释为 system-level utility。
 
 第六，M1 的 guard 当前只验证 plan 非空，不机械判定 plan 是否包含被禁止的 structured content。需要保留 prompt/response 并进行 contamination audit。
 
@@ -863,22 +882,24 @@ all run manifests and raw logs
 
 第十，复用已有 planning output 会移除 planning variance 和部分 planning cost。fresh 与 reused runs 必须分开分析。
 
-第十一，M2 adapter 当前没有把 planning token usage 自动合并进 coder token usage。若直接比较 `workflow_token_usage`，会低估 M2 end-to-end cost。
+第十一，M2/M3 adapter 当前没有把 planning token usage 自动合并进 coder token usage。若直接比较 `workflow_token_usage`，会低估 M2/M3 end-to-end cost。
 
 ## 20. 推荐论文表述
 
 英文表述：
 
 ```text
-To evaluate the downstream utility of the planning agent, we compare three methods
+To evaluate the downstream utility of the planning agent, we compare four methods
 that start from the same protocol-fact and target-profile sources: a compact direct
 coding baseline without an explicit planning artifact (FS-Direct-Coder), a
-natural-language planning baseline (NL-Plan-Code), and the full SpecForge pipeline,
+natural-language planning baseline (NL-Plan-Code), a one-shot structured planning
+baseline that emits an implementation plan before the same deterministic specs compiler,
+and the full SpecForge pipeline,
 which produces schema-constrained module-, file-, and function-level protocol specs
 before code generation. We evaluate these methods on the MQTT minimum broker profile,
 using final compilation, required MQTT behavior scenarios, and end-to-end success as
 primary outcomes. The comparison is intentionally system-level: the full
-pipeline includes spec validation and deterministic header lowering, whereas the
+pipeline includes staged spec validation and deterministic header lowering, whereas the
 baselines use pair-wise header/source generation and bounded generic C repair.
 Accordingly, field-level attribution is studied separately through specification-form
 ablation. Because the present experiment is limited to MQTT, we do not claim
@@ -888,13 +909,14 @@ cross-protocol generalizability.
 中文表述：
 
 ```text
-为评估 planning agent 的下游效用，我们比较三种从相同 protocol facts 和 target profile
+为评估 planning agent 的下游效用，我们比较四种从相同 protocol facts 和 target profile
 来源出发的方法：不生成显式 planning artifact 的 compact direct-coding baseline
-（FS-Direct-Coder）、自然语言 planning baseline（NL-Plan-Code），以及在代码生成前产生
+（FS-Direct-Coder）、自然语言 planning baseline（NL-Plan-Code）、先一次性生成 implementation
+plan 再经相同 deterministic specs compiler 的 One-shot Structured Planning，以及在代码生成前产生
 schema-constrained module/file/function-level protocol specs 的完整 SpecForge pipeline。
 实验只覆盖 MQTT minimum broker profile，并以 final compile、required MQTT behavior scenarios
 和 end-to-end success 为主要指标。该比较是 system-level evaluation：完整 pipeline 包含
-spec validation 和 deterministic header lowering，而 baseline 使用 pair-wise header/source
+staged spec validation 和 deterministic header lowering，而 direct-coding baselines 使用 pair-wise header/source
 generation 和 Bounded Generic C Repair。因此，单字段贡献由独立的 specification-form
 ablation 实验分析，当前结果不主张具有跨协议 generalizability。
 ```
@@ -932,12 +954,22 @@ python3 -m evaluation.planning_utility.run_matrix \
 ```bash
 python3 -m evaluation.planning_utility.run_matrix \
   --protocol mqtt \
+  --method one-shot-structured-planning \
+  --max-repair-rounds 3 \
+  --api-key-env ALI_API
+```
+
+运行单个 fresh M3：
+
+```bash
+python3 -m evaluation.planning_utility.run_matrix \
+  --protocol mqtt \
   --method full-specforge \
   --max-repair-rounds 3 \
   --api-key-env ALI_API
 ```
 
-运行单次 MQTT 三方法矩阵：
+运行单次 MQTT 四方法矩阵：
 
 ```bash
 python3 -m evaluation.planning_utility.run_matrix \

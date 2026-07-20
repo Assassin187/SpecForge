@@ -10,11 +10,12 @@ from agent.coder.llm_client import FixedQwenClient
 from .baseline_runner import BASELINE_METHODS, FSDirectCoderRunner, NLPlanCodeRunner
 from .configs import DEFAULT_OUTPUT_ROOT, PROTOCOLS, ProtocolConfig, rel_to_repo
 from .full_specforge_adapter import run_full_specforge
+from .one_shot_structured import METHOD_ONE_SHOT, run_one_shot_structured
 from .requirements import write_json
 
 
 METHOD_FULL = "full-specforge"
-METHODS = (*BASELINE_METHODS, METHOD_FULL)
+METHODS = (*BASELINE_METHODS, METHOD_FULL, METHOD_ONE_SHOT)
 
 
 def _parse_planning_dirs(values: list[str]) -> dict[str, Path]:
@@ -64,6 +65,13 @@ def _run_method(
             api_key_env=api_key_env,
             max_repair_rounds=max_repair_rounds,
             existing_planning_dir=full_planning_dirs.get(config.protocol),
+        )
+    if method == METHOD_ONE_SHOT:
+        return run_one_shot_structured(
+            config,
+            method_dir,
+            api_key_env=api_key_env,
+            max_repair_rounds=max_repair_rounds,
         )
     raise ValueError(f"Unsupported method: {method}")
 
@@ -122,7 +130,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--method", action="append", choices=METHODS, help="Method(s) to run; default: all")
     parser.add_argument("--output-root", default=str(DEFAULT_OUTPUT_ROOT))
     parser.add_argument("--api-key-env", default="ALI_API")
-    parser.add_argument("--max-repair-rounds", type=int, default=3, help="Repair rounds for full-specforge only")
+    parser.add_argument("--max-repair-rounds", type=int, default=3, help="Repair rounds for full-specforge and one-shot structured planning")
     parser.add_argument("--max-repair-calls", type=int, default=6, help="Bounded generic C repair calls for fs-direct-coder and nl-plan-code")
     parser.add_argument("--full-planning-dir", action="append", default=[], help="Existing Full SpecForge planning run as protocol=PATH")
     parser.add_argument("--fail-on-method-failure", action="store_true")

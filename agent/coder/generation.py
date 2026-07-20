@@ -512,6 +512,12 @@ class ProjectGenerator:
                 mapping[normalize_repo_path(file_path)] = module
         return mapping
 
+    def _llm_metadata(self) -> dict[str, str]:
+        return {
+            "model": str(getattr(self.llm_client, "model", "unknown")),
+            "base_url": str(getattr(self.llm_client, "base_url", "")),
+        }
+
     def _write_file(self, relative_path: str, content: str) -> Path:
         target = self.project_dir / relative_path
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -582,7 +588,7 @@ class ProjectGenerator:
         validate_rendered_headers_compile(self.bundle, self.logs.root / "rendered_header_checks")
         if self.bundle.has_errors():
             manifest = {
-                "model": "qwen3-max-2026-01-23",
+                **self._llm_metadata(),
                 "llm_client": "agent.coder.llm_client.chat_with_llm",
                 "output_dir": str(self.output_dir),
                 "project_dir": str(self.project_dir),
@@ -795,7 +801,7 @@ class ProjectGenerator:
                 + "\n",
             )
         manifest = {
-            "model": "qwen3-max-2026-01-23",
+            **self._llm_metadata(),
             "llm_client": "agent.coder.llm_client.chat_with_llm",
             "output_dir": str(self.output_dir),
             "project_dir": str(self.project_dir),
@@ -876,7 +882,7 @@ class ProjectGenerator:
         success = compile_result.returncode == 0
         manifest = {
             "mode": "repair_existing",
-            "model": "qwen3-max-2026-01-23",
+            **self._llm_metadata(),
             "spec_root": str(self.bundle.spec_root),
             "source_project_dir": str(source_project_dir),
             "project_dir": str(self.project_dir),

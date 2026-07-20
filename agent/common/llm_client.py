@@ -96,6 +96,7 @@ def chat_with_llm_with_usage(
     delay: int = DEFAULT_RETRY_DELAY,
     attempts: int = DEFAULT_RETRY_ATTEMPTS,
     api_key_env: str = DEFAULT_API_KEY_ENV,
+    base_url: str = QWEN_BASE_URL,
 ) -> LLMResponse:
     api_key = os.getenv(api_key_env)
     if not api_key:
@@ -103,7 +104,7 @@ def chat_with_llm_with_usage(
 
     client = OpenAI(
         api_key=api_key,
-        base_url=QWEN_BASE_URL,
+        base_url=base_url,
     )
 
     for attempt in range(attempts):
@@ -114,8 +115,9 @@ def chat_with_llm_with_usage(
                 "top_p": top_p,
                 "temperature": temperature,
                 "stream": is_stream,
-                "extra_body": {"enable_thinking": enable_thinking},
             }
+            if base_url == QWEN_BASE_URL or enable_thinking:
+                request_kwargs["extra_body"] = {"enable_thinking": enable_thinking}
             if max_completion_tokens is not None:
                 request_kwargs["max_tokens"] = max_completion_tokens
             if is_stream:
@@ -161,6 +163,7 @@ def chat_with_llm(
     delay: int = DEFAULT_RETRY_DELAY,
     attempts: int = DEFAULT_RETRY_ATTEMPTS,
     api_key_env: str = DEFAULT_API_KEY_ENV,
+    base_url: str = QWEN_BASE_URL,
 ) -> str:
     return chat_with_llm_with_usage(
         model,
@@ -173,12 +176,20 @@ def chat_with_llm(
         delay=delay,
         attempts=attempts,
         api_key_env=api_key_env,
+        base_url=base_url,
     ).content
 
 
 class FixedQwenClient:
-    def __init__(self, api_key_env: str = DEFAULT_API_KEY_ENV) -> None:
+    def __init__(
+        self,
+        api_key_env: str = DEFAULT_API_KEY_ENV,
+        model: str = FIXED_MODEL,
+        base_url: str = QWEN_BASE_URL,
+    ) -> None:
         self.api_key_env = api_key_env
+        self.model = model
+        self.base_url = base_url
 
     def ensure_ready(self) -> None:
         if not os.getenv(self.api_key_env):
@@ -190,7 +201,7 @@ class FixedQwenClient:
     def generate_with_usage(self, request: LLMRequest) -> LLMResponse:
         self.ensure_ready()
         response = chat_with_llm_with_usage(
-            FIXED_MODEL,
+            self.model,
             request.messages,
             top_p=request.top_p,
             temperature=request.temperature,
@@ -198,6 +209,7 @@ class FixedQwenClient:
             enable_thinking=request.enable_thinking,
             max_completion_tokens=request.max_completion_tokens,
             api_key_env=self.api_key_env,
+            base_url=self.base_url,
         )
         if not isinstance(response, LLMResponse):
             raise RuntimeError(f"Expected LLMResponse from chat_with_llm_with_usage, got {type(response)!r}")
@@ -206,8 +218,8 @@ class FixedQwenClient:
     def self_check(self) -> dict[str, Any]:
         self.ensure_ready()
         return {
-            "model": FIXED_MODEL,
-            "base_url": QWEN_BASE_URL,
+            "model": self.model,
+            "base_url": self.base_url,
             "api_key_env": self.api_key_env,
             "api_key_set": bool(os.getenv(self.api_key_env)),
         }

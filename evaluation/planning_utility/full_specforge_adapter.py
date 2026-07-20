@@ -174,6 +174,9 @@ def run_full_specforge(
     max_repair_rounds: int,
     existing_planning_dir: Path | None = None,
     diagnostic_only: bool = False,
+    method: str = "full-specforge",
+    skip_planning_validate: bool = False,
+    planning_is_fresh: bool = False,
 ) -> dict[str, Any]:
     output_dir.mkdir(parents=True, exist_ok=True)
     log_dir = output_dir / "logs"
@@ -188,7 +191,7 @@ def run_full_specforge(
     write_json(allowed_root / "runtime_contract.json", runtime_contract)
     summary = {
         "schema_version": "planning_utility_full_specforge_summary/v1",
-        "method": "full-specforge",
+        "method": method,
         "protocol": config.protocol,
         "facts_path": rel_to_repo(config.facts_path),
         "target_profile_path": rel_to_repo(config.target_profile_path),
@@ -197,6 +200,7 @@ def run_full_specforge(
         "binary_name": config.binary_name,
         "argv_contract": config.argv_contract,
         "planning_status": "not_run",
+        "planning_is_fresh": planning_is_fresh,
         "planning_run_status": "not_run",
         "planning_validation_passed": None,
         "qualification_passed": None,
@@ -304,27 +308,32 @@ def run_full_specforge(
     summary["candidate_through_reason"] = "physical_nonempty_specs" if summary["specs_generated"] else "missing_or_empty_specs"
     summary["nonfatal_no_specs_count"] = int(not summary["fatal"] and not summary["specs_generated"])
 
-    with tempfile.TemporaryDirectory(prefix="specforge_planning_validate_") as validate_tmp:
-        validation_run = Path(validate_tmp) / "planning_run"
-        shutil.copytree(planning_run, validation_run)
-        _rewrite_copied_manifest_paths(validation_run)
-        validate_cmd = [
-            sys.executable,
-            "-m",
-            "agent.planning",
-            "validate",
-            "--run-dir",
-            str(validation_run),
-        ]
-        validate = _run_command(validate_cmd, log_dir=log_dir, name="02_planning_validate")
-        validated_manifest_path = validation_run / "_planning" / "run_manifest.json"
-        validated_manifest = read_json(validated_manifest_path) if validated_manifest_path.is_file() else plan_manifest
-        if validated_manifest_path.is_file():
-            shutil.copy2(validated_manifest_path, log_dir / "validated_run_manifest.json")
-        validated_diagnostics = validation_run / "_planning" / "diagnostics.json"
-        if validated_diagnostics.is_file():
-            shutil.copy2(validated_diagnostics, log_dir / "validated_diagnostics.json")
-    summary["command_log"].append({key: validate[key] for key in ("name", "command", "returncode", "started_at", "ended_at", "stdout_path", "stderr_path")})
+    if skip_planning_validate:
+        validate = {"returncode": 0}
+        validated_manifest = plan_manifest
+        summary["planning_validation_skipped"] = True
+    else:
+        with tempfile.TemporaryDirectory(prefix="specforge_planning_validate_") as validate_tmp:
+            validation_run = Path(validate_tmp) / "planning_run"
+            shutil.copytree(planning_run, validation_run)
+            _rewrite_copied_manifest_paths(validation_run)
+            validate_cmd = [
+                sys.executable,
+                "-m",
+                "agent.planning",
+                "validate",
+                "--run-dir",
+                str(validation_run),
+            ]
+            validate = _run_command(validate_cmd, log_dir=log_dir, name="02_planning_validate")
+            validated_manifest_path = validation_run / "_planning" / "run_manifest.json"
+            validated_manifest = read_json(validated_manifest_path) if validated_manifest_path.is_file() else plan_manifest
+            if validated_manifest_path.is_file():
+                shutil.copy2(validated_manifest_path, log_dir / "validated_run_manifest.json")
+            validated_diagnostics = validation_run / "_planning" / "diagnostics.json"
+            if validated_diagnostics.is_file():
+                shutil.copy2(validated_diagnostics, log_dir / "validated_diagnostics.json")
+        summary["command_log"].append({key: validate[key] for key in ("name", "command", "returncode", "started_at", "ended_at", "stdout_path", "stderr_path")})
     summary["planning_validation_passed"] = validated_manifest.get("planning_validation_passed")
     summary["qualification_passed"] = bool(validated_manifest.get("qualification_passed"))
     summary["coder_loader_passed"] = validated_manifest.get("coder_loader_passed")
@@ -346,7 +355,7 @@ def run_full_specforge(
     elif not summary["qualification_passed"] or validate["returncode"] != 0:
         summary["planning_status"] = "candidate_only"
     else:
-        summary["planning_status"] = "passed_existing" if existing_planning_dir is not None else "passed"
+        summary["planning_status"] = "passed_existing" if existing_planning_dir is not None and not planning_is_fresh else "passed"
     if not summary["coder_release_eligible"] and not diagnostic_only:
         summary["readiness_status"] = "coder_release_blocked"
         blockers = ", ".join(map(str, summary["coder_release_blockers"]))

@@ -21,7 +21,7 @@ from .repair_diagnostics import CATEGORIES, create_diagnostic_snapshot, iter_pro
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_RUBRIC = PROJECT_ROOT / "evaluation/planning_utility/target_profiles/mqtt_obligation_rubric.json"
 BASELINE_GLOB = "evaluation/planning_utility/out/20260706_mqtt_after_repair_round_*/*/mqtt/*/coder_out/_agent_logs/repair_summary.json"
-M2_SEQUENCES = (
+M3_SEQUENCES = (
     ("S", PROJECT_ROOT / "agent/planning/out/candidate_through_stability_20260715", "stability_run_*"),
     ("R", PROJECT_ROOT / "agent/planning/out/final_root_fix_pilot_20260715", "root_fix_run_*"),
     (
@@ -134,9 +134,9 @@ def _baseline_runs() -> list[dict[str, Any]]:
     return runs
 
 
-def _m2_runs() -> list[dict[str, Any]]:
+def _m3_runs() -> list[dict[str, Any]]:
     runs: list[dict[str, Any]] = []
-    for prefix, root, pattern in M2_SEQUENCES:
+    for prefix, root, pattern in M3_SEQUENCES:
         for run_dir in sorted(root.glob(pattern)):
             manifests = sorted(run_dir.glob("coder_original/mqtt_repair_*/_agent_logs/*repair_manifest.json"))
             if len(manifests) != 1:
@@ -148,7 +148,7 @@ def _m2_runs() -> list[dict[str, Any]]:
             repair = data.get("repair") or {}
             runs.append(
                 {
-                    "run_id": f"M2-{prefix}{number}",
+                    "run_id": f"M3-{prefix}{number}",
                     "method": "full-specforge",
                     "pre_project": Path(data["source_project_dir"]),
                     "post_project": Path(data["project_dir"]),
@@ -165,7 +165,7 @@ def _m2_runs() -> list[dict[str, Any]]:
 
 
 def discover_runs() -> list[dict[str, Any]]:
-    runs = [*_baseline_runs(), *_m2_runs()]
+    runs = [*_baseline_runs(), *_m3_runs()]
     counts = defaultdict(int)
     for run in runs:
         counts[run["method"]] += 1

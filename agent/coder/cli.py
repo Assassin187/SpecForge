@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 
 from .generation import DEFAULT_MAX_REPAIR_ROUNDS, ProjectGenerator, _bundle_binary_name
-from .llm_client import FixedQwenClient
+from .llm_client import FIXED_MODEL, QWEN_BASE_URL, FixedQwenClient
 from .protocol_behavior_val import _RUNNERS, verify_protocol_behavior
 from .specs import load_spec_bundle, load_spec_bundle_from_root, validate_rendered_headers_compile
 from .verifier import ProjectVerifier
@@ -42,7 +42,9 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Stop after code generation without building the project, repairing, or running behavior checks.",
     )
-    parser.add_argument("--api-key-env", default="ALI_API", help="Environment variable containing the Qwen API key")
+    parser.add_argument("--api-key-env", default="ALI_API", help="Environment variable containing the model API key")
+    parser.add_argument("--model", default=FIXED_MODEL, help="OpenAI-compatible chat-completions model identifier")
+    parser.add_argument("--base-url", default=QWEN_BASE_URL, help="OpenAI-compatible API base URL")
 
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("validate", help="Validate specs and LLM adapter prerequisites")
@@ -95,7 +97,7 @@ def cmd_validate(args: argparse.Namespace) -> int:
         print(f"ERROR spec_discovery: {exc}")
         return 1
     validate_rendered_headers_compile(bundle, _rendered_header_check_root(args, bundle))
-    llm = FixedQwenClient(args.api_key_env)
+    llm = FixedQwenClient(args.api_key_env, args.model, args.base_url)
     _print_diagnostics(bundle)
     try:
         status = llm.self_check()
@@ -118,7 +120,7 @@ def cmd_generate(args: argparse.Namespace) -> int:
         return 1
     generator = ProjectGenerator(
         bundle=bundle,
-        llm_client=FixedQwenClient(args.api_key_env),
+        llm_client=FixedQwenClient(args.api_key_env, args.model, args.base_url),
         output_dir=_path(args.output_dir) if args.output_dir else default_output_dir(bundle),
         max_repair_rounds=args.max_repair_rounds,
         skip_repair=args.skip_repair,
@@ -179,7 +181,7 @@ def cmd_repair(args: argparse.Namespace) -> int:
 
     generator = ProjectGenerator(
         bundle=bundle,
-        llm_client=FixedQwenClient(args.api_key_env),
+        llm_client=FixedQwenClient(args.api_key_env, args.model, args.base_url),
         output_dir=args.project_dir.parent,
         max_repair_rounds=args.max_repair_rounds,
     )
