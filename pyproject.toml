@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "specforge"
+version = "0.1.0"
+description = "Protocol documents to three-layer Specs to a verified MQTT broker"
+requires-python = ">=3.11"
+dependencies = ["openai==1.97.0", "jsonschema==4.24.0"]
+
+[project.scripts]
+specforge = "specforge.__main__:main"
+
+[tool.setuptools]
+packages = ["specforge"]
+

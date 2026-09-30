@@ -1,0 +1,23 @@
+#pragma once
+
+#include "../network/tcp_server.h"
+
+#include <stdbool.h>
+#include <stdint.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+typedef struct mqtt_broker mqtt_broker_t;
+
+mqtt_broker_t* mqtt_broker_create(uint16_t port);
+void mqtt_broker_destroy(mqtt_broker_t* b);
+
+bool mqtt_broker_start(mqtt_broker_t* b);
+void mqtt_broker_run(mqtt_broker_t* b);
+void mqtt_broker_stop(mqtt_broker_t* b);
+
+#ifdef __cplusplus
+}
+#endif

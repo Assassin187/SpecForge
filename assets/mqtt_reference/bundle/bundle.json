@@ -1,0 +1,675 @@
+{
+  "schema_version": 1,
+  "revision": 1,
+  "origin": "manual_reference",
+  "protocol": "MQTT",
+  "version": "3.1.1",
+  "role": "BROKER",
+  "runtime_contract": {
+    "binary_name": "mqtt_broker",
+    "argv_contract": "./mqtt_broker <port>"
+  },
+  "module": "module_spec.json",
+  "files": [
+    {
+      "spec": "files/mqtt__broker__broker.json",
+      "trace_id": "mqtt/broker/broker",
+      "path": "src/broker/broker.c"
+    },
+    {
+      "spec": "files/mqtt__broker__session.json",
+      "trace_id": "mqtt/broker/session",
+      "path": "src/broker/session.c"
+    },
+    {
+      "spec": "files/mqtt__broker__session_manager.json",
+      "trace_id": "mqtt/broker/session_manager",
+      "path": "src/broker/session_manager.c"
+    },
+    {
+      "spec": "files/mqtt__main.json",
+      "trace_id": "mqtt/main",
+      "path": "src/main.c"
+    },
+    {
+      "spec": "files/mqtt__network__connection.json",
+      "trace_id": "mqtt/network/connection",
+      "path": "src/network/connection.c"
+    },
+    {
+      "spec": "files/mqtt__network__tcp_server.json",
+      "trace_id": "mqtt/network/tcp_server",
+      "path": "src/network/tcp_server.c"
+    },
+    {
+      "spec": "files/mqtt__protocol__mqtt_decoder.json",
+      "trace_id": "mqtt/protocol/mqtt_decoder",
+      "path": "src/protocol/mqtt_decoder.c"
+    },
+    {
+      "spec": "files/mqtt__protocol__mqtt_encoder.json",
+      "trace_id": "mqtt/protocol/mqtt_encoder",
+      "path": "src/protocol/mqtt_encoder.c"
+    },
+    {
+      "spec": "files/mqtt__protocol__mqtt_packet.json",
+      "trace_id": "mqtt/protocol/mqtt_packet",
+      "path": "src/protocol/mqtt_packet.c"
+    },
+    {
+      "spec": "files/mqtt__router__message_router.json",
+      "trace_id": "mqtt/router/message_router",
+      "path": "src/router/message_router.c"
+    },
+    {
+      "spec": "files/mqtt__topic__topic_tree.json",
+      "trace_id": "mqtt/topic/topic_tree",
+      "path": "src/topic/topic_tree.c"
+    }
+  ],
+  "functions": [
+    {
+      "spec": "functions/mqtt/broker/broker/handle_packet.json",
+      "trace_id": "mqtt/broker/broker/handle_packet",
+      "name": "handle_packet"
+    },
+    {
+      "spec": "functions/mqtt/broker/broker/mqtt_broker_create.json",
+      "trace_id": "mqtt/broker/broker/mqtt_broker_create",
+      "name": "mqtt_broker_create"
+    },
+    {
+      "spec": "functions/mqtt/broker/broker/mqtt_broker_destroy.json",
+      "trace_id": "mqtt/broker/broker/mqtt_broker_destroy",
+      "name": "mqtt_broker_destroy"
+    },
+    {
+      "spec": "functions/mqtt/broker/broker/mqtt_broker_run.json",
+      "trace_id": "mqtt/broker/broker/mqtt_broker_run",
+      "name": "mqtt_broker_run"
+    },
+    {
+      "spec": "functions/mqtt/broker/broker/mqtt_broker_start.json",
+      "trace_id": "mqtt/broker/broker/mqtt_broker_start",
+      "name": "mqtt_broker_start"
+    },
+    {
+      "spec": "functions/mqtt/broker/broker/mqtt_broker_stop.json",
+      "trace_id": "mqtt/broker/broker/mqtt_broker_stop",
+      "name": "mqtt_broker_stop"
+    },
+    {
+      "spec": "functions/mqtt/broker/broker/on_accept_cb.json",
+      "trace_id": "mqtt/broker/broker/on_accept_cb",
+      "name": "on_accept_cb"
+    },
+    {
+      "spec": "functions/mqtt/broker/broker/on_close_cb.json",
+      "trace_id": "mqtt/broker/broker/on_close_cb",
+      "name": "on_close_cb"
+    },
+    {
+      "spec": "functions/mqtt/broker/broker/on_data_cb.json",
+      "trace_id": "mqtt/broker/broker/on_data_cb",
+      "name": "on_data_cb"
+    },
+    {
+      "spec": "functions/mqtt/broker/broker/on_packet.json",
+      "trace_id": "mqtt/broker/broker/on_packet",
+      "name": "on_packet"
+    },
+    {
+      "spec": "functions/mqtt/broker/session/mqtt_session_client_id.json",
+      "trace_id": "mqtt/broker/session/mqtt_session_client_id",
+      "name": "mqtt_session_client_id"
+    },
+    {
+      "spec": "functions/mqtt/broker/session/mqtt_session_connected.json",
+      "trace_id": "mqtt/broker/session/mqtt_session_connected",
+      "name": "mqtt_session_connected"
+    },
+    {
+      "spec": "functions/mqtt/broker/session/mqtt_session_connection.json",
+      "trace_id": "mqtt/broker/session/mqtt_session_connection",
+      "name": "mqtt_session_connection"
+    },
+    {
+      "spec": "functions/mqtt/broker/session/mqtt_session_create.json",
+      "trace_id": "mqtt/broker/session/mqtt_session_create",
+      "name": "mqtt_session_create"
+    },
+    {
+      "spec": "functions/mqtt/broker/session/mqtt_session_destroy.json",
+      "trace_id": "mqtt/broker/session/mqtt_session_destroy",
+      "name": "mqtt_session_destroy"
+    },
+    {
+      "spec": "functions/mqtt/broker/session/mqtt_session_id.json",
+      "trace_id": "mqtt/broker/session/mqtt_session_id",
+      "name": "mqtt_session_id"
+    },
+    {
+      "spec": "functions/mqtt/broker/session/mqtt_session_mark_connected.json",
+      "trace_id": "mqtt/broker/session/mqtt_session_mark_connected",
+      "name": "mqtt_session_mark_connected"
+    },
+    {
+      "spec": "functions/mqtt/broker/session/mqtt_session_send.json",
+      "trace_id": "mqtt/broker/session/mqtt_session_send",
+      "name": "mqtt_session_send"
+    },
+    {
+      "spec": "functions/mqtt/broker/session_manager/ensure_cap.json",
+      "trace_id": "mqtt/broker/session_manager/ensure_cap",
+      "name": "ensure_cap"
+    },
+    {
+      "spec": "functions/mqtt/broker/session_manager/mqtt_session_manager_add.json",
+      "trace_id": "mqtt/broker/session_manager/mqtt_session_manager_add",
+      "name": "mqtt_session_manager_add"
+    },
+    {
+      "spec": "functions/mqtt/broker/session_manager/mqtt_session_manager_create.json",
+      "trace_id": "mqtt/broker/session_manager/mqtt_session_manager_create",
+      "name": "mqtt_session_manager_create"
+    },
+    {
+      "spec": "functions/mqtt/broker/session_manager/mqtt_session_manager_destroy.json",
+      "trace_id": "mqtt/broker/session_manager/mqtt_session_manager_destroy",
+      "name": "mqtt_session_manager_destroy"
+    },
+    {
+      "spec": "functions/mqtt/broker/session_manager/mqtt_session_manager_get.json",
+      "trace_id": "mqtt/broker/session_manager/mqtt_session_manager_get",
+      "name": "mqtt_session_manager_get"
+    },
+    {
+      "spec": "functions/mqtt/broker/session_manager/mqtt_session_manager_remove.json",
+      "trace_id": "mqtt/broker/session_manager/mqtt_session_manager_remove",
+      "name": "mqtt_session_manager_remove"
+    },
+    {
+      "spec": "functions/mqtt/main/main.json",
+      "trace_id": "mqtt/main/main",
+      "name": "main"
+    },
+    {
+      "spec": "functions/mqtt/network/connection/ensure_in_cap.json",
+      "trace_id": "mqtt/network/connection/ensure_in_cap",
+      "name": "ensure_in_cap"
+    },
+    {
+      "spec": "functions/mqtt/network/connection/mqtt_connection_close.json",
+      "trace_id": "mqtt/network/connection/mqtt_connection_close",
+      "name": "mqtt_connection_close"
+    },
+    {
+      "spec": "functions/mqtt/network/connection/mqtt_connection_closed.json",
+      "trace_id": "mqtt/network/connection/mqtt_connection_closed",
+      "name": "mqtt_connection_closed"
+    },
+    {
+      "spec": "functions/mqtt/network/connection/mqtt_connection_create.json",
+      "trace_id": "mqtt/network/connection/mqtt_connection_create",
+      "name": "mqtt_connection_create"
+    },
+    {
+      "spec": "functions/mqtt/network/connection/mqtt_connection_destroy.json",
+      "trace_id": "mqtt/network/connection/mqtt_connection_destroy",
+      "name": "mqtt_connection_destroy"
+    },
+    {
+      "spec": "functions/mqtt/network/connection/mqtt_connection_fd.json",
+      "trace_id": "mqtt/network/connection/mqtt_connection_fd",
+      "name": "mqtt_connection_fd"
+    },
+    {
+      "spec": "functions/mqtt/network/connection/mqtt_connection_flush.json",
+      "trace_id": "mqtt/network/connection/mqtt_connection_flush",
+      "name": "mqtt_connection_flush"
+    },
+    {
+      "spec": "functions/mqtt/network/connection/mqtt_connection_in_consume.json",
+      "trace_id": "mqtt/network/connection/mqtt_connection_in_consume",
+      "name": "mqtt_connection_in_consume"
+    },
+    {
+      "spec": "functions/mqtt/network/connection/mqtt_connection_in_data.json",
+      "trace_id": "mqtt/network/connection/mqtt_connection_in_data",
+      "name": "mqtt_connection_in_data"
+    },
+    {
+      "spec": "functions/mqtt/network/connection/mqtt_connection_in_len.json",
+      "trace_id": "mqtt/network/connection/mqtt_connection_in_len",
+      "name": "mqtt_connection_in_len"
+    },
+    {
+      "spec": "functions/mqtt/network/connection/mqtt_connection_peer.json",
+      "trace_id": "mqtt/network/connection/mqtt_connection_peer",
+      "name": "mqtt_connection_peer"
+    },
+    {
+      "spec": "functions/mqtt/network/connection/mqtt_connection_read.json",
+      "trace_id": "mqtt/network/connection/mqtt_connection_read",
+      "name": "mqtt_connection_read"
+    },
+    {
+      "spec": "functions/mqtt/network/connection/mqtt_connection_send.json",
+      "trace_id": "mqtt/network/connection/mqtt_connection_send",
+      "name": "mqtt_connection_send"
+    },
+    {
+      "spec": "functions/mqtt/network/connection/mqtt_connection_set_peer.json",
+      "trace_id": "mqtt/network/connection/mqtt_connection_set_peer",
+      "name": "mqtt_connection_set_peer"
+    },
+    {
+      "spec": "functions/mqtt/network/connection/mqtt_connection_want_write.json",
+      "trace_id": "mqtt/network/connection/mqtt_connection_want_write",
+      "name": "mqtt_connection_want_write"
+    },
+    {
+      "spec": "functions/mqtt/network/tcp_server/accept_loop.json",
+      "trace_id": "mqtt/network/tcp_server/accept_loop",
+      "name": "accept_loop"
+    },
+    {
+      "spec": "functions/mqtt/network/tcp_server/close_connection.json",
+      "trace_id": "mqtt/network/tcp_server/close_connection",
+      "name": "close_connection"
+    },
+    {
+      "spec": "functions/mqtt/network/tcp_server/find_conn.json",
+      "trace_id": "mqtt/network/tcp_server/find_conn",
+      "name": "find_conn"
+    },
+    {
+      "spec": "functions/mqtt/network/tcp_server/mqtt_tcp_server_create.json",
+      "trace_id": "mqtt/network/tcp_server/mqtt_tcp_server_create",
+      "name": "mqtt_tcp_server_create"
+    },
+    {
+      "spec": "functions/mqtt/network/tcp_server/mqtt_tcp_server_destroy.json",
+      "trace_id": "mqtt/network/tcp_server/mqtt_tcp_server_destroy",
+      "name": "mqtt_tcp_server_destroy"
+    },
+    {
+      "spec": "functions/mqtt/network/tcp_server/mqtt_tcp_server_run.json",
+      "trace_id": "mqtt/network/tcp_server/mqtt_tcp_server_run",
+      "name": "mqtt_tcp_server_run"
+    },
+    {
+      "spec": "functions/mqtt/network/tcp_server/mqtt_tcp_server_start.json",
+      "trace_id": "mqtt/network/tcp_server/mqtt_tcp_server_start",
+      "name": "mqtt_tcp_server_start"
+    },
+    {
+      "spec": "functions/mqtt/network/tcp_server/mqtt_tcp_server_stop.json",
+      "trace_id": "mqtt/network/tcp_server/mqtt_tcp_server_stop",
+      "name": "mqtt_tcp_server_stop"
+    },
+    {
+      "spec": "functions/mqtt/network/tcp_server/remove_conn.json",
+      "trace_id": "mqtt/network/tcp_server/remove_conn",
+      "name": "remove_conn"
+    },
+    {
+      "spec": "functions/mqtt/network/tcp_server/set_nonblocking.json",
+      "trace_id": "mqtt/network/tcp_server/set_nonblocking",
+      "name": "set_nonblocking"
+    },
+    {
+      "spec": "functions/mqtt/network/tcp_server/setup_epoll.json",
+      "trace_id": "mqtt/network/tcp_server/setup_epoll",
+      "name": "setup_epoll"
+    },
+    {
+      "spec": "functions/mqtt/network/tcp_server/setup_listen_socket.json",
+      "trace_id": "mqtt/network/tcp_server/setup_listen_socket",
+      "name": "setup_listen_socket"
+    },
+    {
+      "spec": "functions/mqtt/network/tcp_server/sockaddr_to_string.json",
+      "trace_id": "mqtt/network/tcp_server/sockaddr_to_string",
+      "name": "sockaddr_to_string"
+    },
+    {
+      "spec": "functions/mqtt/network/tcp_server/update_interest.json",
+      "trace_id": "mqtt/network/tcp_server/update_interest",
+      "name": "update_interest"
+    },
+    {
+      "spec": "functions/mqtt/protocol/mqtt_decoder/decode_one.json",
+      "trace_id": "mqtt/protocol/mqtt_decoder/decode_one",
+      "name": "decode_one"
+    },
+    {
+      "spec": "functions/mqtt/protocol/mqtt_decoder/mqtt_decoder_feed.json",
+      "trace_id": "mqtt/protocol/mqtt_decoder/mqtt_decoder_feed",
+      "name": "mqtt_decoder_feed"
+    },
+    {
+      "spec": "functions/mqtt/protocol/mqtt_decoder/read_string.json",
+      "trace_id": "mqtt/protocol/mqtt_decoder/read_string",
+      "name": "read_string"
+    },
+    {
+      "spec": "functions/mqtt/protocol/mqtt_decoder/read_u16.json",
+      "trace_id": "mqtt/protocol/mqtt_decoder/read_u16",
+      "name": "read_u16"
+    },
+    {
+      "spec": "functions/mqtt/protocol/mqtt_decoder/try_parse_remaining_length.json",
+      "trace_id": "mqtt/protocol/mqtt_decoder/try_parse_remaining_length",
+      "name": "try_parse_remaining_length"
+    },
+    {
+      "spec": "functions/mqtt/protocol/mqtt_encoder/make_bytes.json",
+      "trace_id": "mqtt/protocol/mqtt_encoder/make_bytes",
+      "name": "make_bytes"
+    },
+    {
+      "spec": "functions/mqtt/protocol/mqtt_encoder/mqtt_bytes_free.json",
+      "trace_id": "mqtt/protocol/mqtt_encoder/mqtt_bytes_free",
+      "name": "mqtt_bytes_free"
+    },
+    {
+      "spec": "functions/mqtt/protocol/mqtt_encoder/mqtt_encode_connack.json",
+      "trace_id": "mqtt/protocol/mqtt_encoder/mqtt_encode_connack",
+      "name": "mqtt_encode_connack"
+    },
+    {
+      "spec": "functions/mqtt/protocol/mqtt_encoder/mqtt_encode_pingresp.json",
+      "trace_id": "mqtt/protocol/mqtt_encoder/mqtt_encode_pingresp",
+      "name": "mqtt_encode_pingresp"
+    },
+    {
+      "spec": "functions/mqtt/protocol/mqtt_encoder/mqtt_encode_publish_qos0.json",
+      "trace_id": "mqtt/protocol/mqtt_encoder/mqtt_encode_publish_qos0",
+      "name": "mqtt_encode_publish_qos0"
+    },
+    {
+      "spec": "functions/mqtt/protocol/mqtt_encoder/mqtt_encode_suback.json",
+      "trace_id": "mqtt/protocol/mqtt_encoder/mqtt_encode_suback",
+      "name": "mqtt_encode_suback"
+    },
+    {
+      "spec": "functions/mqtt/protocol/mqtt_encoder/put_remaining_length.json",
+      "trace_id": "mqtt/protocol/mqtt_encoder/put_remaining_length",
+      "name": "put_remaining_length"
+    },
+    {
+      "spec": "functions/mqtt/protocol/mqtt_encoder/put_u16.json",
+      "trace_id": "mqtt/protocol/mqtt_encoder/put_u16",
+      "name": "put_u16"
+    },
+    {
+      "spec": "functions/mqtt/protocol/mqtt_encoder/remaining_length_bytes.json",
+      "trace_id": "mqtt/protocol/mqtt_encoder/remaining_length_bytes",
+      "name": "remaining_length_bytes"
+    },
+    {
+      "spec": "functions/mqtt/protocol/mqtt_packet/mqtt_packet_free.json",
+      "trace_id": "mqtt/protocol/mqtt_packet/mqtt_packet_free",
+      "name": "mqtt_packet_free"
+    },
+    {
+      "spec": "functions/mqtt/router/message_router/mqtt_message_router_create.json",
+      "trace_id": "mqtt/router/message_router/mqtt_message_router_create",
+      "name": "mqtt_message_router_create"
+    },
+    {
+      "spec": "functions/mqtt/router/message_router/mqtt_message_router_destroy.json",
+      "trace_id": "mqtt/router/message_router/mqtt_message_router_destroy",
+      "name": "mqtt_message_router_destroy"
+    },
+    {
+      "spec": "functions/mqtt/router/message_router/mqtt_message_router_publish.json",
+      "trace_id": "mqtt/router/message_router/mqtt_message_router_publish",
+      "name": "mqtt_message_router_publish"
+    },
+    {
+      "spec": "functions/mqtt/router/message_router/mqtt_message_router_remove_session.json",
+      "trace_id": "mqtt/router/message_router/mqtt_message_router_remove_session",
+      "name": "mqtt_message_router_remove_session"
+    },
+    {
+      "spec": "functions/mqtt/router/message_router/mqtt_message_router_subscribe.json",
+      "trace_id": "mqtt/router/message_router/mqtt_message_router_subscribe",
+      "name": "mqtt_message_router_subscribe"
+    },
+    {
+      "spec": "functions/mqtt/router/message_router/mqtt_message_router_unsubscribe.json",
+      "trace_id": "mqtt/router/message_router/mqtt_message_router_unsubscribe",
+      "name": "mqtt_message_router_unsubscribe"
+    },
+    {
+      "spec": "functions/mqtt/topic/topic_tree/delete_entry.json",
+      "trace_id": "mqtt/topic/topic_tree/delete_entry",
+      "name": "delete_entry"
+    },
+    {
+      "spec": "functions/mqtt/topic/topic_tree/ensure_entry_cap.json",
+      "trace_id": "mqtt/topic/topic_tree/ensure_entry_cap",
+      "name": "ensure_entry_cap"
+    },
+    {
+      "spec": "functions/mqtt/topic/topic_tree/ensure_sid_cap.json",
+      "trace_id": "mqtt/topic/topic_tree/ensure_sid_cap",
+      "name": "ensure_sid_cap"
+    },
+    {
+      "spec": "functions/mqtt/topic/topic_tree/entry_has_sid.json",
+      "trace_id": "mqtt/topic/topic_tree/entry_has_sid",
+      "name": "entry_has_sid"
+    },
+    {
+      "spec": "functions/mqtt/topic/topic_tree/entry_remove_sid.json",
+      "trace_id": "mqtt/topic/topic_tree/entry_remove_sid",
+      "name": "entry_remove_sid"
+    },
+    {
+      "spec": "functions/mqtt/topic/topic_tree/find_entry.json",
+      "trace_id": "mqtt/topic/topic_tree/find_entry",
+      "name": "find_entry"
+    },
+    {
+      "spec": "functions/mqtt/topic/topic_tree/mqtt_topic_match.json",
+      "trace_id": "mqtt/topic/topic_tree/mqtt_topic_match",
+      "name": "mqtt_topic_match"
+    },
+    {
+      "spec": "functions/mqtt/topic/topic_tree/mqtt_topic_tree_create.json",
+      "trace_id": "mqtt/topic/topic_tree/mqtt_topic_tree_create",
+      "name": "mqtt_topic_tree_create"
+    },
+    {
+      "spec": "functions/mqtt/topic/topic_tree/mqtt_topic_tree_destroy.json",
+      "trace_id": "mqtt/topic/topic_tree/mqtt_topic_tree_destroy",
+      "name": "mqtt_topic_tree_destroy"
+    },
+    {
+      "spec": "functions/mqtt/topic/topic_tree/mqtt_topic_tree_match_subscribers.json",
+      "trace_id": "mqtt/topic/topic_tree/mqtt_topic_tree_match_subscribers",
+      "name": "mqtt_topic_tree_match_subscribers"
+    },
+    {
+      "spec": "functions/mqtt/topic/topic_tree/mqtt_topic_tree_remove_session.json",
+      "trace_id": "mqtt/topic/topic_tree/mqtt_topic_tree_remove_session",
+      "name": "mqtt_topic_tree_remove_session"
+    },
+    {
+      "spec": "functions/mqtt/topic/topic_tree/mqtt_topic_tree_subscribe.json",
+      "trace_id": "mqtt/topic/topic_tree/mqtt_topic_tree_subscribe",
+      "name": "mqtt_topic_tree_subscribe"
+    },
+    {
+      "spec": "functions/mqtt/topic/topic_tree/mqtt_topic_tree_unsubscribe.json",
+      "trace_id": "mqtt/topic/topic_tree/mqtt_topic_tree_unsubscribe",
+      "name": "mqtt_topic_tree_unsubscribe"
+    },
+    {
+      "spec": "functions/mqtt/topic/topic_tree/next_level.json",
+      "trace_id": "mqtt/topic/topic_tree/next_level",
+      "name": "next_level"
+    }
+  ],
+  "headers": [
+    {
+      "path": "include/broker/broker.h",
+      "artifact": "abi/broker/broker.h"
+    },
+    {
+      "path": "include/broker/session.h",
+      "artifact": "abi/broker/session.h"
+    },
+    {
+      "path": "include/broker/session_manager.h",
+      "artifact": "abi/broker/session_manager.h"
+    },
+    {
+      "path": "include/network/connection.h",
+      "artifact": "abi/network/connection.h"
+    },
+    {
+      "path": "include/network/tcp_server.h",
+      "artifact": "abi/network/tcp_server.h"
+    },
+    {
+      "path": "include/protocol/mqtt_decoder.h",
+      "artifact": "abi/protocol/mqtt_decoder.h"
+    },
+    {
+      "path": "include/protocol/mqtt_encoder.h",
+      "artifact": "abi/protocol/mqtt_encoder.h"
+    },
+    {
+      "path": "include/protocol/mqtt_packet.h",
+      "artifact": "abi/protocol/mqtt_packet.h"
+    },
+    {
+      "path": "include/router/message_router.h",
+      "artifact": "abi/router/message_router.h"
+    },
+    {
+      "path": "include/topic/topic_tree.h",
+      "artifact": "abi/topic/topic_tree.h"
+    }
+  ],
+  "hashes": {
+    "SUMMARY.md": "baf0157d036fb9654ee3c5f8d8130169f3b67758a5f24118f78551f6d03fffb9",
+    "abi/broker/broker.h": "ae717b71102fa2f71f0f99e988e7d5f9aed3a883ce06bbe9fc25ff05d2a1104c",
+    "abi/broker/session.h": "1520015c0dc89086a001db15e6a3f079a53f02fde58fad1ba67ebd3bc7f64168",
+    "abi/broker/session_manager.h": "94abc0e996ee6b963cc17f3e67c39faa90caf1458bf1f4d20c9ad42c0f7e85da",
+    "abi/network/connection.h": "8d760ed35ea788526c6a7e8d7d6f0d89c12bda97dbb9a0fec828d917ad4af915",
+    "abi/network/tcp_server.h": "d7f0e4f0110720258c86398a1823c3178118aee254578d1b7fa78f54af465978",
+    "abi/protocol/mqtt_decoder.h": "aff687b02e387e4d8dac642c6f2d5561adea75a72ecae2ce9ad3becdca1c8fc1",
+    "abi/protocol/mqtt_encoder.h": "c284122019496cc148b93c046f038b6171dbb8afaf8b3ea1e31835df055aa0da",
+    "abi/protocol/mqtt_packet.h": "a311ebf7a6ea0eeee7a76b96e32de433960480e6ab64143afe18b66389971b9a",
+    "abi/router/message_router.h": "d9cd6a7095d1416a43894b1a3de7bc8820d0fd247ddbb122b4098b726da24925",
+    "abi/topic/topic_tree.h": "88e337060bbb64d972b9f854f302140a06f026dfdb80d48a219e0535c090c132",
+    "files/mqtt__broker__broker.json": "5117757b73773ed49338c785e7d0bbdd01e91fba30b6cce981e98d2c7324bd5c",
+    "files/mqtt__broker__session.json": "1c1834eb404c28fd036cabf16fad2372f2dfc80896659f3b671f89b0b860199a",
+    "files/mqtt__broker__session_manager.json": "4edeab62bb57c34d5df5e5da33e0366c5b3ba31bc6f3a0884eba7c7b2e4f2f84",
+    "files/mqtt__main.json": "8ac7e5ec435fbecb46eba0c4509985bfc4298bbb18496763c2a99c6860c92932",
+    "files/mqtt__network__connection.json": "242964690173048509c8a2d90c5df41390df211b25308e160937bc3289280bd7",
+    "files/mqtt__network__tcp_server.json": "9a81ce926095c22542b7a953e3fdda13641751cf047c54c111c8fdcc2aad03e5",
+    "files/mqtt__protocol__mqtt_decoder.json": "d86f061759e27574597637bf91ef39624c36518f5a87ef7c3b6a32ec523a467f",
+    "files/mqtt__protocol__mqtt_encoder.json": "6e7758afafd07e86c330e23359e0bdb8647a7ec7e48017ea067fdceb77f54ba4",
+    "files/mqtt__protocol__mqtt_packet.json": "58d38703a672baf8b4d476fb13258a28dc7720909cd75d012f4de33a93756807",
+    "files/mqtt__router__message_router.json": "9684eafce42c75a28a429281668792f3063ce062f79c3592e76e9c32603e33dc",
+    "files/mqtt__topic__topic_tree.json": "da7395bcefc270d1f044674a028f722362fd22a18eaf771ba43001506cc2523c",
+    "functions/mqtt/broker/broker/handle_packet.json": "c1769ae1a0b2b3819b818acb79d1024bb9ca236a9ebe9899a2c1bc7e0a7a3d01",
+    "functions/mqtt/broker/broker/mqtt_broker_create.json": "0aaa556ec6b9759cae8c129422d2f4036bec0dcdf0dec11ff151f2765c07ca09",
+    "functions/mqtt/broker/broker/mqtt_broker_destroy.json": "c8aaecbc825b84086bc4a6c1b2fba10f7cbdb94a5796a065619ef3bd24b3398e",
+    "functions/mqtt/broker/broker/mqtt_broker_run.json": "1c3d3c5d0836b45ed65168cae9c3efdf732e492d3a4aa0e45278336a35c809fd",
+    "functions/mqtt/broker/broker/mqtt_broker_start.json": "019c37225dc02ce2c506910a33b732e8ace4ee3548fc61fd8ed1f028d612723c",
+    "functions/mqtt/broker/broker/mqtt_broker_stop.json": "6bcc6dd73224657778232831f87a43ed220cf393454396a8ff8fa35152c5ee2d",
+    "functions/mqtt/broker/broker/on_accept_cb.json": "4944cf661fec72f25814712adefa5f81d145ac5bcdc919fc0c594ca47be660db",
+    "functions/mqtt/broker/broker/on_close_cb.json": "8e3e167d391978660593baa4050fe9eea957b1c9f5a16d735951cf0cb5bc1488",
+    "functions/mqtt/broker/broker/on_data_cb.json": "324e88448bf4315ceb5461a6492326404b67b05a4146810764e147052398d26c",
+    "functions/mqtt/broker/broker/on_packet.json": "d81bd78ce34956c4b35c998d467fd698d60501e1427845d028463f199ef1ce8e",
+    "functions/mqtt/broker/session/mqtt_session_client_id.json": "c2833ac860b69255b86a17dc9c5392da0112dc80a97d66e02eb5791c8214de03",
+    "functions/mqtt/broker/session/mqtt_session_connected.json": "ba2841177ee3e7663a95de3a4bb0363ee6672c5f6c550a49fe80630390823e6f",
+    "functions/mqtt/broker/session/mqtt_session_connection.json": "d6185ca8791c0aae0c8329f0a1e2b6e75573cb486e83ad2f5bb7713f8d545cd0",
+    "functions/mqtt/broker/session/mqtt_session_create.json": "86751a00a3569c6cb3428f41431a404f324645be092bb985b5781e1fdb040a8f",
+    "functions/mqtt/broker/session/mqtt_session_destroy.json": "00fe935131b5c074d910fac7032fb1e40a142822c901f27da2c76f3c90423376",
+    "functions/mqtt/broker/session/mqtt_session_id.json": "cca65d875ac6bf87307ae897ffbaeeea03cbc73bed5eccc3b11077a5e789ef8d",
+    "functions/mqtt/broker/session/mqtt_session_mark_connected.json": "6c6f25f59185ecdebb5e0dd5d5931211bb2850a2e8ee4b2479272c54a9e1a70b",
+    "functions/mqtt/broker/session/mqtt_session_send.json": "f316ec0bf11899d32280e270f0f3d31be6b4c989d956a6bcf0ee12e1f3ab432f",
+    "functions/mqtt/broker/session_manager/ensure_cap.json": "f4b1f6eb2268bb5f5baff91f821f2e48c5bcfca98bfca338b0af285af52d93e1",
+    "functions/mqtt/broker/session_manager/mqtt_session_manager_add.json": "3ada3a10e54d7613a2ca73cb622fd08469be28bc6dd8c2f3f162fa801200b8ac",
+    "functions/mqtt/broker/session_manager/mqtt_session_manager_create.json": "16b432c981664350ca8ac0029de37354b54d9666092453e5b2f18fe2983e956e",
+    "functions/mqtt/broker/session_manager/mqtt_session_manager_destroy.json": "29a24e5847a5263dec111b54b02689a3e880c7eb534dae085ae650aab30780e6",
+    "functions/mqtt/broker/session_manager/mqtt_session_manager_get.json": "657d6436ca41e7ad8215757c3ba590111c45f6992e7cfa3dc2707d358a083406",
+    "functions/mqtt/broker/session_manager/mqtt_session_manager_remove.json": "66ae4ba23f6460f71665d52a8ef737a096a25e9101e4e7177d8c34eb9ba00eb7",
+    "functions/mqtt/main/main.json": "f649704df79cc18c22f904e3175ed16a5f7615e8389d093eecb2428ca148388f",
+    "functions/mqtt/network/connection/ensure_in_cap.json": "4f8493f1d7b150d88ec598516ea3b8c528fba21e68bea6eb95403cc6a8a15701",
+    "functions/mqtt/network/connection/mqtt_connection_close.json": "200be3ea79bfd51fa466a5a657161cfae3e40d5fd8733655e8e4a8bb0f12a6c4",
+    "functions/mqtt/network/connection/mqtt_connection_closed.json": "c93cf09af4f0c441ae2e54ba85ce6cdfce8a3bd5bbc878235377699e6a403c57",
+    "functions/mqtt/network/connection/mqtt_connection_create.json": "24e28911f80548da99c86c0846babbe6f94027231b682d49cc88bdd21c96d06a",
+    "functions/mqtt/network/connection/mqtt_connection_destroy.json": "ecebb0487e6b30773df42c57eefc6d1a9e3edca9dd4634e81bd5c79a80d431b0",
+    "functions/mqtt/network/connection/mqtt_connection_fd.json": "ab8b4e2acab33612a641ad8ea3252e33a01a96b5e7e4889a6aaf0399f241d1e2",
+    "functions/mqtt/network/connection/mqtt_connection_flush.json": "2b088cdbe5ad61578fcf23c1f1d483ed97e92830af4417ce58e9b1e7c05d9906",
+    "functions/mqtt/network/connection/mqtt_connection_in_consume.json": "dc67504c1802f1b6984f2f7bc3a1eb481125df945b1318bbf7bfb7d31a5b7320",
+    "functions/mqtt/network/connection/mqtt_connection_in_data.json": "46622a7b2da6716889d39ccb2333063605d87fbe4c3ebf9366f2cef45be053f3",
+    "functions/mqtt/network/connection/mqtt_connection_in_len.json": "6f3819e248b930c06089edc682e3046d282c0f606e402824b791e73a18d13979",
+    "functions/mqtt/network/connection/mqtt_connection_peer.json": "7bd913c82e9bb64f9f1e816e67c50ba05fe3e049713f02159040044def947eec",
+    "functions/mqtt/network/connection/mqtt_connection_read.json": "edf20f68b324b8cb54963206a5a13c4eeb6c3dee2f5d9b6dd80c51cdc05c0384",
+    "functions/mqtt/network/connection/mqtt_connection_send.json": "d77734f4a9b818bcf572529f136b930ca4577c5e0d61b3569d47bd4b708bbd8a",
+    "functions/mqtt/network/connection/mqtt_connection_set_peer.json": "15afc876a349b4c0df27c50222f6e1a1b72b5ad68764ee2e95fc5252650295cf",
+    "functions/mqtt/network/connection/mqtt_connection_want_write.json": "df3c535137f2f64d960e322261bf83241bf24a00fe8a5a7fc32c845df5fc6ee2",
+    "functions/mqtt/network/tcp_server/accept_loop.json": "12210339f5c4e1bd18e7a0acb872a3848704e0a858a57f29e6225480fa98897f",
+    "functions/mqtt/network/tcp_server/close_connection.json": "df4b86f4ed0cd9082ec3ac9bfb5a3511d136727d8c431b1e3f6d7f5a50cabcdc",
+    "functions/mqtt/network/tcp_server/find_conn.json": "f76fbb9cafa16c8d7beafee2a5eadc51036f4e37b406e1590f5cc4b1dc612313",
+    "functions/mqtt/network/tcp_server/mqtt_tcp_server_create.json": "84141146279e63565f09157e32f3b05e966235d4e3e47da5fe48a59a873d4da6",
+    "functions/mqtt/network/tcp_server/mqtt_tcp_server_destroy.json": "61769281ce7b8daa96708251c89e9d2d5def6fa81dd697c30b98f73dbad34f80",
+    "functions/mqtt/network/tcp_server/mqtt_tcp_server_run.json": "3afe7c5c34866aad3d516d485450565dacb71838e96fd762e660871959fbd814",
+    "functions/mqtt/network/tcp_server/mqtt_tcp_server_start.json": "e3e66cbdf91fa2ace244e556e2735c2cc83636ddd49c2f340ae2777e40aa78e9",
+    "functions/mqtt/network/tcp_server/mqtt_tcp_server_stop.json": "efc1339551f5d50efb5d69ecb8c3c1598ed6eac8b56eb1c20729d6b4a74dd5aa",
+    "functions/mqtt/network/tcp_server/remove_conn.json": "f89860951d2c514adda4dccb595b1a68f5c30e83f6e493e13c04dd2d405fb8db",
+    "functions/mqtt/network/tcp_server/set_nonblocking.json": "d265a15b880d6775b8bbc525d7511e85cbd846f41cebec94cb9ea2d2a5704585",
+    "functions/mqtt/network/tcp_server/setup_epoll.json": "23cfb7e4eccb822bd17134bdc23ea5e7c3c6bccf30a80f7e90c3da098b1e12ff",
+    "functions/mqtt/network/tcp_server/setup_listen_socket.json": "1c25d9bdbc6109e2d4861b1497f8a9f9c48f1be957802b903e064afd6432c793",
+    "functions/mqtt/network/tcp_server/sockaddr_to_string.json": "741ecbe38c720af99d08330bf1be32a59a616cf5ff196b2f3e1db18f3755fffb",
+    "functions/mqtt/network/tcp_server/update_interest.json": "b8d15d38244a0bcbcdc27834a6099f79a30932981fedf73aa9393539c4ad4deb",
+    "functions/mqtt/protocol/mqtt_decoder/decode_one.json": "e3ee28317b8f0aaa4165ae34560712f2b9ab0d661cd5151b44861c82324f68b9",
+    "functions/mqtt/protocol/mqtt_decoder/mqtt_decoder_feed.json": "c25ee783c45925416ee8495089b8dc48a1c1cd07adef92cee33c2d3a0d7d6c06",
+    "functions/mqtt/protocol/mqtt_decoder/read_string.json": "1e382b607246a85a761be8fd7e7e2b683ebde06088b1944a4899d7ebeb09dcd3",
+    "functions/mqtt/protocol/mqtt_decoder/read_u16.json": "fccd43730b2926b2585f8cd21363700df76ddd56355794ad7777d5ab77ea282d",
+    "functions/mqtt/protocol/mqtt_decoder/try_parse_remaining_length.json": "8d2b903701d95df13ded9e9b5e1f3cc061f0d96899da592f28853bb45150ef6f",
+    "functions/mqtt/protocol/mqtt_encoder/make_bytes.json": "9794dd5d2c4a990a44bbfdaf5784d1a60e3fcfcbaf5b6ccf3e6b6f11433e1c03",
+    "functions/mqtt/protocol/mqtt_encoder/mqtt_bytes_free.json": "e0325fa86335cab06034b0cf8e9fccb9bad770e37c0ee7ae69f538c40162089c",
+    "functions/mqtt/protocol/mqtt_encoder/mqtt_encode_connack.json": "55382fe1f93308dd38969b000ce6e45cc78bceea9e61653173f1d024815a00de",
+    "functions/mqtt/protocol/mqtt_encoder/mqtt_encode_pingresp.json": "749bd3744d50577903a716d6e2361cef61382f559191c761fd1e664eb6271950",
+    "functions/mqtt/protocol/mqtt_encoder/mqtt_encode_publish_qos0.json": "46397e100f7da13c399153ce540e4f536ab901326af1ef3102bab6c9bdac820e",
+    "functions/mqtt/protocol/mqtt_encoder/mqtt_encode_suback.json": "fe970e6847616949aca8a9845e66196a0bd382fa31a70428c4086596aa24f98a",
+    "functions/mqtt/protocol/mqtt_encoder/put_remaining_length.json": "93b7e2d83aba6590bc9f9968ecee6cf5ea25bfe2aaa32d12dc23f67d19803a68",
+    "functions/mqtt/protocol/mqtt_encoder/put_u16.json": "85742c2c3799aab1fe5c86a89c83c2cc90c52d8a31dd49e8d162117e85340850",
+    "functions/mqtt/protocol/mqtt_encoder/remaining_length_bytes.json": "a30d4fdc9ab8a97f284f00c05471043a00b7ca8d66e686b70433e389f5488701",
+    "functions/mqtt/protocol/mqtt_packet/mqtt_packet_free.json": "0178dffb82185e0156825861d99d6e372d4e558ea5e186d9dcf43b81909149b0",
+    "functions/mqtt/router/message_router/mqtt_message_router_create.json": "6c35976fc6dd99c8fe41bd8c0d64fdb8dc1705e64c2c48daddc96c30c9688c08",
+    "functions/mqtt/router/message_router/mqtt_message_router_destroy.json": "35e9cc3bdac8c9cd8e191e1e0a45235a48b56fcef256c3d70af73085f707640d",
+    "functions/mqtt/router/message_router/mqtt_message_router_publish.json": "c6ea83fbdf9ba6f5285b4c7c237d9c0bc88035e73c17989781746119fe02c06d",
+    "functions/mqtt/router/message_router/mqtt_message_router_remove_session.json": "f78b549f728844c3f3d904c1c8db797eaef6b1e6f744ac5bf0142cce156e6a32",
+    "functions/mqtt/router/message_router/mqtt_message_router_subscribe.json": "f340a91bc9c702fd07e25e84d651cbef5aa4600133ede06d64f71bee240a7761",
+    "functions/mqtt/router/message_router/mqtt_message_router_unsubscribe.json": "baf686a81fe0cb0b712fd84a8d4638d64e41c4fd886acfe58f47beb434247173",
+    "functions/mqtt/topic/topic_tree/delete_entry.json": "cb599561be1c6f456421f69451eedf41e5aad839ed5eceb98f0131e33cb23b7d",
+    "functions/mqtt/topic/topic_tree/ensure_entry_cap.json": "5c0f4de3de70021e591beeedc4703def89132332a45b494d47ad55bef4c0f343",
+    "functions/mqtt/topic/topic_tree/ensure_sid_cap.json": "0c7300d88218f79f09ef9a13553502ac7608631d12c7ab2bee9fca84ab7b1fed",
+    "functions/mqtt/topic/topic_tree/entry_has_sid.json": "b74526af0589164a103284acebc0ae246ae779dd2d90fd45cd6174a8c742c32a",
+    "functions/mqtt/topic/topic_tree/entry_remove_sid.json": "8cec91ade647a3862cc82a0352cbd1346c410507f6c4a2dcc945d0c188f3a078",
+    "functions/mqtt/topic/topic_tree/find_entry.json": "51e7c7c8d013bcea47c63ea85d74d8c3b7d2536c59a22fbf59dc03867209e540",
+    "functions/mqtt/topic/topic_tree/mqtt_topic_match.json": "3675d9bd2ee76d7a2646b6acb0b04912ec88fdc024dd6dee6112d78b4ce6568f",
+    "functions/mqtt/topic/topic_tree/mqtt_topic_tree_create.json": "f2585d3e969bae26d08d441a83ae9679a6217b67b2d10494aa1e46ce1abe8d17",
+    "functions/mqtt/topic/topic_tree/mqtt_topic_tree_destroy.json": "462606960cc4610d95ed24d3e2c1b5ce51c713cf3c269b28071350e1647325fd",
+    "functions/mqtt/topic/topic_tree/mqtt_topic_tree_match_subscribers.json": "e0f8af7e260e76433b0e7ba736855d0f4b9d0f2c9b13603a1917ba7dbb89bda6",
+    "functions/mqtt/topic/topic_tree/mqtt_topic_tree_remove_session.json": "a32875a960033430fcae1eefea658617de33d0502e148cde6ca4e35831883c7e",
+    "functions/mqtt/topic/topic_tree/mqtt_topic_tree_subscribe.json": "69fd47097ee2b4d21e8141f0d158ac4727982ca60d918875681291a2e8ce9f0c",
+    "functions/mqtt/topic/topic_tree/mqtt_topic_tree_unsubscribe.json": "50733e9987ef706feece55252aa5dccac09e95079d5e7edd20423fc6fc812264",
+    "functions/mqtt/topic/topic_tree/next_level.json": "e48aa668c9ce53077c5a76942e7b60d928c9df687810af3226fd8fda9b9b9ab7",
+    "module_spec.json": "30e994b7ce34565da7e6838cdf3145948f921fcf92cf2d0f315425b2c74804a9",
+    "scope.json": "ea82ae76ce0222fa30c796759f8a99dca38363aed1c03399ed8120e034eff6df",
+    "traceability.json": "e312b20a36d8f83f44f5d7bdd568607ec375e4ccb8aabec05d08c01e7e82e776"
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "mqtt/router/message_router/mqtt_message_router_create",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "创建消息路由器并绑定会话管理器与主题树",
+  "SIGNATURE": {
+    "RAW": "mqtt_message_router_t* mqtt_message_router_create(mqtt_session_manager_t* sessions)",
+    "NAME": "mqtt_message_router_create",
+    "RETURN": "mqtt_message_router_t*",
+    "PARAMS": [
+      {
+        "TYPE": "mqtt_session_manager_t*",
+        "NAME": "sessions",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct mqtt_message_router",
+        "ROLE": "消息路由器私有状态结构体"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "mqtt_topic_tree_create",
+        "KIND": "CALL",
+        "ROLE": "创建主题订阅树"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入为会话管理器指针 sessions",
+    "ACTION": "sessions 为空返回 NULL；分配路由器对象并保存 sessions；创建 topic_tree，失败则回滚释放并返回 NULL",
+    "OUTPUT": "成功返回路由器句柄，失败返回 NULL",
+    "INVARIANTS_USED": [
+      "sessions 为非拥有引用",
+      "路由器销毁时必须释放 topics"
+    ]
+  }
+}

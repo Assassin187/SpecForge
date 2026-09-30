@@ -1,0 +1,38 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "mqtt/network/connection/mqtt_connection_closed",
+  "FUNCTION_TYPE": "EVENT",
+  "ROLE": "判断连接是否已关闭",
+  "SIGNATURE": {
+    "RAW": "bool mqtt_connection_closed(const mqtt_connection_t* c)",
+    "NAME": "mqtt_connection_closed",
+    "RETURN": "bool",
+    "PARAMS": [
+      {
+        "TYPE": "const mqtt_connection_t*",
+        "NAME": "c",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct mqtt_connection",
+        "ROLE": "连接私有状态结构体"
+      }
+    ],
+    "FUNC": [],
+    "VAR": []
+  },
+  "EVENT": {
+    "TRIGGER": "事件循环在读写前进行连接有效性检查时触发",
+    "PRECONDITION": "允许 c 为空",
+    "INPUT": "输入为连接指针 c",
+    "ACTION": "c 非空返回 closed 标志；空指针返回 true",
+    "STATE_CHANGE": "只读，无状态修改",
+    "RESPONSE": "返回连接关闭状态",
+    "EVENT_TYPE": "RUNTIME_EVENT"
+  }
+}

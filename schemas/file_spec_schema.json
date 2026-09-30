@@ -1,0 +1,555 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "specs_schema/file_spec_schema.json",
+  "title": "File Spec Schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "KIND",
+    "FILE",
+    "SOURCE"
+  ],
+  "properties": {
+    "KIND": {
+      "type": "string",
+      "const": "FILE_SPEC"
+    },
+    "FILE": {
+      "$ref": "#/$defs/file_meta"
+    },
+    "HEADER": {
+      "$ref": "#/$defs/header_block"
+    },
+    "SOURCE": {
+      "$ref": "#/$defs/source_block"
+    },
+    "PUBLIC_SYMBOLS": {
+      "$ref": "#/$defs/symbol_array"
+    },
+    "ACCESS_PATHS": {
+      "$ref": "#/$defs/access_path_array"
+    },
+    "CALL_CONTRACTS": {
+      "$ref": "#/$defs/call_contract_array"
+    },
+    "FORBIDDEN_SYMBOLS": {
+      "$ref": "#/$defs/forbidden_symbol_array"
+    },
+    "TEST_VECTORS": {
+      "$ref": "#/$defs/test_vector_array"
+    }
+  },
+  "$defs": {
+    "symbol_array": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/symbol_item"
+      }
+    },
+    "symbol_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "NAME",
+        "KIND"
+      ],
+      "properties": {
+        "NAME": {
+          "type": "string",
+          "minLength": 1
+        },
+        "KIND": {
+          "type": "string",
+          "minLength": 1
+        },
+        "TYPE": {
+          "type": "string"
+        },
+        "SIGNATURE": {
+          "type": "string"
+        },
+        "ACCESS_PATHS": {
+          "$ref": "#/$defs/access_path_array"
+        },
+        "ROLE": {
+          "type": "string"
+        }
+      }
+    },
+    "access_path_array": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/access_path_item"
+      }
+    },
+    "access_path_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "PATH",
+        "TYPE"
+      ],
+      "properties": {
+        "PATH": {
+          "type": "string",
+          "minLength": 1
+        },
+        "TYPE": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ROLE": {
+          "type": "string"
+        }
+      }
+    },
+    "forbidden_symbol_array": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/forbidden_symbol_item"
+      }
+    },
+    "forbidden_symbol_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "NAME",
+        "REASON"
+      ],
+      "properties": {
+        "NAME": {
+          "type": "string",
+          "minLength": 1
+        },
+        "KIND": {
+          "type": "string"
+        },
+        "REASON": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "call_contract_array": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/call_contract_item"
+      }
+    },
+    "call_contract_item": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "NAME",
+        "SIGNATURE"
+      ],
+      "properties": {
+        "NAME": {
+          "type": "string",
+          "minLength": 1
+        },
+        "SIGNATURE": {
+          "type": "string",
+          "minLength": 1
+        },
+        "PARAMS": {
+          "type": "array"
+        },
+        "RETURN": {
+          "type": "string"
+        },
+        "OWNERSHIP": {
+          "type": "string"
+        },
+        "FAILURE": {
+          "type": "string"
+        }
+      }
+    },
+    "test_vector_array": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/test_vector_item"
+      }
+    },
+    "test_vector_item": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "NAME",
+        "INPUT",
+        "EXPECT"
+      ],
+      "properties": {
+        "NAME": {
+          "type": "string",
+          "minLength": 1
+        },
+        "INPUT": {
+          "type": "object"
+        },
+        "EXPECT": {
+          "type": "object"
+        },
+        "LEVEL": {
+          "type": "string",
+          "enum": ["FUNCTION", "RUNTIME"]
+        },
+        "TRACE_REFS": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "file_meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "TRACE_ID",
+        "LANG",
+        "ROLE",
+        "DOC_REF"
+      ],
+      "properties": {
+        "TRACE_ID": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_./\\-]+$"
+        },
+        "LANG": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ROLE": {
+          "type": "string",
+          "minLength": 1
+        },
+        "DOC_REF": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "data_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "NAME",
+        "KIND",
+        "VISIBILITY",
+        "ROLE"
+      ],
+      "properties": {
+        "NAME": {
+          "type": "string",
+          "minLength": 1
+        },
+        "KIND": {
+          "type": "string",
+          "enum": [
+            "TYPE",
+            "VAR",
+            "MACRO",
+            "CONST"
+          ]
+        },
+        "VISIBILITY": {
+          "type": "string",
+          "enum": [
+            "PUBLIC",
+            "PRIVATE"
+          ]
+        },
+        "ROLE": {
+          "type": "string",
+          "minLength": 1
+        },
+        "VALUE": {
+          "type": [
+            "string",
+            "integer",
+            "boolean"
+          ]
+        },
+        "TYPE_SPEC": {
+          "$ref": "#/$defs/type_spec"
+        }
+      }
+    },
+    "typed_member": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "NAME",
+        "TYPE",
+        "ROLE"
+      ],
+      "properties": {
+        "NAME": {
+          "type": "string",
+          "minLength": 1
+        },
+        "TYPE": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ARRAY_LEN": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ROLE": {
+          "type": "string",
+          "minLength": 1
+        },
+        "TYPE_SPEC": {
+          "$ref": "#/$defs/type_spec"
+        }
+      }
+    },
+    "enum_member": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "NAME",
+        "ROLE"
+      ],
+      "properties": {
+        "NAME": {
+          "type": "string",
+          "minLength": 1
+        },
+        "VALUE": {
+          "type": [
+            "string",
+            "integer"
+          ]
+        },
+        "ROLE": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "type_spec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "TYPE_KIND"
+      ],
+      "properties": {
+        "TYPE_KIND": {
+          "type": "string",
+          "enum": [
+            "OPAQUE",
+            "STRUCT",
+            "ENUM",
+            "UNION",
+            "CALLBACK",
+            "ALIAS"
+          ]
+        },
+        "FIELDS": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/typed_member"
+          }
+        },
+        "ENUM_VALUES": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/enum_member"
+          }
+        },
+        "VARIANTS": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/typed_member"
+          }
+        },
+        "ALIAS_OF": {
+          "type": "string"
+        },
+        "CALLBACK_SIGNATURE": {
+          "type": "string"
+        }
+      }
+    },
+    "header_interface_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "SIGNATURE",
+        "NAME",
+        "KIND",
+        "FUNCTION_TYPE",
+        "ROLE",
+        "VISIBILITY"
+      ],
+      "properties": {
+        "SIGNATURE": {
+          "type": "string",
+          "minLength": 1
+        },
+        "NAME": {
+          "type": "string",
+          "minLength": 1
+        },
+        "KIND": {
+          "type": "string",
+          "const": "FUNC"
+        },
+        "FUNCTION_TYPE": {
+          "type": "string",
+          "enum": [
+            "ALGORITHM",
+            "EVENT",
+            "EVENT_HANDLER",
+            "ENTRYPOINT"
+          ]
+        },
+        "ROLE": {
+          "type": "string",
+          "minLength": 1
+        },
+        "VISIBILITY": {
+          "type": "string",
+          "enum": [
+            "private",
+            "public"
+          ]
+        }
+      }
+    },
+    "header_block": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "PATH",
+        "DEPENDENCY",
+        "DATA",
+        "INTERFACE"
+      ],
+      "properties": {
+        "PATH": {
+          "type": "string",
+          "minLength": 1
+        },
+        "DEPENDENCY": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "SYSTEM_DEPENDENCY": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "DATA": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/data_item"
+          }
+        },
+        "INTERFACE": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/header_interface_item"
+          }
+        }
+      }
+    },
+    "source_interface_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "TRACE_ID",
+        "SIGNATURE",
+        "NAME",
+        "KIND",
+        "ROLE",
+        "VISIBILITY"
+      ],
+      "properties": {
+        "TRACE_ID": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_./\\-]+$"
+        },
+        "SIGNATURE": {
+          "type": "string",
+          "minLength": 1
+        },
+        "NAME": {
+          "type": "string",
+          "minLength": 1
+        },
+        "KIND": {
+          "type": "string",
+          "const": "FUNC"
+        },
+        "FUNCTION_TYPE": {
+          "type": "string",
+          "enum": [
+            "ALGORITHM",
+            "EVENT",
+            "EVENT_HANDLER",
+            "ENTRYPOINT"
+          ]
+        },
+        "ROLE": {
+          "type": "string",
+          "minLength": 1
+        },
+        "VISIBILITY": {
+          "type": "string",
+          "enum": [
+            "private",
+            "public"
+          ]
+        }
+      }
+    },
+    "source_block": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "PATH",
+        "DEPENDENCY",
+        "DATA",
+        "INTERFACE"
+      ],
+      "properties": {
+        "PATH": {
+          "type": "string",
+          "minLength": 1
+        },
+        "DEPENDENCY": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "DATA": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/data_item"
+          }
+        },
+        "INTERFACE": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/source_interface_item"
+          }
+        }
+      }
+    }
+  }
+}

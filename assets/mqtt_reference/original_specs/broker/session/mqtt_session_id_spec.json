@@ -1,0 +1,44 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "mqtt/broker/session/mqtt_session_id",
+  "FUNCTION_TYPE": "EVENT",
+  "ROLE": "返回会话对应的连接 fd 作为 session_id",
+  "SIGNATURE": {
+    "RAW": "int mqtt_session_id(const mqtt_session_t* s)",
+    "NAME": "mqtt_session_id",
+    "RETURN": "int",
+    "PARAMS": [
+      {
+        "TYPE": "const mqtt_session_t*",
+        "NAME": "s",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct mqtt_session",
+        "ROLE": "会话私有实现结构"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "mqtt_connection_fd",
+        "KIND": "CALL",
+        "ROLE": "读取连接 fd 作为 session_id"
+      }
+    ],
+    "VAR": []
+  },
+  "EVENT": {
+    "TRIGGER": "broker 或会话管理器需要按 ID 定位会话时触发",
+    "PRECONDITION": "允许 s 或 s->conn 为空",
+    "INPUT": "输入为会话指针 s",
+    "ACTION": "若 s 与 conn 均有效则调用 mqtt_connection_fd(s->conn)，否则返回 -1",
+    "STATE_CHANGE": "纯读取操作，不修改会话内部状态",
+    "RESPONSE": "返回 >=0 的 fd 表示有效会话 ID，返回 -1 表示不可用",
+    "EVENT_TYPE": "RUNTIME_EVENT"
+  }
+}

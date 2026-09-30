@@ -1,0 +1,50 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "mqtt/router/message_router/mqtt_message_router_remove_session",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "删除会话在所有过滤器上的订阅痕迹",
+  "SIGNATURE": {
+    "RAW": "void mqtt_message_router_remove_session(mqtt_message_router_t* r, int session_id)",
+    "NAME": "mqtt_message_router_remove_session",
+    "RETURN": "void",
+    "PARAMS": [
+      {
+        "TYPE": "mqtt_message_router_t*",
+        "NAME": "r",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "int",
+        "NAME": "session_id",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct mqtt_message_router",
+        "ROLE": "消息路由器私有状态结构体"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "mqtt_topic_tree_remove_session",
+        "KIND": "CALL",
+        "ROLE": "清理会话全部订阅"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入为路由器 r 与会话 ID session_id",
+    "ACTION": "r 为空直接返回；否则调用 mqtt_topic_tree_remove_session 全量清理",
+    "OUTPUT": "无返回值",
+    "INVARIANTS_USED": [
+      "会话断开后可通过本函数防止脏订阅残留",
+      "非法 r 不产生副作用"
+    ]
+  }
+}

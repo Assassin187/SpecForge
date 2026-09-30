@@ -1,0 +1,38 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "mqtt/network/tcp_server/sockaddr_to_string",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "将 IPv4 sockaddr 转换为 ip:port 字符串",
+  "SIGNATURE": {
+    "RAW": "static char* sockaddr_to_string(const struct sockaddr_in* addr)",
+    "NAME": "sockaddr_to_string",
+    "RETURN": "char*",
+    "PARAMS": [
+      {
+        "TYPE": "const struct sockaddr_in*",
+        "NAME": "addr",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct sockaddr_in",
+        "ROLE": "对端地址结构体"
+      }
+    ],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入为有效 IPv4 sockaddr_in 指针 addr。",
+    "ACTION": "将 sockaddr_in 中地址和端口格式化为 ip:port 字符串并返回 strdup 副本。",
+    "OUTPUT": "成功返回堆分配的 ip:port 字符串，调用方负责 free；strdup 失败时返回 NULL。",
+    "INVARIANTS_USED": [
+      "不修改 addr",
+      "返回字符串表示网络字节序端口转换后的主机序端口"
+    ]
+  }
+}

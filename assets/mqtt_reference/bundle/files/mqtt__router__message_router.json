@@ -1,0 +1,143 @@
+{
+  "KIND": "FILE_SPEC",
+  "FILE": {
+    "TRACE_ID": "mqtt/router/message_router",
+    "LANG": "C",
+    "ROLE": "消息路由模块：维护 topic_tree 与 session_manager 协作关系，负责订阅维护与发布消息转发",
+    "DOC_REF": []
+  },
+  "HEADER": {
+    "PATH": "include/router/message_router.h",
+    "DEPENDENCY": [
+      "include/broker/session_manager.h",
+      "include/protocol/mqtt_packet.h",
+      "include/topic/topic_tree.h"
+    ],
+    "DATA": [
+      {
+        "NAME": "mqtt_message_router_t",
+        "KIND": "TYPE",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "消息路由器不透明句柄，封装会话管理器引用与主题订阅树",
+        "TYPE_SPEC": {
+          "TYPE_KIND": "OPAQUE"
+        }
+      }
+    ],
+    "INTERFACE": [
+      {
+        "SIGNATURE": "mqtt_message_router_t* mqtt_message_router_create(mqtt_session_manager_t* sessions)",
+        "NAME": "mqtt_message_router_create",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "创建路由器并初始化主题树（会话管理器为非拥有引用）",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "void mqtt_message_router_destroy(mqtt_message_router_t* r)",
+        "NAME": "mqtt_message_router_destroy",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "销毁路由器并释放内部主题树",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "void mqtt_message_router_subscribe(mqtt_message_router_t* r, int session_id, const char* filter)",
+        "NAME": "mqtt_message_router_subscribe",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "将会话订阅关系写入主题树",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "void mqtt_message_router_unsubscribe(mqtt_message_router_t* r, int session_id, const char* filter)",
+        "NAME": "mqtt_message_router_unsubscribe",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "从主题树移除会话的指定订阅关系",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "void mqtt_message_router_remove_session(mqtt_message_router_t* r, int session_id)",
+        "NAME": "mqtt_message_router_remove_session",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "移除会话在主题树中的所有订阅痕迹",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "void mqtt_message_router_publish(mqtt_message_router_t* r, int from_session_id, const mqtt_publish_payload_t* publish)",
+        "NAME": "mqtt_message_router_publish",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "按主题匹配订阅者并向命中会话转发 PUBLISH(QoS0)",
+        "VISIBILITY": "public"
+      }
+    ]
+  },
+  "SOURCE": {
+    "PATH": "src/router/message_router.c",
+    "DEPENDENCY": [
+      "include/router/message_router.h",
+      "include/protocol/mqtt_encoder.h"
+    ],
+    "DATA": [
+      {
+        "NAME": "struct mqtt_message_router",
+        "KIND": "TYPE",
+        "VISIBILITY": "PRIVATE",
+        "ROLE": "路由器私有状态，包含 session_manager 非拥有引用与 topic_tree 拥有引用"
+      }
+    ],
+    "INTERFACE": [
+      {
+        "TRACE_ID": "mqtt/router/message_router/mqtt_message_router_create",
+        "SIGNATURE": "mqtt_message_router_t* mqtt_message_router_create(mqtt_session_manager_t* sessions)",
+        "NAME": "mqtt_message_router_create",
+        "KIND": "FUNC",
+        "ROLE": "校验 sessions 后创建路由器并分配 topic_tree，失败时回滚资源",
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "mqtt/router/message_router/mqtt_message_router_destroy",
+        "SIGNATURE": "void mqtt_message_router_destroy(mqtt_message_router_t* r)",
+        "NAME": "mqtt_message_router_destroy",
+        "KIND": "FUNC",
+        "ROLE": "销毁 topic_tree 后释放路由器对象",
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "mqtt/router/message_router/mqtt_message_router_subscribe",
+        "SIGNATURE": "void mqtt_message_router_subscribe(mqtt_message_router_t* r, int session_id, const char* filter)",
+        "NAME": "mqtt_message_router_subscribe",
+        "KIND": "FUNC",
+        "ROLE": "调用 topic_tree_subscribe 建立 filter->session_id 映射",
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "mqtt/router/message_router/mqtt_message_router_unsubscribe",
+        "SIGNATURE": "void mqtt_message_router_unsubscribe(mqtt_message_router_t* r, int session_id, const char* filter)",
+        "NAME": "mqtt_message_router_unsubscribe",
+        "KIND": "FUNC",
+        "ROLE": "调用 topic_tree_unsubscribe 删除指定订阅关系",
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "mqtt/router/message_router/mqtt_message_router_remove_session",
+        "SIGNATURE": "void mqtt_message_router_remove_session(mqtt_message_router_t* r, int session_id)",
+        "NAME": "mqtt_message_router_remove_session",
+        "KIND": "FUNC",
+        "ROLE": "调用 topic_tree_remove_session 清理会话所有订阅",
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "mqtt/router/message_router/mqtt_message_router_publish",
+        "SIGNATURE": "void mqtt_message_router_publish(mqtt_message_router_t* r, int from_session_id, const mqtt_publish_payload_t* publish)",
+        "NAME": "mqtt_message_router_publish",
+        "KIND": "FUNC",
+        "ROLE": "匹配订阅者列表后编码 PUBLISH 并逐个调用 mqtt_session_send 转发",
+        "VISIBILITY": "public"
+      }
+    ]
+  }
+}

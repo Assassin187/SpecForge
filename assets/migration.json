@@ -1,0 +1,716 @@
+{
+  "copied_files": [
+    {
+      "source": "/home/ljf/SpecForge/specs-example/specs_schema/module_spec_schema.json",
+      "destination": "schemas/module_spec_schema.json",
+      "sha256": "b2f01e28f7b6e38c047ded30fad8765f1815c5ae66d883f3291c24209a7cd84f"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/specs_schema/file_spec_schema.json",
+      "destination": "schemas/file_spec_schema.json",
+      "sha256": "df189415e74f0ab1fbfa23b95e7e7e141c1b9c80ff7a76bd07e9639d64f6dbef"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/specs_schema/function_spec_schema.json",
+      "destination": "schemas/function_spec_schema.json",
+      "sha256": "11613a80c26692003fca7c2e77011bb9f4706b1a07847f8eee7468c4ddbae165"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/SUMMARY.md",
+      "destination": "assets/mqtt_reference/original_specs/SUMMARY.md",
+      "sha256": "261241be013828bad4e417aa5137dcfaae66bab591ba4c76bc8ac8639a95ae7f"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/mqtt_module_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/mqtt_module_spec.json",
+      "sha256": "e38c1815ed899cd8e52bd48004dc30733eef1dced6b1c419c19c43e110b2966d"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/main/main_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/main/main_spec.json",
+      "sha256": "217a151caa0c80bdb7027b6d3f98e78314c40336296c0cf205aa844e03e79630"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/main/main_function_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/main/main_function_spec.json",
+      "sha256": "f649704df79cc18c22f904e3175ed16a5f7615e8389d093eecb2428ca148388f"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/network/tcp_server/accept_loop_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/network/tcp_server/accept_loop_spec.json",
+      "sha256": "12210339f5c4e1bd18e7a0acb872a3848704e0a858a57f29e6225480fa98897f"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/network/tcp_server/mqtt_tcp_server_stop_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/network/tcp_server/mqtt_tcp_server_stop_spec.json",
+      "sha256": "efc1339551f5d50efb5d69ecb8c3c1598ed6eac8b56eb1c20729d6b4a74dd5aa"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/network/tcp_server/close_connection_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/network/tcp_server/close_connection_spec.json",
+      "sha256": "df4b86f4ed0cd9082ec3ac9bfb5a3511d136727d8c431b1e3f6d7f5a50cabcdc"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/network/tcp_server/mqtt_tcp_server_run_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/network/tcp_server/mqtt_tcp_server_run_spec.json",
+      "sha256": "3afe7c5c34866aad3d516d485450565dacb71838e96fd762e660871959fbd814"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/network/tcp_server/mqtt_tcp_server_start_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/network/tcp_server/mqtt_tcp_server_start_spec.json",
+      "sha256": "e3e66cbdf91fa2ace244e556e2735c2cc83636ddd49c2f340ae2777e40aa78e9"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/network/tcp_server/mqtt_tcp_server_create_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/network/tcp_server/mqtt_tcp_server_create_spec.json",
+      "sha256": "84141146279e63565f09157e32f3b05e966235d4e3e47da5fe48a59a873d4da6"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/network/tcp_server/find_conn_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/network/tcp_server/find_conn_spec.json",
+      "sha256": "f76fbb9cafa16c8d7beafee2a5eadc51036f4e37b406e1590f5cc4b1dc612313"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/network/tcp_server/sockaddr_to_string_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/network/tcp_server/sockaddr_to_string_spec.json",
+      "sha256": "741ecbe38c720af99d08330bf1be32a59a616cf5ff196b2f3e1db18f3755fffb"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/network/tcp_server/update_interest_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/network/tcp_server/update_interest_spec.json",
+      "sha256": "b8d15d38244a0bcbcdc27834a6099f79a30932981fedf73aa9393539c4ad4deb"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/network/tcp_server/tcp_server_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/network/tcp_server/tcp_server_spec.json",
+      "sha256": "a7ca4e9ea5c4208d20863f08fcaf5e375ee0dcba43b032ea54d7c4e9d55d23df"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/network/tcp_server/setup_listen_socket_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/network/tcp_server/setup_listen_socket_spec.json",
+      "sha256": "1c25d9bdbc6109e2d4861b1497f8a9f9c48f1be957802b903e064afd6432c793"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/network/tcp_server/mqtt_tcp_server_destroy_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/network/tcp_server/mqtt_tcp_server_destroy_spec.json",
+      "sha256": "61769281ce7b8daa96708251c89e9d2d5def6fa81dd697c30b98f73dbad34f80"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/network/tcp_server/remove_conn_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/network/tcp_server/remove_conn_spec.json",
+      "sha256": "f89860951d2c514adda4dccb595b1a68f5c30e83f6e493e13c04dd2d405fb8db"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/network/tcp_server/set_nonblocking_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/network/tcp_server/set_nonblocking_spec.json",
+      "sha256": "d265a15b880d6775b8bbc525d7511e85cbd846f41cebec94cb9ea2d2a5704585"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/network/tcp_server/setup_epoll_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/network/tcp_server/setup_epoll_spec.json",
+      "sha256": "23cfb7e4eccb822bd17134bdc23ea5e7c3c6bccf30a80f7e90c3da098b1e12ff"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/network/connection/mqtt_connection_closed_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/network/connection/mqtt_connection_closed_spec.json",
+      "sha256": "c93cf09af4f0c441ae2e54ba85ce6cdfce8a3bd5bbc878235377699e6a403c57"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/network/connection/mqtt_connection_read_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/network/connection/mqtt_connection_read_spec.json",
+      "sha256": "edf20f68b324b8cb54963206a5a13c4eeb6c3dee2f5d9b6dd80c51cdc05c0384"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/network/connection/mqtt_connection_close_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/network/connection/mqtt_connection_close_spec.json",
+      "sha256": "200be3ea79bfd51fa466a5a657161cfae3e40d5fd8733655e8e4a8bb0f12a6c4"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/network/connection/mqtt_connection_in_len_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/network/connection/mqtt_connection_in_len_spec.json",
+      "sha256": "6f3819e248b930c06089edc682e3046d282c0f606e402824b791e73a18d13979"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/network/connection/mqtt_connection_destroy_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/network/connection/mqtt_connection_destroy_spec.json",
+      "sha256": "ecebb0487e6b30773df42c57eefc6d1a9e3edca9dd4634e81bd5c79a80d431b0"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/network/connection/mqtt_connection_want_write_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/network/connection/mqtt_connection_want_write_spec.json",
+      "sha256": "df3c535137f2f64d960e322261bf83241bf24a00fe8a5a7fc32c845df5fc6ee2"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/network/connection/mqtt_connection_send_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/network/connection/mqtt_connection_send_spec.json",
+      "sha256": "d77734f4a9b818bcf572529f136b930ca4577c5e0d61b3569d47bd4b708bbd8a"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/network/connection/mqtt_connection_in_consume_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/network/connection/mqtt_connection_in_consume_spec.json",
+      "sha256": "dc67504c1802f1b6984f2f7bc3a1eb481125df945b1318bbf7bfb7d31a5b7320"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/network/connection/mqtt_connection_flush_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/network/connection/mqtt_connection_flush_spec.json",
+      "sha256": "2b088cdbe5ad61578fcf23c1f1d483ed97e92830af4417ce58e9b1e7c05d9906"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/network/connection/mqtt_connection_fd_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/network/connection/mqtt_connection_fd_spec.json",
+      "sha256": "ab8b4e2acab33612a641ad8ea3252e33a01a96b5e7e4889a6aaf0399f241d1e2"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/network/connection/mqtt_connection_in_data_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/network/connection/mqtt_connection_in_data_spec.json",
+      "sha256": "46622a7b2da6716889d39ccb2333063605d87fbe4c3ebf9366f2cef45be053f3"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/network/connection/mqtt_connection_peer_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/network/connection/mqtt_connection_peer_spec.json",
+      "sha256": "7bd913c82e9bb64f9f1e816e67c50ba05fe3e049713f02159040044def947eec"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/network/connection/connection_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/network/connection/connection_spec.json",
+      "sha256": "6303f403b2998908437cf08f531e6e578576122b51c4089c7cbb7d19b1901000"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/network/connection/ensure_in_cap_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/network/connection/ensure_in_cap_spec.json",
+      "sha256": "4f8493f1d7b150d88ec598516ea3b8c528fba21e68bea6eb95403cc6a8a15701"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/network/connection/mqtt_connection_set_peer_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/network/connection/mqtt_connection_set_peer_spec.json",
+      "sha256": "15afc876a349b4c0df27c50222f6e1a1b72b5ad68764ee2e95fc5252650295cf"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/network/connection/mqtt_connection_create_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/network/connection/mqtt_connection_create_spec.json",
+      "sha256": "24e28911f80548da99c86c0846babbe6f94027231b682d49cc88bdd21c96d06a"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/protocol/mqtt_encoder/mqtt_encoder_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/protocol/mqtt_encoder/mqtt_encoder_spec.json",
+      "sha256": "6d41a16240b53e30d3917348eaeb3a59eef5facb7192d9014836e3c201352404"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/protocol/mqtt_encoder/mqtt_encode_connack_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/protocol/mqtt_encoder/mqtt_encode_connack_spec.json",
+      "sha256": "55382fe1f93308dd38969b000ce6e45cc78bceea9e61653173f1d024815a00de"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/protocol/mqtt_encoder/mqtt_encode_publish_qos0_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/protocol/mqtt_encoder/mqtt_encode_publish_qos0_spec.json",
+      "sha256": "46397e100f7da13c399153ce540e4f536ab901326af1ef3102bab6c9bdac820e"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/protocol/mqtt_encoder/make_bytes_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/protocol/mqtt_encoder/make_bytes_spec.json",
+      "sha256": "9794dd5d2c4a990a44bbfdaf5784d1a60e3fcfcbaf5b6ccf3e6b6f11433e1c03"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/protocol/mqtt_encoder/put_remaining_length_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/protocol/mqtt_encoder/put_remaining_length_spec.json",
+      "sha256": "93b7e2d83aba6590bc9f9968ecee6cf5ea25bfe2aaa32d12dc23f67d19803a68"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/protocol/mqtt_encoder/mqtt_encode_suback_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/protocol/mqtt_encoder/mqtt_encode_suback_spec.json",
+      "sha256": "fe970e6847616949aca8a9845e66196a0bd382fa31a70428c4086596aa24f98a"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/protocol/mqtt_encoder/mqtt_encode_pingresp_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/protocol/mqtt_encoder/mqtt_encode_pingresp_spec.json",
+      "sha256": "749bd3744d50577903a716d6e2361cef61382f559191c761fd1e664eb6271950"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/protocol/mqtt_encoder/mqtt_bytes_free_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/protocol/mqtt_encoder/mqtt_bytes_free_spec.json",
+      "sha256": "e0325fa86335cab06034b0cf8e9fccb9bad770e37c0ee7ae69f538c40162089c"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/protocol/mqtt_encoder/remaining_length_bytes_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/protocol/mqtt_encoder/remaining_length_bytes_spec.json",
+      "sha256": "a30d4fdc9ab8a97f284f00c05471043a00b7ca8d66e686b70433e389f5488701"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/protocol/mqtt_encoder/put_u16_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/protocol/mqtt_encoder/put_u16_spec.json",
+      "sha256": "85742c2c3799aab1fe5c86a89c83c2cc90c52d8a31dd49e8d162117e85340850"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/protocol/mqtt_packet/mqtt_packet_free_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/protocol/mqtt_packet/mqtt_packet_free_spec.json",
+      "sha256": "0178dffb82185e0156825861d99d6e372d4e558ea5e186d9dcf43b81909149b0"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/protocol/mqtt_packet/mqtt_packet_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/protocol/mqtt_packet/mqtt_packet_spec.json",
+      "sha256": "ce5d1d6c2330124678f65d9c902f63d6777ffaeb7666c561f1276786dbf0c672"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/protocol/mqtt_decoder/try_parse_remaining_length_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/protocol/mqtt_decoder/try_parse_remaining_length_spec.json",
+      "sha256": "8d2b903701d95df13ded9e9b5e1f3cc061f0d96899da592f28853bb45150ef6f"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/protocol/mqtt_decoder/decode_one_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/protocol/mqtt_decoder/decode_one_spec.json",
+      "sha256": "e3ee28317b8f0aaa4165ae34560712f2b9ab0d661cd5151b44861c82324f68b9"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/protocol/mqtt_decoder/mqtt_decoder_feed_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/protocol/mqtt_decoder/mqtt_decoder_feed_spec.json",
+      "sha256": "c25ee783c45925416ee8495089b8dc48a1c1cd07adef92cee33c2d3a0d7d6c06"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/protocol/mqtt_decoder/read_u16_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/protocol/mqtt_decoder/read_u16_spec.json",
+      "sha256": "fccd43730b2926b2585f8cd21363700df76ddd56355794ad7777d5ab77ea282d"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/protocol/mqtt_decoder/mqtt_decoder_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/protocol/mqtt_decoder/mqtt_decoder_spec.json",
+      "sha256": "138e1866b5f1d4c87e0a84e94fe16ec919c11a811887292db69f955141daa128"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/protocol/mqtt_decoder/read_string_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/protocol/mqtt_decoder/read_string_spec.json",
+      "sha256": "1e382b607246a85a761be8fd7e7e2b683ebde06088b1944a4899d7ebeb09dcd3"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/broker/session_manager/ensure_cap_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/broker/session_manager/ensure_cap_spec.json",
+      "sha256": "f4b1f6eb2268bb5f5baff91f821f2e48c5bcfca98bfca338b0af285af52d93e1"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/broker/session_manager/mqtt_session_manager_remove_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/broker/session_manager/mqtt_session_manager_remove_spec.json",
+      "sha256": "66ae4ba23f6460f71665d52a8ef737a096a25e9101e4e7177d8c34eb9ba00eb7"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/broker/session_manager/mqtt_session_manager_destroy_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/broker/session_manager/mqtt_session_manager_destroy_spec.json",
+      "sha256": "29a24e5847a5263dec111b54b02689a3e880c7eb534dae085ae650aab30780e6"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/broker/session_manager/mqtt_session_manager_add_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/broker/session_manager/mqtt_session_manager_add_spec.json",
+      "sha256": "3ada3a10e54d7613a2ca73cb622fd08469be28bc6dd8c2f3f162fa801200b8ac"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/broker/session_manager/mqtt_session_manager_create_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/broker/session_manager/mqtt_session_manager_create_spec.json",
+      "sha256": "16b432c981664350ca8ac0029de37354b54d9666092453e5b2f18fe2983e956e"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/broker/session_manager/session_manager_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/broker/session_manager/session_manager_spec.json",
+      "sha256": "12d3a563623f3b774fee26868671731f974b756199f4e537cfc1824df274deab"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/broker/session_manager/mqtt_session_manager_get_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/broker/session_manager/mqtt_session_manager_get_spec.json",
+      "sha256": "657d6436ca41e7ad8215757c3ba590111c45f6992e7cfa3dc2707d358a083406"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/broker/broker/on_accept_cb_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/broker/broker/on_accept_cb_spec.json",
+      "sha256": "4944cf661fec72f25814712adefa5f81d145ac5bcdc919fc0c594ca47be660db"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/broker/broker/on_data_cb_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/broker/broker/on_data_cb_spec.json",
+      "sha256": "324e88448bf4315ceb5461a6492326404b67b05a4146810764e147052398d26c"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/broker/broker/mqtt_broker_start_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/broker/broker/mqtt_broker_start_spec.json",
+      "sha256": "019c37225dc02ce2c506910a33b732e8ace4ee3548fc61fd8ed1f028d612723c"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/broker/broker/handle_packet_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/broker/broker/handle_packet_spec.json",
+      "sha256": "c1769ae1a0b2b3819b818acb79d1024bb9ca236a9ebe9899a2c1bc7e0a7a3d01"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/broker/broker/broker_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/broker/broker/broker_spec.json",
+      "sha256": "382a7bc2680c62fdf65c223f00d99d5017f74d4d4888dc41f52fb68072b6f873"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/broker/broker/on_packet_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/broker/broker/on_packet_spec.json",
+      "sha256": "d81bd78ce34956c4b35c998d467fd698d60501e1427845d028463f199ef1ce8e"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/broker/broker/mqtt_broker_create_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/broker/broker/mqtt_broker_create_spec.json",
+      "sha256": "0aaa556ec6b9759cae8c129422d2f4036bec0dcdf0dec11ff151f2765c07ca09"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/broker/broker/mqtt_broker_stop_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/broker/broker/mqtt_broker_stop_spec.json",
+      "sha256": "6bcc6dd73224657778232831f87a43ed220cf393454396a8ff8fa35152c5ee2d"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/broker/broker/on_close_cb_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/broker/broker/on_close_cb_spec.json",
+      "sha256": "8e3e167d391978660593baa4050fe9eea957b1c9f5a16d735951cf0cb5bc1488"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/broker/broker/mqtt_broker_destroy_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/broker/broker/mqtt_broker_destroy_spec.json",
+      "sha256": "c8aaecbc825b84086bc4a6c1b2fba10f7cbdb94a5796a065619ef3bd24b3398e"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/broker/broker/mqtt_broker_run_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/broker/broker/mqtt_broker_run_spec.json",
+      "sha256": "1c3d3c5d0836b45ed65168cae9c3efdf732e492d3a4aa0e45278336a35c809fd"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/broker/session/mqtt_session_id_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/broker/session/mqtt_session_id_spec.json",
+      "sha256": "cca65d875ac6bf87307ae897ffbaeeea03cbc73bed5eccc3b11077a5e789ef8d"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/broker/session/mqtt_session_connection_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/broker/session/mqtt_session_connection_spec.json",
+      "sha256": "d6185ca8791c0aae0c8329f0a1e2b6e75573cb486e83ad2f5bb7713f8d545cd0"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/broker/session/mqtt_session_create_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/broker/session/mqtt_session_create_spec.json",
+      "sha256": "86751a00a3569c6cb3428f41431a404f324645be092bb985b5781e1fdb040a8f"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/broker/session/mqtt_session_mark_connected_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/broker/session/mqtt_session_mark_connected_spec.json",
+      "sha256": "6c6f25f59185ecdebb5e0dd5d5931211bb2850a2e8ee4b2479272c54a9e1a70b"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/broker/session/mqtt_session_connected_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/broker/session/mqtt_session_connected_spec.json",
+      "sha256": "ba2841177ee3e7663a95de3a4bb0363ee6672c5f6c550a49fe80630390823e6f"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/broker/session/mqtt_session_destroy_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/broker/session/mqtt_session_destroy_spec.json",
+      "sha256": "00fe935131b5c074d910fac7032fb1e40a142822c901f27da2c76f3c90423376"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/broker/session/mqtt_session_send_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/broker/session/mqtt_session_send_spec.json",
+      "sha256": "f316ec0bf11899d32280e270f0f3d31be6b4c989d956a6bcf0ee12e1f3ab432f"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/broker/session/mqtt_session_client_id_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/broker/session/mqtt_session_client_id_spec.json",
+      "sha256": "c2833ac860b69255b86a17dc9c5392da0112dc80a97d66e02eb5791c8214de03"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/broker/session/session_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/broker/session/session_spec.json",
+      "sha256": "7a4432b41b5a06fdae323e9ab4fbfecdf2ae0cc84ba5afa471e72d15ff786878"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/topic/topic_tree/entry_has_sid_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/topic/topic_tree/entry_has_sid_spec.json",
+      "sha256": "b74526af0589164a103284acebc0ae246ae779dd2d90fd45cd6174a8c742c32a"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/topic/topic_tree/mqtt_topic_tree_subscribe_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/topic/topic_tree/mqtt_topic_tree_subscribe_spec.json",
+      "sha256": "69fd47097ee2b4d21e8141f0d158ac4727982ca60d918875681291a2e8ce9f0c"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/topic/topic_tree/ensure_entry_cap_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/topic/topic_tree/ensure_entry_cap_spec.json",
+      "sha256": "5c0f4de3de70021e591beeedc4703def89132332a45b494d47ad55bef4c0f343"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/topic/topic_tree/next_level_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/topic/topic_tree/next_level_spec.json",
+      "sha256": "e48aa668c9ce53077c5a76942e7b60d928c9df687810af3226fd8fda9b9b9ab7"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/topic/topic_tree/find_entry_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/topic/topic_tree/find_entry_spec.json",
+      "sha256": "51e7c7c8d013bcea47c63ea85d74d8c3b7d2536c59a22fbf59dc03867209e540"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/topic/topic_tree/entry_remove_sid_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/topic/topic_tree/entry_remove_sid_spec.json",
+      "sha256": "8cec91ade647a3862cc82a0352cbd1346c410507f6c4a2dcc945d0c188f3a078"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/topic/topic_tree/topic_tree_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/topic/topic_tree/topic_tree_spec.json",
+      "sha256": "ff75bead22deecb47aea7dc8022bb6a2f5a0be279993664056554aacb93bba56"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/topic/topic_tree/mqtt_topic_tree_match_subscribers_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/topic/topic_tree/mqtt_topic_tree_match_subscribers_spec.json",
+      "sha256": "e0f8af7e260e76433b0e7ba736855d0f4b9d0f2c9b13603a1917ba7dbb89bda6"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/topic/topic_tree/ensure_sid_cap_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/topic/topic_tree/ensure_sid_cap_spec.json",
+      "sha256": "0c7300d88218f79f09ef9a13553502ac7608631d12c7ab2bee9fca84ab7b1fed"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/topic/topic_tree/mqtt_topic_tree_unsubscribe_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/topic/topic_tree/mqtt_topic_tree_unsubscribe_spec.json",
+      "sha256": "50733e9987ef706feece55252aa5dccac09e95079d5e7edd20423fc6fc812264"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/topic/topic_tree/mqtt_topic_tree_destroy_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/topic/topic_tree/mqtt_topic_tree_destroy_spec.json",
+      "sha256": "462606960cc4610d95ed24d3e2c1b5ce51c713cf3c269b28071350e1647325fd"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/topic/topic_tree/delete_entry_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/topic/topic_tree/delete_entry_spec.json",
+      "sha256": "cb599561be1c6f456421f69451eedf41e5aad839ed5eceb98f0131e33cb23b7d"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/topic/topic_tree/mqtt_topic_tree_create_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/topic/topic_tree/mqtt_topic_tree_create_spec.json",
+      "sha256": "f2585d3e969bae26d08d441a83ae9679a6217b67b2d10494aa1e46ce1abe8d17"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/topic/topic_tree/mqtt_topic_tree_remove_session_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/topic/topic_tree/mqtt_topic_tree_remove_session_spec.json",
+      "sha256": "a32875a960033430fcae1eefea658617de33d0502e148cde6ca4e35831883c7e"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/topic/topic_tree/mqtt_topic_match_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/topic/topic_tree/mqtt_topic_match_spec.json",
+      "sha256": "3675d9bd2ee76d7a2646b6acb0b04912ec88fdc024dd6dee6112d78b4ce6568f"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/router/message_router/mqtt_message_router_subscribe_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/router/message_router/mqtt_message_router_subscribe_spec.json",
+      "sha256": "f340a91bc9c702fd07e25e84d651cbef5aa4600133ede06d64f71bee240a7761"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/router/message_router/mqtt_message_router_unsubscribe_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/router/message_router/mqtt_message_router_unsubscribe_spec.json",
+      "sha256": "baf686a81fe0cb0b712fd84a8d4638d64e41c4fd886acfe58f47beb434247173"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/router/message_router/mqtt_message_router_publish_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/router/message_router/mqtt_message_router_publish_spec.json",
+      "sha256": "c6ea83fbdf9ba6f5285b4c7c237d9c0bc88035e73c17989781746119fe02c06d"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/router/message_router/mqtt_message_router_create_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/router/message_router/mqtt_message_router_create_spec.json",
+      "sha256": "6c35976fc6dd99c8fe41bd8c0d64fdb8dc1705e64c2c48daddc96c30c9688c08"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/router/message_router/mqtt_message_router_remove_session_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/router/message_router/mqtt_message_router_remove_session_spec.json",
+      "sha256": "f78b549f728844c3f3d904c1c8db797eaef6b1e6f744ac5bf0142cce156e6a32"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/router/message_router/message_router_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/router/message_router/message_router_spec.json",
+      "sha256": "b6115b93a301e22179c9efde0d048ee2f361e6e2c6d047306cce4e1d0342ca8b"
+    },
+    {
+      "source": "/home/ljf/SpecForge/specs-example/mqtt_specs/router/message_router/mqtt_message_router_destroy_spec.json",
+      "destination": "assets/mqtt_reference/original_specs/router/message_router/mqtt_message_router_destroy_spec.json",
+      "sha256": "35e9cc3bdac8c9cd8e191e1e0a45235a48b56fcef256c3d70af73085f707640d"
+    },
+    {
+      "source": "/home/ljf/SpecForge/protocol-example/mqtt/network/tcp_server.h",
+      "destination": "assets/mqtt_reference/bundle/abi/network/tcp_server.h",
+      "sha256": "d7f0e4f0110720258c86398a1823c3178118aee254578d1b7fa78f54af465978"
+    },
+    {
+      "source": "/home/ljf/SpecForge/protocol-example/mqtt/network/connection.h",
+      "destination": "assets/mqtt_reference/bundle/abi/network/connection.h",
+      "sha256": "8d760ed35ea788526c6a7e8d7d6f0d89c12bda97dbb9a0fec828d917ad4af915"
+    },
+    {
+      "source": "/home/ljf/SpecForge/protocol-example/mqtt/protocol/mqtt_decoder.h",
+      "destination": "assets/mqtt_reference/bundle/abi/protocol/mqtt_decoder.h",
+      "sha256": "aff687b02e387e4d8dac642c6f2d5561adea75a72ecae2ce9ad3becdca1c8fc1"
+    },
+    {
+      "source": "/home/ljf/SpecForge/protocol-example/mqtt/protocol/mqtt_encoder.h",
+      "destination": "assets/mqtt_reference/bundle/abi/protocol/mqtt_encoder.h",
+      "sha256": "c284122019496cc148b93c046f038b6171dbb8afaf8b3ea1e31835df055aa0da"
+    },
+    {
+      "source": "/home/ljf/SpecForge/protocol-example/mqtt/protocol/mqtt_packet.h",
+      "destination": "assets/mqtt_reference/bundle/abi/protocol/mqtt_packet.h",
+      "sha256": "a311ebf7a6ea0eeee7a76b96e32de433960480e6ab64143afe18b66389971b9a"
+    },
+    {
+      "source": "/home/ljf/SpecForge/protocol-example/mqtt/broker/broker.h",
+      "destination": "assets/mqtt_reference/bundle/abi/broker/broker.h",
+      "sha256": "ae717b71102fa2f71f0f99e988e7d5f9aed3a883ce06bbe9fc25ff05d2a1104c"
+    },
+    {
+      "source": "/home/ljf/SpecForge/protocol-example/mqtt/broker/session_manager.h",
+      "destination": "assets/mqtt_reference/bundle/abi/broker/session_manager.h",
+      "sha256": "94abc0e996ee6b963cc17f3e67c39faa90caf1458bf1f4d20c9ad42c0f7e85da"
+    },
+    {
+      "source": "/home/ljf/SpecForge/protocol-example/mqtt/broker/session.h",
+      "destination": "assets/mqtt_reference/bundle/abi/broker/session.h",
+      "sha256": "1520015c0dc89086a001db15e6a3f079a53f02fde58fad1ba67ebd3bc7f64168"
+    },
+    {
+      "source": "/home/ljf/SpecForge/protocol-example/mqtt/topic/topic_tree.h",
+      "destination": "assets/mqtt_reference/bundle/abi/topic/topic_tree.h",
+      "sha256": "88e337060bbb64d972b9f854f302140a06f026dfdb80d48a219e0535c090c132"
+    },
+    {
+      "source": "/home/ljf/SpecForge/protocol-example/mqtt/router/message_router.h",
+      "destination": "assets/mqtt_reference/bundle/abi/router/message_router.h",
+      "sha256": "d9cd6a7095d1416a43894b1a3de7bc8820d0fd247ddbb122b4098b726da24925"
+    },
+    {
+      "source": "/home/ljf/SpecForge/agent/facts/gold_facts/mqtt_min/protocol_facts.json",
+      "destination": "assets/mqtt_reference_facts/protocol_facts.json",
+      "sha256": "2842e52800f85da836eb9c4d2f0768757e376315da0a6b608d619088df5905be"
+    },
+    {
+      "source": "/home/ljf/SpecForge/agent/facts/contracts/mqtt_min_gold_contract.json",
+      "destination": "assets/mqtt_reference_facts/mqtt_min_gold_contract.json",
+      "sha256": "c27adafb46df75f32f4070598a3bb615b2eac96e77cfe1093823a30ecb54f9ae"
+    },
+    {
+      "source": "/home/ljf/SpecForge/agent/facts/contracts/mqtt_min_semantic_rubric.json",
+      "destination": "assets/mqtt_reference_facts/mqtt_min_semantic_rubric.json",
+      "sha256": "785034a047d497390abe2c40d9bc02835b30df5c27c6bd65bec7adb935b614dc"
+    },
+    {
+      "source": "/home/ljf/SpecForge/evaluation/planning_utility/target_profiles/mqtt_obligation_rubric.json",
+      "destination": "assets/mqtt_reference_facts/mqtt_obligation_rubric.json",
+      "sha256": "8c2fd7a7021a2d73dbf0ab7c26babb58e7d733cce1d8c39d77ea63af7c95b52e"
+    },
+    {
+      "source": "/home/ljf/SpecForge/agent/facts/target_profiles/mqtt_min.json",
+      "destination": "assets/mqtt_reference_facts/mqtt_min.json",
+      "sha256": "d1fea7e3a88efd003ea02e61d927650745c7e3822c02378f8a166c9a6cf24ad0"
+    },
+    {
+      "source": "/home/ljf/Experiment/make_mqtt/spec/mqtt-v3.1.1-os.pdf",
+      "destination": "cases/mqtt_min/spec/mqtt-v3.1.1-os.pdf",
+      "sha256": "c45a1f4f3d0d9a66b3f890dce49a1e2ddeae69cfd67f907a5b6e97a6d64a0b54"
+    }
+  ],
+  "changes": [
+    {
+      "original": "broker/broker/broker_spec.json",
+      "change": "Header-confirmed opaque TYPE_SPEC",
+      "symbol": "mqtt_broker_t"
+    },
+    {
+      "original": "broker/broker/broker_spec.json",
+      "normalized": "files/mqtt__broker__broker.json",
+      "original_sha256": "382a7bc2680c62fdf65c223f00d99d5017f74d4d4888dc41f52fb68072b6f873",
+      "normalized_sha256": "5117757b73773ed49338c785e7d0bbdd01e91fba30b6cce981e98d2c7324bd5c"
+    },
+    {
+      "original": "broker/session/session_spec.json",
+      "change": "Header-confirmed opaque TYPE_SPEC",
+      "symbol": "mqtt_session_t"
+    },
+    {
+      "original": "broker/session/session_spec.json",
+      "normalized": "files/mqtt__broker__session.json",
+      "original_sha256": "7a4432b41b5a06fdae323e9ab4fbfecdf2ae0cc84ba5afa471e72d15ff786878",
+      "normalized_sha256": "1c1834eb404c28fd036cabf16fad2372f2dfc80896659f3b671f89b0b860199a"
+    },
+    {
+      "original": "broker/session_manager/session_manager_spec.json",
+      "change": "Header-confirmed opaque TYPE_SPEC",
+      "symbol": "mqtt_session_manager_t"
+    },
+    {
+      "original": "broker/session_manager/session_manager_spec.json",
+      "normalized": "files/mqtt__broker__session_manager.json",
+      "original_sha256": "12d3a563623f3b774fee26868671731f974b756199f4e537cfc1824df274deab",
+      "normalized_sha256": "4edeab62bb57c34d5df5e5da33e0366c5b3ba31bc6f3a0884eba7c7b2e4f2f84"
+    },
+    {
+      "original": "main/main_spec.json",
+      "normalized": "files/mqtt__main.json",
+      "original_sha256": "217a151caa0c80bdb7027b6d3f98e78314c40336296c0cf205aa844e03e79630",
+      "normalized_sha256": "8ac7e5ec435fbecb46eba0c4509985bfc4298bbb18496763c2a99c6860c92932"
+    },
+    {
+      "original": "mqtt_module_spec.json",
+      "normalized": "module_spec.json",
+      "original_sha256": "e38c1815ed899cd8e52bd48004dc30733eef1dced6b1c419c19c43e110b2966d",
+      "normalized_sha256": "30e994b7ce34565da7e6838cdf3145948f921fcf92cf2d0f315425b2c74804a9"
+    },
+    {
+      "original": "network/connection/connection_spec.json",
+      "change": "Header-confirmed opaque TYPE_SPEC",
+      "symbol": "mqtt_connection_t"
+    },
+    {
+      "original": "network/connection/connection_spec.json",
+      "normalized": "files/mqtt__network__connection.json",
+      "original_sha256": "6303f403b2998908437cf08f531e6e578576122b51c4089c7cbb7d19b1901000",
+      "normalized_sha256": "242964690173048509c8a2d90c5df41390df211b25308e160937bc3289280bd7"
+    },
+    {
+      "original": "network/tcp_server/tcp_server_spec.json",
+      "normalized": "files/mqtt__network__tcp_server.json",
+      "original_sha256": "a7ca4e9ea5c4208d20863f08fcaf5e375ee0dcba43b032ea54d7c4e9d55d23df",
+      "normalized_sha256": "9a81ce926095c22542b7a953e3fdda13641751cf047c54c111c8fdcc2aad03e5"
+    },
+    {
+      "original": "protocol/mqtt_decoder/mqtt_decoder_spec.json",
+      "normalized": "files/mqtt__protocol__mqtt_decoder.json",
+      "original_sha256": "138e1866b5f1d4c87e0a84e94fe16ec919c11a811887292db69f955141daa128",
+      "normalized_sha256": "d86f061759e27574597637bf91ef39624c36518f5a87ef7c3b6a32ec523a467f"
+    },
+    {
+      "original": "protocol/mqtt_encoder/mqtt_encoder_spec.json",
+      "normalized": "files/mqtt__protocol__mqtt_encoder.json",
+      "original_sha256": "6d41a16240b53e30d3917348eaeb3a59eef5facb7192d9014836e3c201352404",
+      "normalized_sha256": "6e7758afafd07e86c330e23359e0bdb8647a7ec7e48017ea067fdceb77f54ba4"
+    },
+    {
+      "original": "protocol/mqtt_packet/mqtt_packet_spec.json",
+      "normalized": "files/mqtt__protocol__mqtt_packet.json",
+      "original_sha256": "ce5d1d6c2330124678f65d9c902f63d6777ffaeb7666c561f1276786dbf0c672",
+      "normalized_sha256": "58d38703a672baf8b4d476fb13258a28dc7720909cd75d012f4de33a93756807"
+    },
+    {
+      "original": "router/message_router/message_router_spec.json",
+      "change": "Header-confirmed opaque TYPE_SPEC",
+      "symbol": "mqtt_message_router_t"
+    },
+    {
+      "original": "router/message_router/message_router_spec.json",
+      "normalized": "files/mqtt__router__message_router.json",
+      "original_sha256": "b6115b93a301e22179c9efde0d048ee2f361e6e2c6d047306cce4e1d0342ca8b",
+      "normalized_sha256": "9684eafce42c75a28a429281668792f3063ce062f79c3592e76e9c32603e33dc"
+    },
+    {
+      "original": "topic/topic_tree/topic_tree_spec.json",
+      "change": "Header-confirmed opaque TYPE_SPEC",
+      "symbol": "mqtt_topic_tree_t"
+    },
+    {
+      "original": "topic/topic_tree/topic_tree_spec.json",
+      "normalized": "files/mqtt__topic__topic_tree.json",
+      "original_sha256": "ff75bead22deecb47aea7dc8022bb6a2f5a0be279993664056554aacb93bba56",
+      "normalized_sha256": "da7395bcefc270d1f044674a028f722362fd22a18eaf771ba43001506cc2523c"
+    },
+    {
+      "change": "Normalize ../ paths; replace dangling publish TRACE_REF with existing handle_packet; preserve original data"
+    }
+  ]
+}

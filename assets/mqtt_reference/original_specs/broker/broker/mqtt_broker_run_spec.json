@@ -1,0 +1,44 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "mqtt/broker/broker/mqtt_broker_run",
+  "FUNCTION_TYPE": "EVENT",
+  "ROLE": "驱动 Broker 主事件循环，持续处理网络层分发的连接与报文事件",
+  "SIGNATURE": {
+    "RAW": "void mqtt_broker_run(mqtt_broker_t* b)",
+    "NAME": "mqtt_broker_run",
+    "RETURN": "void",
+    "PARAMS": [
+      {
+        "TYPE": "mqtt_broker_t*",
+        "NAME": "b",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct mqtt_broker",
+        "ROLE": "Broker 运行时内部状态结构"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "mqtt_tcp_server_run",
+        "KIND": "CALL",
+        "ROLE": "执行事件循环"
+      }
+    ],
+    "VAR": []
+  },
+  "EVENT": {
+    "TRIGGER": "应用主流程在 broker 启动后主动调用以进入运行态",
+    "PRECONDITION": "b 非 NULL 且 b->server 已由 mqtt_broker_create 初始化",
+    "INPUT": "事件输入为 broker 实例 b；具体网络事件由 tcp_server 在循环内产生",
+    "ACTION": "调用 mqtt_tcp_server_run，随后由 on_accept_cb/on_data_cb/on_close_cb 处理连接建立、数据到达与连接关闭",
+    "STATE_CHANGE": "会话集合、订阅路由与连接状态会随回调执行动态变化",
+    "RESPONSE": "函数不直接返回业务结果；通过网络回包与内部状态更新体现处理效果",
+    "EVENT_TYPE": "RUNTIME_EVENT"
+  }
+}

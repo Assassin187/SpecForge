@@ -1,0 +1,44 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "mqtt/topic/topic_tree/ensure_entry_cap",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "扩容主题树条目数组以容纳更多 filter",
+  "SIGNATURE": {
+    "RAW": "static void ensure_entry_cap(mqtt_topic_tree_t* t, size_t need)",
+    "NAME": "ensure_entry_cap",
+    "RETURN": "void",
+    "PARAMS": [
+      {
+        "TYPE": "mqtt_topic_tree_t*",
+        "NAME": "t",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "size_t",
+        "NAME": "need",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct mqtt_topic_tree",
+        "ROLE": "主题树私有结构体"
+      }
+    ],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入为主题树 t 与目标条目容量 need。",
+    "ACTION": "若主题树条目容量不足则按倍增策略 realloc entries。",
+    "OUTPUT": "t 为空或容量已足够时直接返回；扩容成功时 entries 和 entry_cap 更新到覆盖 need；realloc 失败时保持原数组不变。",
+    "INVARIANTS_USED": [
+      "只增长 entry_cap",
+      "不改变 entry_count"
+    ]
+  }
+}

@@ -1,0 +1,180 @@
+{
+  "KIND": "FILE_SPEC",
+  "FILE": {
+    "TRACE_ID": "mqtt/broker/broker",
+    "LANG": "C",
+    "ROLE": "MQTT Broker 核心协调模块：管理 TCP 服务生命周期、会话容器与消息路由，并在网络回调中驱动 MQTT 报文处理流程",
+    "DOC_REF": []
+  },
+  "HEADER": {
+    "PATH": "include/broker/broker.h",
+    "DEPENDENCY": [
+      "include/network/tcp_server.h"
+    ],
+    "DATA": [
+      {
+        "NAME": "mqtt_broker_t",
+        "KIND": "TYPE",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "Broker 句柄的不透明类型，对外隐藏端口、TCP 服务器、会话管理器与消息路由器等内部状态",
+        "TYPE_SPEC": {
+          "TYPE_KIND": "OPAQUE"
+        }
+      }
+    ],
+    "INTERFACE": [
+      {
+        "SIGNATURE": "mqtt_broker_t* mqtt_broker_create(uint16_t port)",
+        "NAME": "mqtt_broker_create",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "创建并初始化 Broker 运行时上下文，绑定端口并注册 accept/data/close 回调",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "void mqtt_broker_destroy(mqtt_broker_t* b)",
+        "NAME": "mqtt_broker_destroy",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "销毁 Broker 及其所有依赖对象，负责停止服务并释放会话与路由资源",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "bool mqtt_broker_start(mqtt_broker_t* b)",
+        "NAME": "mqtt_broker_start",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "启动底层 TCP 监听服务，使 Broker 开始接收客户端连接",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "void mqtt_broker_run(mqtt_broker_t* b)",
+        "NAME": "mqtt_broker_run",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "EVENT_HANDLER",
+        "ROLE": "进入 TCP 事件循环并持续分发连接、收包、断开等网络事件",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "void mqtt_broker_stop(mqtt_broker_t* b)",
+        "NAME": "mqtt_broker_stop",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "停止底层 TCP 监听/事件循环，触发 Broker 进入可回收状态",
+        "VISIBILITY": "public"
+      }
+    ]
+  },
+  "SOURCE": {
+    "PATH": "src/broker/broker.c",
+    "DEPENDENCY": [
+      "include/broker/broker.h",
+      "include/protocol/mqtt_decoder.h",
+      "include/protocol/mqtt_encoder.h",
+      "include/broker/session_manager.h",
+      "include/router/message_router.h"
+    ],
+    "DATA": [
+      {
+        "NAME": "struct mqtt_broker",
+        "KIND": "TYPE",
+        "VISIBILITY": "PRIVATE",
+        "ROLE": "Broker 内部状态载体，集中保存端口、TCP 服务实例、会话管理器和消息路由器"
+      },
+      {
+        "NAME": "struct packet_ctx",
+        "KIND": "TYPE",
+        "VISIBILITY": "PRIVATE",
+        "ROLE": "单次解码回调上下文，绑定当前 Broker 与对应 Session 以完成报文处理"
+      },
+      {
+        "NAME": "packet_ctx_t",
+        "KIND": "TYPE",
+        "VISIBILITY": "PRIVATE",
+        "ROLE": "struct packet_ctx 的 typedef 别名，用作 decoder 回调上下文"
+      }
+    ],
+    "INTERFACE": [
+      {
+        "TRACE_ID": "mqtt/broker/broker/mqtt_broker_create",
+        "SIGNATURE": "mqtt_broker_t* mqtt_broker_create(uint16_t port)",
+        "NAME": "mqtt_broker_create",
+        "KIND": "FUNC",
+        "ROLE": "构建 Broker 运行时对象并完成会话管理器、路由器与 TCP 服务器的级联初始化",
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "mqtt/broker/broker/mqtt_broker_destroy",
+        "SIGNATURE": "void mqtt_broker_destroy(mqtt_broker_t* b)",
+        "NAME": "mqtt_broker_destroy",
+        "KIND": "FUNC",
+        "ROLE": "按停止服务→销毁网络层→销毁路由→销毁会话的顺序释放 Broker 全部资源",
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "mqtt/broker/broker/mqtt_broker_start",
+        "SIGNATURE": "bool mqtt_broker_start(mqtt_broker_t* b)",
+        "NAME": "mqtt_broker_start",
+        "KIND": "FUNC",
+        "ROLE": "校验 Broker/Server 后启动监听，返回底层 TCP 服务器启动结果",
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "mqtt/broker/broker/mqtt_broker_run",
+        "SIGNATURE": "void mqtt_broker_run(mqtt_broker_t* b)",
+        "NAME": "mqtt_broker_run",
+        "KIND": "FUNC",
+        "ROLE": "进入底层 TCP 事件循环，持续处理网络事件直到被停止",
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "mqtt/broker/broker/mqtt_broker_stop",
+        "SIGNATURE": "void mqtt_broker_stop(mqtt_broker_t* b)",
+        "NAME": "mqtt_broker_stop",
+        "KIND": "FUNC",
+        "ROLE": "在对象有效时请求停止底层 TCP 服务器，允许重复调用而不破坏状态",
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "mqtt/broker/broker/handle_packet",
+        "SIGNATURE": "static void handle_packet(mqtt_broker_t* b, mqtt_session_t* sess, const mqtt_packet_t* pkt)",
+        "NAME": "handle_packet",
+        "KIND": "FUNC",
+        "VISIBILITY": "private",
+        "ROLE": "按 MQTT 报文类型执行业务分发：CONNECT/SUBSCRIBE/PUBLISH/PINGREQ/DISCONNECT"
+      },
+      {
+        "TRACE_ID": "mqtt/broker/broker/on_packet",
+        "SIGNATURE": "static void on_packet(void* user, const mqtt_packet_t* pkt)",
+        "NAME": "on_packet",
+        "KIND": "FUNC",
+        "VISIBILITY": "private",
+        "ROLE": "解码器回调适配层：校验上下文后将报文委托给 handle_packet"
+      },
+      {
+        "TRACE_ID": "mqtt/broker/broker/on_accept_cb",
+        "SIGNATURE": "static void on_accept_cb(void* user, mqtt_connection_t* c)",
+        "NAME": "on_accept_cb",
+        "KIND": "FUNC",
+        "VISIBILITY": "private",
+        "ROLE": "新连接回调：为连接创建 Session 并注册到会话管理器"
+      },
+      {
+        "TRACE_ID": "mqtt/broker/broker/on_close_cb",
+        "SIGNATURE": "static void on_close_cb(void* user, mqtt_connection_t* c)",
+        "NAME": "on_close_cb",
+        "KIND": "FUNC",
+        "VISIBILITY": "private",
+        "ROLE": "连接关闭回调：按 fd 移除会话并清理路由订阅关系"
+      },
+      {
+        "TRACE_ID": "mqtt/broker/broker/on_data_cb",
+        "SIGNATURE": "static void on_data_cb(void* user, mqtt_connection_t* c)",
+        "NAME": "on_data_cb",
+        "KIND": "FUNC",
+        "VISIBILITY": "private",
+        "ROLE": "收包回调：拉取连接输入缓冲、驱动解码并按已消费字节推进缓冲区"
+      }
+    ]
+  }
+}

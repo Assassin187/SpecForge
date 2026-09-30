@@ -1,0 +1,44 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "mqtt/network/tcp_server/setup_listen_socket",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "创建并配置监听 socket（SO_REUSEADDR、非阻塞、bind、listen）",
+  "SIGNATURE": {
+    "RAW": "static bool setup_listen_socket(mqtt_tcp_server_t* s)",
+    "NAME": "setup_listen_socket",
+    "RETURN": "bool",
+    "PARAMS": [
+      {
+        "TYPE": "mqtt_tcp_server_t*",
+        "NAME": "s",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct mqtt_tcp_server",
+        "ROLE": "TCP 服务器私有状态结构体"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "set_nonblocking",
+        "KIND": "CALL",
+        "ROLE": "设置监听 socket 为非阻塞"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入为已分配并设置 port 的 TCP server 对象 s。",
+    "ACTION": "创建监听 socket，设置 SO_REUSEADDR 和非阻塞，然后 bind+listen。",
+    "OUTPUT": "成功返回 true，并创建非阻塞 listen_fd、设置 SO_REUSEADDR、完成 bind/listen；任一步失败返回 false。",
+    "INVARIANTS_USED": [
+      "成功路径留下可由 stop 关闭的 listen_fd",
+      "失败路径不启动 running 状态"
+    ]
+  }
+}

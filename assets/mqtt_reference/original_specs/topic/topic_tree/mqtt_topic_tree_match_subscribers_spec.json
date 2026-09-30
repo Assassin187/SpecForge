@@ -1,0 +1,67 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "mqtt/topic/topic_tree/mqtt_topic_tree_match_subscribers",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "匹配主题对应的订阅会话并输出去重列表",
+  "SIGNATURE": {
+    "RAW": "bool mqtt_topic_tree_match_subscribers(const mqtt_topic_tree_t* t, const char* topic, int** out_sids, size_t* out_count)",
+    "NAME": "mqtt_topic_tree_match_subscribers",
+    "RETURN": "bool",
+    "PARAMS": [
+      {
+        "TYPE": "const mqtt_topic_tree_t*",
+        "NAME": "t",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "const char*",
+        "NAME": "topic",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "int**",
+        "NAME": "out_sids",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "size_t*",
+        "NAME": "out_count",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct mqtt_topic_tree",
+        "ROLE": "主题树私有结构体"
+      },
+      {
+        "NAME": "struct filter_entry",
+        "ROLE": "过滤器条目结构体"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "mqtt_topic_match",
+        "KIND": "CALL",
+        "ROLE": "判断过滤器是否匹配主题"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入为主题树 t、主题 topic、输出数组 out_sids 与数量 out_count",
+    "ACTION": "先将输出置空；参数非法返回 false；遍历所有 filter，调用 mqtt_topic_match 判定命中；聚合 sid 并去重，按需扩容 uniq 数组；成功后写回输出",
+    "OUTPUT": "返回 true 表示匹配完成（含 0 命中），false 表示参数或内存失败",
+    "INVARIANTS_USED": [
+      "输出 sid 列表不包含重复值",
+      "exact filter 与 identical topic 命中时，订阅 sid 必须出现在输出列表中",
+      "内存扩容失败时会释放临时数组避免泄漏"
+    ]
+  }
+}

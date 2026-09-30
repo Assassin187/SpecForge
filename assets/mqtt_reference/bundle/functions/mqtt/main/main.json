@@ -1,0 +1,65 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "mqtt/main/main",
+  "FUNCTION_TYPE": "ENTRYPOINT",
+  "ROLE": "MQTT broker 可执行程序入口，负责端口解析与 broker 生命周期编排",
+  "SIGNATURE": {
+    "RAW": "int main(int argc, char** argv)",
+    "NAME": "main",
+    "RETURN": "int",
+    "PARAMS": [
+      {
+        "TYPE": "int",
+        "NAME": "argc",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "char**",
+        "NAME": "argv",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "mqtt_broker_t",
+        "ROLE": "Broker 运行时对象"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "mqtt_broker_create",
+        "KIND": "CALL",
+        "ROLE": "按端口创建 broker 对象"
+      },
+      {
+        "NAME": "mqtt_broker_start",
+        "KIND": "CALL",
+        "ROLE": "启动 TCP 监听服务"
+      },
+      {
+        "NAME": "mqtt_broker_run",
+        "KIND": "CALL",
+        "ROLE": "进入 broker 事件循环"
+      },
+      {
+        "NAME": "mqtt_broker_destroy",
+        "KIND": "CALL",
+        "ROLE": "释放 broker 资源"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入为进程命令行参数；argv[1] 可选表示 broker 监听端口。",
+    "ACTION": "默认端口为 1884；当 argv[1] 解析为 1..65535 时覆盖默认端口；随后创建 broker，启动监听，运行事件循环，退出后销毁 broker。",
+    "OUTPUT": "创建或启动失败返回 1；正常完成生命周期后返回 0。",
+    "INVARIANTS_USED": [
+      "端口必须保持在 uint16_t 可表达范围内",
+      "broker 创建成功后，任何启动失败路径都必须销毁 broker"
+    ]
+  }
+}

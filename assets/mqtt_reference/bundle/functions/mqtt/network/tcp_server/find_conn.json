@@ -1,0 +1,54 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "mqtt/network/tcp_server/find_conn",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "按 fd 在连接链表中查找对应连接对象",
+  "SIGNATURE": {
+    "RAW": "static mqtt_connection_t* find_conn(mqtt_tcp_server_t* s, int fd)",
+    "NAME": "find_conn",
+    "RETURN": "mqtt_connection_t*",
+    "PARAMS": [
+      {
+        "TYPE": "mqtt_tcp_server_t*",
+        "NAME": "s",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "int",
+        "NAME": "fd",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct mqtt_tcp_server",
+        "ROLE": "TCP 服务器私有状态结构体"
+      },
+      {
+        "NAME": "struct conn_node",
+        "ROLE": "连接链表节点"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "mqtt_connection_fd",
+        "KIND": "CALL",
+        "ROLE": "比较连接 fd 完成查找"
+      }
+    ],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入为 TCP server 对象 s 与待查找的 fd。",
+    "ACTION": "遍历连接链表，按 mqtt_connection_fd 与目标 fd 比较并返回命中连接。",
+    "OUTPUT": "找到时返回链表中借用的 mqtt_connection_t*；未找到时返回 NULL。",
+    "INVARIANTS_USED": [
+      "不修改连接链表",
+      "返回指针仍由 server 连接链表拥有"
+    ]
+  }
+}

@@ -1,0 +1,399 @@
+{
+  "KIND": "PROTOCOL_MODULE_SPEC",
+  "PROTOCOL": {
+    "NAME": "MQTT",
+    "SPEC_VERSION": "3.1.1",
+    "ROLES": [
+      "BROKER"
+    ],
+    "DEFAULT_PORT": 1884,
+    "SCOPE": "MQTT 3.1.1 Broker subset only; client/subscriber generation is out of scope and external MQTT clients are used for validation."
+  },
+  "MODULES": [
+    {
+      "NAME": "network",
+      "ROLE": "TCP/epoll 网络层：accept + 事件循环；连接对象的读缓冲、写队列与关闭；通过回调把连接与数据事件上交给上层。不得解析/构造 MQTT 报文语义。",
+      "DEPENDENCIES": [],
+      "ARTIFACTS": [
+        {
+          "NAME": "mqtt_connection_t",
+          "KIND": "TYPE",
+          "ROLE": "不透明连接对象（封装 fd、输入缓冲、输出队列、peer 信息与关闭状态）"
+        },
+        {
+          "NAME": "mqtt_tcp_server_t",
+          "KIND": "TYPE",
+          "ROLE": "TCP server（listen/accept + epoll 事件循环 + 读写分发）"
+        },
+        {
+          "NAME": "mqtt_tcp_callbacks_t",
+          "KIND": "TYPE",
+          "ROLE": "on_accept/on_data/on_close 事件回调集合"
+        },
+        {
+          "NAME": "mqtt_connection_read",
+          "KIND": "FUNC",
+          "ROLE": "尽可能从 socket 读取到输入缓冲（非阻塞语义）"
+        },
+        {
+          "NAME": "mqtt_connection_send",
+          "KIND": "FUNC",
+          "ROLE": "把待发送字节拷贝入输出队列（稍后 flush）"
+        },
+        {
+          "NAME": "mqtt_connection_flush",
+          "KIND": "FUNC",
+          "ROLE": "尝试把输出队列刷到 socket（用于 EPOLLOUT 驱动）"
+        },
+        {
+          "NAME": "mqtt_tcp_on_accept_fn",
+          "KIND": "TYPE",
+          "ROLE": "TCP server 新连接回调函数类型"
+        },
+        {
+          "NAME": "mqtt_tcp_on_data_fn",
+          "KIND": "TYPE",
+          "ROLE": "TCP server 收到数据回调函数类型"
+        },
+        {
+          "NAME": "mqtt_tcp_on_close_fn",
+          "KIND": "TYPE",
+          "ROLE": "TCP server 连接关闭回调函数类型"
+        }
+      ],
+      "FILES": [
+        "../network/connection.h",
+        "../network/connection.c",
+        "../network/tcp_server.h",
+        "../network/tcp_server.c"
+      ],
+      "DOC_REF": []
+    },
+    {
+      "NAME": "protocol_codec",
+      "ROLE": "MQTT wire-format 编解码：把字节流解码为结构化 packet；把结构化响应/转发数据编码为字节序列。不得依赖 socket/epoll。",
+      "DEPENDENCIES": [],
+      "ARTIFACTS": [
+        {
+          "NAME": "mqtt_packet_t",
+          "KIND": "TYPE",
+          "ROLE": "统一的报文结构体（CONNECT/PUBLISH/SUBSCRIBE 等 payload 通过 union 承载）"
+        },
+        {
+          "NAME": "mqtt_decoder_feed",
+          "KIND": "FUNC",
+          "ROLE": "从输入字节流尽可能解码出完整报文，并通过回调逐个上报"
+        },
+        {
+          "NAME": "mqtt_encode_connack",
+          "KIND": "FUNC",
+          "ROLE": "编码 CONNACK"
+        },
+        {
+          "NAME": "mqtt_encode_suback",
+          "KIND": "FUNC",
+          "ROLE": "编码 SUBACK"
+        },
+        {
+          "NAME": "mqtt_encode_pingresp",
+          "KIND": "FUNC",
+          "ROLE": "编码 PINGRESP"
+        },
+        {
+          "NAME": "mqtt_encode_publish_qos0",
+          "KIND": "FUNC",
+          "ROLE": "编码 QoS0 PUBLISH"
+        },
+        {
+          "NAME": "mqtt_bytes_t",
+          "KIND": "TYPE",
+          "ROLE": "编码函数返回的动态字节缓冲包装类型"
+        }
+      ],
+      "FILES": [
+        "../protocol/mqtt_packet.h",
+        "../protocol/mqtt_packet.c",
+        "../protocol/mqtt_decoder.h",
+        "../protocol/mqtt_decoder.c",
+        "../protocol/mqtt_encoder.h",
+        "../protocol/mqtt_encoder.c"
+      ],
+      "DOC_REF": []
+    },
+    {
+      "NAME": "session",
+      "ROLE": "Broker 侧会话与会话表：连接与 client_id/clean_session/keep_alive 等状态的绑定；通过 session_id 访问连接并发送响应。",
+      "DEPENDENCIES": [
+        "network"
+      ],
+      "ARTIFACTS": [
+        {
+          "NAME": "mqtt_session_t",
+          "KIND": "TYPE",
+          "ROLE": "会话对象（关联 mqtt_connection_t，记录 CONNECT 后的会话状态）"
+        },
+        {
+          "NAME": "mqtt_session_manager_t",
+          "KIND": "TYPE",
+          "ROLE": "会话管理器（add/get/remove）"
+        },
+        {
+          "NAME": "mqtt_session_mark_connected",
+          "KIND": "FUNC",
+          "ROLE": "在 CONNECT 成功后标记会话已建立，并记录 client_id/keep_alive 等"
+        },
+        {
+          "NAME": "mqtt_session_send",
+          "KIND": "FUNC",
+          "ROLE": "将编码后的字节写入对应连接的输出队列"
+        },
+        {
+          "NAME": "mqtt_session_manager_get",
+          "KIND": "FUNC",
+          "ROLE": "按 session_id 查找会话"
+        }
+      ],
+      "FILES": [
+        "../broker/session.h",
+        "../broker/session.c",
+        "../broker/session_manager.h",
+        "../broker/session_manager.c"
+      ],
+      "DOC_REF": []
+    },
+    {
+      "NAME": "topic",
+      "ROLE": "订阅过滤器数据结构与匹配：维护 filter->session_id 集合，并实现 MQTT topic filter 的 +/# 通配匹配。",
+      "DEPENDENCIES": [],
+      "ARTIFACTS": [
+        {
+          "NAME": "mqtt_topic_tree_t",
+          "KIND": "TYPE",
+          "ROLE": "订阅表（支持 subscribe/unsubscribe/remove_session/match）"
+        },
+        {
+          "NAME": "mqtt_topic_match",
+          "KIND": "FUNC",
+          "ROLE": "filter 与 topic 的匹配逻辑（支持 + 和 #）"
+        },
+        {
+          "NAME": "mqtt_topic_tree_match_subscribers",
+          "KIND": "FUNC",
+          "ROLE": "为给定 topic 找到所有匹配订阅者 session_id（返回新分配的数组）"
+        }
+      ],
+      "FILES": [
+        "../topic/topic_tree.h",
+        "../topic/topic_tree.c"
+      ],
+      "DOC_REF": []
+    },
+    {
+      "NAME": "router",
+      "ROLE": "消息路由：把 SUBSCRIBE 注册到 topic；把 QoS0 PUBLISH 按匹配结果转发给订阅会话（通过 encoder 编码并经 session_send 发送）。",
+      "DEPENDENCIES": [
+        "topic",
+        "session",
+        "protocol_codec"
+      ],
+      "ARTIFACTS": [
+        {
+          "NAME": "mqtt_message_router_t",
+          "KIND": "TYPE",
+          "ROLE": "路由器对象（持有 topic_tree，引用 session_manager）"
+        },
+        {
+          "NAME": "mqtt_message_router_subscribe",
+          "KIND": "FUNC",
+          "ROLE": "为某 session_id 增加订阅过滤器"
+        },
+        {
+          "NAME": "mqtt_message_router_publish",
+          "KIND": "FUNC",
+          "ROLE": "将 PUBLISH(QoS0) 转发给所有匹配订阅者"
+        }
+      ],
+      "FILES": [
+        "../router/message_router.h",
+        "../router/message_router.c"
+      ],
+      "DOC_REF": []
+    },
+    {
+      "NAME": "broker_app",
+      "ROLE": "Broker 对外入口与协议处理中心：启动 tcp_server；在网络回调中读取字节并调用 decoder；按 packet 类型驱动 session/router 并编码响应。",
+      "DEPENDENCIES": [
+        "network",
+        "protocol_codec",
+        "session",
+        "router"
+      ],
+      "ARTIFACTS": [
+        {
+          "NAME": "mqtt_broker_t",
+          "KIND": "TYPE",
+          "ROLE": "Broker 进程级对象（包含 server、session_manager、message_router）"
+        },
+        {
+          "NAME": "mqtt_broker_create",
+          "KIND": "FUNC",
+          "ROLE": "创建 broker 并初始化 server/sessions/router"
+        },
+        {
+          "NAME": "mqtt_broker_run",
+          "KIND": "FUNC",
+          "ROLE": "进入事件循环（tcp_server_run）"
+        },
+        {
+          "NAME": "main",
+          "KIND": "FUNC",
+          "ROLE": "进程入口：解析端口参数并启动 broker"
+        }
+      ],
+      "FILES": [
+        "../main.c",
+        "../broker/broker.h",
+        "../broker/broker.c"
+      ],
+      "DOC_REF": []
+    }
+  ],
+  "GENERATION_ORDER": [
+    "network",
+    "protocol_codec",
+    "session",
+    "topic",
+    "router",
+    "broker_app"
+  ],
+  "CONSISTENCY_RULES": [
+    {
+      "ID": "C1",
+      "RULE": "禁止在 network/session/router/broker_app 里手写 MQTT wire-format；所有解析必须通过 mqtt_decoder_feed，所有响应/转发编码必须通过 mqtt_encoder.*。",
+      "DOC_REF": []
+    },
+    {
+      "ID": "C2",
+      "RULE": "network 层不得依赖 mqtt_packet_t / mqtt_encoder / mqtt_decoder；它只能以字节缓冲与回调形式提供服务。",
+      "DOC_REF": []
+    },
+    {
+      "ID": "C3",
+      "RULE": "会话唯一标识 session_id 必须与 mqtt_connection_fd(conn) 一致；router/topic/session_manager 对 session_id 的含义必须一致。",
+      "DOC_REF": []
+    },
+    {
+      "ID": "C4",
+      "RULE": "topic filter 匹配规则必须与 MQTT 3.1.1 的 exact、+/# 语义一致：exact filter 必须匹配 identical topic；+/# 通配规则不能破坏 exact route；# 仅允许出现在末尾；不符合的 filter 应在上层拒绝或安全处理。",
+      "DOC_REF": []
+    },
+    {
+      "ID": "C4a",
+      "RULE": "network 层只能通过真实 recv 到非空缓冲区的返回值判断 EOF；禁止使用 zero-length recv 或 MSG_PEEK/peek 探测来判断 peer closed。",
+      "DOC_REF": []
+    },
+    {
+      "ID": "C5",
+      "RULE": "生成代码只能使用 canonical header 中出现的公共字段、枚举、类型和函数；未列入 PUBLIC_SYMBOLS/ACCESS_PATHS 的公共符号不得臆造。",
+      "DOC_REF": []
+    },
+    {
+      "ID": "C6",
+      "RULE": "SPEC 生成时必须优先给出符号表、字段映射、调用契约和最小 oracle；不得用宽泛自然语言替代机器可读约束。",
+      "DOC_REF": []
+    }
+  ],
+  "FORBIDDEN_SYMBOLS": [
+    {
+      "NAME": "pkt->data",
+      "KIND": "FIELD",
+      "REASON": "mqtt_packet_t 没有 data 字段；packet payload union 字段名是 v"
+    },
+    {
+      "NAME": "out->data",
+      "KIND": "FIELD",
+      "REASON": "mqtt_packet_t 没有 data 字段；decode_one 必须写 out->v.*"
+    },
+    {
+      "NAME": "mqtt_packet_t.data",
+      "KIND": "FIELD",
+      "REASON": "mqtt_packet_t 的 union 字段名是 v"
+    },
+    {
+      "NAME": "mqtt_packet_t.connect",
+      "KIND": "FIELD",
+      "REASON": "CONNECT payload 必须通过 mqtt_packet_t.v.connect 访问"
+    },
+    {
+      "NAME": "MQTT_PACKET_TYPE_CONNECT",
+      "KIND": "ENUM",
+      "REASON": "MQTT packet enum 使用 MQTT_PKT_* 命名"
+    },
+    {
+      "NAME": "MQTT_PACKET_CONNECT",
+      "KIND": "ENUM",
+      "REASON": "MQTT packet enum 使用 MQTT_PKT_* 命名"
+    },
+    {
+      "NAME": "mqtt_topic_filter_t",
+      "KIND": "TYPE",
+      "REASON": "订阅项公开类型是 mqtt_subscribe_topic_t；topic tree 内部不暴露 filter 类型"
+    }
+  ],
+  "TEST_VECTORS": [
+    {
+      "NAME": "runtime_cross_client_pubsub",
+      "LEVEL": "RUNTIME",
+      "INPUT": {
+        "steps": [
+          "connect subscriber and receive CONNACK",
+          "subscribe to specforge/runtime and receive SUBACK",
+          "connect publisher and publish payload hello"
+        ]
+      },
+      "EXPECT": {
+        "subscriber_publish_topic": "specforge/runtime",
+        "subscriber_publish_payload": "hello"
+      },
+      "TRACE_REFS": [
+        "mqtt/network/tcp_server/mqtt_tcp_server_run",
+        "mqtt/broker/mqtt_broker_handle_publish"
+      ]
+    },
+    {
+      "NAME": "runtime_eof_preserves_buffered_packet",
+      "LEVEL": "RUNTIME",
+      "INPUT": {
+        "steps": [
+          "publisher sends a complete PUBLISH packet",
+          "publisher immediately closes the TCP connection"
+        ]
+      },
+      "EXPECT": {
+        "subscriber_receives_publish": true,
+        "broker_survives": true
+      },
+      "TRACE_REFS": [
+        "mqtt/network/connection/mqtt_connection_read",
+        "mqtt/network/tcp_server/mqtt_tcp_server_run"
+      ]
+    },
+    {
+      "NAME": "runtime_malformed_packet_survival",
+      "LEVEL": "RUNTIME",
+      "INPUT": {
+        "steps": [
+          "send malformed MQTT packet on one connection",
+          "connect a fresh valid client"
+        ]
+      },
+      "EXPECT": {
+        "fresh_client_receives_connack": true,
+        "broker_survives": true
+      },
+      "TRACE_REFS": [
+        "mqtt/network/tcp_server/mqtt_tcp_server_run"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "mqtt/protocol/mqtt_decoder/try_parse_remaining_length",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "解析 MQTT 可变长 Remaining Length 字段，处理最多 4 字节编码约束",
+  "SIGNATURE": {
+    "RAW": "static bool try_parse_remaining_length(const uint8_t* buf, size_t buf_len, size_t start, remaining_length_t* out)",
+    "NAME": "try_parse_remaining_length",
+    "RETURN": "bool",
+    "PARAMS": [
+      {
+        "TYPE": "const uint8_t*",
+        "NAME": "buf",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "size_t",
+        "NAME": "buf_len",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "size_t",
+        "NAME": "start",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "remaining_length_t*",
+        "NAME": "out",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct remaining_length",
+        "ROLE": "Remaining Length 解析结果结构体"
+      }
+    ],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入为 MQTT 固定头缓冲 buf、长度 buf_len、Remaining Length 起始偏移 start 与输出对象 out。",
+    "ACTION": "按 MQTT 可变长编码逐字节解析 Remaining Length，输出 value 与 bytes。",
+    "OUTPUT": "完整解析 1 到 4 字节 Remaining Length 时返回 true 并写入 value/bytes；缓冲不足或超过 4 字节仍未结束时返回 false。",
+    "INVARIANTS_USED": [
+      "不消费输入缓冲",
+      "遵守 MQTT Remaining Length 的 7bit+续位编码上限"
+    ]
+  }
+}

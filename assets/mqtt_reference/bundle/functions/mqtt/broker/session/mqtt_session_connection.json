@@ -1,0 +1,38 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "mqtt/broker/session/mqtt_session_connection",
+  "FUNCTION_TYPE": "EVENT",
+  "ROLE": "返回会话绑定的底层连接对象",
+  "SIGNATURE": {
+    "RAW": "mqtt_connection_t* mqtt_session_connection(const mqtt_session_t* s)",
+    "NAME": "mqtt_session_connection",
+    "RETURN": "mqtt_connection_t*",
+    "PARAMS": [
+      {
+        "TYPE": "const mqtt_session_t*",
+        "NAME": "s",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct mqtt_session",
+        "ROLE": "会话私有实现结构"
+      }
+    ],
+    "FUNC": [],
+    "VAR": []
+  },
+  "EVENT": {
+    "TRIGGER": "报文处理或连接控制逻辑需要访问连接句柄时触发",
+    "PRECONDITION": "允许 s 为空",
+    "INPUT": "输入为会话指针 s",
+    "ACTION": "若 s 非空则返回 s->conn，否则返回 NULL",
+    "STATE_CHANGE": "纯读取操作，不修改任何字段",
+    "RESPONSE": "返回连接指针或 NULL",
+    "EVENT_TYPE": "RUNTIME_EVENT"
+  }
+}

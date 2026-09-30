@@ -1,0 +1,27 @@
+{
+  "KIND": "FILE_SPEC",
+  "FILE": {
+    "TRACE_ID": "mqtt/main",
+    "LANG": "C",
+    "ROLE": "Broker 进程启动入口：解析可选端口参数，创建并启动 MQTT broker，进入事件循环并在退出时销毁资源",
+    "DOC_REF": []
+  },
+  "SOURCE": {
+    "PATH": "src/main.c",
+    "DEPENDENCY": [
+      "include/broker/broker.h"
+    ],
+    "DATA": [],
+    "INTERFACE": [
+      {
+        "TRACE_ID": "mqtt/main/main",
+        "SIGNATURE": "int main(int argc, char** argv)",
+        "NAME": "main",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ENTRYPOINT",
+        "ROLE": "Broker 可执行程序入口：解析端口、创建 broker、启动监听、运行事件循环并最终释放 broker",
+        "VISIBILITY": "public"
+      }
+    ]
+  }
+}

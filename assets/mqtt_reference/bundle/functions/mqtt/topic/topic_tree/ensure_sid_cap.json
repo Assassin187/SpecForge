@@ -1,0 +1,44 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "mqtt/topic/topic_tree/ensure_sid_cap",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "扩容单条 filter 的会话 ID 数组",
+  "SIGNATURE": {
+    "RAW": "static void ensure_sid_cap(filter_entry_t* e, size_t need)",
+    "NAME": "ensure_sid_cap",
+    "RETURN": "void",
+    "PARAMS": [
+      {
+        "TYPE": "filter_entry_t*",
+        "NAME": "e",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "size_t",
+        "NAME": "need",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct filter_entry",
+        "ROLE": "过滤器条目结构体"
+      }
+    ],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "输入为 filter_entry e 与目标 sid 容量 need。",
+    "ACTION": "若条目 sid 容量不足则按倍增策略 realloc sids。",
+    "OUTPUT": "e 为空或容量已足够时直接返回；扩容成功时 sids 和 sid_cap 更新到覆盖 need；realloc 失败时保持原数组不变。",
+    "INVARIANTS_USED": [
+      "只增长 sid_cap",
+      "不改变 sid_count"
+    ]
+  }
+}

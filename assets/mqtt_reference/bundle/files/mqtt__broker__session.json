@@ -1,0 +1,172 @@
+{
+  "KIND": "FILE_SPEC",
+  "FILE": {
+    "TRACE_ID": "mqtt/broker/session",
+    "LANG": "C",
+    "ROLE": "会话状态模块：封装连接级 MQTT 会话元数据（连接状态、client_id、clean_session、keep_alive）及发送能力",
+    "DOC_REF": []
+  },
+  "HEADER": {
+    "PATH": "include/broker/session.h",
+    "DEPENDENCY": [
+      "include/network/connection.h"
+    ],
+    "DATA": [
+      {
+        "NAME": "mqtt_session_t",
+        "KIND": "TYPE",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "Session 句柄不透明类型，用于隔离会话内部字段并通过访问器函数暴露必要信息",
+        "TYPE_SPEC": {
+          "TYPE_KIND": "OPAQUE"
+        }
+      }
+    ],
+    "INTERFACE": [
+      {
+        "SIGNATURE": "mqtt_session_t* mqtt_session_create(mqtt_connection_t* conn)",
+        "NAME": "mqtt_session_create",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "EVENT_HANDLER",
+        "ROLE": "基于连接对象创建会话并初始化为未连接的默认状态",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "void mqtt_session_destroy(mqtt_session_t* s)",
+        "NAME": "mqtt_session_destroy",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "EVENT_HANDLER",
+        "ROLE": "释放会话持有的 client_id 字符串和会话对象本身",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "int mqtt_session_id(const mqtt_session_t* s)",
+        "NAME": "mqtt_session_id",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "EVENT_HANDLER",
+        "ROLE": "返回会话对应连接的 fd 作为 session_id，不可用时返回 -1",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "mqtt_connection_t* mqtt_session_connection(const mqtt_session_t* s)",
+        "NAME": "mqtt_session_connection",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "EVENT_HANDLER",
+        "ROLE": "读取会话绑定的底层连接指针，供上层进行网络操作",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "bool mqtt_session_connected(const mqtt_session_t* s)",
+        "NAME": "mqtt_session_connected",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "EVENT_HANDLER",
+        "ROLE": "读取会话是否已完成 CONNECT 握手的标志位",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "const char* mqtt_session_client_id(const mqtt_session_t* s)",
+        "NAME": "mqtt_session_client_id",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "EVENT_HANDLER",
+        "ROLE": "读取会话 client_id，未设置时返回空字符串以避免 NULL 传播",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "void mqtt_session_mark_connected(mqtt_session_t* s, const char* client_id, bool clean_session, uint16_t keep_alive)",
+        "NAME": "mqtt_session_mark_connected",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "EVENT_HANDLER",
+        "ROLE": "在 CONNECT 成功后写入连接状态与协商参数，并更新 client_id 副本",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "void mqtt_session_send(mqtt_session_t* s, const uint8_t* data, size_t len)",
+        "NAME": "mqtt_session_send",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "EVENT_HANDLER",
+        "ROLE": "通过会话绑定连接发送编码后的 MQTT 二进制数据",
+        "VISIBILITY": "public"
+      }
+    ]
+  },
+  "SOURCE": {
+    "PATH": "src/broker/session.c",
+    "DEPENDENCY": [
+      "include/broker/session.h"
+    ],
+    "DATA": [
+      {
+        "NAME": "struct mqtt_session",
+        "KIND": "TYPE",
+        "VISIBILITY": "PRIVATE",
+        "ROLE": "会话私有实现结构，保存连接句柄、连接状态、client_id 及 CONNECT 协商参数"
+      }
+    ],
+    "INTERFACE": [
+      {
+        "TRACE_ID": "mqtt/broker/session/mqtt_session_create",
+        "SIGNATURE": "mqtt_session_t* mqtt_session_create(mqtt_connection_t* conn)",
+        "NAME": "mqtt_session_create",
+        "KIND": "FUNC",
+        "ROLE": "校验连接并分配会话对象，设置 connected=false、client_id=NULL、clean_session=true、keep_alive=0",
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "mqtt/broker/session/mqtt_session_destroy",
+        "SIGNATURE": "void mqtt_session_destroy(mqtt_session_t* s)",
+        "NAME": "mqtt_session_destroy",
+        "KIND": "FUNC",
+        "ROLE": "安全销毁会话：先释放动态 client_id，再释放会话内存",
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "mqtt/broker/session/mqtt_session_id",
+        "SIGNATURE": "int mqtt_session_id(const mqtt_session_t* s)",
+        "NAME": "mqtt_session_id",
+        "KIND": "FUNC",
+        "ROLE": "从会话连接读取 fd 作为会话 ID；会话或连接为空时返回 -1",
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "mqtt/broker/session/mqtt_session_connection",
+        "SIGNATURE": "mqtt_connection_t* mqtt_session_connection(const mqtt_session_t* s)",
+        "NAME": "mqtt_session_connection",
+        "KIND": "FUNC",
+        "ROLE": "返回会话关联连接，供 broker 侧进行收发与关闭操作",
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "mqtt/broker/session/mqtt_session_connected",
+        "SIGNATURE": "bool mqtt_session_connected(const mqtt_session_t* s)",
+        "NAME": "mqtt_session_connected",
+        "KIND": "FUNC",
+        "ROLE": "读取 connected 标志位，判断该会话是否已处于可处理业务报文状态",
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "mqtt/broker/session/mqtt_session_client_id",
+        "SIGNATURE": "const char* mqtt_session_client_id(const mqtt_session_t* s)",
+        "NAME": "mqtt_session_client_id",
+        "KIND": "FUNC",
+        "ROLE": "返回会话 client_id 的稳定字符串视图，空值场景统一返回 \"\"",
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "mqtt/broker/session/mqtt_session_mark_connected",
+        "SIGNATURE": "void mqtt_session_mark_connected(mqtt_session_t* s, const char* client_id, bool clean_session, uint16_t keep_alive)",
+        "NAME": "mqtt_session_mark_connected",
+        "KIND": "FUNC",
+        "ROLE": "将会话置为已连接并写入 CONNECT 参数，必要时复制新的 client_id",
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "mqtt/broker/session/mqtt_session_send",
+        "SIGNATURE": "void mqtt_session_send(mqtt_session_t* s, const uint8_t* data, size_t len)",
+        "NAME": "mqtt_session_send",
+        "KIND": "FUNC",
+        "ROLE": "在参数有效时透传调用 mqtt_connection_send 发送数据帧",
+        "VISIBILITY": "public"
+      }
+    ]
+  }
+}

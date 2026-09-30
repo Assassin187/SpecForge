@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "protocol": "MQTT",
+  "version": "3.1.1",
+  "role": "BROKER",
+  "language": "C99",
+  "runtime": "Linux",
+  "requirements": [],
+  "required_capabilities": [
+    "manual MQTT subset"
+  ],
+  "excluded_features": [
+    "full MQTT compliance"
+  ],
+  "runtime_contract": {
+    "binary_name": "mqtt_broker",
+    "argv_contract": "./mqtt_broker <port>"
+  },
+  "engineering_defaults": []
+}
