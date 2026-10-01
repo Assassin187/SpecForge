@@ -1,29 +1,37 @@
-# Required SMTP RFC 5321 subset
+# SMTP 功能需求
 
-- R01: Independent multi-file Linux C99 IPv4 TCP server, concurrent clients, ./smtp_server <port> <mail-dir>, GCC/make build, accurate README and development tests. mail-dir is an existing writable directory; generated project layout and internal interfaces are unrestricted.
-- R02: Send a 220 greeting identifying smtp.example.test when a client connects. Use CRLF-terminated SMTP command and reply lines, correct three-digit reply codes and case-insensitive command names. Reply wording may be chosen by the implementation; mailbox local-parts retain their case.
-- R03: Support EHLO and HELO with a syntactically valid client domain or IPv4 address literal, return 250 and enter the initialized session state without performing DNS lookups. Repeated EHLO/HELO resets any unfinished mail transaction. Advertise no service extensions, including PIPELINING, SIZE, STARTTLS, AUTH and 8BITMIME.
-- R04: Accept MAIL FROM:<address> with an ASCII dot-string local-part and a syntactically valid domain, and accept the null reverse-path MAIL FROM:<>. Return 250 and start a fresh envelope only in the appropriate initialized state. MAIL before initialization or during an unfinished transaction returns 503 without replacing the existing envelope.
-- R05: Accept one or more RCPT TO commands after MAIL. The ordinary local mailboxes are alice@example.test and bob@example.test; their local-parts are case-sensitive and the domain is case-insensitive. Also accept the reserved mailbox postmaster@example.test and the unqualified RCPT TO:<Postmaster> form; the postmaster local name is case-insensitive as specified in RFC 5321. Accepted recipients receive 250 and are retained in request order, including repeated accepted recipients. Other syntactically valid recipients receive 550 without removing earlier accepted recipients. No relay or remote delivery is performed.
-- R06: DATA requires an active sender and at least one accepted recipient; return 354 and enter data mode. Consume CRLF-delimited mail data until the single-dot terminator, remove one leading transparency dot from each nonterminating line beginning with a dot, and preserve all other 7-bit content and CRLF bytes. Blank lines and an empty DATA block are allowed; command-looking lines inside DATA remain content.
-- R07: A successfully completed DATA transaction creates exactly one complete UTF-8 JSON file in mail-dir, with fields mail_from (the envelope address without angle brackets, or an empty string for the null reverse-path), rcpt_to (the accepted address strings in request order, without angle brackets), and data (the exact unstuffed ASCII content represented as a JSON string, including its original CRLF bytes but excluding the terminator). Filenames are chosen by the Agent and must be unique across clients and server restarts. Send the final 250 only after writing the capture successfully; storage failures return 451 and leave no completed capture for that transaction.
-- R08: Handle fragmented commands, split CRLF sequences, fragmented DATA and a terminator split across TCP reads. Process multiple complete lines already buffered in order, including a following command after the DATA terminator, while keeping reply order correct. Process complete buffered input before TCP EOF; incomplete commands or DATA at EOF never create a capture.
-- R09: RSET returns 250 and discards the current envelope and data while preserving an initialized session; NOOP returns 250 without changing transaction state; a syntactically valid VRFY request returns 252 without claiming address verification. QUIT returns 221, discards any unfinished transaction and closes after the reply is sent. These commands are parsed only in command mode, not within DATA.
-- R10: After a successful or rejected completed DATA transaction, reset its sender, recipients and data so that another MAIL/RCPT/DATA sequence can run on the same connection. Client transactions and captures must remain isolated; a new connection cannot inherit any old session or envelope state.
-- R11: Use 500 for unrecognized commands, 501 for malformed arguments to implemented commands, 503 for invalid command order, 502 for recognized but unimplemented commands and 555 for unsupported MAIL/RCPT extension parameters. Enforce command/reply lines of at most 512 octets including CRLF, data lines of at most 1000 octets including CRLF but excluding an added transparency dot, 100 accepted recipients per transaction and 65536 unstuffed DATA octets. An additional recipient receives 452; an oversized command receives 500. Oversized DATA or data lines are discarded through the terminator, followed by 552 and transaction reset. Framing errors that cannot safely be recovered close only the offending client, sending 421 when possible, without a capture or loss of service to other clients.
-- R12: Specify ownership of receive slices, copied envelope addresses, mail data, capture files, output queues and connection objects. Bound buffering, handle partial writes and peer disconnects, and release resources on normal SIGINT/SIGTERM termination without ASan, UBSan or leak diagnostics. Development tests must verify both SMTP replies and decoded capture records, including aborted transactions leaving no completed file.
+## 使用范围
 
-Clients use direct loopback TCP, 7-bit ASCII mail data with CRLF line endings,
-dot-string mailbox local-parts, domain names or IPv4 literals for EHLO/HELO,
-the reserved postmaster recipient forms, and no negotiated service extensions.
-DATA is opaque capture content; RFC
-5322 message validation, MIME parsing and delivery header insertion are
-outside the task. The 65536-byte capture limit and exact 100-recipient limit
-are local task choices.
+实现一个基于 IPv4 TCP 的本地 SMTP 邮件捕获服务，运行于 Linux，支持多个客户端。范围内的命令和交互规则请按 RFC 5321 处理，下面的本地邮箱、保存格式和容量限制是本次应用的选择。
 
-Excluded: SMTP relay, DNS/MX resolution, outbound delivery, retry queues,
-delivery-status notifications, production durability or crash recovery,
-authentication, TLS/STARTTLS, SMTPUTF8, 8BITMIME, BINARYMIME/BDAT, negotiated
-PIPELINING, mailing-list expansion, quoted or internationalized mailbox
-local-parts, source routes and complete SMTP compliance. No particular event
-loop, module layout, file count or interface naming scheme is required.
+## 主要功能
+
+1. R01: 项目能独立构建和运行，支持多个客户端，并能把邮件保存到启动时指定的已有可写目录，提供简单的使用说明。
+
+2. R02: 客户端连接后收到正常的 SMTP 欢迎回复，服务器标识为 smtp.example.test。命令和回复按协议处理，包括命令大小写和行结束规则。
+
+3. R03: 支持 EHLO/HELO，接受合法域名或 IPv4 地址形式，不做 DNS 查询。再次 EHLO/HELO 时清除未完成的邮件事务；不声明任何服务扩展。
+
+4. R04: 支持 MAIL FROM，接受普通 ASCII dot-string 邮箱地址和空发件人。发件人设置要遵守会话及事务顺序，错误命令不能替换已经开始的事务。
+
+5. R05: 一封邮件可以有多个收件人。本地邮箱为 alice@example.test、bob@example.test，并支持协议要求的 postmaster@example.test 和不带域名的 Postmaster。地址大小写按规范处理，保留接受的收件人顺序和重复项；拒绝其他收件人，不做转发。
+
+6. R06: 有发件人和至少一个有效收件人后才能提交 DATA。按协议处理结束标记和点转义，保留其余 7-bit 内容及 CRLF，允许空邮件和空行。DATA 中看起来像命令的文本也只是邮件内容。
+
+7. R07: 每封完整收到的邮件保存为一个 UTF-8 JSON 文件，记录 mail_from（信封发件人）、rcpt_to（按顺序排列的收件人）和 data（点转义处理后的原始内容，不含结束标记）。地址不含尖括号，空发件人记为空字符串。文件不能因并发或重启而覆盖旧邮件；保存成功后才确认接收成功，保存失败返回临时错误且不留下完整邮件记录。
+
+8. R08: 命令和 DATA 可能分段到达，也可能多行一起到达，均应按顺序处理并回复。客户端关闭发送方向时，完整收到的输入仍应处理，未完成的命令或 DATA 不能生成邮件记录。
+
+9. R09: 支持 RSET、NOOP、VRFY 和 QUIT。RSET 放弃当前事务，NOOP 不改变事务；VRFY 返回 252，不实际验证地址；QUIT 正常回复后断开并放弃未完成的邮件。
+
+10. R10: 同一连接可以连续提交多封邮件。一次 DATA 完成或被拒绝后清除该事务，各客户端的会话、发件人、收件人和邮件内容不能串用。
+
+11. R11: 未知命令、参数错误、顺序错误和不支持的功能按规范返回相应错误。遵守协议的命令和 DATA 行长限制，每次事务最多接受 100 个收件人，点转义处理后的邮件内容最多 65536 字节。超限 DATA 应丢弃到结束标记，再拒绝并允许开始新事务；无法继续处理的输入只影响该客户端，不保存未完成邮件，也不影响其他客户端。
+
+12. R12: 服务应能正确发送完整回复，处理客户端断开，并通过 SIGINT/SIGTERM 正常停止，运行中不应出现内存错误或资源泄漏。
+
+## 本次不要求的功能
+
+只需直接连接、7-bit ASCII 邮件和上述本地收件人。DATA 作为原始内容保存，不要求 RFC 5322 头部检查、MIME 解析或插入 Received、Return-Path 等投递头。
+
+不要求中继、DNS/MX 查询、外发投递、重试队列、投递状态通知、生产级持久化或崩溃恢复、认证、TLS/STARTTLS、SMTPUTF8、8BITMIME、BINARYMIME/BDAT、协商 PIPELINING、邮件列表、带引号或国际化的邮箱名、源路由或完整 SMTP 合规。

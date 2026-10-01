@@ -1,30 +1,39 @@
-# Required HTTP/1.1 RFC 9112 / RFC 9110 subset
+# HTTP/1.1 功能需求
 
-- R01: Independent multi-file Linux C99 IPv4 TCP origin server, concurrent clients, ./http_server <port>, GCC/make build, accurate README and development tests. The Agent chooses the project layout and all internal interfaces.
-- R02: Parse HTTP/1.1 request lines, origin-form request targets and CRLF-terminated header sections. Method tokens and resource paths are case-sensitive; header names and applicable token-valued fields are case-insensitive. Support optional whitespace around field values and ignore well-formed unknown request fields. Each request must contain exactly one syntactically valid nonempty Host field, optionally including a port; no DNS lookup or virtual-host routing is required.
-- R03: GET /hello returns 200 OK, Content-Type text/plain, Content-Length 5 and the exact bytes hello, without an added newline. Route the path component separately from an optional query; /hello?x=1 addresses /hello. Match paths exactly without percent-decoding or path normalization; /Hello and /hello/ are different paths.
-- R04: /value is a pre-existing mutable resource initially holding an empty byte sequence. PUT /value replaces it with at most 1024 decoded request-body bytes and returns 204 No Content, with no response body, Content-Length or Transfer-Encoding. GET /value returns 200 OK, Content-Type application/octet-stream, an exact Content-Length and the stored bytes. Empty PUT clears it. Preserve NUL bytes and arbitrary binary data; commit an update only after a complete valid request has been received.
-- R05: POST /echo processes a complete request body of at most 1024 decoded bytes and returns 200 OK, Content-Type application/octet-stream, an exact Content-Length and exactly those bytes. Accept both Content-Length and chunked request framing, including empty bodies and NUL bytes. This application-selected POST behavior does not modify /value or create persistent resources.
-- R06: HEAD is supported on /hello and /value and returns the status and representation metadata of the corresponding GET, including its Content-Length, without sending any response-body bytes. Any response to HEAD, including 404 and 405 errors, must omit body bytes. Generate valid HTTP/1.1 status lines and CRLF-terminated response fields; ordinary non-HEAD responses with content use Content-Length. Include a correctly formatted Date field based on system time in 2xx and 4xx responses. Chunked response encoding is not required.
-- R07: Support request bodies framed by a single valid nonnegative decimal Content-Length, including zero. Consume exactly that many bytes before treating subsequent bytes as another request. A request without Content-Length or Transfer-Encoding has no body; this includes an empty PUT or POST. A premature EOF during a declared body discards that incomplete request without modifying /value or returning a successful application response.
-- R08: Support Transfer-Encoding: chunked requests, hexadecimal chunk sizes, binary chunk data, chunk CRLF boundaries, the terminating zero chunk and trailer-section termination. Decode to the same body bytes as Content-Length framing. Ignore well-formed unknown chunk extensions and permitted trailer fields; trailers must not change routing, framing or the application body. Enforce the 1024-byte limit on decoded content, not chunk-framing overhead.
-- R09: Handle fragmented request lines, headers, Content-Length bodies and chunked bodies across arbitrary TCP reads. Handle multiple requests coalesced in one read and pipelined requests on the same connection; complete responses are sent in request order. Process complete buffered requests before handling TCP EOF, including a final complete PUT or POST immediately followed by write-side shutdown, and never apply an incomplete request.
-- R10: Use HTTP/1.1 persistent connections by default. Recognize Connection: close among case-insensitive comma-separated connection options; send the complete response with Connection: close before closing, and do not process later pipelined requests on that connection. One client's close, malformed input or abandoned partial request must not block service to other clients.
-- R11: For the implemented methods GET, HEAD, POST and PUT, unknown resource paths return 404 Not Found; a method disallowed on a known resource returns 405 Method Not Allowed with Allow listing GET, HEAD for /hello, GET, HEAD, PUT for /value, and POST for /echo. For example, POST /hello and GET /echo return 405. Methods not implemented by this server return 501 Not Implemented. Valid application-error requests do not mutate /value; they may keep the connection alive only after their entire framed request body has been consumed. Error response wording and bounded body content may be chosen by the Agent.
-- R12: Reject malformed request syntax, missing/duplicate/invalid Host, obsolete folded fields, whitespace before a header colon, invalid Content-Length and malformed chunk framing with 400 Bad Request and close. As the task's conservative framing policy, also reject repeated or comma-separated Content-Length and any request containing both Content-Length and Transfer-Encoding with 400 and close. A transfer coding whose final coding is not chunked receives 400 and close; unsupported codings preceding a final chunked coding receive 501 and close. Oversized decoded bodies receive 413 and close; request targets longer than 8192 octets receive 414 and close; header or trailer sections longer than 16384 octets receive 431 and close. Bound chunk-size lines/extensions as well. Unsupported HTTP versions receive 505 and close. These failures must leave the stored value unchanged and not crash the server.
-- R13: Specify ownership of input slices, parsed fields, decoded content, stored resource bytes, response buffers and connection state. Bound buffers, handle partial writes, release per-client state on disconnect and release all resources on normal SIGINT/SIGTERM termination without ASan, UBSan or leak diagnostics. Development tests must compare complete status, headers, framing and body bytes and exercise persistent, fragmented, pipelined, POST echo and invalid requests.
+## 使用范围
 
-Clients use direct loopback TCP, HTTP/1.1 origin-form requests, no Expect
-header and no authentication. Query strings are accepted but do not change
-resource behavior; percent-decoding, URI normalization and absolute-form
-proxy requests are outside the task. GET/HEAD acceptance requests have no
-body. /value is shared across connections and remains memory-only; it is
-reset to empty when the server restarts.
+实现一个基于 IPv4 TCP 的 HTTP/1.1 源服务器，运行于 Linux，供多个客户端直接访问。范围内的消息格式和语义请按 RFC 9112、RFC 9110 处理，下面的资源和限制是本次应用的选择。
 
-Excluded: HTTP/1.0 compatibility, HTTP/2 or HTTP/3, TLS, proxies, CONNECT
-tunnels, protocol upgrades/WebSocket, 100-continue, chunked responses,
-DELETE/OPTIONS/TRACE application handling, compression or transfer codings
-other than chunked, Range/conditional
-requests, cache implementation, filesystem serving, cookies/sessions,
-authentication, persistent storage and complete HTTP compliance. No fixed
-event loop, module count, file count or interface layout is required.
+## 主要功能
+
+1. R01: 项目能独立构建和运行，支持多个客户端，并提供简单的启动方式和使用说明。
+
+2. R02: 支持普通 HTTP/1.1 请求和 origin-form 请求目标，按规范处理请求头，包括必要的 Host 检查。不需要 DNS 查询或虚拟主机路由。
+
+3. R03: GET /hello 返回 200 和纯文本 hello，不添加换行。查询参数不改变资源行为；路径区分大小写并精确匹配，不做百分号解码或路径规范化。
+
+4. R04: /value 是各连接共享的二进制资源，初始为空。PUT 保存最多 1024 字节，成功返回 204 且没有正文；GET 返回 200 和原样内容。支持空值和任意二进制数据，空 PUT 清空它。数据只保存在内存中，重启后恢复为空。
+
+5. R05: POST /echo 原样返回提交的正文，成功返回 200，内容类型为 application/octet-stream。支持最多 1024 字节的二进制或空正文，不修改 /value，也不创建其他资源。
+
+6. R06: /hello 和 /value 支持 HEAD，返回对应 GET 的状态和内容信息，但不发送正文；HEAD 的错误响应也不能带正文。普通响应使用正确的内容类型和长度，成功及客户端错误响应带 Date。/value 的内容类型为 application/octet-stream，不要求 chunked 响应。
+
+7. R07: 支持 Content-Length 请求正文，包括长度为零的情况；未指定正文分帧方式的请求按无正文处理。正文不能与下一条请求混在一起，未完整接收的请求不能成功或修改资源。
+
+8. R08: 支持 chunked 请求正文，正确处理合法的 chunk 扩展和 trailer。它们不改变路由或应用内容，1024 字节限制针对解码后的正文。
+
+9. R09: 请求可能分段到达，也可能多条一起到达。支持同一连接上的流水线请求，按请求顺序完整回复。客户端关闭发送方向时，已经完整收到的请求仍应处理，不完整请求不能生效。
+
+10. R10: 默认支持持久连接。客户端要求 Connection: close 时，完整回复后关闭，并停止处理后续请求。某个客户端断开或只发了一部分请求，不能阻塞其他客户端。
+
+11. R11: 未知资源返回 404，已知资源不支持的方法返回 405 并说明允许的方法，未实现的方法返回 501。这些错误不能修改 /value；合法的错误请求不应妨碍同一连接后续的正常请求。
+
+12. R12: 无效请求按协议拒绝并关闭连接，不能损坏已有数据。对消息边界采用保守规则：拒绝重复或列表形式的 Content-Length，以及同时出现 Content-Length 和 Transfer-Encoding 的请求。只支持 chunked 传输编码和 HTTP/1.1；正文最多 1024 字节，请求目标最多 8192 字节，头部或 trailer 部分各最多 16384 字节。超限或使用未支持功能时返回相应的协议错误。
+
+13. R13: 服务应能正确发送完整响应并处理异常输入、客户端断开和正常停止，运行中不应出现内存错误或资源泄漏，支持通过 SIGINT/SIGTERM 退出。
+
+## 本次不要求的功能
+
+只需直接访问，GET/HEAD 使用场景不带正文。不要求 HTTP/1.0、HTTP/2、HTTP/3、TLS、代理、CONNECT、协议升级/WebSocket、100-continue、chunked 响应或 chunked 以外的传输编码。应用方法只需 GET、HEAD、POST、PUT，不要求 DELETE、OPTIONS、TRACE。
+
+不要求压缩、Range/条件请求、缓存、文件系统服务、Cookie/会话、认证或持久存储，也不要求完整 HTTP 合规。

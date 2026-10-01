@@ -1,25 +1,7 @@
-# HTTP/1.1 minimum origin server
+# HTTP/1.1 server 任务
 
-Build an independent multi-file HTTP/1.1 origin server in C99 for Linux
-IPv4 TCP. REQUIREMENTS.md selects the subset. The supplied standard bundle
-contains RFC 9112 for HTTP/1.1 message syntax, framing and connection handling,
-and RFC 9110 for HTTP semantics. Use those texts as the sources of protocol
-rules. Do not import an existing HTTP server or use an HTTP parser/server
-library as the implementation. Choose the project structure, types,
-interfaces and development tests.
+我想做一个简单的 HTTP/1.1 源服务器，供本地客户端读取文本、读写二进制数据，以及回显提交的内容。请在 Linux 下使用 C99，通过 IPv4 TCP 提供服务，具体功能范围见 REQUIREMENTS.md。
 
-Deliver sources, public headers, Makefile, README.md, development tests and
-the executable http_server. Start as ./http_server <port>. Build with GCC
-and make. Specify public interfaces, parsing outcomes, request lifecycle and
-ownership before implementation; private helpers may be chosen while coding.
+协议行为以本目录提供的 RFC 9112 和 RFC 9110 合并文本为依据。希望得到一个能独立构建和运行、代码便于阅读和修改的项目，请自行实现所需功能，不直接使用现成 HTTP server 或 HTTP 解析库代替实现。
 
-This is a bounded local resource server, not complete HTTP compliance.
-Resource paths, exact content, resource limits and the stricter rejection
-policy in REQUIREMENTS.md are application task choices; distinguish those
-choices from normative protocol facts. There is no prescribed architecture,
-event loop, module count, source layout or public function naming scheme.
-
-The single UTF-8 protocol input contains both complete RFC texts, with source
-URLs and document boundaries. Original sources:
-[RFC Editor, RFC 9112](https://www.rfc-editor.org/rfc/rfc9112.txt) and
-[RFC Editor, RFC 9110](https://www.rfc-editor.org/rfc/rfc9110.txt).
+项目应能用 GCC 和 make 构建，提供简单的启动方式，并能指定监听端口；具体命令、项目组织和内部设计由你决定。请自行安排开发、测试和调试，交付源代码、必要的测试和简明 README，说明使用方法、测试方法、已完成的功能和已知问题。本次只要求约定的小型资源服务，不追求完整 HTTP 合规或生产部署。

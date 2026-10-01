@@ -1,20 +1,35 @@
-# Required MQTT 3.1.1 subset
+# MQTT 功能需求
 
-- R01: Linux C99 TCP broker, independent multi-file project, concurrent clients, ./mqtt_broker <port>, clean make build and accurate README.
-- R02: Accept anonymous CONNECT with nonempty ASCII client ID, Clean Session=1 and no Will; return the exact successful CONNACK. CONNECT must be first; duplicate CONNECT closes that client.
-- R03: Accept SUBSCRIBE with one or more filters and requested QoS 0; echo its nonzero Packet Identifier in SUBACK, with one ordered QoS 0 result per filter.
-- R04: Route QoS 0 PUBLISH from a connected client to matching connected subscribers, preserving topic and payload and correct wire framing.
-- R05: Match case-sensitive exact filters and MQTT + and # wildcards, including empty levels and # matching zero levels; respect topic level boundaries.
-- R06: Preserve arbitrary binary payloads, including NUL bytes and empty payloads; do not treat payload as a C string.
-- R07: Handle partial TCP frames and multiple coalesced frames in order. Decode outcomes distinguish incomplete, complete and invalid input and account for bytes consumed.
-- R08: Process all complete frames already received before handling TCP EOF, including a final PUBLISH immediately followed by shutdown of the sender's write side.
-- R09: Respond to a valid PINGREQ with exact PINGRESP; subsequent business traffic continues. Keepalive timeout scheduling is excluded.
-- R10: Handle DISCONNECT and TCP disconnect by removing subscriptions and freeing connection state without affecting other clients; new connections never inherit stale subscriptions.
-- R11: Validate lengths, required fixed-header flags, packet-specific fields and connection state for in-scope packets. Malformed input closes only the offending connection; the broker remains available.
-- R12: Specify and implement ownership of input slices, copied subscriptions, output buffers and connection objects; free all resources on normal SIGINT/SIGTERM termination; no ASan, UBSan or leak diagnostics.
+## 使用范围
 
-Clients used for acceptance have Clean Session=1, no Will, no authentication,
-QoS 0 and RETAIN=0. Excluded: QoS 1/2, retained messages, Will, persistent
-sessions, UNSUBSCRIBE, authentication, TLS and complete MQTT compliance.
-PING exchange is required; idle keepalive timeout scheduling is excluded.
+实现一个基于 TCP 的 MQTT 3.1.1 broker，运行于 Linux，供多个客户端同时使用。这次只需要下面的基础功能；范围内的报文格式和交互规则请按提供的协议规范处理。
 
+## 主要功能
+
+1. R01: 项目能独立构建和运行，支持多个客户端，并提供简单的启动方式和使用说明。
+
+2. R02: 支持匿名客户端连接，使用非空 ASCII 客户端标识和 Clean Session=1，不带遗嘱。连接建立及重复连接报文等情况按协议处理。
+
+3. R03: 客户端可以一次订阅一个或多个主题过滤器，订阅 QoS 为 0，并获得对应的订阅确认。
+
+4. R04: 支持 QoS 0 消息发布，并把消息分发给当前在线、订阅匹配的客户端，保持原来的主题和内容。
+
+5. R05: 支持精确主题以及 +、# 通配符，按 MQTT 规则匹配，包括空主题层级等合法情况。
+
+6. R06: 消息内容可以是任意二进制数据，也可以为空，应原样传递。
+
+7. R07: TCP 数据可能分段到达，也可能多条报文一起到达，均应按顺序正确处理。
+
+8. R08: 客户端发送完报文后立即关闭发送方向时，已经完整收到的报文仍应处理；不完整的报文不能当作有效请求。
+
+9. R09: 支持 PINGREQ/PINGRESP，完成后客户端可以继续发布和订阅。
+
+10. R10: 支持正常断开和 TCP 掉线处理，清除该连接的订阅；重新连接时不继承旧订阅，也不影响其他客户端。
+
+11. R11: 按协议检查范围内的报文和连接状态。无效输入只关闭有问题的连接，broker 应继续服务其他客户端。
+
+12. R12: 运行中不应出现内存错误或资源泄漏，能够通过 SIGINT/SIGTERM 正常停止并释放资源。
+
+## 本次不要求的功能
+
+只要求 QoS 0、Clean Session=1、无遗嘱、无认证且 RETAIN=0 的使用场景。不要求 QoS 1/2、保留消息、遗嘱、持久会话、取消订阅、认证或 TLS。需要 PING 交互，不要求空闲保活超时处理，也不要求完整 MQTT 合规。

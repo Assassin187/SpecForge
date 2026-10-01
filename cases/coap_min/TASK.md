@@ -1,15 +1,7 @@
-# CoAP minimum request/response server
+# CoAP server 任务
 
-Build an independent multi-file CoAP server in C99 for Linux IPv4 UDP.
-REQUIREMENTS.md selects the subset. The supplied RFC 7252 text is the only
-source of protocol rules. Do not import an existing server or use libcoap
-as the implementation. Choose the project structure, types and interfaces.
+我想做一个简单的 CoAP 服务，供本地客户端读取文本、保存和读取一小段二进制数据。请在 Linux 下使用 C99，通过 IPv4 UDP 提供服务，具体功能范围见 REQUIREMENTS.md，协议行为以本目录提供的 RFC 7252 为依据。
 
-Deliver sources, public headers, Makefile, README.md, development tests and
-the executable coap_server. Start as ./coap_server <port>. Build with GCC
-and make. Specify the public interfaces and behavior before implementation.
-Private implementation helpers may be chosen while coding.
+希望得到一个能独立构建和运行、代码便于阅读和修改的项目。请自行实现所需的协议功能，不直接使用现成 CoAP server 或 libcoap 代替实现。项目应能用 GCC 和 make 构建，提供简单的启动方式，并能指定监听端口；具体命令、项目组织和内部设计由你决定。
 
-This is a bounded local server task, not complete CoAP compliance. The
-resources and stricter duplicate-request policy below are application task
-choices; distinguish these from normative protocol facts.
+请自行安排开发、测试和调试。完成后提供源代码、必要的测试和简明 README，说明构建、启动、客户端使用和测试方法，以及已完成的功能和已知问题。本次只要求下面的小型资源服务，不追求完整 CoAP 合规或生产部署。
