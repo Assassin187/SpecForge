@@ -63,19 +63,22 @@ class RuntimeTests(unittest.TestCase):
         self.assertFalse((self.runtime.work / "a").exists())
 
     def test_checkpoint_and_bounded_disk_resume(self):
-        calls = [response([call("list_files", {"path": "/work"})]) for _ in range(8)]
-        calls += [response([call("write_file", {"path": "/work/WORKLOG.md", "content": "Done eight responses; next write a."})]),
+        calls = [response([call("list_files", {"path": "/work"})]) for _ in range(24)]
+        calls += [response([call("write_file", {"path": "/work/WORKLOG.md", "content": "Done twenty-four responses; next write a."})]),
                   response([call("write_file", {"path": "/work/a", "content": "done"})]), response(finish="stop")]
         client = FakeClient(calls)
         self.runtime.check_callback = lambda: {"passed": (self.runtime.work / "a").exists()}
-        report = run_agent(LLM(client=client), self.runtime, "role", "task", 11, self.root / "api")
+        report = run_agent(LLM(client=client), self.runtime, "role", "task", 40, self.root / "api")
         self.assertEqual(report["context_resets"], 1)
-        self.assertEqual(len(client.requests[9]["messages"]), 2)
-        self.assertIn("Done eight", client.requests[9]["messages"][1]["content"])
-        # Same job cannot obtain another eleven requests by resuming.
+        self.assertEqual(len(client.requests[25]["messages"]), 2)
+        self.assertIn("Done twenty-four", client.requests[25]["messages"][1]["content"])
+        # Resuming consumes only the unused part of this job's original budget.
+        saved = json.loads((self.root / "api/progress.json").read_text())
+        saved["responses"] = 40
+        (self.root / "api/progress.json").write_text(json.dumps(saved))
         second = FakeClient([])
-        resumed = run_agent(LLM(client=second), self.runtime, "role", "task", 11, self.root / "api")
-        self.assertEqual(resumed["responses"], 11)
+        resumed = run_agent(LLM(client=second), self.runtime, "role", "task", 40, self.root / "api")
+        self.assertEqual(resumed["responses"], 40)
         self.assertEqual(len(second.requests), 0)
 
     def test_paths_symlinks_readonly_and_unique_edits(self):
@@ -90,16 +93,28 @@ class RuntimeTests(unittest.TestCase):
 
     def test_large_previous_input_does_not_checkpoint_new_context_twice(self):
         first = response([call("list_files", {"path": "/work"})])
-        first["usage"]["prompt_tokens"] = 33000
+        first["usage"]["prompt_tokens"] = 65000
         checkpoint = response([call("write_file", {"path": "/work/WORKLOG.md", "content": "Next write a."})])
-        checkpoint["usage"]["prompt_tokens"] = 33000
+        checkpoint["usage"]["prompt_tokens"] = 65000
         third = response([call("write_file", {"path": "/work/a", "content": "done"})])
         client = FakeClient([first, checkpoint, third, response(finish="stop")])
         self.runtime.check_callback = lambda: {"passed": (self.runtime.work / "a").exists()}
-        report = run_agent(LLM(client=client), self.runtime, "role", "task", 4, self.root / "api")
+        report = run_agent(LLM(client=client), self.runtime, "role", "task", 14, self.root / "api")
         self.assertTrue(report["passed"])
         self.assertEqual(report["context_resets"], 1)
         self.assertGreater(len(client.requests[2]["tools"]), 1)
+
+    def test_final_budget_keeps_artifact_and_check_tools_available(self):
+        first = response([call("list_files", {"path": "/work"})])
+        first["usage"]["prompt_tokens"] = 65000
+        client = FakeClient([first,
+                             response([call("write_file", {"path": "/work/a", "content": "done"})]),
+                             response([call("check", {})])])
+        self.runtime.check_callback = lambda: {"passed": (self.runtime.work / "a").exists()}
+        report = run_agent(LLM(client=client), self.runtime, "role", "task", 3, self.root / "api")
+        self.assertTrue(report["passed"])
+        self.assertEqual(report["context_resets"], 0)
+        self.assertTrue(all(len(r["tools"]) > 1 for r in client.requests))
 
     def test_read_pagination_does_not_skip_truncated_lines(self):
         (self.runtime.work / "large").write_text("\n".join(str(i) + "x" * 400 for i in range(50)))

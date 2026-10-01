@@ -526,6 +526,12 @@
         "INTERFACE"
       ],
       "properties": {
+        "SYSTEM_DEPENDENCY": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "PATH": {
           "type": "string",
           "minLength": 1

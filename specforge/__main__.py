@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 from .documents import read_json
+from .evaluation import evaluate_run
 from .pipeline import Pipeline, STAGES, verify_project
 from .specs import validate
 
@@ -26,6 +27,9 @@ def main() -> int:
     code.add_argument("--out", type=Path, required=True)
     verify = commands.add_parser("verify")
     verify.add_argument("--project", type=Path, required=True)
+    evaluate = commands.add_parser("evaluate")
+    evaluate.add_argument("--run", type=Path, required=True)
+    evaluate.add_argument("--evaluator", type=Path, required=True)
     args = parser.parse_args()
     try:
         if args.command == "run":
@@ -45,11 +49,15 @@ def main() -> int:
                 return 1
             p = Pipeline.new(args.out, spec_only=True)
             shutil.copytree(args.specs, p.bundle())
-            for stage in STAGES[:-1]:
+            for stage in STAGES[:4]:
                 p.state["stages"][stage] = {"status": "passed", "source": "spec_only"}
             p.state["stages"]["specs"]["artifact_hashes"] = p.stage_hashes("specs")
             p.save()
             return 0 if p.execute() else 1
+        if args.command == "evaluate":
+            report = evaluate_run(args.run.resolve(), args.evaluator.resolve())
+            print(json.dumps({k: v for k, v in report.items() if k not in ("builds", "phases", "delivery_hashes")}, indent=2))
+            return 0 if report["passed"] else 1
         project = args.project.resolve()
         bundle = None
         if (project.parent / "run.json").is_file():

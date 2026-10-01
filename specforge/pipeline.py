@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import importlib.metadata
 import json
+import re
+import shlex
 import shutil
 import subprocess
 import time
@@ -13,11 +15,11 @@ from pathlib import Path
 from .agent import run_agent
 from .documents import ROOT, check_facts, digest, hashes, prepare, read_json, save_json
 from .llm import LLM, ModelConfig, total_usage
-from .specs import FLOW_IDS, TEST_IDS, project_readme, publish, scaffold, validate
+from .specs import delivery_checks, project_path, publish, scaffold, validate
 from .tools import ToolRuntime
 
-STAGES = ("prepare", "facts", "design", "specs", "verify")
-LIMITS = {"facts": 40, "design": 40, "specs": 80, "code": 120, "repair": 20}
+STAGES = ("prepare", "facts", "design", "specs", "code", "verify")
+LIMITS = {"facts": 40, "design": 100, "specs": 180, "code": 180, "repair": 40}
 
 
 def now() -> str:
@@ -26,61 +28,53 @@ def now() -> str:
 
 def framework_hashes() -> dict:
     paths = [ROOT / "pyproject.toml"]
-    for name in ("specforge", "prompts", "schemas", "tests"):
+    paths += [ROOT / "specforge" / name for name in ("__init__.py", "__main__.py", "llm.py", "agent.py", "tools.py",
+                                                   "documents.py", "specs.py", "pipeline.py")]
+    for name in ("prompts", "schemas", "tests"):
         paths += [p for p in (ROOT / name).rglob("*") if p.is_file() and "__pycache__" not in p.parts]
     return {p.relative_to(ROOT).as_posix(): digest(p) for p in sorted(paths)}
 
 
 def project_hashes(project: Path) -> dict:
-    selected = {}
-    for name in ("src", "include"):
-        if (project / name).is_dir():
-            selected.update({name + "/" + p: h for p, h in hashes(project / name).items()})
-    for name in ("Makefile", "README.md"):
-        if (project / name).is_file():
-            selected[name] = digest(project / name)
+    selected = {p.relative_to(project).as_posix(): digest(p) for p in project.rglob("*")
+                if p.is_file() and (p.suffix in (".c", ".h", ".py", ".sh", ".md") or p.name in ("Makefile", "delivery.json"))
+                and p.name != "WORKLOG.md" and not any(part.startswith(".") for part in p.relative_to(project).parts)}
+    delivery = project / "delivery.json"
+    if delivery.is_file():
+        try:
+            inventory = read_json(delivery)
+        except ValueError:
+            inventory = {}
+        for name in inventory.get("files", []):
+            p = (project / name).resolve()
+            if project_path(name) and p.is_relative_to(project.resolve()) and p.is_file():
+                selected[name] = digest(p)
     return selected
 
 
-def harness_view(directory: Path) -> Path:
-    directory.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(ROOT / "specforge/mqtt_check.py", directory / "mqtt_check.py")
-    return directory
-
-
-def verify_project(project: Path, reports: Path, logs: Path, *, bundle: Path | None = None,
-                   legacy: bool = False) -> dict:
+def verify_project(project: Path, reports: Path, logs: Path, *, bundle: Path | None = None) -> dict:
+    """Generic development gate; no independent protocol evaluator is visible."""
     project = project.resolve()
     reports.mkdir(parents=True, exist_ok=True)
     stamp = len(list(reports.glob("verify_*"))) + 1
     destination = reports / f"verify_{stamp:03d}"
     destination.mkdir()
     signature = project_hashes(project)
-    errors = []
-    if not (project / "Makefile").is_file():
-        errors.append("Missing Makefile")
-    if not (project / "README.md").is_file():
-        errors.append("Missing README.md")
+    consistency = delivery_checks(project, bundle)
+    errors = consistency["errors"]
+    readonly = []
+    binary = None
     if bundle:
         manifest = read_json(bundle / "bundle.json")
-        if (project / "README.md").is_file() and (project / "README.md").read_text() != project_readme(manifest):
-            errors.append("README differs from the controller-generated scope and runtime contract")
-        for header in manifest["headers"]:
-            p = project / header["path"]
-            if not p.is_file() or digest(p) != digest(bundle / header["artifact"]):
-                errors.append(f"Public header differs from active Spec: {header['path']}")
-        for source in manifest["files"]:
-            if not (project / source["path"]).is_file():
-                errors.append(f"Missing planned source: {source['path']}")
-    report = {"passed": False, "project_hashes": signature, "suite": "legacy6" if legacy else "mqtt_min16",
-              "errors": errors, "builds": {}, "phases": {}, "created_at": now()}
+        readonly = [project / h["path"] for h in manifest["headers"]]
+        binary = manifest["runtime_contract"]["binary_name"]
+    report = {"passed": False, "project_hashes": signature, "kind": "development",
+              "consistency": consistency, "errors": errors, "builds": {}, "phases": {}, "created_at": now()}
     if errors:
         save_json(destination / "report.json", report)
         report["report_path"] = str(destination / "report.json")
         return report
-    harness = harness_view(logs / "harness")
-    runtime = ToolRuntime(project, {"/harness": harness}, logs / f"verify_{stamp:03d}", lambda: {"passed": False},
-                          readonly=[project / "include", project / "Makefile"])
+    runtime = ToolRuntime(project, {}, logs / f"verify_{stamp:03d}", lambda: {"passed": False}, readonly=readonly)
     for phase, target in (("normal", "all"), ("sanitize", "sanitize")):
         build = runtime.command(f"make clean && make {target}", timeout=120)
         report["builds"][phase] = build
@@ -88,24 +82,34 @@ def verify_project(project: Path, reports: Path, logs: Path, *, bundle: Path | N
             report["errors"].append(f"{phase} clean build failed: {build['log']}")
             report["phases"][phase] = {"passed": False, "status": "not_executed", "reason": "build_failed"}
             continue
-        location = project / ".verification" / f"{stamp:03d}" / phase
-        command = (f"/usr/bin/python3 /harness/mqtt_check.py --binary /work/mqtt_broker "
-                   f"--out /work/.verification/{stamp:03d}/{phase}" + (" --legacy" if legacy else ""))
-        result = runtime.command(command, timeout=150)
-        if (location / "report.json").is_file():
-            phase_report = read_json(location / "report.json")
-            shutil.copytree(location, destination / phase)
-        else:
-            phase_report = {"passed": False, "status": "not_executed", "reason": result}
+        if binary and not (project / binary).is_file():
+            report["errors"].append(f"{phase} build did not create runtime binary: {binary}")
+        if binary and phase == "sanitize":
+            symbols = runtime.command("nm --undefined-only " + shlex.quote(binary), timeout=10)
+            if "__asan_init" not in symbols["output"] or "__ubsan_handle" not in symbols["output"]:
+                report["errors"].append("Sanitizer binary lacks ASan/UBSan instrumentation")
+        command = "ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 make test"
+        result = runtime.command(command, timeout=180)
+        full_output = (runtime.logs / Path(result["log"]).name).read_text(errors="replace")
+        diagnostics = re.search(r"AddressSanitizer|LeakSanitizer|runtime error:|UndefinedBehaviorSanitizer", full_output)
+        phase_report = {"passed": result["exit_code"] == 0 and not result["timed_out"] and not diagnostics,
+                        "status": "passed" if result["exit_code"] == 0 and not result["timed_out"] and not diagnostics else "failed",
+                        "command": result, "test_count": consistency["test_count"]}
         report["phases"][phase] = phase_report
         if result["exit_code"] != 0 or not phase_report["passed"]:
-            report["errors"].append(f"{phase} acceptance failed")
+            report["errors"].append(f"{phase} development tests failed")
     # Deliver a normal executable rather than leaving the sanitizer build active.
     final_build = runtime.command("make clean && make", timeout=120)
     report["builds"]["delivery"] = final_build
     if final_build["exit_code"] != 0:
         report["errors"].append("Final delivery build failed")
     report["passed"] = not report["errors"] and len(report["phases"]) == 2
+    for record in [*report["builds"].values(), *(p["command"] for p in report["phases"].values() if "command" in p)]:
+        filename = Path(record["log"]).name
+        target = destination / "commands" / filename
+        target.parent.mkdir(exist_ok=True)
+        shutil.copyfile(runtime.logs / filename, target)
+        record["log"] = "/reports/" + destination.name + "/commands/" + filename
     report["report_path"] = str(destination / "report.json")
     save_json(destination / "report.json", report)
     return report
@@ -134,14 +138,15 @@ class Pipeline:
             (run / name).mkdir()
         versions = {name: importlib.metadata.version(name) for name in ("openai", "jsonschema")}
         versions["python"] = subprocess.check_output(["python3", "--version"], text=True).strip()
-        for name in ("gcc", "make", "pdftotext", "bwrap", "mosquitto_pub", "mosquitto_sub"):
-            flag = "-v" if name == "pdftotext" else "--help" if name.startswith("mosquitto_") else "--version"
+        for name in ("gcc", "make", "pdftotext", "bwrap"):
+            flag = "-v" if name == "pdftotext" else "--version"
             output = subprocess.run([name, flag], capture_output=True, text=True, timeout=10)
             versions[name] = {"path": shutil.which(name), "version": (output.stdout + output.stderr).splitlines()[0]}
-        state = {"schema_version": 1, "created_at": now(), "model": ModelConfig().record(), "versions": versions,
+        state = {"schema_version": 2, "created_at": now(), "model": ModelConfig().record(), "versions": versions,
                  "framework_hashes": framework_hashes(), "stages": {s: {"status": "pending"} for s in STAGES},
                  "current_stage": "prepare", "spec_revision": 1, "implementation_repairs": 0, "spec_repairs": 0,
                  "fresh": not spec_only, "spec_only": spec_only, "resumed": False, "manual_edits": False,
+                 "generation_passed": False, "evaluation_started": False, "evaluation": None,
                  "jobs": [], "stop_reason": None}
         save_json(run / "run.json", state)
         return cls(run, llm)
@@ -216,11 +221,14 @@ class Pipeline:
                       "work": str(work.relative_to(self.run)), "repair_round": self.state["implementation_repairs"]}
             self.state["jobs"].append(record)
             self.save()
-        readonly = [work / "include", work / "Makefile", work / "README.md"] if coder else []
+        readonly = [work / h["path"] for h in read_json(self.bundle() / "bundle.json")["headers"]] if coder else []
         inputs = {**inputs, "/reports": self.run / "reports"}
         runtime = ToolRuntime(work, inputs, self.run / "logs" / name / "commands", gate, readonly=readonly, coder=coder)
         prefix = (ROOT / "prompts" / ("coder.md" if coder else "facts.md" if role == "facts" else "planner.md")).read_text()
-        if not coder:
+        if coder:
+            syntax = read_json(ROOT / "schemas/artifacts.schema.json")["$defs"]["delivery"]
+            prefix += "\nExact delivery.json schema:\n" + json.dumps(syntax, separators=(",", ":"))
+        else:
             # Schema is fixed syntax, not protocol facts or a second design IR.
             # Compact inline copies avoid repeatedly paging through pretty JSON
             # after every checkpoint; the original files remain authoritative.
@@ -249,7 +257,7 @@ class Pipeline:
 
     def do_facts(self):
         return self.job("facts", self.run / "facts", {"/inputs": self.run / "inputs", "/documents": self.run / "documents", "/schemas": ROOT / "schemas"},
-                        "Extract the selected broker facts and scope. Start from the task and requirement inputs. Call check before completion.", self.facts_gate, "facts")
+                        "Extract scope and protocol facts from the task, requirements and standard. Call check before completion.", self.facts_gate, "facts")
 
     def do_design(self):
         return self.job("design", self.run / "design_work", {"/facts": self.run / "facts", "/schemas": ROOT / "schemas"},
@@ -261,7 +269,7 @@ class Pipeline:
         if not work.exists():
             shutil.copytree(self.run / "design_work", work)
         shutil.copyfile(self.run / "facts/scope.json", work / "scope.json")
-        task = "BEHAVIOR job: complete all function Specs, wire/call/resource contracts and traceability.\nAcceptance IDs: " + ", ".join(TEST_IDS)
+        task = "BEHAVIOR job: complete all function Specs, wire/call/resource contracts, planning test vectors and traceability."
         task += "\n\nChecked design function navigation (read only relevant files, start writing now):\n"
         for path in sorted((work / "files").glob("*.json")):
             file_spec = read_json(path)
@@ -284,25 +292,23 @@ class Pipeline:
             result = self._verification_cache
         else:
             result = verify_project(self.run / "project", self.run / "reports", self.run / "logs/verifier",
-                                    bundle=self.bundle(), legacy=self.state["spec_only"])
+                                    bundle=self.bundle())
             self._verification_cache = result
         return {"passed": result["passed"], "errors": result["errors"],
                 "report": "/reports/" + str(Path(result["report_path"]).relative_to(self.run / "reports")),
-                "phases": {p: {"passed": r["passed"], "failures": [s for s in r.get("scenarios", []) if s["status"] != "passed"]}
-                           for p, r in result["phases"].items()}}
+                "phases": result["phases"]}
 
     def do_code(self):
         scaffold(self.bundle(), self.run / "project")
-        harness = harness_view(self.run / "logs/coder_harness")
         job_count = len([j for j in self.state["jobs"] if j["name"].endswith(("_code", "_repair"))])
         while True:
             previous = self.state["jobs"][-1] if self.state["jobs"] else {}
             pending_role = previous.get("name", "").split("_", 1)[-1] if previous.get("reason") in ("running", "api_error") else None
             if job_count and self.state["implementation_repairs"] >= 3 and previous.get("repair_round", -1) >= 3 and pending_role not in ("code", "repair"):
                 return {"passed": False, "reason": "implementation_repair_limit", "verification": self.verify_gate()}
-            task = "Implement the whole project from /specs. Read its navigation first. Build, debug and pass check. The controller provides the immutable README."
+            task = "Implement the whole project from /specs, including Makefile, README, development tests and delivery.json. Build, self-test and pass the development check."
             if job_count:
-                task += "\nContinue the existing project from disk. Independent failure evidence:\n" + json.dumps(self.verify_gate(), ensure_ascii=False)
+                task += "\nContinue the existing project from disk. Development failure evidence:\n" + json.dumps(self.verify_gate(), ensure_ascii=False)
             role = pending_role if pending_role in ("code", "repair") else "code" if not job_count else "repair"
             view = self.run / "logs" / f"coder_specs_r{self.state['spec_revision']:03d}"
             view.mkdir(exist_ok=True)
@@ -310,7 +316,7 @@ class Pipeline:
                 target = view / relative
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(self.bundle() / relative, target)
-            result = self.job(role, self.run / "project", {"/specs": view, "/harness": harness},
+            result = self.job(role, self.run / "project", {"/specs": view},
                               task, self.verify_gate, "code" if role == "code" else "repair", coder=True)
             job_count += 1
             if result["reason"] == "api_error":
@@ -343,9 +349,19 @@ class Pipeline:
             self.state["implementation_repairs"] += 1
             self.save()
 
+    def do_verify(self):
+        result = self.verify_gate()
+        if result["passed"]:
+            self.state["project_hashes"] = project_hashes(self.run / "project")
+            binary = read_json(self.bundle() / "bundle.json")["runtime_contract"]["binary_name"]
+            self.state["binary_sha256"] = digest(self.run / "project" / binary)
+            self.state["generation_passed"] = True
+        return result
+
     def execute(self, until: str = "verify") -> bool:
         self.state["stop_reason"] = None
-        operations = {"facts": self.do_facts, "design": self.do_design, "specs": self.do_specs, "verify": self.do_code}
+        operations = {"facts": self.do_facts, "design": self.do_design, "specs": self.do_specs,
+                      "code": self.do_code, "verify": self.do_verify}
         for stage in STAGES:
             if self.state["stages"][stage]["status"] != "passed":
                 if stage == "prepare":
@@ -366,6 +382,10 @@ class Pipeline:
         return self.stage("prepare", operation)
 
     def resume(self) -> bool:
+        if self.state.get("schema_version") != 2:
+            raise ValueError("Historical runs are read-only; create a version-2 run")
+        if self.state["evaluation_started"]:
+            raise ValueError("Generation is frozen after independent evaluation starts")
         if self.state["framework_hashes"] != framework_hashes():
             self.state.update(manual_edits=True, resumed=True, fresh=False, stop_reason="framework_changed")
             self.save()

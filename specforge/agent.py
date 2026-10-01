@@ -119,7 +119,8 @@ def run_agent(llm: LLM, runtime: ToolRuntime, prefix: str, task: str, response_l
             previous_checkpoint = checkpoint
             checkpoint_number = number
             reset_this_response = True
-        if not reset_this_response and not checkpoint_pending and (number - checkpoint_number >= 8 or (response["usage"].get("input_tokens") or 0) > 32000):
+        if (not reset_this_response and not checkpoint_pending and response_limit - number > 8
+                and (number - checkpoint_number >= 24 or (response["usage"].get("input_tokens") or 0) > 64000)):
             previous_checkpoint = worklog.read_text() if worklog.is_file() else ""
             messages.append({"role": "user", "content": "Checkpoint now: update /work/WORKLOG.md (at most 4000 characters) with the next concrete action FIRST, then completed work, current issues and relevant file paths. Continue from disk in a fresh context. Use file pointers; do not duplicate Specs or full ABI declarations. Preserve important findings."})
             checkpoint_pending = True

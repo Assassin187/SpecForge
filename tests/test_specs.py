@@ -4,8 +4,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from specforge.documents import ROOT, check_facts, prepare, read_json, save_json
-from specforge.specs import validate
+from specforge.documents import ROOT, artifact_errors, check_facts, prepare, read_json, save_json
+from specforge.specs import abi_checks, publish, validate
 
 
 class SpecTests(unittest.TestCase):
@@ -43,6 +43,18 @@ class SpecTests(unittest.TestCase):
         header.write_text("#error invalid_header\n")
         self.assertTrue(any("ABI mismatch" in e for e in validate(self.directory, published=False)["errors"]))
 
+    def test_test_vector_requirement_references(self):
+        scope = read_json(self.directory / "scope.json")
+        scope["requirements"] = [{"id": "R01", "description": "fixture requirement"}]
+        save_json(self.directory / "scope.json", scope)
+        path = self.mutate("FUNCTION_SPEC", lambda v: v.update(TEST_VECTORS=[{
+            "NAME": "requirement check", "INPUT": {}, "EXPECT": {}, "TRACE_REFS": ["R01"]}]))
+        self.assertTrue(validate(self.directory, published=False)["passed"])
+        value = read_json(path)
+        value["TEST_VECTORS"][0]["TRACE_REFS"] = ["R99"]
+        save_json(path, value)
+        self.assertTrue(any("Unknown test-vector reference" in e for e in validate(self.directory, published=False)["errors"]))
+
     def test_missing_behavior_hash_change_and_parameter_conflict(self):
         def change(v):
             behavior = v.get("LOGIC") or v.get("EVENT")
@@ -67,6 +79,78 @@ class SpecTests(unittest.TestCase):
         save_json(run / "facts/scope.json", scope)
         save_json(run / "facts/facts.json", facts)
         self.assertTrue(any("Invalid evidence" in e for e in check_facts(run / "facts", run / "inputs", run / "documents")["errors"]))
+
+    def test_identity_is_input_driven(self):
+        scope = read_json(self.directory / "scope.json")
+        scope.update(protocol="example", version="7", role="SERVER")
+        scope["requirements"] = [{"id": "R01", "description": "example", "source": {"file": "REQUIREMENTS.md", "line_start": 1, "line_end": 1}}]
+        scope["runtime_contract"] = {"binary_name": "example_server", "argv_contract": "./example_server <port>"}
+        self.assertEqual(artifact_errors("scope", scope), [])
+        save_json(self.directory / "scope.json", scope)
+        bundle = publish(self.directory, 1, "manual_reference")
+        self.assertEqual(bundle["protocol"], "example")
+        self.assertEqual(bundle["runtime_contract"]["binary_name"], "example_server")
+        summary = (self.directory / "SUMMARY.md").read_text()
+        self.assertIn("example_server", summary)
+        self.assertNotIn("./mqtt_broker", summary)
+
+    def test_arbitrary_layout_and_unbounded_design_count(self):
+        manifest = read_json(self.directory / "bundle.json")
+        replacement = {row["path"]: "engine/" + row["path"].removeprefix("src/") for row in manifest["files"]}
+        replacement.update({row["path"]: "public_api/" + row["path"].removeprefix("include/") for row in manifest["headers"]})
+        for header in manifest["headers"]:
+            destination = self.directory / "abi" / replacement[header["path"]]
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(self.directory / header["artifact"], destination)
+        def change(value):
+            if isinstance(value, str):
+                return replacement.get(value, value)
+            if isinstance(value, dict):
+                return {k: change(v) for k, v in value.items()}
+            if isinstance(value, list):
+                return [change(v) for v in value]
+            return value
+        for path in [self.directory / "module_spec.json", *(self.directory / "files").glob("*.json")]:
+            save_json(path, change(read_json(path)))
+        (self.directory / "bundle.json").unlink()
+        report = validate(self.directory, design=True, published=False)
+        self.assertTrue(report["passed"], report["errors"])
+        self.assertGreater(report["counts"]["files"], 4)
+
+    def test_udp_system_functions_resolve_from_headers(self):
+        def change(v):
+            v["RELY"]["FUNC"].append({"NAME": "recvfrom", "KIND": "CALL", "ROLE": "datagram receive"})
+        function = self.mutate("FUNCTION_SPEC", change)
+        trace = read_json(function)["TRACE_ID"]
+        for path in (self.directory / "files").glob("*.json"):
+            value = read_json(path)
+            if any(i["TRACE_ID"] == trace for i in value["SOURCE"]["INTERFACE"]):
+                value["SOURCE"].setdefault("SYSTEM_DEPENDENCY", []).append("sys/socket.h")
+                save_json(path, value)
+        report = validate(self.directory, published=False)
+        self.assertTrue(report["passed"], report["errors"])
+
+    def test_namespaced_header_include_root(self):
+        directory = Path(self.temp.name) / "namespace"
+        header = directory / "abi" / "public_api" / "domain" / "codec.h"
+        header.parent.mkdir(parents=True)
+        (header.parent / "types.h").write_text("typedef unsigned int message_id;\n")
+        header.write_text('#include "domain/types.h"\nmessage_id decode(void);\n')
+        spec = {"HEADER": {"PATH": "public_api/domain/codec.h", "DATA": [], "INTERFACE": [
+            {"NAME": "decode", "SIGNATURE": "message_id decode(void);"}]}}
+        report = abi_checks(directory, [("files/codec.json", spec)], [])
+        self.assertTrue(report["passed"], report["errors"])
+
+    def test_text_chunks_preserve_source_positions(self):
+        standard = Path(self.temp.name) / "protocol.txt"
+        standard.write_text("\n".join(f"{n}    original line" for n in range(410)))
+        run = Path(self.temp.name) / "text_run"
+        case = ROOT / "cases/mqtt_min"
+        prepare(run, case / "TASK.md", case / "REQUIREMENTS.md", standard)
+        index = read_json(run / "documents/index.json")
+        self.assertEqual(len(index["chunks"]), 3)
+        self.assertEqual(index["chunks"][1]["source_line_start"], 201)
+        self.assertTrue((run / "documents/chunk_001.txt").read_text().startswith("0    original line"))
 
 
 if __name__ == "__main__":

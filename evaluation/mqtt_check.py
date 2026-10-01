@@ -250,7 +250,9 @@ def smoke(c: Case):
 def interop(c: Case):
     if not shutil.which("mosquitto_pub") or not shutil.which("mosquitto_sub"):
         raise EnvironmentBlocked("mosquitto_pub/sub are required")
-    argv = ["stdbuf", "-oL", "-eL", "mosquitto_sub", "-h", "127.0.0.1", "-p", str(c.port), "-V", "mqttv311", "-q", "0",
+    # The minimum case requires nonempty Client IDs; libmosquitto defaults
+    # to an empty ID for MQTT 3.1.1 when -i is omitted.
+    argv = ["stdbuf", "-oL", "-eL", "mosquitto_sub", "-i", "sf-interop-sub", "-h", "127.0.0.1", "-p", str(c.port), "-V", "mqttv311", "-q", "0",
             "-t", "sf/interop", "-C", "1", "-W", "4", "-d"]
     subscriber = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
     lines, updates = [], queue.Queue()
@@ -273,7 +275,7 @@ def interop(c: Case):
                 break
             if time.monotonic() >= deadline:
                 raise AssertionError("Mosquitto subscriber handshake failed")
-        result = subprocess.run(["mosquitto_pub", "-h", "127.0.0.1", "-p", str(c.port), "-V", "mqttv311", "-q", "0",
+        result = subprocess.run(["mosquitto_pub", "-i", "sf-interop-pub", "-h", "127.0.0.1", "-p", str(c.port), "-V", "mqttv311", "-q", "0",
                                  "-t", "sf/interop", "-m", "specforge-interop"], capture_output=True, text=True, timeout=4)
         assert result.returncode == 0, f"Mosquitto publisher failed: {result.stderr}"
         assert subscriber.wait(timeout=5) == 0, "Mosquitto subscriber failed"

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import re
 import shutil
 import subprocess
@@ -11,28 +10,32 @@ from pathlib import Path, PurePosixPath
 
 import jsonschema
 
-from .documents import ROOT, artifact_errors, digest, hashes, read_json, save_json
+from .documents import ROOT, artifact_errors, digest, read_json, save_json
 
-FLOW_IDS = ("main_loop", "receive_buffer", "decode_outcomes", "connect", "subscribe",
-            "publish", "ping_disconnect_eof", "connection_cleanup", "borrow_copy_ownership", "error_isolation")
-TEST_IDS = ("mqtt_cross_client_pubsub", "mqtt_buffer_before_eof", "mqtt_malformed_survival",
-            "mqtt_disconnect_handler", "mqtt_smoke_test", "mqtt_mosquitto_interop",
-            "mqtt_connect_semantics", "mqtt_suback_contract", "mqtt_exact_binary_payload",
-            "mqtt_plus_filter_boundaries", "mqtt_hash_filter_boundaries", "mqtt_fragmented_input",
-            "mqtt_coalesced_input", "mqtt_ping_exchange", "mqtt_disconnect_subscription_cleanup",
-            "mqtt_invalid_packet_connection_isolation")
 SCHEMAS = {"PROTOCOL_MODULE_SPEC": "module_spec_schema.json", "FILE_SPEC": "file_spec_schema.json",
            "FUNCTION_SPEC": "function_spec_schema.json"}
-LIBC_CALLS = {"malloc", "calloc", "realloc", "free", "memcpy", "memmove", "memset", "memcmp", "strlen", "strcmp",
-              "strncmp", "strdup", "strchr", "strstr", "strtol", "strtoul", "printf", "fprintf", "snprintf", "perror",
-              "socket", "bind", "listen", "accept", "recv", "send", "read", "write", "close", "shutdown", "fcntl",
-              "setsockopt", "getsockopt", "poll", "signal", "sigaction", "htons", "ntohs", "htonl", "ntohl",
-              "epoll_create1", "epoll_ctl", "epoll_wait", "inet_ntop", "exit", "atoi"}
 
 
-def project_path(path: str, prefix: str) -> bool:
+def project_path(path: str) -> bool:
     p = PurePosixPath(path)
-    return not p.is_absolute() and ".." not in p.parts and len(p.parts) > 1 and p.parts[0] == prefix and bool(re.fullmatch(r"[A-Za-z0-9_./-]+", path))
+    return not p.is_absolute() and ".." not in p.parts and bool(p.parts) and bool(re.fullmatch(r"[A-Za-z0-9_./-]+", path))
+
+
+def header_artifact(directory: Path, path: str) -> str:
+    manifest = directory / "bundle.json"
+    if manifest.is_file():
+        for row in read_json(manifest)["headers"]:
+            if row["path"] == path:
+                artifact = row["artifact"]
+                if not project_path(artifact) or not artifact.startswith("abi/"):
+                    raise ValueError(f"Invalid header artifact: {artifact}")
+                return artifact
+    return "abi/" + path
+
+
+def test_vector_refs(items: dict[str, dict]) -> dict[str, dict]:
+    return {f"{path}#/TEST_VECTORS/{i}": vector for path, spec in items.items()
+            for i, vector in enumerate(spec.get("TEST_VECTORS", []))}
 
 
 def load_specs(directory: Path) -> tuple[dict[str, dict], list[str]]:
@@ -67,9 +70,10 @@ def pointer(items: dict[str, dict], reference: str):
     return node
 
 
-def compile_probe(text: str, include: Path) -> dict:
+def compile_probe(text: str, include: Path, extra_includes: list[Path] = ()) -> dict:
     result = subprocess.run(["gcc", "-std=c99", "-D_POSIX_C_SOURCE=200809L", "-Wall", "-Wextra", "-Werror",
-                             "-fsyntax-only", "-x", "c", "-", "-I", str(include)],
+                             "-fsyntax-only", "-x", "c", "-", "-I", str(include),
+                             *[arg for p in extra_includes for arg in ("-I", str(p))]],
                             input=text, text=True, capture_output=True, timeout=20)
     return {"passed": result.returncode == 0, "output": result.stdout + result.stderr, "probe": text}
 
@@ -78,14 +82,18 @@ def abi_checks(directory: Path, files: list[tuple[str, dict]], functions: list[t
     include = directory / "abi"
     probes, errors = [], []
     headers = []
+    include_dirs = sorted({include / ancestor
+                           for _, s in files if "HEADER" in s
+                           for ancestor in PurePosixPath(header_artifact(directory, s["HEADER"]["PATH"])).relative_to("abi").parents
+                           if ancestor != PurePosixPath(".")})
     for relative, spec in files:
         header = spec.get("HEADER")
         if not header:
             continue
-        if not project_path(header["PATH"], "include"):
-            errors.append(f"{relative}: header path must be include/<name>.h")
+        if not project_path(header["PATH"]) or not header["PATH"].endswith(".h"):
+            errors.append(f"{relative}: header must be a project-relative .h path")
             continue
-        name = str(PurePosixPath(header["PATH"]).relative_to("include"))
+        name = str(PurePosixPath(header_artifact(directory, header["PATH"])).relative_to("abi"))
         headers.append(name)
         if not (include / name).is_file():
             errors.append(f"Missing public header: abi/{name}")
@@ -147,14 +155,14 @@ def abi_checks(directory: Path, files: list[tuple[str, dict]], functions: list[t
                     assert_type(f"(({name_type})0)", expected_name)
             if ts["TYPE_KIND"] == "ALIAS":
                 assert_type(f"(*(({name_type}*)0))", ts["ALIAS_OF"])
-        probe = compile_probe("\n".join(declarations) + "\n", include)
+        probe = compile_probe("\n".join(declarations) + "\n", include, include_dirs)
         probes.append({"header": header["PATH"], **probe})
         if not probe["passed"]:
             errors.append(f"ABI mismatch in {header['PATH']}: {probe['output'][:2000]}"
                           + "\nStructured C declarations from FUNCTION_SPEC SIGNATURE.RETURN/PARAMS (RETURN must be a C type):\n"
                           + "\n".join(structured_declarations)[:1800])
     if headers:
-        combined = compile_probe("\n".join(f'#include "{h}"' for h in headers) + "\n", include)
+        combined = compile_probe("\n".join(f'#include "{h}"' for h in headers) + "\n", include, include_dirs)
         probes.append({"header": "all", **combined})
         if not combined["passed"]:
             errors.append("Combined headers conflict: " + combined["output"][:2500])
@@ -178,15 +186,11 @@ def validate(directory: Path, *, design: bool = False, facts: dict | None = None
     header_paths = [s["HEADER"]["PATH"] for _, s in files if "HEADER" in s]
     file_ids = [s["FILE"]["TRACE_ID"] for _, s in files]
     function_ids = [s["TRACE_ID"] for _, s in functions]
-    if design or facts is not None:
-        planned_count = sum(len(s["SOURCE"]["INTERFACE"]) for _, s in files)
-        if len(files) > 4 or len(header_paths) > 3 or planned_count > 24:
-            errors.append("Minimum-case design budget: <=4 source files, <=3 public headers, <=24 planned functions")
     for label, values in (("source", source_paths), ("header", header_paths), ("file ID", file_ids), ("function ID", function_ids)):
         errors += [f"Duplicate {label}: {name}" for name, n in Counter(values).items() if n > 1]
     for path in source_paths:
-        if not project_path(path, "src") or not path.endswith(".c"):
-            errors.append(f"Source must be a project-relative src/*.c path: {path}")
+        if not project_path(path) or not path.endswith(".c"):
+            errors.append(f"Source must be a project-relative .c path: {path}")
     module_names = [m["NAME"] for m in module["MODULES"]]
     if len(module_names) != len(set(module_names)):
         errors.append("Duplicate module names")
@@ -241,6 +245,10 @@ def validate(directory: Path, *, design: bool = False, facts: dict | None = None
             if interface["NAME"] != func["SIGNATURE"]["NAME"] or compact(interface["SIGNATURE"]) != compact(func["SIGNATURE"]["RAW"]):
                 errors.append(f"Function signature mismatch: {trace}")
     if not design:
+        reference_scope = scope
+        if reference_scope is None and (directory / "scope.json").is_file():
+            reference_scope = read_json(directory / "scope.json")
+        requirement_refs = {r["id"] for r in (reference_scope or {}).get("requirements", [])}
         entries = [f for _, f in functions if f["FUNCTION_TYPE"] == "ENTRYPOINT"]
         if len(entries) != 1 or entries[0]["SIGNATURE"]["NAME"] != "main":
             errors.append("Exactly one main ENTRYPOINT Spec is required")
@@ -250,24 +258,32 @@ def validate(directory: Path, *, design: bool = False, facts: dict | None = None
                 continue
             owner = ownership[trace][1]
             local_names = {i["NAME"] for i in owner["SOURCE"]["INTERFACE"]}
+            external = []
             for dep in function["RELY"]["FUNC"]:
                 if dep["KIND"] == "TYPE_REF" and dep["NAME"] in types:
                     continue
-                if dep["NAME"] not in local_names and dep["NAME"] not in publics and dep["NAME"] not in LIBC_CALLS:
-                    errors.append(f"Unknown project function dependency in {trace}: {dep['NAME']}")
+                if dep["NAME"] not in local_names and dep["NAME"] not in publics:
+                    external.append(dep["NAME"])
                 if facts is not None and dep["NAME"] in publics and publics[dep["NAME"]][0] != ownership[trace][0]:
                     contract = next((c for c in function.get("CALL_CONTRACTS", []) if c["NAME"] == dep["NAME"]), None)
                     if not contract or any(not contract.get(k) for k in ("RETURN", "OWNERSHIP", "FAILURE")) or "PARAMS" not in contract:
                         errors.append(f"Missing cross-file call contract in {trace}: {dep['NAME']}")
                     elif compact(contract["SIGNATURE"]) != compact(publics[dep["NAME"]][1]["SIGNATURE"]):
                         errors.append(f"Call contract signature mismatch in {trace}: {dep['NAME']}")
+            if external:
+                system_headers = sorted(set(owner["SOURCE"].get("SYSTEM_DEPENDENCY", []) + owner.get("HEADER", {}).get("SYSTEM_DEPENDENCY", [])))
+                declarations = [f"#include <{h.strip('<>')}>" for h in system_headers]
+                declarations += [f"void sf_external_{i}(void) {{ (void)&{name}; }}" for i, name in enumerate(external)]
+                probe = compile_probe("\n".join(declarations), directory / "abi")
+                if not probe["passed"]:
+                    errors.append(f"Unknown project function or undeclared external dependency in {trace}: {external}: {probe['output'][:2000]}")
             action = (function.get("LOGIC") or function.get("EVENT") or {}).get("ACTION", "")
             if not action.strip():
                 errors.append(f"Missing function behavior: {trace}")
         for path, spec in items.items():
             for vector in spec.get("TEST_VECTORS", []):
                 for trace in vector.get("TRACE_REFS", []):
-                    if trace not in by_id and trace not in file_ids:
+                    if trace not in by_id and trace not in file_ids and trace not in requirement_refs:
                         errors.append(f"Unknown test-vector reference in {path}: {trace}")
     abi = abi_checks(directory, files, functions)
     errors += abi["errors"]
@@ -285,18 +301,16 @@ def validate(directory: Path, *, design: bool = False, facts: dict | None = None
                 expected_reqs = {r["id"] for r in scope["requirements"]}
                 mapped_reqs = [r["requirement_id"] for r in trace["requirements"]]
                 if set(mapped_reqs) != expected_reqs or len(mapped_reqs) != len(set(mapped_reqs)):
-                    errors.append(f"Traceability must cover every scope requirement exactly once: expected {sorted(expected_reqs)}, got {mapped_reqs}. Acceptance IDs belong in test_ids.")
-                tests = set()
+                    errors.append(f"Traceability must cover every scope requirement exactly once: expected {sorted(expected_reqs)}, got {mapped_reqs}.")
+                vectors = test_vector_refs(items)
                 for row in trace["requirements"]:
                     if set(row["fact_ids"]) - fact_ids:
                         errors.append(f"Unknown facts in requirement {row['requirement_id']}")
-                    if set(row["test_ids"]) - set(TEST_IDS):
-                        errors.append(f"Unknown acceptance IDs in {row['requirement_id']}")
-                    tests.update(row["test_ids"])
-                if tests != set(TEST_IDS):
-                    errors.append("Traceability must cover all 16 acceptance scenarios")
-                if {r["id"] for r in trace["processing_chain"]} != set(FLOW_IDS):
-                    errors.append("Processing chain must cover all ten flow IDs")
+                    if set(row["test_ids"]) - set(vectors):
+                        errors.append(f"Unknown Spec test-vector references in {row['requirement_id']}")
+                flow_ids = [r["id"] for r in trace["processing_chain"]]
+                if len(flow_ids) != len(set(flow_ids)):
+                    errors.append("Duplicate processing-chain ID")
                 refs = [ref for row in trace["requirements"] + trace["processing_chain"] for ref in row["spec_refs"]]
                 refs += [r["spec_ref"] for r in trace["engineering_decisions"]]
                 for ref in refs:
@@ -315,7 +329,7 @@ def validate(directory: Path, *, design: bool = False, facts: dict | None = None
             return {"passed": False, "errors": errors, "abi": abi}
         expected_files = {(p, s["FILE"]["TRACE_ID"], s["SOURCE"]["PATH"]) for p, s in files}
         expected_functions = {(p, s["TRACE_ID"], s["SIGNATURE"]["NAME"]) for p, s in functions}
-        expected_headers = {(s["HEADER"]["PATH"], "abi/" + str(PurePosixPath(s["HEADER"]["PATH"]).relative_to("include")))
+        expected_headers = {(s["HEADER"]["PATH"], header_artifact(directory, s["HEADER"]["PATH"]))
                             for _, s in files if "HEADER" in s}
         if {(f["spec"], f["trace_id"], f["path"]) for f in bundle["files"]} != expected_files:
             errors.append("Bundle source index differs from validated Specs")
@@ -330,6 +344,9 @@ def validate(directory: Path, *, design: bool = False, facts: dict | None = None
             path = (directory / relative).resolve()
             if not path.is_relative_to(directory.resolve()) or not path.is_file() or digest(path) != expected:
                 errors.append(f"Published bundle hash mismatch: {relative}")
+        approved_scope = read_json(directory / "scope.json")
+        if any(bundle[k] != approved_scope[k] for k in ("protocol", "version", "role", "runtime_contract")):
+            errors.append("Bundle identity or runtime contract differs from scope")
     return {"passed": not errors, "errors": errors, "counts": {"modules": len(modules), "files": len(files), "functions": len(functions)},
             "abi": abi}
 
@@ -344,13 +361,19 @@ def publish(directory: Path, revision: int, origin: str = "automatic") -> dict:
         raise ValueError("Cannot publish invalid schemas")
     files = [{"spec": p, "trace_id": s["FILE"]["TRACE_ID"], "path": s["SOURCE"]["PATH"]}
              for p, s in items.items() if s["KIND"] == "FILE_SPEC"]
-    headers = [{"path": s["HEADER"]["PATH"], "artifact": "abi/" + str(PurePosixPath(s["HEADER"]["PATH"]).relative_to("include"))}
+    headers = [{"path": s["HEADER"]["PATH"], "artifact": header_artifact(directory, s["HEADER"]["PATH"])}
                for s in items.values() if s["KIND"] == "FILE_SPEC" and "HEADER" in s]
     functions = [{"spec": p, "trace_id": s["TRACE_ID"], "name": s["SIGNATURE"]["NAME"]}
                  for p, s in items.items() if s["KIND"] == "FUNCTION_SPEC"]
     module_path = next(p for p, s in items.items() if s["KIND"] == "PROTOCOL_MODULE_SPEC")
+    scope = read_json(directory / "scope.json")
     summary = ["# Spec bundle", "", f"Origin: {origin}; revision: {revision}", "",
-               "Runtime: Linux C99 TCP, ./mqtt_broker <port>", "", f"Module Spec: {module_path}", "", "## Files", ""]
+               f"Protocol: {scope['protocol']} {scope['version']}; role: {scope['role']}",
+               f"Runtime: {scope['runtime']} {scope['language']}; {scope['runtime_contract']['argv_contract']}",
+               "", "## Required capabilities", ""]
+    summary += [f"- {v}" for v in scope["required_capabilities"]]
+    summary += ["", "## Excluded features", ""] + [f"- {v}" for v in scope["excluded_features"]]
+    summary += ["", f"Module Spec: {module_path}", "", "## Files", ""]
     summary += [f"- {f['path']}: {f['spec']} ({f['trace_id']})" for f in files]
     summary += ["", "## Functions", ""] + [f"- {f['trace_id']}: {f['spec']}" for f in functions]
     if (directory / "traceability.json").is_file():
@@ -359,115 +382,77 @@ def publish(directory: Path, revision: int, origin: str = "automatic") -> dict:
     (directory / "SUMMARY.md").write_text("\n".join(summary) + "\n", encoding="utf-8")
     published_paths = set(items) | {h["artifact"] for h in headers} | {"scope.json", "traceability.json", "SUMMARY.md"}
     inventory = {p: digest(directory / p) for p in sorted(published_paths)}
-    bundle = {"schema_version": 1, "revision": revision, "origin": origin, "protocol": "MQTT", "version": "3.1.1", "role": "BROKER",
-              "runtime_contract": {"binary_name": "mqtt_broker", "argv_contract": "./mqtt_broker <port>"},
+    bundle = {"schema_version": 2, "revision": revision, "origin": origin,
+              **{k: scope[k] for k in ("protocol", "version", "role", "runtime_contract")},
               "module": module_path, "files": files, "functions": functions, "headers": headers, "hashes": inventory}
     save_json(directory / "bundle.json", bundle)
     return bundle
 
 
-def project_readme(bundle: dict) -> str:
-    return ("# MQTT 3.1.1 minimum broker\n\n"
-            "Linux C99 TCP broker for the selected MQTT 3.1.1 subset.\n\n"
-            "## Build and run\n\n```sh\nmake clean\nmake\n./mqtt_broker 1883\n```\n\n"
-            "Startup contract: `./mqtt_broker <port>`. Stop with SIGINT or SIGTERM; "
-            "normal shutdown releases connections, subscriptions and buffers.\n\n"
-            "## Scope\n\nAnonymous CONNECT with Clean Session=1 and no Will; CONNACK; "
-            "multi-filter SUBSCRIBE/SUBACK; QoS 0 PUBLISH forwarding; case-sensitive "
-            "exact, `+` and `#` matching; binary and empty payloads; PINGREQ/PINGRESP; "
-            "DISCONNECT and TCP cleanup. TCP fragments and coalesced packets are "
-            "handled, and complete buffered frames are processed before EOF cleanup.\n\n"
-            "Excluded: QoS 1/2, retained messages, Will, persistent sessions, "
-            "UNSUBSCRIBE, authentication, TLS and keepalive timeout scheduling. "
-            "This project does not claim complete MQTT conformance.\n\n"
-            "## Self-test\n\n```sh\npython3 tests/mqtt_check.py --binary ./mqtt_broker --out tests/results\n"
-            "make sanitize\npython3 tests/mqtt_check.py --binary ./mqtt_broker --out tests/sanitize-results\n"
-            "make clean\nmake\n```\n\n"
-            "The harness starts its own broker processes and checks 16 MQTT minimum "
-            "scenarios. `--legacy` selects only the six historical scenarios for "
-            "a Spec-only baseline. Reports record failures and unavailable tools; "
-            "a successful build alone does not establish protocol correctness.\n\n"
-            "## Planned sources\n\n"
-            + "\n".join(f"- `{f['path']}`" for f in bundle["files"]) + "\n\n"
-            "Public headers in `include/` and Makefile come from the published Spec "
-            "bundle. Private implementation and development tests live in `src/` "
-            "and `tests/`. This README is generated from the fixed minimum profile "
-            "and bundle inventory, rather than inferred from model claims.\n")
-
-
 def scaffold(bundle_dir: Path, project: Path) -> None:
+    """Copy only Planner-authored public interfaces into the Coder workspace."""
     bundle = read_json(bundle_dir / "bundle.json")
     project.mkdir(parents=True, exist_ok=True)
-    for directory in ("src", "include", "tests"):
-        (project / directory).mkdir(exist_ok=True)
-    shutil.copyfile(ROOT / "specforge/mqtt_check.py", project / "tests/mqtt_check.py")
     for header in bundle["headers"]:
+        if not project_path(header["path"]):
+            raise ValueError("Unsafe public header path")
         dest = project / header["path"]
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(bundle_dir / header["artifact"], dest)
-    sources = " ".join(f["path"] for f in bundle["files"])
-    makefile = ("CC = gcc\nCPPFLAGS = -D_POSIX_C_SOURCE=200809L -Iinclude\n"
-                "CFLAGS = -std=c99 -O2 -g -Wall -Wextra -Wpedantic -Werror\n"
-                f"SOURCES = {sources}\nHEADERS = $(shell find include -name '*.h')\n"
-                ".PHONY: all clean sanitize\nall: mqtt_broker\n"
-                "mqtt_broker: $(SOURCES) $(HEADERS)\n\t$(CC) $(CPPFLAGS) $(CFLAGS) $(SOURCES) $(LDFLAGS) -o $@\n"
-                "sanitize: CFLAGS = -std=c99 -O1 -g -Wall -Wextra -Wpedantic -Werror -fno-omit-frame-pointer -fno-pie -fsanitize=address,undefined\n"
-                "sanitize: LDFLAGS = -no-pie -fsanitize=address,undefined\n"
-                "sanitize: clean mqtt_broker\nclean:\n\trm -f mqtt_broker\n")
-    (project / "Makefile").write_text(makefile)
-    (project / "README.md").write_text(project_readme(bundle))
 
 
-def manual_reference() -> dict:
-    original = ROOT / "assets/mqtt_reference/original_specs"
-    bundle_dir = ROOT / "assets/mqtt_reference/bundle"
-    changes = []
-
-    def normalize(node):
-        if isinstance(node, list):
-            return [normalize(v) for v in node]
-        if isinstance(node, dict):
-            return {k: normalize(v) for k, v in node.items()}
-        if isinstance(node, str) and node.startswith("../") and node.endswith((".h", ".c")):
-            return ("include/" if node.endswith(".h") else "src/") + node[3:]
-        if node == "mqtt/broker/mqtt_broker_handle_publish":
-            return "mqtt/broker/broker/handle_packet"
-        return node
-
-    for path in sorted(original.rglob("*.json")):
-        raw = read_json(path)
-        spec = normalize(raw)
-        if spec["KIND"] == "FILE_SPEC":
-            for item in spec.get("HEADER", {}).get("DATA", []):
-                if item["KIND"] == "TYPE" and "TYPE_SPEC" not in item:
-                    hpath = spec["HEADER"]["PATH"].removeprefix("include/")
-                    text = (bundle_dir / "abi" / hpath).read_text()
-                    if not re.search(r"typedef\s+struct\s+\w+\s+" + re.escape(item["NAME"]) + r"\s*;", text):
-                        raise ValueError(f"Cannot verify opaque typedef from header: {item['NAME']}")
-                    item["TYPE_SPEC"] = {"TYPE_KIND": "OPAQUE"}
-                    changes.append({"original": path.relative_to(original).as_posix(), "change": "Header-confirmed opaque TYPE_SPEC", "symbol": item["NAME"]})
-            destination = bundle_dir / "files" / (spec["FILE"]["TRACE_ID"].replace("/", "__") + ".json")
-        elif spec["KIND"] == "FUNCTION_SPEC":
-            destination = bundle_dir / "functions" / (spec["TRACE_ID"] + ".json")
-        else:
-            destination = bundle_dir / "module_spec.json"
-        save_json(destination, spec)
-        if raw != spec:
-            changes.append({"original": path.relative_to(original).as_posix(), "normalized": destination.relative_to(bundle_dir).as_posix(),
-                            "original_sha256": digest(path), "normalized_sha256": digest(destination)})
-    # This is a downstream fixture: no invented document evidence or automatic provenance.
-    scope = {"schema_version": 1, "protocol": "MQTT", "version": "3.1.1", "role": "BROKER", "language": "C99", "runtime": "Linux",
-             "requirements": [], "required_capabilities": ["manual MQTT subset"], "excluded_features": ["full MQTT compliance"],
-             "runtime_contract": {"binary_name": "mqtt_broker", "argv_contract": "./mqtt_broker <port>"}, "engineering_defaults": []}
-    save_json(bundle_dir / "scope.json", scope)
-    save_json(bundle_dir / "traceability.json", {"schema_version": 1, "origin": "manual_reference", "requirements": [],
-                                               "processing_chain": [], "engineering_decisions": [], "limitations": ["Original DOC_REF fields are empty; grounding is not asserted."]})
-    report = validate(bundle_dir, published=False)
-    if report["passed"]:
-        publish(bundle_dir, 1, "manual_reference")
-    ledger = read_json(ROOT / "assets/migration.json")
-    ledger["changes"] = changes + [{"change": "Normalize ../ paths; replace dangling publish TRACE_REF with existing handle_packet; preserve original data"}]
-    save_json(ROOT / "assets/migration.json", ledger)
-    save_json(ROOT / "assets/mqtt_reference/validation.json", report)
-    return report
+def delivery_checks(project: Path, bundle_dir: Path | None) -> dict:
+    errors = []
+    try:
+        delivery = read_json(project / "delivery.json")
+        errors += artifact_errors("delivery", delivery)
+    except (OSError, ValueError) as exc:
+        return {"passed": False, "errors": [f"Missing or invalid delivery.json: {exc}"]}
+    if errors:
+        return {"passed": False, "errors": errors}
+    listed = set(delivery["files"])
+    for path in listed:
+        actual = (project / path).resolve()
+        if not project_path(path) or not actual.is_relative_to(project.resolve()) or not actual.is_file():
+            errors.append(f"Missing or unsafe delivery file: {path}")
+    for name in ("Makefile", "README.md"):
+        if name not in listed or not (project / name).is_file() or not (project / name).read_text().strip():
+            errors.append(f"Missing nonempty delivery document: {name}")
+    for path in project.rglob("*"):
+        if path.is_file() and path.suffix in (".c", ".h", ".py", ".sh") and path.relative_to(project).as_posix() not in listed:
+            errors.append(f"Unlisted source or development test: {path.relative_to(project)}")
+    ids = [test["id"] for test in delivery["tests"]]
+    if len(ids) != len(set(ids)):
+        errors.append("Duplicate development test ID")
+    for test in delivery["tests"]:
+        if test["path"] not in listed:
+            errors.append(f"Test file absent from delivery inventory: {test['path']}")
+    if bundle_dir:
+        manifest = read_json(bundle_dir / "bundle.json")
+        scope = read_json(bundle_dir / "scope.json")
+        items, spec_errors = load_specs(bundle_dir)
+        errors += spec_errors
+        vectors = test_vector_refs(items)
+        expected = {r["id"] for r in scope["requirements"]}
+        covered = set()
+        for test in delivery["tests"]:
+            if set(test["requirement_ids"]) - expected:
+                errors.append(f"Unknown test requirements: {test['id']}")
+            covered.update(test["requirement_ids"])
+            unknown = set(test["spec_test_refs"]) - set(vectors)
+            if unknown:
+                errors.append(f"Unknown Spec test-vector reference in {test['id']}: {sorted(unknown)}; "
+                              "use <bundle-relative JSON path>#/TEST_VECTORS/<zero-based index>")
+        if covered != expected:
+            errors.append(f"Development tests must cover scope requirements: missing {sorted(expected - covered)}")
+        for source in manifest["files"]:
+            if source["path"] not in listed:
+                errors.append(f"Planned source missing from delivery: {source['path']}")
+        for header in manifest["headers"]:
+            path = project / header["path"]
+            if header["path"] not in listed or not path.is_file() or digest(path) != digest(bundle_dir / header["artifact"]):
+                errors.append(f"Public header differs from active Spec: {header['path']}")
+        if not project_path(manifest["runtime_contract"]["binary_name"]):
+            errors.append("Runtime binary must be project-relative")
+    return {"passed": not errors, "errors": errors, "test_count": len(ids)}
 

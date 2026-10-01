@@ -15,7 +15,7 @@ class ModelConfig:
     base_url: str = "https://api.deepseek.com"
     key_env: str = "DS_API"
     reasoning_effort: str = "high"
-    max_tokens: int = 32768
+    max_tokens: int = 65536
 
     def record(self) -> dict:
         return {**self.__dict__, "thinking": "enabled", "stream": False}
