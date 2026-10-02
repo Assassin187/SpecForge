@@ -44,6 +44,16 @@ buffer lifetime, allocation failures, endpoint/state cleanup and error isolation
 For streams, preserve complete buffered messages when handling EOF. For
 datagrams, preserve source endpoint identity and detect truncation. Do not
 require connection objects or stream buffering for a datagram-only task.
+For the selected I/O design, state which readiness events permit each read or
+write and how descriptor modes are established for listeners and accepted peers.
+Writable readiness does not permit a blocking read. Do not assume an accepted
+descriptor inherits its listener's mode; establish the mode required by its
+callers. A readiness loop must deliver queued output while a recipient is idle
+and must not let one peer's blocking operation stall unrelated peers. Trace
+these preconditions from descriptor creation through dispatch and cleanup.
+When required interactions have multiple participants, include positive vectors
+with different participant creation orders and with a passive recipient that
+receives output without sending extra data.
 When signals are needed, handlers only set sig_atomic_t flags and ordinary
 execution performs cleanup. These are engineering guidance, not protocol facts.
 
@@ -83,8 +93,28 @@ Algorithms must be concrete enough to implement without the original standard:
 derive fields/values, permitted interactions, exact response construction,
 state transitions and validation from this task's facts. Describe parameter
 sources, consume counts, ownership, failure actions and cleanup obligations.
+Trace owned resources through repeated legal operations, not just fresh state.
+Before replacing an owning pointer or aggregate, release its previous resource
+or transfer it to another owner. Clearing a length does not release storage.
+Specify the old owner, new owner and cleanup on every success and failure path;
+include repeated-operation vectors that exercise different supported paths.
 Use WIRE_MAPPING for codecs and CALL_CONTRACTS for cross-file calls with
 SIGNATURE,PARAMS,RETURN,OWNERSHIP,FAILURE. Use concise actionable descriptions.
+The task scope binds accepted input classes, feature support and limits.
+A standard's minimum mandatory support is not an exhaustive validation policy:
+when the requested scope includes a broader legal class, implement that class
+using the standard's permitted choices. Do not turn a minimum support range
+into a maximum or a mandatory subset into an allowlist. Respect actual protocol
+prohibitions and explicit exclusions. Include boundary and representative tests
+for the requested class beyond the mandatory minimum where applicable.
+Derive error decisions from all applicable facts, including facts not yet cited
+in traceability. List each rule's triggering condition, required response and
+connection/state effect. Check overlapping conditions before ordering early
+returns: a specific mandatory rejection must not be hidden by a generic
+unsupported-feature policy. Distinguish malformed or unframeable input from
+well-formed but unsupported input using the standard's rules. Include vectors
+for both and for intersecting error conditions; keep the algorithm, callers
+and test expectations consistent with the normative precedence.
 Every public cross-file function listed in RELY.FUNC needs a CALL_CONTRACT,
 including read-only getters. State its result use and failure behavior; use
 "no failure under documented preconditions" when appropriate. Do not omit
@@ -102,8 +132,15 @@ from their encoded byte/bit representation throughout the design.
 
 Create useful TEST_VECTORS with NAME,INPUT,EXPECT and LEVEL=FUNCTION or RUNTIME.
 Design tests from the task and facts, including error and lifecycle cases.
+Derive expected wire values independently from the facts; copying a literal
+from the proposed algorithm does not validate it. Keep the logical values and
+their encoding formula alongside exact bytes so contradictions are visible.
+Use run_command to compute bit fields, byte order and message lengths before
+saving canonical expectations, and compare the result with the algorithm.
 Optional TRACE_REFS names existing function/file TRACE_IDs or actual scope
-requirement IDs; never refer to an undefined ID.
+requirement IDs. Protocol fact IDs belong in traceability.fact_ids, the
+semantic_review record or explanatory INPUT/EXPECT fields; they are not valid
+TRACE_REFS even when those facts exist. Never refer to an undefined ID.
 traceability.requirements covers each scope requirement once. fact_ids points
 to actual facts (may be empty for purely engineering requirements). spec_refs
 points to populated behavior using bundle-relative JSON path plus JSON Pointer.
@@ -122,3 +159,64 @@ while keeping the design concise. Save WORKLOG.md when requested. Truncated
 65,536-token responses execute no tools. In SPEC REPAIR read the concrete gap,
 original facts and current Specs; do not justify design from generated code.
 
+SEMANTIC REVIEW is a separate job after BEHAVIOR with a fresh conversation.
+The existing WORKLOG is the author's navigation, not evidence of correctness.
+Plan all required audits within the stated response budget. Batch related
+Spec reads, calculations, corrections and saved-value assertions instead of
+using a separate response for each field or repeated single-pattern lookup.
+Complete the semantic audit and its records, then call check with at least
+twelve responses left for correcting gate errors and checking again. Do not
+defer the first check to the last response or spend the repair reserve on
+another background intake or completion-only checkpoint. After adding or
+changing vectors near completion, check the saved artifacts immediately.
+Keep the full required audit; only completed checks belong in semantic_review.
+Start from the binding scope. For every requested input class, feature and
+limit, compare the actual validation predicates and storage representation
+with the full requested legal domain. Rejection tests alone cannot show that
+required inputs are accepted. Check minimum-support versus maximum-limit and
+mandatory-subset versus permitted-class distinctions against the facts; repair
+any scope narrowing in algorithms, interfaces, storage and tests.
+Inspect the complete facts summary, not only the author's fact_ids or tests.
+For each relevant input/state, independently derive the applicable rules and
+required response before comparing the saved decision branches. Check that
+early rejection paths preserve specific mandatory rules when error conditions
+overlap. Repair omitted rules and add contrasting or overlap vectors; include
+the applicable fact IDs and checked decisions in the requirement's review.
+Then independently derive responses, field encodings and state/error behavior.
+Audit all WIRE_MAPPING entries, not selected length examples. For every
+constant wire field (message types, status codes, flags, lengths), run a
+calculation using fact operands and rules, print its expression/result beside
+the actual encoded value extracted from the saved Spec, and assert equality.
+Do not feed a Spec literal back as the derivation input. Fix all affected
+algorithm, mapping, caller and test occurrences of any mismatch. Then review
+state and error behavior through the requirement's existing Spec pointers.
+Agreement between a copied
+literal and its test does not establish agreement with a protocol fact.
+Review ALL saved TEST_VECTORS, not only traceability.test_ids or newly added
+examples. Use run_command to extract INPUT and EXPECT with file paths and array
+indices in bounded batches, so long LOGIC fields cannot hide later vectors.
+Replay each input against the fact-derived decision table and the current saved
+LOGIC/EVENT, then compare the actual EXPECT. After changing a rule, search all
+related algorithms, outputs, call contracts and vectors for its old behavior,
+update every contradiction and re-read the saved values. Use executable asserts
+for concrete corrected cases; a correct review narrative is not a correction
+to a still-contradictory vector.
+Audit resource ownership across repeated legal interactions: track allocations,
+retained storage, moves, replacements and releases. A cleared but allocated
+destination is not empty ownership; replacing it can leak its previous buffer.
+Check both the first operation and subsequent operations through different
+supported paths, including success, error and teardown. Repair the algorithm,
+contracts and repeated-operation vectors together.
+Audit I/O progress using the actual chosen execution model: check descriptor
+mode setup, exact event masks and the read/write preconditions at each call.
+For readiness-driven multiplexing, a writable-only event must not dispatch a
+blocking read, and already queued output must reach an idle recipient. Follow
+multi-participant paths in different creation orders; ensure no test depends on
+extra peer input to make a pending output progress. Repair missing mode setup,
+dispatch conditions and progress vectors together.
+Repair every affected occurrence of a contradiction before check. Record a
+review for each requirement in traceability.requirements[].semantic_review:
+include fact IDs, the independently checked behavior or numeric expressions,
+and any corrected Spec paths. The gate requires every requirement's record.
+Keep navigation and unfinished work in WORKLOG.md. Do not add features or
+redesign correct interfaces.

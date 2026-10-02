@@ -19,7 +19,7 @@ from .specs import delivery_checks, project_path, publish, scaffold, validate
 from .tools import ToolRuntime
 
 STAGES = ("prepare", "facts", "design", "specs", "code", "verify")
-LIMITS = {"facts": 40, "design": 100, "specs": 180, "code": 180, "repair": 40}
+LIMITS = {"facts": 40, "design": 100, "specs": 180, "code": 180, "repair": 40, "review": 60}
 
 
 def now() -> str:
@@ -88,13 +88,17 @@ def verify_project(project: Path, reports: Path, logs: Path, *, bundle: Path | N
             symbols = runtime.command("nm --undefined-only " + shlex.quote(binary), timeout=10)
             if "__asan_init" not in symbols["output"] or "__ubsan_handle" not in symbols["output"]:
                 report["errors"].append("Sanitizer binary lacks ASan/UBSan instrumentation")
+        binary_hash = digest(project / binary) if binary and (project / binary).is_file() else None
         command = "ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 make test"
         result = runtime.command(command, timeout=180)
+        binary_unchanged = binary_hash is None or ((project / binary).is_file() and digest(project / binary) == binary_hash)
         full_output = (runtime.logs / Path(result["log"]).name).read_text(errors="replace")
         diagnostics = re.search(r"AddressSanitizer|LeakSanitizer|runtime error:|UndefinedBehaviorSanitizer", full_output)
-        phase_report = {"passed": result["exit_code"] == 0 and not result["timed_out"] and not diagnostics,
-                        "status": "passed" if result["exit_code"] == 0 and not result["timed_out"] and not diagnostics else "failed",
-                        "command": result, "test_count": consistency["test_count"]}
+        phase_report = {"passed": result["exit_code"] == 0 and not result["timed_out"] and not diagnostics and binary_unchanged,
+                        "status": "passed" if result["exit_code"] == 0 and not result["timed_out"] and not diagnostics and binary_unchanged else "failed",
+                        "command": result, "test_count": consistency["test_count"], "binary_unchanged": binary_unchanged}
+        if not binary_unchanged:
+            report["errors"].append(f"{phase} development tests replaced the current runtime binary; test must preserve the selected build")
         report["phases"][phase] = phase_report
         if result["exit_code"] != 0 or not phase_report["passed"]:
             report["errors"].append(f"{phase} development tests failed")
@@ -192,13 +196,24 @@ class Pipeline:
 
     def facts_gate(self):
         result = check_facts(self.run / "facts", self.run / "inputs", self.run / "documents")
+        if result["passed"]:
+            contract = read_json(self.run / "facts/scope.json")["runtime_contract"]
+            if not project_path(contract["binary_name"]):
+                result["passed"] = False
+                result["errors"].append("runtime_contract.binary_name must be a concrete project-relative executable path; "
+                                        "resolve delegated naming as an engineering decision, not prose or a placeholder")
         save_json(self.run / "reports/facts.json", result)
         return result
 
-    def spec_gate(self, work: Path, design: bool = False):
+    def spec_gate(self, work: Path, design: bool = False, review: bool = False):
         result = validate(work, design=design, published=False,
                           facts=None if design else read_json(self.run / "facts/facts.json"),
                           scope=None if design else read_json(self.run / "facts/scope.json"))
+        if result["passed"] and review:
+            for row in read_json(work / "traceability.json")["requirements"]:
+                if not row.get("semantic_review", "").strip():
+                    result["errors"].append(f"Missing independent semantic review for {row['requirement_id']}")
+            result["passed"] = not result["errors"]
         save_json(self.run / "reports" / ("design.json" if design else f"specs_r{self.state['spec_revision']:03d}.json"), result)
         # Keep full probes in the report, but return compact diagnostics to the model.
         return {k: v for k, v in result.items() if k != "abi"}
@@ -277,13 +292,63 @@ class Pipeline:
             for interface in file_spec["SOURCE"]["INTERFACE"]:
                 task += f"- {interface['TRACE_ID']}: {interface['SIGNATURE']} ({interface['FUNCTION_TYPE']}); {interface['ROLE']}\n"
         task += "\nBinding scope requirements (algorithms must satisfy these, not merely link their IDs):\n"
-        task += "\n".join(f"- {r['id']}: {r['description']}" for r in read_json(work / "scope.json")["requirements"])
+        requirements = "\n".join(f"- {r['id']}: {r['description']}" for r in read_json(work / "scope.json")["requirements"])
+        task += requirements
         if repair:
             task += "\nSPEC REPAIR: repair this concrete gap with the original facts and current Specs:\n" + json.dumps(repair, ensure_ascii=False)
         result = self.job("spec_repair" if repair else "specs", work, {"/facts": self.run / "facts", "/schemas": ROOT / "schemas"},
                           task, lambda: self.spec_gate(work), "specs")
         if result["passed"]:
-            publish(work, self.state["spec_revision"])
+            # Author checkpoints and review claims must not complete the review job.
+            (work / "WORKLOG.md").unlink(missing_ok=True)
+            traceability = read_json(work / "traceability.json")
+            for row in traceability["requirements"]:
+                row.pop("semantic_review", None)
+            save_json(work / "traceability.json", traceability)
+            facts = "\n".join(f"- {f['id']}: {f['statement']} Values: {json.dumps(f['values'], ensure_ascii=False)}"
+                              for f in read_json(self.run / "facts/facts.json")["facts"])
+            result = self.job("spec_review", work, {"/facts": self.run / "facts", "/schemas": ROOT / "schemas"},
+                              "SEMANTIC REVIEW job: independently review the completed Specs against the approved scope and protocol facts before publication. "
+                              "Re-derive externally observable behavior from /facts, rather than trusting the author's checkpoint or test expectations. "
+                              "FIRST compare each binding scope requirement below with the actual accepted input domain, validation predicates, "
+                              "storage capacities and feature paths. A normative minimum mandatory support range is not a maximum, and a mandatory "
+                              "subset is not an exhaustive allowlist. Support the full requested legal class using permitted protocol choices, "
+                              "and add representative positive vectors beyond the minimum subset where the scope requires them. "
+                              "Correct scope narrowing in all affected algorithms, interfaces, storage and tests. "
+                              "Independently derive a conditional decision table from ALL applicable facts below, including facts not cited by the author. "
+                              "For each rule record its trigger, obligation, response and state/connection effect, then compare actual decision branches. "
+                              "Check overlaps: a generic unsupported-feature policy must not hide a specific mandatory rejection. "
+                              "Distinguish malformed or unframeable inputs from well-formed unsupported inputs according to the facts. "
+                              "Repair missing rules and incorrect early-return precedence; add contrasting and overlap vectors and cite the applicable facts in the review. "
+                              "NEXT batch-inspect all WIRE_MAPPING entries and related algorithms/tests. For every constant wire field, including "
+                              "message types, status codes, flags and lengths, use run_command to calculate its numeric encoding from fact operands and rules. "
+                              "Print the source fact value, expression, computed result and the actual value read from the saved Spec, and assert their equality. "
+                              "Do not use a Spec's encoded literal as the derivation input or verify only lengths while accepting other constants mentally. "
+                              "Correct every mismatch in WIRE_MAPPING, LOGIC/EVENT, call contracts and TEST_VECTORS. "
+                              "Use run_command to extract ALL saved TEST_VECTORS INPUT/EXPECT with file paths and array indices in bounded batches. "
+                              "Replay every existing input through the fact-derived decision table and saved LOGIC/EVENT; compare the actual saved EXPECT. "
+                              "Do not limit this audit to traceability.test_ids or newly added vectors. After any rule correction, search related "
+                              "algorithms, outputs, contracts and vectors for the old behavior, update all conflicts, then re-read and assert "
+                              "the saved expectations for the corrected concrete cases. A corrected review narrative cannot excuse a stale vector. "
+                              "THEN follow each required interaction through input, state changes, response and cleanup using traceability.requirements spec_refs. "
+                              "Audit ownership across repeated legal interactions and different supported paths: allocations, retained storage, "
+                              "moves, replacements and releases. Before replacing an owning pointer or aggregate, its previous resource must be "
+                              "released or transferred. Clearing a length can retain allocated storage. Check first use, subsequent use, errors "
+                              "and final teardown; correct lifecycle gaps in algorithms, contracts and repeated-operation vectors together. "
+                              "Audit I/O progress for the chosen execution model: descriptor mode setup, exact readiness masks and operation "
+                              "preconditions across producer/caller contracts. In a readiness loop, writable-only events must not dispatch "
+                              "blocking reads, queued output must progress to an idle recipient, and one peer must not stall unrelated peers. "
+                              "Follow required multi-participant interactions in different creation orders and correct mode setup, dispatch "
+                              "conditions and progress vectors together; do not depend on extra peer input to drive pending output. "
+                              "Inspect related Specs in batches; do not restart design or enumerate every helper. "
+                              "Correct contradictions in all affected Specs and test expectations, preserve scope and traceability, "
+                              "record the checked derivations and corrections in each traceability.requirements entry's semantic_review string. "
+                              "Every scoped requirement needs its own review before check can pass. Save concise progress in WORKLOG.md, then call check."
+                              "\n\nBinding scope requirements (preserve the requested domain; facts do not narrow it):\n" + requirements +
+                              "\n\nComplete protocol facts summary (derive applicable obligations even when absent from current traceability):\n" + facts,
+                              lambda: self.spec_gate(work, review=True), "review")
+            if result["passed"]:
+                publish(work, self.state["spec_revision"])
         return result
 
     def verify_gate(self):

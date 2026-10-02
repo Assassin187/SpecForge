@@ -22,11 +22,14 @@ def run_agent(llm: LLM, runtime: ToolRuntime, prefix: str, task: str, response_l
     checkpoint_pending = False
     checkpoint_number = 0
     previous_checkpoint = ""
-    messages = [{"role": "system", "content": prefix}, {"role": "user", "content": task}]
+    start = progress.get("responses", 0)
+    budget = (f"\n\nBounded job budget: {start}/{response_limit} responses already used; {response_limit-start} remain. "
+              "This budget includes saving artifacts, running check and correcting its errors. "
+              "Plan the work in batches and check while enough responses remain to fix reported errors.")
+    messages = [{"role": "system", "content": prefix}, {"role": "user", "content": task + budget}]
     existing_checkpoint = runtime.work / "WORKLOG.md"
     if existing_checkpoint.is_file():
         messages[-1]["content"] += "\nExisting disk checkpoint (the current task takes precedence over earlier phase instructions):\n" + existing_checkpoint.read_text()[:8000]
-    start = progress.get("responses", 0)
     if start:
         checkpoint = runtime.work / "WORKLOG.md"
         messages[-1]["content"] += "\nResuming this bounded job from disk. " + (checkpoint.read_text()[:12000] if checkpoint.is_file() else "Re-read existing artifacts.")
@@ -112,20 +115,29 @@ def run_agent(llm: LLM, runtime: ToolRuntime, prefix: str, task: str, response_l
             checkpoint = worklog.read_text()
             messages = [{"role": "system", "content": prefix},
                         {"role": "user", "content": task + f"\n\n{number}/{response_limit} responses already used; {response_limit-number} remain. " +
-                         ("Complete artifacts and check now; avoid further intake. " if response_limit-number <= 8 else "Implement the next concrete action. ") +
+                         ("Complete artifacts and check now; avoid further intake. " if response_limit-number <= 12 else "Implement the next concrete action. ") +
                          "Continue from this disk checkpoint. Read only needed artifacts.\n" + checkpoint[:12000]}]
             resets += 1
             checkpoint_pending = False
             previous_checkpoint = checkpoint
             checkpoint_number = number
             reset_this_response = True
-        if (not reset_this_response and not checkpoint_pending and response_limit - number > 8
+        if (not reset_this_response and not checkpoint_pending and response_limit - number > 12
                 and (number - checkpoint_number >= 24 or (response["usage"].get("input_tokens") or 0) > 64000)):
             previous_checkpoint = worklog.read_text() if worklog.is_file() else ""
             messages.append({"role": "user", "content": "Checkpoint now: update /work/WORKLOG.md (at most 4000 characters) with the next concrete action FIRST, then completed work, current issues and relevant file paths. Continue from disk in a fresh context. Use file pointers; do not duplicate Specs or full ABI declarations. Preserve important findings."})
             checkpoint_pending = True
-        if number == response_limit - 8:
-            messages.append({"role": "user", "content": f"Only 8 model responses remain in this job (limit {response_limit}). Complete and save all required artifacts now, then call check and fix its errors. Avoid additional background reading or scope expansion. Exceeding the limit is a recorded failure."})
+        if number == response_limit - 12:
+            # Give deterministic errors to a model that has deferred check,
+            # with time to repair them. This diagnostic does not finish a job.
+            checkpoint_pending = False
+            gate = runtime.check_callback()
+            save_json(log_dir / f"gate_{number:03d}.json", gate)
+            messages.append({"role": "user", "content": f"Only 12 model responses remain in this job (limit {response_limit}). "
+                             "The controller ran the current gate to preserve a repair window. "
+                             "Complete the required work, fix the saved artifacts below, then call check. "
+                             "Avoid additional background intake or checkpoints. Exceeding the limit is a recorded failure.\n" +
+                             json.dumps(gate, ensure_ascii=False)[:8000]})
     report.update(usage=total_usage(usage), context_resets=resets)
     persist(final=True)
     save_json(log_dir / "result.json", report)

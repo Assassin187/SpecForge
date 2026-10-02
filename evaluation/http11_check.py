@@ -481,7 +481,8 @@ def size_limits(c: Case):
     fat = c.client("fat-headers")
     fat.send(b"GET /hello HTTP/1.1\r\nHost: h\r\nX-Pad: " + b"z" * 20000 + b"\r\n\r\n")
     r = fat.response()
-    assert r.status == 431, r
+    # RFC 9110 section 5.4 requires an appropriate 4xx, not exclusively 431.
+    assert r.status in (400, 431), r
     fat.closed()
     alive = c.client("alive")
     r = alive.request("GET", "/value")                    # unchanged and alive

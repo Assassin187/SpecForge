@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import time
 from dataclasses import dataclass
@@ -33,13 +34,31 @@ class LLM:
 
     def complete(self, messages: list[dict], tools: list[dict]) -> dict:
         started = time.monotonic()
-        response = self.client.chat.completions.create(
-            model=self.config.model, messages=messages, tools=tools, stream=False,
-            max_tokens=self.config.max_tokens, reasoning_effort=self.config.reasoning_effort,
-            extra_body={"thinking": {"type": "enabled"}},
-        )
-        raw = response.model_dump()
-        choice = raw["choices"][0]
+        queue_errors = []
+        for attempt in range(3):
+            response = self.client.chat.completions.create(
+                model=self.config.model, messages=messages, tools=tools, stream=False,
+                max_tokens=self.config.max_tokens, reasoning_effort=self.config.reasoning_effort,
+                extra_body={"thinking": {"type": "enabled"}},
+            )
+            raw = response.model_dump()
+            choices = raw.get("choices")
+            if (isinstance(choices, list) and choices and isinstance(choices[0], dict)
+                    and isinstance(choices[0].get("message"), dict)):
+                break
+            error = raw.get("error")
+            message = error.get("message") if isinstance(error, dict) else None
+            # Non-streaming keep-alive responses can carry this error without
+            # an HTTP failure, so the SDK's existing retries do not apply.
+            if (attempt < 2 and isinstance(message, str)
+                    and "unable to start processing your request" in message
+                    and "timeout limit" in message):
+                queue_errors.append(raw)
+                print(f"  model API queue timeout: retrying unprocessed request ({attempt + 1}/2)", flush=True)
+                continue
+            raise RuntimeError("Invalid model API response (missing completion choice/message): "
+                               + json.dumps(raw, ensure_ascii=False)[:4000])
+        choice = choices[0]
         message = choice["message"]
         assistant = {"role": "assistant", "content": message.get("content")}
         if message.get("tool_calls"):
@@ -50,6 +69,7 @@ class LLM:
         usage = raw.get("usage") or {}
         details = usage.get("completion_tokens_details") or {}
         return {"message": assistant, "finish_reason": choice["finish_reason"], "response": raw,
+                "queue_errors": queue_errors,
                 "usage": {"input_tokens": usage.get("prompt_tokens"),
                           "cache_hit_tokens": usage.get("prompt_cache_hit_tokens"),
                           "cache_miss_tokens": usage.get("prompt_cache_miss_tokens"),

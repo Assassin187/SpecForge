@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from specforge.agent import run_agent
+from specforge.documents import ROOT, read_json
 from specforge.llm import LLM, total_usage
 from specforge.tools import ToolRuntime
 
@@ -56,6 +57,49 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(report["usage"]["reasoning_tokens"], 10)
         self.assertEqual(report["usage"]["cache_hit_tokens"], 160)
 
+    def test_invalid_model_response_reports_api_error_without_passing_gate(self):
+        for index, choices in enumerate((None, [], [None], [{"message": None, "finish_reason": "stop"}])):
+            with self.subTest(choices=choices):
+                raw = {"choices": choices, "error": {"message": "upstream unavailable", "code": "service_error"}}
+                client = FakeClient([raw])
+                self.runtime.check_callback = lambda: {"passed": True}
+                logs = self.root / f"invalid_api_{index}"
+                report = run_agent(LLM(client=client), self.runtime, "role", "task", 2, logs)
+                self.assertFalse(report["passed"])
+                self.assertEqual(report["reason"], "api_error")
+                self.assertIn("missing completion choice/message", report["error"])
+                self.assertIn("upstream unavailable", report["error"])
+                self.assertIn("service_error", report["error"])
+                self.assertEqual(read_json(logs / "api_error_001.json")["error"], report["error"])
+                self.assertEqual(len(client.requests), 1)
+                self.assertEqual(report["responses"], 0)
+
+    def test_unprocessed_queue_timeout_retries_same_request_and_remains_bounded(self):
+        queued = {"choices": None, "error": {"message":
+            "We were unable to start processing your request within the 900-second timeout limit. Please try again later."}}
+        client = FakeClient([queued, response([call("write_file", {"path": "/work/a", "content": "done"})]),
+                             response(finish="stop")])
+        self.runtime.check_callback = lambda: {"passed": (self.runtime.work / "a").exists()}
+        logs = self.root / "queue_recovered"
+        report = run_agent(LLM(client=client), self.runtime, "role", "task", 3, logs)
+        self.assertTrue(report["passed"])
+        self.assertEqual(report["responses"], 2)
+        self.assertEqual(len(client.requests), 3)
+        self.assertEqual(client.requests[0], client.requests[1])
+        self.assertEqual(report["usage"]["input_tokens"], 200)
+        self.assertEqual(read_json(logs / "response_001.json")["queue_errors"], [queued])
+        self.assertEqual((self.runtime.work / "a").read_text(), "done")
+        client = FakeClient([queued, queued, queued])
+        self.runtime.check_callback = lambda: {"passed": True}
+        logs = self.root / "queue_exhausted"
+        report = run_agent(LLM(client=client), self.runtime, "role", "task", 3, logs)
+        self.assertFalse(report["passed"])
+        self.assertEqual(report["reason"], "api_error")
+        self.assertEqual(report["responses"], 0)
+        self.assertEqual(len(client.requests), 3)
+        self.assertTrue(all(request == client.requests[0] for request in client.requests))
+        self.assertIn("900-second timeout", read_json(logs / "api_error_001.json")["error"])
+
     def test_truncated_calls_do_not_mutate(self):
         client = FakeClient([response([call("write_file", {"path": "/work/a", "content": "no"})], finish="length")])
         report = run_agent(LLM(client=client), self.runtime, "role", "task", 2, self.root / "api")
@@ -70,6 +114,7 @@ class RuntimeTests(unittest.TestCase):
         self.runtime.check_callback = lambda: {"passed": (self.runtime.work / "a").exists()}
         report = run_agent(LLM(client=client), self.runtime, "role", "task", 40, self.root / "api")
         self.assertEqual(report["context_resets"], 1)
+        self.assertIn("0/40 responses already used; 40 remain", client.requests[0]["messages"][1]["content"])
         self.assertEqual(len(client.requests[25]["messages"]), 2)
         self.assertIn("Done twenty-four", client.requests[25]["messages"][1]["content"])
         # Resuming consumes only the unused part of this job's original budget.
@@ -104,6 +149,35 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(report["context_resets"], 1)
         self.assertGreater(len(client.requests[2]["tools"]), 1)
 
+    def test_controller_gate_preserves_repair_window_after_checkpoint_without_finishing_job(self):
+        for initially_passed in (False, True):
+            with self.subTest(initially_passed=initially_passed):
+                intake = response([call("list_files", {"path": "/work"})])
+                intake["usage"]["prompt_tokens"] = 65000
+                client = FakeClient([
+                    response([call("write_file", {"path": "/work/callback.json", "content":
+                        '{"signature":"void (*)(int)"}'})]),
+                    response([call("list_files", {"path": "/work"})]), intake,
+                    response([call("write_file", {"path": "/work/WORKLOG.md", "content": f"Continue the saved design {initially_passed}."})]),
+                    response([call("edit_file", {"path": "/work/callback.json", "old": "void (*)(int)",
+                        "new": "void (*accept_fn)(int)"})]), response(finish="stop")])
+                def gate():
+                    passed = initially_passed or "accept_fn" in (self.runtime.work / "callback.json").read_text()
+                    return {"passed": passed, "errors": [] if passed else ["CALLBACK_SIGNATURE must name its typedef: accept_fn"]}
+                self.runtime.check_callback = gate
+                logs = self.root / f"controller_gate_{initially_passed}"
+                report = run_agent(LLM(client=client), self.runtime, "role", "DESIGN job", 16, logs)
+                self.assertTrue(report["passed"])
+                self.assertEqual(report["responses"], 6)
+                self.assertEqual(report["context_resets"], 1)
+                self.assertEqual(read_json(logs / "gate_004.json")["passed"], initially_passed)
+                feedback = client.requests[4]["messages"][-1]["content"]
+                self.assertIn("Only 12 model responses remain", feedback)
+                if not initially_passed:
+                    self.assertIn("CALLBACK_SIGNATURE must name its typedef: accept_fn", feedback)
+                self.assertEqual(read_json(self.runtime.work / "callback.json")["signature"], "void (*accept_fn)(int)")
+                self.assertEqual(len(client.requests[4]["tools"]), len(self.runtime.tool_definitions()))
+
     def test_final_budget_keeps_artifact_and_check_tools_available(self):
         first = response([call("list_files", {"path": "/work"})])
         first["usage"]["prompt_tokens"] = 65000
@@ -115,6 +189,7 @@ class RuntimeTests(unittest.TestCase):
         self.assertTrue(report["passed"])
         self.assertEqual(report["context_resets"], 0)
         self.assertTrue(all(len(r["tools"]) > 1 for r in client.requests))
+        self.assertIn("0/3 responses already used; 3 remain", client.requests[0]["messages"][1]["content"])
 
     def test_read_pagination_does_not_skip_truncated_lines(self):
         (self.runtime.work / "large").write_text("\n".join(str(i) + "x" * 400 for i in range(50)))
@@ -131,6 +206,35 @@ class RuntimeTests(unittest.TestCase):
         self.runtime.dispatch("write_file", {"path": "/work/spec.json", "content": '{"value": 1}'})
         self.assertIn("error", self.runtime.dispatch("edit_file", {"path": "/work/spec.json", "old": "1", "new": "unquoted"}))
         self.assertEqual(json.loads((self.runtime.work / "spec.json").read_text()), {"value": 1})
+
+    def test_spec_schema_errors_are_immediate_and_preserve_artifacts(self):
+        spec = next(value for path in sorted((ROOT / "assets/mqtt_reference/bundle/functions").rglob("*.json"))
+                    if "LOGIC" in (value := read_json(path)) and value.get("TEST_VECTORS"))
+        path = "/work/functions/algorithm.json"
+        original = json.dumps(spec)
+        action = spec["LOGIC"]["ACTION"]
+        spec["LOGIC"]["ACTION"] = [action]
+        result = self.runtime.dispatch("write_file", {"path": path, "content": json.dumps(spec)})
+        self.assertIn("LOGIC/ACTION", result["error"])
+        self.assertFalse((self.runtime.work / "functions/algorithm.json").exists())
+        self.assertIn("written", self.runtime.dispatch("write_file", {"path": path, "content": original}))
+        result = self.runtime.dispatch("edit_file", {"path": path, "old": '"ACTION": ' + json.dumps(action),
+                                                      "new": '"ACTION": ' + json.dumps([action])})
+        self.assertIn("LOGIC/ACTION", result["error"])
+        self.assertEqual((self.runtime.work / "functions/algorithm.json").read_text(), original)
+        spec["LOGIC"]["ACTION"] = action
+        spec["TEST_VECTORS"][0]["INPUT"] = [spec["TEST_VECTORS"][0]["INPUT"]]
+        result = self.runtime.dispatch("write_file", {"path": path, "content": json.dumps(spec)})
+        self.assertIn("TEST_VECTORS/0/INPUT", result["error"])
+        self.assertEqual((self.runtime.work / "functions/algorithm.json").read_text(), original)
+
+    def test_project_json_data_is_not_treated_as_a_spec(self):
+        for coder, content in ((False, '[1, 2]'), (False, '{"value": 1}'),
+                               (True, '{"KIND": "FUNCTION_SPEC", "payload": "test data"}')):
+            with self.subTest(coder=coder, content=content):
+                self.runtime.coder = coder
+                self.assertIn("written", self.runtime.dispatch("write_file", {"path": "/work/data.json", "content": content}))
+                self.assertEqual((self.runtime.work / "data.json").read_text(), content)
 
     def test_command_view_failure_and_timeout(self):
         header = self.runtime.work / "include"

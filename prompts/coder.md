@@ -21,6 +21,12 @@ an actual uncertainty; a separate exhaustive suite for every public helper is
 not required. Preserve requirement coverage without duplicating the same
 assertions across layers. Save and maintain delivery.json as soon as the first
 build and development test exist, so the gate can report real build/test issues.
+At least one development test must start the actual delivered executable with
+its real CLI and assert core protocol interactions through its public network
+endpoint. Direct library tests and startup/signal checks complement this but do
+not replace it. For required multi-participant behavior, use separate peers,
+vary their creation order and verify that an idle recipient receives queued
+output without extra sends to drive the server.
 
 The Makefile provides all, clean, test and sanitize as the common build interface.
 Use C99, required POSIX feature macros and strict warnings (-Wall -Wextra
@@ -31,7 +37,10 @@ test runs your own bounded tests against the CURRENT binary, preserving the
 normal or sanitizer build; it must not silently rebuild a normal binary.
 Develop tests from scope, actual Spec TEST_VECTORS and implemented interfaces.
 Cover every requirement with real assertions, including wire behavior and
-resource/error paths. Tests must exit nonzero on failure and clean up processes.
+resource/error paths. Exercise repeated legal operations through different
+supported paths on the same session or endpoint, so retained storage and state
+are tested beyond their first use. Tests must exit nonzero on failure and clean
+up processes.
 Derive fixture lengths from the actual byte arrays. Check test setup, required
 session/interaction state and exact expected bytes before blaming the library.
 Distinguish logical field values from encoded bytes; trace helper returns and
@@ -47,11 +56,28 @@ make sanitize and the failing test together; check restores the normal binary.
 Domain prior: preserve explicit byte lengths and network byte order, validate
 external input boundaries, distinguish stream framing from datagram handling,
 handle partial I/O where applicable, retain borrowed memory for its promised
-lifetime, isolate peer errors and release owned resources. Use safe signal
-handling when needed. Do not invent features absent from scope and Specs.
+lifetime, isolate peer errors and release owned resources. Before replacing an
+owning pointer or aggregate, account for its previous allocation; clearing a
+length can retain storage. Check repeated-use cleanup as well as final teardown.
+For the selected I/O model, implement exact read/write event masks and establish
+the required modes of listener and accepted descriptors. Writable-only readiness
+is not a reason to perform a blocking read; pending output must progress while
+its recipient is idle, and one peer must not stall unrelated peers.
+Use safe signal handling when needed. Do not invent features absent from scope
+and Specs.
 
-delivery.json follows the exact schema supplied in context. files lists every
-source, header, Makefile, README, test and test fixture; list source artifacts,
+delivery.json follows the exact schema supplied in context.
+Write schema_version=2 and include startup_args: the exact argument tokens for
+starting the delivered executable, excluding the executable path. Use {0} for
+the listening port and {1}, {2}, etc. for further startup values in task order.
+For example, a chosen flag-based command can use ["--port", "{0}"]; a positional
+command can use ["{0}"]. This metadata describes your actual CLI; it does not
+prescribe its syntax. Include every required startup value, preserve literal
+flags, and document the same invocation in README. Argument values are passed
+directly without a shell, so do not add shell quoting to individual tokens.
+
+files lists every source, header, Makefile, README, test and test fixture; list
+source artifacts,
 not compiled binaries, objects, caches or transient test output. tests contains
 your test IDs, executable test file paths, scope requirement_ids and pointers
 to Spec TEST_VECTORS in spec_test_refs. Shared test files can have several entries.
@@ -79,6 +105,13 @@ scope, use report_spec_gap with exact Spec references, the precise issue and an
 existing command log or development report. A normal coding error is not a gap.
 If a caller's explicit success check contradicts the callee's documented
 return value or the same Spec's expected bytes, report that gap promptly.
+Also compare each relevant TEST_VECTORS.INPUT/EXPECT with that function's saved
+LOGIC/EVENT and OUTPUT. If they conflict, neither the vector nor prose wins by
+default. Do not implement the vector's old behavior, choose an interpretation,
+or document the contradiction as an accepted limitation. Use run_command to
+print the exact conflicting Spec fields into a command log and immediately
+report_spec_gap(kind=behavior) with those pointers and that log; the existing
+Planner repair must reconcile the bundle before implementation continues.
 Do not preserve a known contradiction or weaken a correct behavior assertion
 to make the development gate pass.
 There is one Planner correction at most. Do not silently override contradictory

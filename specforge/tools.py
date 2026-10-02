@@ -13,7 +13,8 @@ from typing import Callable
 
 import jsonschema
 
-from .documents import save_json
+from .documents import ROOT, read_json, save_json
+from .specs import SCHEMAS
 
 OUTPUT_LIMIT = 8000
 
@@ -158,18 +159,22 @@ class ToolRuntime:
                                 return {"matches": matches, "truncated": True}
                 return {"matches": matches, "truncated": False}
             if name == "write_file":
-                if path.suffix == ".json":
-                    json.loads(args["content"])
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(args["content"], encoding="utf-8")
+                content = args["content"]
             else:
-                text = path.read_text(encoding="utf-8")
-                if text.count(args["old"]) != 1:
+                content = path.read_text(encoding="utf-8")
+                if content.count(args["old"]) != 1:
                     raise ValueError("old text must occur exactly once")
-                updated = text.replace(args["old"], args["new"], 1)
-                if path.suffix == ".json":
-                    json.loads(updated)
-                path.write_text(updated, encoding="utf-8")
+                content = content.replace(args["old"], args["new"], 1)
+            if path.suffix == ".json":
+                value = json.loads(content)
+                if not self.coder and isinstance(value, dict) and value.get("KIND") in SCHEMAS:
+                    validator = jsonschema.Draft202012Validator(read_json(ROOT / "schemas" / SCHEMAS[value["KIND"]]))
+                    error = next(validator.iter_errors(value), None)
+                    if error:
+                        field = "/".join(map(str, error.absolute_path))
+                        raise ValueError(f"Invalid Spec {args['path']}:{field}: {error.validator}={error.validator_value}")
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
             return {"written": args["path"]}
         except (OSError, ValueError, jsonschema.ValidationError) as exc:
             return {"error": str(exc)[:OUTPUT_LIMIT]}

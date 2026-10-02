@@ -26,8 +26,19 @@ def evaluate_project(project: Path, bundle: Path, evaluator: Path, destination: 
     path = Path(binary)
     if path.is_absolute() or ".." in path.parts or not path.parts:
         raise ValueError("Runtime binary must be a project-relative path")
+    delivery = read_json(project / "delivery.json")
+    # Version 1 deliveries used the evaluator's positional startup values.
+    arguments = delivery["startup_args"] if delivery["schema_version"] == 2 else None
+    launcher = harness / "start-server"
+    launcher.write_text("#!/usr/bin/python3\nimport os\nimport sys\n"
+                        + f"binary = {'/work/' + binary!r}\narguments = {arguments!r}\n"
+                        + "values = sys.argv[1:]\n"
+                        + "args = values if arguments is None else [arg.format(*values) for arg in arguments]\n"
+                        + "os.execv(binary, [binary, *args])\n")
+    launcher.chmod(0o755)
     runtime = ToolRuntime(work, {"/harness": harness}, destination / "commands", lambda: {"passed": False})
     report = {"passed": False, "evaluator": str(evaluator.resolve()), "evaluator_sha256": digest(evaluator),
+              "startup_args": arguments,
               "delivery_hashes": original_hashes, "builds": {}, "phases": {}, "errors": []}
     for phase, target in (("normal", "all"), ("sanitize", "sanitize")):
         build = runtime.command(f"make clean && make {target}", timeout=120)
@@ -40,7 +51,7 @@ def evaluate_project(project: Path, bundle: Path, evaluator: Path, destination: 
             probe = runtime.command("nm --undefined-only " + shlex.quote("/work/" + binary), timeout=10)
             if "__asan_init" not in probe["output"] or "__ubsan_handle" not in probe["output"]:
                 report["errors"].append("Sanitizer binary lacks ASan/UBSan instrumentation")
-        command = ("/usr/bin/python3 /harness/evaluate.py --binary " + shlex.quote("/work/" + binary)
+        command = ("/usr/bin/python3 /harness/evaluate.py --binary /harness/start-server"
                    + f" --out /work/.evaluation/{phase}")
         result = runtime.command(command, timeout=180)
         output = work / ".evaluation" / phase

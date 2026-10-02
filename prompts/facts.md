@@ -12,7 +12,14 @@ All ranges must fit the index line_count and contain real supporting text.
 
 Write /work/scope.json and /work/facts.json. Preserve every input requirement
 ID and its REQUIREMENTS.md line range. Protocol identity, version, role,
-capabilities, exclusions and startup contract come from the actual inputs.
+capabilities, exclusions and startup needs come from the actual inputs.
+When the task delegates executable naming or command syntax to the implementer,
+choose a concrete, simple startup contract satisfying those needs and record
+the choice in engineering_defaults. runtime_contract.binary_name is an actual
+project-relative executable path, not prose or an unresolved placeholder;
+argv_contract gives its usable invocation with placeholders for startup values.
+Preserve any explicit startup contract required by the task. These choices are
+engineering decisions, not protocol facts or additional functional requirements.
 The current implementation backend is Linux C99. Record task-specified
 engineering choices separately in scope; never label them normative facts.
 Resolve in-scope questions using the standard before completing. Allowed
@@ -25,6 +32,13 @@ framing from datagram boundaries; connection-oriented assumptions need not
 apply to datagram protocols. Capture precise numeric values in values.
 Do not inject a familiar protocol's features or assume an unrequested feature.
 Normative statements must have evidence; task-selected behavior belongs to scope.
+Distinguish the complete legal input domain from a standard's minimum mandatory
+support subset. A rule saying MUST support a range or character subset does
+not make its endpoints a maximum or its characters an exhaustive allowlist.
+Read adjacent optional/permission clauses when they affect a requested feature.
+Preserve those rules in facts and select permitted behavior to satisfy the
+explicit task scope; do not narrow a requested input class as an engineering
+default. Do not enable unrelated optional features outside the requested scope.
 
 Keep facts concise and combine related rules from the same section. There is
 no fixed fact count. Save early in small batches, at most 8-10 facts per

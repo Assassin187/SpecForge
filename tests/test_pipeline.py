@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from specforge.documents import ROOT
+from specforge.documents import ROOT, read_json, save_json
 from specforge.pipeline import Pipeline, verify_project
 from specforge.specs import publish, scaffold
 from specforge.evaluation import evaluate_run
@@ -36,6 +36,75 @@ class PipelineTests(unittest.TestCase):
         with patch.object(self.pipeline, "do_facts", return_value={"passed": False, "reason": "bad_evidence"}):
             self.assertFalse(self.pipeline.execute())
         self.assertEqual(self.pipeline.state["stages"]["design"]["status"], "pending")
+
+    def test_facts_gate_requires_concrete_runtime_binary(self):
+        scope = read_json(ROOT / "assets/mqtt_reference/bundle/scope.json")
+        for binary, accepted in (("Executable name chosen by the implementer", False),
+                                 ("<server>", False), ("bin/local_server", True)):
+            with self.subTest(binary=binary):
+                scope["runtime_contract"]["binary_name"] = binary
+                save_json(self.run / "facts/scope.json", scope)
+                with patch("specforge.pipeline.check_facts", return_value={"passed": True, "errors": []}):
+                    report = self.pipeline.facts_gate()
+                self.assertEqual(report["passed"], accepted)
+                self.assertEqual(read_json(self.run / "reports/facts.json"), report)
+                if not accepted:
+                    self.assertIn("runtime_contract.binary_name", report["errors"][0])
+
+    def test_spec_publication_waits_for_semantic_review(self):
+        reference = ROOT / "assets/mqtt_reference/bundle"
+        shutil.copytree(reference, self.run / "design_work", dirs_exist_ok=True)
+        for path in (self.run / "design_work/files").glob("*.json"):
+            file_spec = read_json(path)
+            for interface in file_spec["SOURCE"]["INTERFACE"]:
+                interface.setdefault("FUNCTION_TYPE", "ALGORITHM")
+            save_json(path, file_spec)
+        save_json(self.run / "facts/scope.json", read_json(reference / "scope.json"))
+        facts = [{"id": "F1", "statement": "Unsupported features SHOULD use the generic rejection.", "values": {}},
+                 {"id": "F2", "statement": "Undefined message boundaries MUST use the framing rejection and close.", "values": {"close": True}}]
+        save_json(self.run / "facts/facts.json", {"facts": facts})
+        save_json(self.run / "design_work/traceability.json", {"requirements": [{"requirement_id": "R01", "semantic_review": "author claim"}]})
+        (self.run / "design_work/WORKLOG.md").write_text("Author: everything is complete; just run check.")
+        for behavior_passed, review_passed in ((False, True), (True, False), (True, True)):
+            with self.subTest(behavior=behavior_passed, review=review_passed):
+                with patch.object(self.pipeline, "job", side_effect=[{"passed": behavior_passed},
+                                                                   {"passed": review_passed}]) as jobs, \
+                        patch("specforge.pipeline.publish") as publication:
+                    result = self.pipeline.do_specs()
+                self.assertEqual(result["passed"], behavior_passed and review_passed)
+                self.assertEqual([call.args[0] for call in jobs.call_args_list],
+                                 ["specs", "spec_review"] if behavior_passed else ["specs"])
+                if behavior_passed:
+                    trace = read_json(self.pipeline.bundle() / "traceability.json")
+                    self.assertNotIn("semantic_review", trace["requirements"][0])
+                    self.assertFalse((self.pipeline.bundle() / "WORKLOG.md").exists())
+                    self.assertEqual(jobs.call_args.args[-1], "review")
+                    self.assertEqual(set(jobs.call_args.args[2]), {"/facts", "/schemas"})
+                    for requirement in read_json(self.run / "facts/scope.json")["requirements"]:
+                        self.assertIn(requirement["description"], jobs.call_args.args[3])
+                    for fact in facts:
+                        self.assertIn(fact["id"], jobs.call_args.args[3])
+                        self.assertIn(fact["statement"], jobs.call_args.args[3])
+                self.assertEqual(publication.call_count, int(behavior_passed and review_passed))
+
+    def test_review_gate_requires_each_requirement_record(self):
+        work = self.run / "design_work"
+        save_json(self.run / "facts/facts.json", {"facts": []})
+        save_json(self.run / "facts/scope.json", {"requirements": []})
+        rows = [{"requirement_id": "R01", "semantic_review": "checked"},
+                {"requirement_id": "R02"}]
+        for review, accepted in ((None, False), (" ", False), ("F02 derived response and checked state", True)):
+            with self.subTest(review=review):
+                if review is None:
+                    rows[1].pop("semantic_review", None)
+                else:
+                    rows[1]["semantic_review"] = review
+                save_json(work / "traceability.json", {"requirements": rows})
+                with patch("specforge.pipeline.validate", return_value={"passed": True, "errors": []}):
+                    result = self.pipeline.spec_gate(work, review=True)
+                self.assertEqual(result["passed"], accepted)
+                if not accepted:
+                    self.assertIn("R02", result["errors"][0])
 
     def test_scaffold_copies_only_planned_interfaces(self):
         shutil.copytree(ROOT / "assets/mqtt_reference/bundle", self.pipeline.bundle())
