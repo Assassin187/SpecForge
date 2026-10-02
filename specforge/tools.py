@@ -14,9 +14,17 @@ from typing import Callable
 import jsonschema
 
 from .documents import ROOT, read_json, save_json
-from .specs import SCHEMAS
+from .specs import SCHEMAS, pointer
 
 OUTPUT_LIMIT = 8000
+
+
+def bounded_output(text: str, limit: int = OUTPUT_LIMIT) -> str:
+    if len(text) <= limit:
+        return text
+    marker = "\n... output omitted; full command log retained ...\n"
+    head = (limit - len(marker)) // 2
+    return text[:head] + marker + text[-(limit - len(marker) - head):]
 
 
 def parameters(properties: dict, required: list[str]) -> dict:
@@ -26,7 +34,8 @@ def parameters(properties: dict, required: list[str]) -> dict:
 TOOL_PARAMETERS = {
     "list_files": parameters({"path": {"type": "string"}}, ["path"]),
     "read_file": parameters({"path": {"type": "string"}, "start_line": {"type": "integer", "minimum": 1},
-                              "line_count": {"type": "integer", "minimum": 1, "maximum": 320}}, ["path"]),
+                              "line_count": {"type": "integer", "minimum": 1, "maximum": 320},
+                              "json_pointers": {"type": "array", "minItems": 1, "items": {"type": "string"}}}, ["path"]),
     "search": parameters({"path": {"type": "string"}, "keyword": {"type": "string", "minLength": 1}}, ["path", "keyword"]),
     "write_file": parameters({"path": {"type": "string"}, "content": {"type": "string"}}, ["path", "content"]),
     "edit_file": parameters({"path": {"type": "string"}, "old": {"type": "string", "minLength": 1},
@@ -42,7 +51,7 @@ TOOL_PARAMETERS = {
 }
 DESCRIPTIONS = {
     "list_files": "List files in an allowed logical directory, recursively.",
-    "read_file": "Read text with 1-based line numbers. Default 160 lines; output bounded.",
+    "read_file": "Read text with 1-based lines (default 160). Optional json_pointers selects exact JSON fields; lines then refer to that compact selection (default 320). All selected fields must exist; use json_pointers=[''] to read the full JSON when its shape is unknown. Paginate using next_line; original files remain available.",
     "search": "Literal case-insensitive keyword search; returns file paths and 1-based lines.",
     "write_file": "Write an entire UTF-8 file in /work. Public interfaces may be read-only.",
     "edit_file": "Replace exactly one occurrence; zero or multiple occurrences fail.",
@@ -120,8 +129,27 @@ class ToolRuntime:
                          for p in sorted(path.rglob("*")) if p.is_file() and not p.is_symlink()]
                 return {"files": files[:300], "truncated": len(files) > 300}
             if name == "read_file":
-                lines = path.read_text(encoding="utf-8").splitlines()
-                start, count = args.get("start_line", 1), args.get("line_count", 160)
+                if "json_pointers" in args:
+                    value = read_json(path)
+                    try:
+                        selection = {ref: pointer({"document": value}, "document#" + ref)
+                                     for ref in args["json_pointers"]}
+                    except (KeyError, IndexError, TypeError, ValueError) as exc:
+                        available = f"; available root keys: {', '.join(value)}" if isinstance(value, dict) else ""
+                        raise ValueError(f"Invalid JSON selection for {args['path']}: {exc}{available}") from exc
+                    # Compact exact JSON, wrapping only between encoder chunks:
+                    # never split a quoted value or insert whitespace inside it.
+                    lines, line = [], ""
+                    for chunk in json.JSONEncoder(ensure_ascii=False, separators=(",", ":")).iterencode(selection):
+                        if line and len(line) + len(chunk) > 256:
+                            lines.append(line)
+                            line = ""
+                        line += chunk
+                    if line:
+                        lines.append(line)
+                else:
+                    lines = path.read_text(encoding="utf-8").splitlines()
+                start, count = args.get("start_line", 1), args.get("line_count", 320 if "json_pointers" in args else 160)
                 selected, size, next_line = [], 0, start
                 oversized = None
                 for i, line in enumerate(lines[start - 1:start - 1 + count], start):
@@ -138,8 +166,10 @@ class ToolRuntime:
                 result = {"text": "\n".join(selected), "total_lines": len(lines),
                           "next_line": next_line if next_line <= len(lines) else None,
                           "truncated": oversized is not None or next_line < min(start + count, len(lines) + 1)}
+                if "json_pointers" in args:
+                    result["json_pointers"] = args["json_pointers"]
                 if oversized:
-                    result["hint"] = f"Line {oversized} exceeds the output limit; use run_command to extract selected JSON fields or text."
+                    result["hint"] = f"Line {oversized} exceeds the output limit; use narrower json_pointers or run_command to extract selected fields or text."
                 return result
             if name == "search":
                 matches = []
@@ -167,17 +197,34 @@ class ToolRuntime:
                 content = content.replace(args["old"], args["new"], 1)
             if path.suffix == ".json":
                 value = json.loads(content)
-                if not self.coder and isinstance(value, dict) and value.get("KIND") in SCHEMAS:
-                    validator = jsonschema.Draft202012Validator(read_json(ROOT / "schemas" / SCHEMAS[value["KIND"]]))
-                    error = next(validator.iter_errors(value), None)
-                    if error:
-                        field = "/".join(map(str, error.absolute_path))
-                        raise ValueError(f"Invalid Spec {args['path']}:{field}: {error.message}")
+                self._validate_spec_schema(args["path"], value)
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content, encoding="utf-8")
             return {"written": args["path"]}
         except (OSError, ValueError, jsonschema.ValidationError) as exc:
             return {"error": str(exc)[:OUTPUT_LIMIT]}
+
+    def _validate_spec_schema(self, path: str, value) -> None:
+        if not self.coder and isinstance(value, dict) and value.get("KIND") in SCHEMAS:
+            validator = jsonschema.Draft202012Validator(read_json(ROOT / "schemas" / SCHEMAS[value["KIND"]]))
+            error = next(validator.iter_errors(value), None)
+            if error:
+                field = "/".join(map(str, error.absolute_path))
+                raise ValueError(f"Invalid Spec {path}:{field}: {error.message}")
+
+    def _spec_files(self) -> dict:
+        # Only Planner stages mount schemas; Coder fixtures and verifier builds
+        # are ordinary project data. Match the formal Spec artifact locations.
+        if self.coder or "/schemas" not in self.inputs:
+            return {}
+        paths = [self.work / "module_spec.json"]
+        paths += [p for folder in ("files", "functions") for p in (self.work / folder).rglob("*.json")]
+        stamps = {}
+        for path in paths:
+            if path.is_file():
+                stat = path.stat()
+                stamps[path] = (stat.st_mtime_ns, stat.st_size)
+        return stamps
 
     def sandbox_argv(self, command: str, cwd: str = "/work") -> list[str]:
         actual_cwd = self.resolve(cwd)
@@ -201,6 +248,7 @@ class ToolRuntime:
         self.command_count += 1
         stem = f"command_{self.command_count:04d}"
         output_path = self.logs / (stem + ".log")
+        before = self._spec_files()
         started = time.monotonic()
         with output_path.open("w", encoding="utf-8") as output:
             process = subprocess.Popen(self.sandbox_argv(command, cwd), stdout=output, stderr=subprocess.STDOUT,
@@ -214,7 +262,17 @@ class ToolRuntime:
                 process.wait()
         text = output_path.read_text(encoding="utf-8", errors="replace")
         result = {"exit_code": process.returncode, "timed_out": timed_out, "elapsed_seconds": round(time.monotonic() - started, 3),
-                  "log": "/logs/" + output_path.name, "output": text[:OUTPUT_LIMIT], "truncated": len(text) > OUTPUT_LIMIT}
+                  "log": "/logs/" + output_path.name, "output": bounded_output(text), "truncated": len(text) > OUTPUT_LIMIT}
+        spec_errors = []
+        for path, stamp in self._spec_files().items():
+            if before.get(path) != stamp:
+                logical = "/work/" + path.relative_to(self.work).as_posix()
+                try:
+                    self._validate_spec_schema(logical, read_json(path))
+                except (OSError, ValueError) as exc:
+                    spec_errors.append(f"{logical}: {exc}")
+        if spec_errors:
+            result["spec_errors"] = spec_errors
         save_json(self.logs / (stem + ".json"), {**result, "command": command, "cwd": cwd})
         return result
 

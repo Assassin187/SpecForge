@@ -14,6 +14,14 @@ Work in runnable milestones, compiling early. Read the Spec for one source,
 write a skeleton and grow it before moving on. Write at most one substantial
 file per response. Do not spend the whole budget reading every function.
 Use WORKLOG.md to continue from disk; truncated responses execute no calls.
+Batch independent reads for the current source and its callees in one response.
+Use read_file json_pointers for exact /SIGNATURE, /RELY, /LOGIC or /EVENT,
+/CALL_CONTRACTS, /WIRE_MAPPING and selected /TEST_VECTORS elements, paginating
+with next_line when needed. Select only fields that exist: LOGIC and EVENT
+are alternatives, and auxiliary fields may be absent. If the shape is unknown,
+read json_pointers=[""] once rather than guessing optional fields.
+Keep caller/callee results, offsets and ownership
+in context together; avoid paging through unrelated declarations and vectors.
 Keep the first complete delivery small: implement the planned project, a bounded
 wire-level test covering the scoped interactions and errors, README and the
 delivery manifest, then call check. Add focused unit tests where they resolve

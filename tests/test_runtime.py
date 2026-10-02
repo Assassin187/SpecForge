@@ -286,6 +286,64 @@ class RuntimeTests(unittest.TestCase):
         self.assertLess(timed["elapsed_seconds"], 4)
 
 
+    def test_json_field_selection_preserves_exact_values_and_escapes(self):
+        value = {"a/b": {"~x": [0, False, None, "λ"]}, "unused": "large unrelated data"}
+        path = self.runtime.work / "fields.json"
+        path.write_text(json.dumps(value))
+        refs = ["/a~1b/~0x/0", "/a~1b/~0x/1", "/a~1b/~0x/2", "/a~1b/~0x/3"]
+        result = self.runtime.dispatch("read_file", {"path": "/work/fields.json", "json_pointers": refs})
+        selected = json.loads("\n".join(line.split(": ", 1)[1] for line in result["text"].splitlines()))
+        self.assertEqual(selected, dict(zip(refs, [0, False, None, "λ"])))
+        self.assertEqual(result["json_pointers"], refs)
+        self.assertNotIn("unused", result["text"])
+        self.assertEqual(json.loads(path.read_text()), value)
+        bad = self.runtime.dispatch("read_file", {"path": "/work/fields.json", "json_pointers": [refs[0], "/missing"]})
+        self.assertIn("Invalid JSON selection", bad["error"])
+        self.assertIn("available root keys: a/b, unused", bad["error"])
+        self.assertNotIn("text", bad)
+        self.assertEqual(json.loads(path.read_text()), value)
+
+    def test_json_selection_pagination_retains_the_next_line(self):
+        value = {"rows": [str(i) + "x" * 400 for i in range(90)]}
+        (self.runtime.work / "rows.json").write_text(json.dumps(value))
+        args = {"path": "/work/rows.json", "json_pointers": ["/rows"]}
+        first = self.runtime.dispatch("read_file", args)
+        number = first["next_line"]
+        self.assertLess(number, first["total_lines"])
+        self.assertEqual(len(first["text"].splitlines()), number - 1)
+        second = self.runtime.dispatch("read_file", {**args, "start_line": number})
+        self.assertTrue(second["text"].startswith(f"L{number:04d}:"))
+        self.assertEqual(first["json_pointers"], second["json_pointers"])
+
+    def test_scripted_spec_schema_feedback_checks_changed_planner_artifacts(self):
+        self.runtime.inputs["/schemas"] = ROOT / "schemas"
+        spec = next(value for path in sorted((ROOT / "assets/mqtt_reference/bundle/files").glob("*.json"))
+                    if (value := read_json(path))["SOURCE"].get("DATA"))
+        self.assertIn("written", self.runtime.dispatch("write_file", {"path": "/work/files/fixture.json", "content": json.dumps(spec)}))
+        bad = self.runtime.command("python3 - <<'PY'\nimport json\np='files/fixture.json'\nd=json.load(open(p))\nd['SOURCE']['DATA'][0]['UNEXPECTED_FIELD']='int'\njson.dump(d,open(p,'w'))\nPY")
+        self.assertEqual(bad["exit_code"], 0)
+        self.assertIn("SOURCE/DATA/0", bad["spec_errors"][0])
+        self.assertIn("UNEXPECTED_FIELD", bad["spec_errors"][0])
+        self.assertTrue((self.runtime.work / "files/fixture.json").exists())
+        self.assertNotIn("spec_errors", self.runtime.command("true"))
+        fixed = self.runtime.command("python3 - <<'PY'\nimport json\np='files/fixture.json'\nd=json.load(open(p))\nd['SOURCE']['DATA'][0].pop('UNEXPECTED_FIELD')\njson.dump(d,open(p,'w'))\nPY")
+        self.assertNotIn("spec_errors", fixed)
+        self.runtime.coder = True
+        ordinary = self.runtime.command("printf '{' > files/fixture.json")
+        self.assertEqual(ordinary["exit_code"], 0)
+        self.assertNotIn("spec_errors", ordinary)
+
+    def test_large_command_keeps_head_and_failure_tail_with_full_disk_log(self):
+        result = self.runtime.command("python3 - <<'PY'\nprint('START')\nprint('x' * 12000)\nprint('FAIL: actionable assertion at the end')\nPY")
+        self.assertEqual(result["exit_code"], 0)
+        self.assertTrue(result["truncated"])
+        self.assertLessEqual(len(result["output"]), 8000)
+        self.assertIn("START", result["output"])
+        self.assertIn("FAIL: actionable assertion at the end", result["output"])
+        full = self.runtime.resolve(result["log"]).read_text()
+        self.assertIn("x" * 12000, full)
+
+
 if __name__ == "__main__":
     unittest.main()
 

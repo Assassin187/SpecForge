@@ -75,6 +75,16 @@ when required. Start the first function by response 6, aim to finish functions
 by 55 and traceability by 60, then check by 65. Use the supplied function
 navigation, reading only the current owner's file Spec and relevant facts.
 Each checkpoint identifies the NEXT concrete artifact, without restarting intake.
+Batch independent reads in one response. Use read_file json_pointers to read exact
+saved fields such as /SOURCE/INTERFACE, /LOGIC or /EVENT, /CALL_CONTRACTS and
+selected /TEST_VECTORS elements; paginate using next_line. Values are original
+JSON, not summaries. Select only fields that exist: LOGIC and EVENT are
+alternatives, and auxiliary fields may be absent. If the shape is unknown,
+read json_pointers=[""] once rather than guessing optional fields.
+Read the current caller and actual callee contracts together
+before deciding an algorithm. Run related encoding calculations in one command.
+After a scripted Spec write, fix any returned spec_errors before repeating its
+format. Reuse the existing owning FileSpec when amending its interfaces.
 
 Only main is FUNCTION_TYPE=ENTRYPOINT; use EVENT/ALGORITHM for other functions.
 SIGNATURE={RAW,NAME,RETURN,PARAMS}; RETURN is a C type, not result semantics.

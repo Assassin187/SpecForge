@@ -170,6 +170,57 @@ class PipelineTests(unittest.TestCase):
         self.assertIn("error", runtime.dispatch("read_file", {"path": "/evaluation/report.json"}))
 
 
+    def test_behavior_navigation_includes_nested_file_specs(self):
+        reference = ROOT / "assets/mqtt_reference/bundle"
+        shutil.copytree(reference, self.run / "design_work", dirs_exist_ok=True)
+        directory = self.run / "design_work/files"
+        nested = directory / "nested"
+        nested.mkdir()
+        expected = []
+        for path in list(directory.glob("*.json")):
+            spec = read_json(path)
+            for interface in spec["SOURCE"]["INTERFACE"]:
+                interface.setdefault("FUNCTION_TYPE", "ALGORITHM")
+                expected.append(interface["TRACE_ID"])
+            save_json(nested / path.name, spec)
+            path.unlink()
+        save_json(self.run / "facts/scope.json", read_json(reference / "scope.json"))
+        with patch.object(self.pipeline, "job", return_value={"passed": False}) as job:
+            self.pipeline.do_specs()
+        task = job.call_args.args[3]
+        self.assertIn("files/nested/", task)
+        for trace in expected:
+            self.assertIn(trace, task)
+
+    def test_gate_view_compacts_success_output_without_mutating_full_evidence(self):
+        from specforge.pipeline import project_hashes
+        good = "verbose success " * 2000
+        bad = "START compiler\n" + "x" * 7000 + "\nFAIL actual diagnostic at the tail"
+        cache = {"passed": False, "project_hashes": project_hashes(self.run / "project"),
+                 "errors": ["sanitize development tests failed"],
+                 "report_path": str(self.run / "reports/verify_001/report.json"),
+                 "builds": {"normal": {"exit_code": 0, "timed_out": False, "log": "/reports/build.log", "output": good}},
+                 "phases": {
+                     "normal": {"passed": True, "status": "passed", "binary_unchanged": True,
+                                "command": {"exit_code": 0, "log": "/reports/normal.log", "output": good}},
+                     "sanitize": {"passed": False, "status": "failed", "binary_unchanged": True,
+                                  "command": {"exit_code": 1, "log": "/reports/sanitize.log", "output": bad}}}}
+        self.pipeline._verification_cache = cache
+        with patch("specforge.pipeline.verify_project") as verification:
+            result = self.pipeline.verify_gate()
+        verification.assert_not_called()
+        self.assertFalse(result["passed"])
+        self.assertEqual(result["errors"], cache["errors"])
+        self.assertNotIn("output", result["builds"]["normal"])
+        self.assertNotIn("output", result["phases"]["normal"]["command"])
+        failure = result["phases"]["sanitize"]["command"]
+        self.assertLessEqual(len(failure["output"]), 2000)
+        self.assertIn("FAIL actual diagnostic at the tail", failure["output"])
+        self.assertEqual(failure["log"], "/reports/sanitize.log")
+        self.assertEqual(cache["phases"]["normal"]["command"]["output"], good)
+        self.assertEqual(cache["phases"]["sanitize"]["command"]["output"], bad)
+
+
 if __name__ == "__main__":
     unittest.main()
 

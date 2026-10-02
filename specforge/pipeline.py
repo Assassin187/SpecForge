@@ -16,7 +16,7 @@ from .agent import run_agent
 from .documents import ROOT, check_facts, digest, hashes, prepare, read_json, save_json
 from .llm import LLM, ModelConfig, total_usage
 from .specs import delivery_checks, project_path, publish, scaffold, validate
-from .tools import ToolRuntime
+from .tools import ToolRuntime, bounded_output
 
 STAGES = ("prepare", "facts", "design", "specs", "code", "verify")
 LIMITS = {"facts": 40, "design": 100, "specs": 180, "code": 180, "repair": 40, "review": 60}
@@ -284,7 +284,7 @@ class Pipeline:
         shutil.copyfile(self.run / "facts/scope.json", work / "scope.json")
         task = "BEHAVIOR job: complete all function Specs, wire/call/resource contracts, planning test vectors and traceability."
         task += "\n\nChecked design function navigation (read only relevant files, start writing now):\n"
-        for path in sorted((work / "files").glob("*.json")):
+        for path in sorted((work / "files").rglob("*.json")):
             file_spec = read_json(path)
             task += f"\n{path.relative_to(work)}: {file_spec['SOURCE']['PATH']}\n"
             for interface in file_spec["SOURCE"]["INTERFACE"]:
@@ -349,7 +349,10 @@ class Pipeline:
                               "Inspect related Specs in batches; do not restart design or enumerate every helper. "
                               "Correct contradictions in all affected Specs and test expectations, preserve scope and traceability, "
                               "record the checked derivations and corrections in each traceability.requirements entry's semantic_review string. "
-                              "Every scoped requirement needs its own review before check can pass. Save concise progress in WORKLOG.md, then call check."
+                              "Every scoped requirement needs its own review before check can pass. After completing a requirement's actual "
+                              "checks, immediately save its semantic_review with concrete derivations and corrections; do not defer all records "
+                              "to the last responses. Batch independent field reads and calculations, using read_file json_pointers for exact "
+                              "saved fields. Save concise progress in WORKLOG.md, then call check."
                               "\n\nBinding scope requirements (preserve the requested domain; facts do not narrow it):\n" + requirements +
                               "\n\nComplete protocol facts summary (derive applicable obligations even when absent from current traceability):\n" + facts,
                               lambda: self.spec_gate(work, review=True), "review")
@@ -365,9 +368,21 @@ class Pipeline:
             result = verify_project(self.run / "project", self.run / "reports", self.run / "logs/verifier",
                                     bundle=self.bundle())
             self._verification_cache = result
+        # Keep complete reports/logs on disk. The model needs status and the
+        # failed command, not repeated successful test output and hex dumps.
+        builds = {name: dict(command) for name, command in result.get("builds", {}).items()}
+        phases = {name: {**phase, **({"command": dict(phase["command"])} if "command" in phase else {})}
+                  for name, phase in result["phases"].items()}
+        commands = [(command["exit_code"] == 0 and not command.get("timed_out"), command) for command in builds.values()]
+        commands += [(phase["passed"], phase["command"]) for phase in phases.values() if "command" in phase]
+        for passed, command in commands:
+            output = command.pop("output", "")
+            if not passed:
+                command["output"] = bounded_output(output, 2000)
+                command["truncated"] = command.get("truncated", False) or len(output) > 2000
         return {"passed": result["passed"], "errors": result["errors"],
                 "report": "/reports/" + str(Path(result["report_path"]).relative_to(self.run / "reports")),
-                "phases": result["phases"]}
+                "builds": builds, "phases": phases}
 
     def do_code(self):
         scaffold(self.bundle(), self.run / "project")
