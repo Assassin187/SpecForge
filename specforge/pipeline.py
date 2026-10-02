@@ -70,10 +70,8 @@ def verify_project(project: Path, reports: Path, logs: Path, *, bundle: Path | N
         binary = manifest["runtime_contract"]["binary_name"]
     report = {"passed": False, "project_hashes": signature, "kind": "development",
               "consistency": consistency, "errors": errors, "builds": {}, "phases": {}, "created_at": now()}
-    if errors:
-        save_json(destination / "report.json", report)
-        report["report_path"] = str(destination / "report.json")
-        return report
+    # Delivery consistency remains mandatory, but must not hide build/test
+    # diagnostics needed to complete the same generated project.
     runtime = ToolRuntime(project, {}, logs / f"verify_{stamp:03d}", lambda: {"passed": False}, readonly=readonly)
     for phase, target in (("normal", "all"), ("sanitize", "sanitize")):
         build = runtime.command(f"make clean && make {target}", timeout=120)
@@ -327,6 +325,14 @@ class Pipeline:
                               "Correct every mismatch in WIRE_MAPPING, LOGIC/EVENT, call contracts and TEST_VECTORS. "
                               "Use run_command to extract ALL saved TEST_VECTORS INPUT/EXPECT with file paths and array indices in bounded batches. "
                               "Replay every existing input through the fact-derived decision table and saved LOGIC/EVENT; compare the actual saved EXPECT. "
+                              "Keep these as two separate derivations: the behavior required by facts, and a literal execution of the saved "
+                              "algorithm branches, cursor updates, return values and caller contracts. A correct independent reference model "
+                              "does not validate the saved algorithm unless you compare both results. Do not silently insert a missing step "
+                              "or use WIRE_MAPPING or EXPECT to repair the algorithm during replay. For boundary cases and variable-length "
+                              "fields, print the Spec pointer, input, saved branch/offset calculation, algorithm result, fact-derived result "
+                              "and saved EXPECT, and reconcile all three. Expand batched cases and expected-result arrays element by element; "
+                              "a vector name or summary is not a replay of its cases. Follow runtime vectors through the actual planned "
+                              "callee algorithms, including non-default legal field lengths and overlapping validation rules. "
                               "Do not limit this audit to traceability.test_ids or newly added vectors. After any rule correction, search related "
                               "algorithms, outputs, contracts and vectors for the old behavior, update all conflicts, then re-read and assert "
                               "the saved expectations for the corrected concrete cases. A corrected review narrative cannot excuse a stale vector. "
@@ -372,6 +378,12 @@ class Pipeline:
             if job_count and self.state["implementation_repairs"] >= 3 and previous.get("repair_round", -1) >= 3 and pending_role not in ("code", "repair"):
                 return {"passed": False, "reason": "implementation_repair_limit", "verification": self.verify_gate()}
             task = "Implement the whole project from /specs, including Makefile, README, development tests and delivery.json. Build, self-test and pass the development check."
+            manifest = read_json(self.bundle() / "bundle.json")
+            task += "\nDelivery checklist from the active published bundle (behavior remains in /specs):\n"
+            task += "Planned sources: " + ", ".join(row["path"] for row in manifest["files"]) + "\n"
+            task += "Immutable headers: " + ", ".join(row["path"] for row in manifest["headers"]) + "\n"
+            for row in read_json(self.bundle() / "traceability.json")["requirements"]:
+                task += row["requirement_id"] + ": canonical Spec test references " + ", ".join(row["test_ids"]) + "\n"
             if job_count:
                 task += "\nContinue the existing project from disk. Development failure evidence:\n" + json.dumps(self.verify_gate(), ensure_ascii=False)
             role = pending_role if pending_role in ("code", "repair") else "code" if not job_count else "repair"

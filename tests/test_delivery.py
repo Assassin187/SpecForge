@@ -55,6 +55,36 @@ class DeliveryTests(unittest.TestCase):
         self.assertEqual(set(result["phases"]), {"normal", "sanitize"})
         self.assertNotIn("mqtt_check", str(result))
 
+    def test_missing_manifest_does_not_hide_development_failures(self):
+        (self.project / "delivery.json").unlink()
+        (self.project / "dev.py").write_text("raise AssertionError('development failure despite missing manifest')\n")
+        result = verify_project(self.project, self.root / "reports", self.root / "logs", bundle=self.bundle)
+        self.assertFalse(result["passed"])
+        self.assertTrue(any("delivery.json" in error for error in result["errors"]))
+        for phase in ("normal", "sanitize"):
+            self.assertEqual(result["builds"][phase]["exit_code"], 0)
+            self.assertEqual(result["phases"][phase]["status"], "failed")
+            self.assertIn("development failure despite missing manifest", result["phases"][phase]["command"]["output"])
+            self.assertIn(f"{phase} development tests failed", result["errors"])
+        self.assertEqual(result["builds"]["delivery"]["exit_code"], 0)
+
+    def test_invalid_manifest_does_not_hide_build_and_test_results(self):
+        save_json(self.project / "delivery.json", {"schema_version": 1})
+        result = verify_project(self.project, self.root / "reports", self.root / "logs", bundle=self.bundle)
+        self.assertFalse(result["passed"])
+        self.assertFalse(result["consistency"]["passed"])
+        self.assertTrue(result["phases"]["normal"]["passed"])
+        self.assertTrue(result["phases"]["sanitize"]["passed"])
+        self.assertEqual(result["phases"]["normal"]["test_count"], 0)
+
+    def test_unlisted_diagnostic_still_blocks_delivery_after_successful_tests(self):
+        (self.project / "diagnostic.sh").write_text("exit 0\n")
+        result = verify_project(self.project, self.root / "reports", self.root / "logs", bundle=self.bundle)
+        self.assertFalse(result["passed"])
+        self.assertIn("Unlisted source or development test: diagnostic.sh", result["errors"])
+        self.assertTrue(result["phases"]["normal"]["passed"])
+        self.assertTrue(result["phases"]["sanitize"]["passed"])
+
     def test_development_tests_cannot_replace_current_binary(self):
         makefile = self.project / "Makefile"
         makefile.write_text(makefile.read_text().replace("test:\n", "test:\n\t$(MAKE) clean\n\t$(MAKE) all\n"))
@@ -64,39 +94,29 @@ class DeliveryTests(unittest.TestCase):
         self.assertEqual(result["phases"]["sanitize"]["status"], "failed")
         self.assertTrue(any("replaced the current runtime binary" in error for error in result["errors"]))
 
-    def test_independent_launch_uses_actual_argument_template(self):
-        delivery = read_json(self.project / "delivery.json")
-        delivery.update(schema_version=2, startup_args=["--directory", "{1}", "--port={0}"])
-        save_json(self.project / "delivery.json", delivery)
+    def test_independent_launch_passes_positional_arguments_directly(self):
         source = read_json(self.bundle / "bundle.json")["files"][0]["path"]
         (self.project / source).write_text(
             '#include <stdio.h>\nint main(int argc,char **argv){volatile int n=argc;n+=1;'
-            'for(int i=1;i<argc;i++)puts(argv[i]);return n<1;}\n')
+            'for(int i=0;i<argc;i++)puts(argv[i]);return n<1;}\n')
         evaluator = self.root / "argument_evaluator.py"
-        evaluator.write_text(
-            "import argparse,json,subprocess\nfrom pathlib import Path\n"
-            "p=argparse.ArgumentParser();p.add_argument('--binary');p.add_argument('--out',type=Path)\n"
-            "a=p.parse_args();a.out.mkdir(parents=True)\n"
-            "r=subprocess.run([a.binary,'45123','capture folder'],capture_output=True,text=True)\n"
-            "ok=r.returncode==0 and r.stdout=='--directory\\ncapture folder\\n--port=45123\\n'\n"
-            "(a.out/'report.json').write_text(json.dumps({'passed':ok,'required_count':1,"
-            "'scenarios':[{'id':'actual_cli','status':'passed' if ok else 'failed'}]}))\n"
-            "raise SystemExit(0 if ok else 1)\n")
-        result = evaluate_project(self.project, self.bundle, evaluator, self.root / "evaluation")
-        self.assertTrue(result["passed"], result["errors"])
-        self.assertEqual(result["startup_args"], delivery["startup_args"])
-        self.assertEqual(set(result["phases"]), {"normal", "sanitize"})
-        delivery.pop("startup_args")
-        save_json(self.project / "delivery.json", delivery)
-        self.assertFalse(delivery_checks(self.project, self.bundle)["passed"])
-        delivery["schema_version"] = 1
-        save_json(self.project / "delivery.json", delivery)
-        self.assertTrue(delivery_checks(self.project, self.bundle)["passed"])
-        evaluator.write_text(evaluator.read_text().replace(
-            "--directory\\ncapture folder\\n--port=45123\\n", "45123\\ncapture folder\\n"))
-        legacy = evaluate_project(self.project, self.bundle, evaluator, self.root / "legacy_evaluation")
-        self.assertTrue(legacy["passed"], legacy["errors"])
-        self.assertIsNone(legacy["startup_args"])
+        for arguments in (["45123"], ["45123", "capture folder"]):
+            with self.subTest(arguments=arguments):
+                expected = "\n".join(["/work/mqtt_broker", *arguments]) + "\n"
+                evaluator.write_text(
+                    "import argparse,json,subprocess\nfrom pathlib import Path\n"
+                    "p=argparse.ArgumentParser();p.add_argument('--binary');p.add_argument('--out',type=Path)\n"
+                    "a=p.parse_args();a.out.mkdir(parents=True)\n"
+                    + f"r=subprocess.run([a.binary,*{arguments!r}],capture_output=True,text=True)\n"
+                    + f"ok=a.binary=='/work/mqtt_broker' and r.returncode==0 and r.stdout=={expected!r}\n"
+                    + "(a.out/'report.json').write_text(json.dumps({'passed':ok,'required_count':1,"
+                    "'scenarios':[{'id':'positional_cli','status':'passed' if ok else 'failed'}]}))\n"
+                    "raise SystemExit(0 if ok else 1)\n")
+                destination = self.root / f"evaluation_{len(arguments)}"
+                result = evaluate_project(self.project, self.bundle, evaluator, destination)
+                self.assertTrue(result["passed"], result["errors"])
+                self.assertEqual(set(result["phases"]), {"normal", "sanitize"})
+                self.assertFalse((destination / "harness/start-server").exists())
 
     def test_missing_reference_failed_test_and_hashes(self):
         before = project_hashes(self.project)

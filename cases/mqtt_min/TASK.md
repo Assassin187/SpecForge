@@ -1,7 +1,15 @@
-# MQTT broker 任务
+# MQTT minimum broker
 
-我想做一个简单的 MQTT 3.1.1 broker，用于本地或实验网络中的发布订阅通信。请在 Linux 下使用 C99 实现，具体功能范围见 REQUIREMENTS.md，协议行为以本目录提供的 MQTT 3.1.1 规范为依据。
+Build an independent multi-file MQTT 3.1.1 broker in C99 for Linux TCP.
+Use the accompanying REQUIREMENTS.md to select the protocol subset, and
+the supplied MQTT standard PDF as the only source of protocol rules.
+Deliver implementation sources, public headers, Makefile, README.md,
+development tests and the executable mqtt_broker. Choose the project layout.
+Start it as ./mqtt_broker <port>. It must build using GCC and make.
 
-希望得到一个能独立构建和运行、代码便于阅读和修改的项目。请自行实现所需的协议功能，不直接使用现成 broker 代替实现。项目应能用 GCC 和 make 构建，提供简单的启动方式，并能指定监听端口；具体命令、项目组织和内部设计由你决定。
+Public types, interfaces, ownership and processing paths must be planned
+before implementing the project. Private helpers may be chosen during coding.
 
-请自行安排开发、测试和调试。完成后提供源代码、必要的测试和简明 README，说明构建、启动、客户端使用和测试方法，以及已完成的功能和已知问题。本次重点是约定范围内的功能可用，不追求生产部署或专门的性能优化。
+This task does not request a full MQTT implementation. Do not import an
+existing broker or depend on Mosquitto as the implementation.
+

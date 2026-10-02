@@ -126,6 +126,42 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(resumed["responses"], 40)
         self.assertEqual(len(second.requests), 0)
 
+    def test_controller_feedback_survives_reset_and_api_resume(self):
+        first = response([call("write_file", {"path": "/work/missing.json", "content": "{"})])
+        calls = [first] + [response([call("list_files", {"path": "/work"})]) for _ in range(23)]
+        calls += [response([call("write_file", {"path": "/work/WORKLOG.md", "content": "All artifacts complete; just finish."})]),
+                  {"choices": [], "error": {"message": "service unavailable"}}]
+        def gate():
+            passed = (self.runtime.work / "missing.json").exists()
+            return {"passed": passed, "errors": [] if passed else ["Missing artifact: /work/missing.json"]}
+        self.runtime.check_callback = gate
+        logs = self.root / "feedback_api"
+        client = FakeClient(calls)
+        stopped = run_agent(LLM(client=client), self.runtime, "role", "task", 40, logs)
+        self.assertEqual(stopped["reason"], "api_error")
+        self.assertEqual(stopped["responses"], 25)
+        fresh_context = client.requests[25]["messages"][1]["content"]
+        self.assertIn("takes precedence over checkpoint claims", fresh_context)
+        self.assertIn("Missing artifact: /work/missing.json", fresh_context)
+        self.assertIn("Expecting property name", fresh_context)
+        self.assertFalse(read_json(logs / "gate_025.json")["passed"])
+        second = FakeClient([response([call("write_file", {"path": "/work/missing.json", "content": "{}"})]),
+                             response([call("check", {})])])
+        resumed = run_agent(LLM(client=second), self.runtime, "role", "task", 40, logs)
+        self.assertTrue(resumed["passed"])
+        self.assertEqual(resumed["responses"], 27)
+        self.assertIn("Missing artifact: /work/missing.json", second.requests[0]["messages"][1]["content"])
+        self.assertNotIn("write_error", read_json(logs / "progress.json")["controller_feedback"])
+
+    def test_spec_schema_error_names_the_unexpected_field(self):
+        spec = next(value for path in sorted((ROOT / "assets/mqtt_reference/bundle/files").glob("*.json"))
+                    if (value := read_json(path))["SOURCE"].get("DATA"))
+        spec["SOURCE"]["DATA"][0]["UNEXPECTED_FIELD"] = "int"
+        result = self.runtime.dispatch("write_file", {"path": "/work/files/fixture.json", "content": json.dumps(spec)})
+        self.assertIn("SOURCE/DATA/0", result["error"])
+        self.assertIn("UNEXPECTED_FIELD", result["error"])
+        self.assertFalse((self.runtime.work / "files/fixture.json").exists())
+
     def test_paths_symlinks_readonly_and_unique_edits(self):
         self.assertIn("error", self.runtime.dispatch("write_file", {"path": "/input/a", "content": "no"}))
         self.assertIn("error", self.runtime.dispatch("read_file", {"path": "/work/../input/a"}))

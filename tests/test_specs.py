@@ -31,6 +31,18 @@ class SpecTests(unittest.TestCase):
         report = validate(self.directory, published=False)
         self.assertTrue(any("Unknown project function" in e for e in report["errors"]))
 
+    def test_missing_file_spec_identifies_both_planned_paths(self):
+        path = next(path for path in sorted((self.directory / "files").glob("*.json"))
+                    if "HEADER" in read_json(path))
+        spec = read_json(path)
+        path.unlink()
+        report = validate(self.directory, design=True, published=False)
+        self.assertFalse(report["passed"])
+        error = next(error for error in report["errors"] if error.startswith("Module FILES"))
+        self.assertIn("missing FileSpecs", error)
+        self.assertIn(spec["SOURCE"]["PATH"], error)
+        self.assertIn(spec["HEADER"]["PATH"], error)
+
     def test_public_type_and_header_mismatch(self):
         for path in (self.directory / "files").glob("*.json"):
             value = read_json(path)

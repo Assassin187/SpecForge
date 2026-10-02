@@ -199,7 +199,10 @@ def validate(directory: Path, *, design: bool = False, facts: dict | None = None
     all_paths = set(source_paths + header_paths)
     assigned = [p for m in module["MODULES"] for p in m["FILES"]]
     if set(assigned) != all_paths or len(assigned) != len(set(assigned)):
-        errors.append("Module FILES must own each source/header exactly once")
+        duplicates = sorted(p for p, count in Counter(assigned).items() if count > 1)
+        errors.append("Module FILES must own each source/header exactly once; "
+                      f"missing FileSpecs for {sorted(set(assigned) - all_paths)}; "
+                      f"unassigned files {sorted(all_paths - set(assigned))}; duplicate ownership {duplicates}")
     for m in module["MODULES"]:
         if set(m["DEPENDENCIES"]) - set(module_names):
             errors.append(f"Unknown module dependency: {m['NAME']}")
@@ -407,9 +410,9 @@ def delivery_checks(project: Path, bundle_dir: Path | None) -> dict:
         delivery = read_json(project / "delivery.json")
         errors += artifact_errors("delivery", delivery)
     except (OSError, ValueError) as exc:
-        return {"passed": False, "errors": [f"Missing or invalid delivery.json: {exc}"]}
+        return {"passed": False, "errors": [f"Missing or invalid delivery.json: {exc}"], "test_count": 0}
     if errors:
-        return {"passed": False, "errors": errors}
+        return {"passed": False, "errors": errors, "test_count": 0}
     listed = set(delivery["files"])
     for path in listed:
         actual = (project / path).resolve()

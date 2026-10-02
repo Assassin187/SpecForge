@@ -19,8 +19,11 @@ wire-level test covering the scoped interactions and errors, README and the
 delivery manifest, then call check. Add focused unit tests where they resolve
 an actual uncertainty; a separate exhaustive suite for every public helper is
 not required. Preserve requirement coverage without duplicating the same
-assertions across layers. Save and maintain delivery.json as soon as the first
-build and development test exist, so the gate can report real build/test issues.
+assertions across layers. As soon as the first complete sources, Makefile and
+network development test exist, save README and delivery.json and call check
+before expanding helper/unit coverage. Failing assertions are not a reason
+to postpone the manifest. Record the tests that actually exist and maintain
+their inventory, requirement coverage and Spec references as they grow.
 At least one development test must start the actual delivered executable with
 its real CLI and assert core protocol interactions through its public network
 endpoint. Direct library tests and startup/signal checks complement this but do
@@ -66,19 +69,18 @@ its recipient is idle, and one peer must not stall unrelated peers.
 Use safe signal handling when needed. Do not invent features absent from scope
 and Specs.
 
-delivery.json follows the exact schema supplied in context.
-Write schema_version=2 and include startup_args: the exact argument tokens for
-starting the delivered executable, excluding the executable path. Use {0} for
-the listening port and {1}, {2}, etc. for further startup values in task order.
-For example, a chosen flag-based command can use ["--port", "{0}"]; a positional
-command can use ["{0}"]. This metadata describes your actual CLI; it does not
-prescribe its syntax. Include every required startup value, preserve literal
-flags, and document the same invocation in README. Argument values are passed
-directly without a shell, so do not add shell quoting to individual tokens.
+delivery.json follows the exact schema supplied in context; use schema_version=1.
+Follow the startup contract in the published scope and Specs, including the
+executable path and the ordered positional parameters. Implement that contract
+and document the same invocation in README.
 
 files lists every source, header, Makefile, README, test and test fixture; list
 source artifacts,
-not compiled binaries, objects, caches or transient test output. tests contains
+not compiled binaries, objects, caches or transient test output. Retained
+reproducer and diagnostic scripts also belong in this inventory; remove
+obsolete scratch sources/scripts before check. Print Spec-gap evidence into
+a run_command log rather than leaving an unlisted script in the project.
+tests contains
 your test IDs, executable test file paths, scope requirement_ids and pointers
 to Spec TEST_VECTORS in spec_test_refs. Shared test files can have several entries.
 Each spec_test_refs value is exactly a bundle-relative JSON path followed by

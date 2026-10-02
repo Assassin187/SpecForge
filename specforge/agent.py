@@ -19,10 +19,12 @@ def run_agent(llm: LLM, runtime: ToolRuntime, prefix: str, task: str, response_l
     progress = read_json(progress_path) if progress_path.is_file() else {}
     usage = progress.get("usage_entries", [])
     resets = progress.get("context_resets", 0)
+    feedback = progress.get("controller_feedback", {})
+    gate_number = None
     checkpoint_pending = False
-    checkpoint_number = 0
     previous_checkpoint = ""
     start = progress.get("responses", 0)
+    checkpoint_number = start
     budget = (f"\n\nBounded job budget: {start}/{response_limit} responses already used; {response_limit-start} remain. "
               "This budget includes saving artifacts, running check and correcting its errors. "
               "Plan the work in batches and check while enough responses remain to fix reported errors.")
@@ -33,11 +35,24 @@ def run_agent(llm: LLM, runtime: ToolRuntime, prefix: str, task: str, response_l
     if start:
         checkpoint = runtime.work / "WORKLOG.md"
         messages[-1]["content"] += "\nResuming this bounded job from disk. " + (checkpoint.read_text()[:12000] if checkpoint.is_file() else "Re-read existing artifacts.")
+    def feedback_note():
+        return "\nController evidence from saved artifacts (takes precedence over checkpoint claims):\n" + json.dumps(feedback, ensure_ascii=False)[:8000]
+
+    def controller_gate(number):
+        nonlocal gate_number
+        if gate_number != number:
+            feedback["gate"] = runtime.check_callback()
+            save_json(log_dir / f"gate_{number:03d}.json", feedback["gate"])
+            gate_number = number
+        return feedback["gate"]
+
+    if feedback:
+        messages[-1]["content"] += feedback_note()
     report = {"passed": False, "reason": "response_limit", "responses": start}
 
     def persist(final=False):
         snapshot = {**report, "reason": report["reason"] if final else "running", "usage": total_usage(usage), "context_resets": resets}
-        save_json(progress_path, {**snapshot, "usage_entries": usage})
+        save_json(progress_path, {**snapshot, "usage_entries": usage, "controller_feedback": feedback})
         if on_progress:
             on_progress(snapshot)
 
@@ -68,9 +83,10 @@ def run_agent(llm: LLM, runtime: ToolRuntime, prefix: str, task: str, response_l
         calls = assistant.get("tool_calls", [])
         tool_results = []
         for call in calls:
+            name = call["function"]["name"]
+            arguments = {}
             try:
                 arguments = json.loads(call["function"]["arguments"])
-                name = call["function"]["name"]
                 if name not in active_schemas:
                     raise ValueError("Only the checkpoint write tool is currently available")
                 jsonschema.Draft202012Validator(active_schemas[name]).validate(arguments)
@@ -79,6 +95,13 @@ def run_agent(llm: LLM, runtime: ToolRuntime, prefix: str, task: str, response_l
                 result = {"error": f"Invalid parameter {'/'.join(map(str, exc.absolute_path))}: {exc.validator}={exc.validator_value}"}
             except (ValueError, TypeError) as exc:
                 result = {"error": f"Invalid tool arguments: {exc}"}
+            if name == "check":
+                feedback["gate"] = result
+            elif name in ("write_file", "edit_file") and isinstance(arguments, dict):
+                if "error" in result:
+                    feedback["write_error"] = {"path": arguments.get("path"), "error": result["error"]}
+                elif feedback.get("write_error", {}).get("path") == arguments.get("path"):
+                    feedback.pop("write_error", None)
             messages.append({"role": "tool", "tool_call_id": call["id"],
                              "content": json.dumps(result, ensure_ascii=False)})
             tool_results.append({"tool_call_id": call["id"], "name": call["function"]["name"], "result": result})
@@ -94,8 +117,7 @@ def run_agent(llm: LLM, runtime: ToolRuntime, prefix: str, task: str, response_l
                 report.update(passed=True, reason="gate_passed")
                 break
         if not calls:
-            gate = runtime.check_callback()
-            save_json(log_dir / f"gate_{number:03d}.json", gate)
+            gate = controller_gate(number)
             if gate["passed"]:
                 report.update(passed=True, reason="gate_passed")
                 break
@@ -104,8 +126,7 @@ def run_agent(llm: LLM, runtime: ToolRuntime, prefix: str, task: str, response_l
         if number == response_limit:
             # Artifacts completed by the last permitted response still receive
             # their controller-owned gate; no extra model response is granted.
-            gate = runtime.check_callback()
-            save_json(log_dir / f"gate_{number:03d}.json", gate)
+            gate = controller_gate(number)
             if gate["passed"]:
                 report.update(passed=True, reason="gate_passed")
                 break
@@ -113,10 +134,11 @@ def run_agent(llm: LLM, runtime: ToolRuntime, prefix: str, task: str, response_l
         reset_this_response = False
         if checkpoint_pending and worklog.is_file() and worklog.read_text() != previous_checkpoint:
             checkpoint = worklog.read_text()
+            controller_gate(number)
             messages = [{"role": "system", "content": prefix},
                         {"role": "user", "content": task + f"\n\n{number}/{response_limit} responses already used; {response_limit-number} remain. " +
                          ("Complete artifacts and check now; avoid further intake. " if response_limit-number <= 12 else "Implement the next concrete action. ") +
-                         "Continue from this disk checkpoint. Read only needed artifacts.\n" + checkpoint[:12000]}]
+                         "Continue from this disk checkpoint. Read only needed artifacts.\n" + checkpoint[:12000] + feedback_note()}]
             resets += 1
             checkpoint_pending = False
             previous_checkpoint = checkpoint
@@ -131,8 +153,7 @@ def run_agent(llm: LLM, runtime: ToolRuntime, prefix: str, task: str, response_l
             # Give deterministic errors to a model that has deferred check,
             # with time to repair them. This diagnostic does not finish a job.
             checkpoint_pending = False
-            gate = runtime.check_callback()
-            save_json(log_dir / f"gate_{number:03d}.json", gate)
+            gate = controller_gate(number)
             messages.append({"role": "user", "content": f"Only 12 model responses remain in this job (limit {response_limit}). "
                              "The controller ran the current gate to preserve a repair window. "
                              "Complete the required work, fix the saved artifacts below, then call check. "

@@ -172,7 +172,7 @@ class ToolRuntime:
                     error = next(validator.iter_errors(value), None)
                     if error:
                         field = "/".join(map(str, error.absolute_path))
-                        raise ValueError(f"Invalid Spec {args['path']}:{field}: {error.validator}={error.validator_value}")
+                        raise ValueError(f"Invalid Spec {args['path']}:{field}: {error.message}")
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content, encoding="utf-8")
             return {"written": args["path"]}

@@ -1,35 +1,21 @@
-# CoAP 功能需求
+# Required CoAP RFC 7252 subset
 
-## 使用范围
+- R01: Linux C99 IPv4 UDP server, independent multi-file project, concurrent source endpoints, ./coap_server <port>, clean make build and accurate README.
+- R02: Handle CoAP version 1 headers, message types and codes, network-order Message IDs, Tokens of 0-8 bytes and payload markers; preserve arbitrary binary and empty payloads.
+- R03: Decode option deltas and lengths, including extended forms and repeated Uri-Path options. Match case-sensitive paths and support Uri-Host, Uri-Port and Content-Format for direct requests; ignore unknown elective options and reject unknown critical options according to RFC 7252.
+- R04: Respond to CON requests with immediate piggybacked ACK responses carrying the same Message ID and Token.
+- R05: Respond to NON requests with NON responses carrying the matching Token and a server-assigned Message ID; send each response to the requesting source endpoint.
+- R06: GET /hello returns 2.05 Content, Content-Format 0 and the exact payload hello, without an added newline.
+- R07: /value is shared across endpoints and initially empty. PUT /value with Content-Format 42 stores up to 1024 bytes and returns 2.04 Changed; GET returns 2.05 Content, Content-Format 42 and the exact stored bytes. Empty PUT clears the value.
+- R08: Replay the original response to duplicate CON requests with the same source endpoint and Message ID throughout EXCHANGE_LIFETIME, without executing the request again. Replaying an old PUT must not overwrite a value changed by a later request.
+- R09: Respond to an empty CON with an empty RST carrying the same Message ID; unrelated empty ACK/RST messages do not change resource state.
+- R10: Return 4.04 Not Found for unknown resources and 4.05 Method Not Allowed for unsupported methods on known resources; preserve response correlation and wire framing.
+- R11: Validate header/version/token bounds, option bounds and reserved values, payload markers and datagram truncation. Malformed input must not crash the server, corrupt state or interrupt service to other endpoints; subsequent valid requests remain usable.
+- R12: Specify and implement ownership of received slices, stored resource bytes, reply buffers and duplicate-response storage; free all resources on normal SIGINT/SIGTERM termination; no ASan, UBSan or leak diagnostics.
 
-实现一个基于 IPv4 UDP 的 CoAP 服务，运行于 Linux，支持多个客户端的直接单播请求。范围内的消息格式和交互规则请按 RFC 7252 处理，下面的资源和重复请求要求是本次应用的选择。
-
-## 主要功能
-
-1. R01: 项目能独立构建和运行，支持多个客户端，并提供简单的启动方式和使用说明。
-
-2. R02: 支持 CoAP version 1 消息，按规范处理消息头、Token 和正文。正文可以是任意二进制数据，也可以为空。
-
-3. R03: 按区分大小写的资源路径处理请求，支持直连请求所需的 Uri-Path、Uri-Host、Uri-Port 和 Content-Format。未知选项按规范处理。
-
-4. R04: 对 CON 请求及时返回携带结果的 ACK，并让客户端能正确对应到原请求。
-
-5. R05: 对 NON 请求返回 NON 响应，正确对应请求，并发给提出请求的客户端。
-
-6. R06: GET /hello 返回成功响应，Content-Format 为 text/plain，内容是 hello，不添加换行。
-
-7. R07: /value 是各客户端共享的二进制资源，初始为空。PUT 保存最多 1024 字节并返回更新成功，GET 原样返回当前内容；空 PUT 清空它。使用 CoAP 的 application/octet-stream 内容格式。
-
-8. R08: 在规范规定的交换有效期内，同一客户端、同一 Message ID 的重复 CON 请求应得到原来的响应，不能重复执行。即使资源后来被其他请求更新，重发旧 PUT 也不能把新值覆盖掉。
-
-9. R09: 支持 CoAP 的空 CON 探测，返回对应的空 RST；无关的空 ACK/RST 不应改变资源状态。
-
-10. R10: 找不到资源或资源不支持请求的方法时，返回协议规定的错误响应，并保持正确的请求对应关系。
-
-11. R11: 不完整或格式错误的 UDP 报文应按规范合理处理，不能导致崩溃或状态损坏，服务应继续处理有效请求。
-
-12. R12: 运行中不应出现内存错误或资源泄漏，能够通过 SIGINT/SIGTERM 正常停止并释放资源。
-
-## 本次不要求的功能
-
-只需直接单播通信，数据保存在内存中，应用正文最多 1024 字节。不要求分离响应、主动发送 CON 响应及其重传、Observe、Block-wise、DTLS/TLS、代理、多播、资源发现或持久存储，也不要求完整 CoAP 合规。
+Clients use direct unicast loopback UDP. Application payloads are at most
+1024 bytes and resources remain memory-only. The resources and strict
+duplicate-request policy are task choices, including deduplication of PUT.
+Excluded: separate responses, actively sent CON responses and their
+retransmission, Observe, Block-wise transfer, DTLS/TLS, proxying, multicast,
+resource discovery, persistent storage and complete CoAP conformance.

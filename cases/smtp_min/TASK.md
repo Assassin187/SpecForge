@@ -1,7 +1,16 @@
-# SMTP 本地邮件捕获任务
+# SMTP minimum local capture server
 
-我想做一个简单的 SMTP 服务，供本地客户端提交测试邮件，并把收到的邮件保存下来查看。请在 Linux 下使用 C99，通过 IPv4 TCP 提供服务，具体功能范围见 REQUIREMENTS.md，协议行为以本目录提供的 RFC 5321 为依据。
+Build an independent multi-file SMTP server in C99 for Linux IPv4 TCP.
+Use the accompanying REQUIREMENTS.md to select the protocol subset, and
+the supplied RFC 5321 text as the only source of protocol rules.
+Deliver implementation sources, public headers, Makefile, README.md,
+development tests and the executable smtp_server. Choose the project layout.
+Start it as ./smtp_server <port> <mail-dir>, where mail-dir is an existing
+writable directory. It must build using GCC and make.
 
-希望得到一个能独立构建和运行、代码便于阅读和修改的项目。请自行实现所需的协议功能，不直接使用现成邮件服务器或 SMTP server 库代替实现。项目应能用 GCC 和 make 构建，提供简单的启动方式，可以指定监听端口和一个已有的可写邮件保存目录；具体命令、项目组织和内部设计由你决定。
+Public types, interfaces, ownership and processing paths must be planned
+before implementing the project. Private helpers may be chosen during coding.
 
-请自行安排开发、测试和调试。完成后提供源代码、必要的测试和简明 README，说明构建、启动、提交和查看邮件、测试方法，以及已完成的功能和已知问题。本次只做本地邮件捕获，不要求生产邮件投递服务。
+This task requests local mail capture rather than full SMTP implementation.
+Do not import an existing mail server or depend on an SMTP server library
+as the implementation.

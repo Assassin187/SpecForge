@@ -1,7 +1,14 @@
-# HTTP/1.1 server 任务
+# HTTP/1.1 minimum origin server
 
-我想做一个简单的 HTTP/1.1 源服务器，供本地客户端读取文本、读写二进制数据，以及回显提交的内容。请在 Linux 下使用 C99，通过 IPv4 TCP 提供服务，具体功能范围见 REQUIREMENTS.md。
+Build an independent multi-file HTTP/1.1 origin server in C99 for Linux IPv4 TCP.
+Use the accompanying REQUIREMENTS.md to select the protocol subset, and
+the supplied RFC 9112 / RFC 9110 text bundle as the only source of protocol rules.
+Deliver implementation sources, public headers, Makefile, README.md,
+development tests and the executable http_server. Choose the project layout.
+Start it as ./http_server <port>. It must build using GCC and make.
 
-协议行为以本目录提供的 RFC 9112 和 RFC 9110 合并文本为依据。希望得到一个能独立构建和运行、代码便于阅读和修改的项目，请自行实现所需功能，不直接使用现成 HTTP server 或 HTTP 解析库代替实现。
+Public types, interfaces, ownership and processing paths must be planned
+before implementing the project. Private helpers may be chosen during coding.
 
-项目应能用 GCC 和 make 构建，提供简单的启动方式，并能指定监听端口；具体命令、项目组织和内部设计由你决定。请自行安排开发、测试和调试，交付源代码、必要的测试和简明 README，说明使用方法、测试方法、已完成的功能和已知问题。本次只要求约定的小型资源服务，不追求完整 HTTP 合规或生产部署。
+This task does not request a full HTTP implementation. Do not import an
+existing server or depend on an HTTP parser/server library as the implementation.

@@ -494,10 +494,7 @@
       "additionalProperties": false,
       "properties": {
         "schema_version": {
-          "enum": [
-            1,
-            2
-          ]
+          "const": 1
         },
         "files": {
           "type": "array",
@@ -549,35 +546,12 @@
               "spec_test_refs"
             ]
           }
-        },
-        "startup_args": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          }
         }
       },
       "required": [
         "schema_version",
         "files",
         "tests"
-      ],
-      "allOf": [
-        {
-          "if": {
-            "properties": {
-              "schema_version": {
-                "const": 2
-              }
-            }
-          },
-          "then": {
-            "required": [
-              "startup_args"
-            ]
-          }
-        }
       ]
     }
   }

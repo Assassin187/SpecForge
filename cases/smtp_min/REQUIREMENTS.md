@@ -1,37 +1,27 @@
-# SMTP 功能需求
+# Required SMTP RFC 5321 subset
 
-## 使用范围
+- R01: Linux C99 IPv4 TCP capture server, independent multi-file project, concurrent clients, ./smtp_server <port> <mail-dir>, clean make build and accurate README. mail-dir is an existing writable directory.
+- R02: Send a 220 greeting identifying smtp.example.test. Use CRLF-terminated command and reply lines, correct three-digit replies and case-insensitive command names; reply wording may be chosen by the implementation.
+- R03: Accept EHLO/HELO with a valid domain or IPv4 address literal, return 250 and initialize the session without DNS lookup. Repeated EHLO/HELO clears an unfinished transaction; advertise no service extensions.
+- R04: Accept MAIL FROM with an ASCII dot-string local-part and valid domain, or a null reverse-path and return 250. MAIL requires an initialized session with no unfinished transaction; otherwise return 503 without replacing the current envelope.
+- R05: Accept multiple RCPT TO commands after MAIL. Return 250 for alice@example.test, bob@example.test and the qualified or unqualified postmaster forms; ordinary local-parts are case-sensitive, domains and the reserved postmaster name are case-insensitive. Preserve recipient order and duplicates; reject other valid recipients with 550 without losing accepted recipients.
+- R06: DATA requires a sender and at least one accepted recipient; return 354. Read through the single-dot terminator, remove one leading transparency dot and preserve other 7-bit content and CRLF, including empty data and blank lines. Command-looking DATA lines remain content.
+- R07: Store each completed message as one unique UTF-8 JSON file in mail-dir: mail_from is the sender without angle brackets or an empty string; rcpt_to is an array of accepted address strings without brackets in order; data is a JSON string containing the exact unstuffed content including CRLF but excluding the terminator. Never overwrite captures across clients or restarts. Return 250 only after successful storage; failure returns 451 with no completed capture.
+- R08: Handle fragmented commands, DATA and terminators, and process coalesced lines in order, including commands following a DATA terminator. Process complete buffered input before TCP EOF; incomplete commands or DATA must not create a capture.
+- R09: RSET returns 250 and clears the transaction while preserving initialization; NOOP returns 250 without changing state; valid VRFY returns 252 without verification. QUIT returns 221, discards an unfinished transaction and closes after the reply. Interpret these commands only outside DATA.
+- R10: Reset sender, recipients and data after successful or rejected completed DATA so another transaction can run on the same connection. Keep clients' sessions and captures isolated; new connections never inherit old transaction state.
+- R11: Use 500 for unknown commands, 501 for invalid arguments, 503 for invalid order, 502 for recognized unimplemented commands and 555 for unsupported MAIL/RCPT parameters. Enforce line, recipient and content limits: excess recipients receive 452 and oversized commands 500; discard oversized DATA or DATA lines through the terminator, then return 552 and reset. Unrecoverable framing errors close only that client, with 421 when possible, and leave no capture.
+- R12: Specify and implement ownership of receive slices, envelope addresses, mail data, capture files, reply buffers and connection objects; handle partial writes and disconnects, and free all resources on normal SIGINT/SIGTERM termination; no ASan, UBSan or leak diagnostics.
 
-实现一个基于 IPv4 TCP 的本地 SMTP 邮件捕获服务，运行于 Linux，支持多个客户端。范围内的命令和交互规则请按 RFC 5321 处理，下面的本地邮箱、保存格式和容量限制是本次应用的选择。
-
-## 主要功能
-
-1. R01: 项目能独立构建和运行，支持多个客户端，并能把邮件保存到启动时指定的已有可写目录，提供简单的使用说明。
-
-2. R02: 客户端连接后收到正常的 SMTP 欢迎回复，服务器标识为 smtp.example.test。命令和回复按协议处理，包括命令大小写和行结束规则。
-
-3. R03: 支持 EHLO/HELO，接受合法域名或 IPv4 地址形式，不做 DNS 查询。再次 EHLO/HELO 时清除未完成的邮件事务；不声明任何服务扩展。
-
-4. R04: 支持 MAIL FROM，接受普通 ASCII dot-string 邮箱地址和空发件人。发件人设置要遵守会话及事务顺序，错误命令不能替换已经开始的事务。
-
-5. R05: 一封邮件可以有多个收件人。本地邮箱为 alice@example.test、bob@example.test，并支持协议要求的 postmaster@example.test 和不带域名的 Postmaster。地址大小写按规范处理，保留接受的收件人顺序和重复项；拒绝其他收件人，不做转发。
-
-6. R06: 有发件人和至少一个有效收件人后才能提交 DATA。按协议处理结束标记和点转义，保留其余 7-bit 内容及 CRLF，允许空邮件和空行。DATA 中看起来像命令的文本也只是邮件内容。
-
-7. R07: 每封完整收到的邮件保存为一个 UTF-8 JSON 文件，记录 mail_from（信封发件人）、rcpt_to（按顺序排列的收件人）和 data（点转义处理后的原始内容，不含结束标记）。地址不含尖括号，空发件人记为空字符串。文件不能因并发或重启而覆盖旧邮件；保存成功后才确认接收成功，保存失败返回临时错误且不留下完整邮件记录。
-
-8. R08: 命令和 DATA 可能分段到达，也可能多行一起到达，均应按顺序处理并回复。客户端关闭发送方向时，完整收到的输入仍应处理，未完成的命令或 DATA 不能生成邮件记录。
-
-9. R09: 支持 RSET、NOOP、VRFY 和 QUIT。RSET 放弃当前事务，NOOP 不改变事务；VRFY 返回 252，不实际验证地址；QUIT 正常回复后断开并放弃未完成的邮件。
-
-10. R10: 同一连接可以连续提交多封邮件。一次 DATA 完成或被拒绝后清除该事务，各客户端的会话、发件人、收件人和邮件内容不能串用。
-
-11. R11: 未知命令、参数错误、顺序错误和不支持的功能按规范返回相应错误。遵守协议的命令和 DATA 行长限制，每次事务最多接受 100 个收件人，点转义处理后的邮件内容最多 65536 字节。超限 DATA 应丢弃到结束标记，再拒绝并允许开始新事务；无法继续处理的输入只影响该客户端，不保存未完成邮件，也不影响其他客户端。
-
-12. R12: 服务应能正确发送完整回复，处理客户端断开，并通过 SIGINT/SIGTERM 正常停止，运行中不应出现内存错误或资源泄漏。
-
-## 本次不要求的功能
-
-只需直接连接、7-bit ASCII 邮件和上述本地收件人。DATA 作为原始内容保存，不要求 RFC 5322 头部检查、MIME 解析或插入 Received、Return-Path 等投递头。
-
-不要求中继、DNS/MX 查询、外发投递、重试队列、投递状态通知、生产级持久化或崩溃恢复、认证、TLS/STARTTLS、SMTPUTF8、8BITMIME、BINARYMIME/BDAT、协商 PIPELINING、邮件列表、带引号或国际化的邮箱名、源路由或完整 SMTP 合规。
+Clients use direct loopback TCP, 7-bit ASCII data with CRLF, dot-string
+mailboxes, and no negotiated extensions. Accept postmaster@example.test and
+RCPT TO:<Postmaster>. Command/reply lines are at most 512 octets including
+CRLF; DATA lines are at most 1000 octets including CRLF but excluding an
+added transparency dot. Task limits are 100 accepted recipients and 65536
+unstuffed DATA octets per transaction. Server identity, local recipients and
+JSON capture format are task choices.
+Excluded: relay, DNS/MX lookup, outbound delivery, retry queues, delivery-status
+notifications, production durability or crash recovery, RFC 5322 validation,
+MIME parsing, Received/Return-Path insertion, authentication, TLS/STARTTLS,
+SMTPUTF8, 8BITMIME, BINARYMIME/BDAT, negotiated PIPELINING, mailing lists,
+quoted or internationalized local-parts, source routes and complete SMTP compliance.

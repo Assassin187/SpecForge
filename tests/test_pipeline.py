@@ -116,7 +116,8 @@ class PipelineTests(unittest.TestCase):
         result = verify_project(project, self.run / "reports", self.run / "logs", bundle=self.pipeline.bundle())
         self.assertFalse(result["passed"])
         self.assertTrue(any("delivery.json" in error for error in result["errors"]))
-        self.assertEqual(result["builds"], {})
+        self.assertEqual(result["phases"]["normal"]["reason"], "build_failed")
+        self.assertEqual(result["phases"]["sanitize"]["reason"], "build_failed")
 
     def test_three_repairs_and_one_spec_repair(self):
         shutil.copytree(ROOT / "assets/mqtt_reference/bundle", self.pipeline.bundle())
