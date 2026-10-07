@@ -6,7 +6,7 @@
 四协议输入和验收器保持该稳定提交的原始内容。版本证据及历史限制见 [BASELINE.md](BASELINE.md)。
 
 完整机制、能力边界和四轮真实实验（包含整理后的最新一轮），见
-[项目全貌与论文写作参考](PROJECT_OVERVIEW.md)。
+[SpecForge 项目说明](PROJECT_OVERVIEW.md)。
 
 核心流程：
 
