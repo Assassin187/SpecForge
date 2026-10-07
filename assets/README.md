@@ -1,17 +1,11 @@
-# Reference assets
+# 框架测试夹具
 
-`mqtt_reference/original_specs` preserves the original manual MQTT Specs.
-`mqtt_reference/bundle` is the normalized manual-reference fixture with public
-headers only. No reference C implementation is copied. `migration.json` records
-original hashes and normalization changes. Empty original provenance remains
-empty; this fixture does not claim automatic document grounding.
+`mqtt_reference/bundle/` 是现有四个框架测试模块必需的规格夹具，包含三层规格、
+公共头文件、发布清单、scope 和溯源。保留原内容和路径，以验证规格校验、阶段关卡、
+交付及独立评测逻辑。
 
-`mqtt_reference_facts` contains historical gold facts and coverage rubrics for
-offline analysis. Fresh model stages never mount these assets. A successful
-manual bundle coding run is recorded as `spec_only`, not as automatic planning.
+fresh 四协议生成只使用 `cases/` 中的任务、需求和原始规范；模型阶段不挂载此夹具。
+通过 `specforge code` 使用该夹具的运行属于既有 Spec-only 功能，不能作为自动规划结果。
 
-The six legacy behavior names come from the old
-`agent/coder/protocol_behavior_val/mqtt.py`; the new harness checks exact packets.
-The original Kimi TASK/REQUIREMENTS request a wider subset. The new minimum
-case is written explicitly rather than silently reducing those inputs.
-
+不参与框架运行或测试的原始人工规格、历史事实/rubric、迁移记录和旧校验报告已完整
+备份后移出当前项目。版本和独立备份位置见 [BASELINE.md](../BASELINE.md)。
