@@ -1,0 +1,3279 @@
+{
+  "dataset": "SpecForge 三轮四协议实验",
+  "round_count": 3,
+  "protocols": [
+    "MQTT",
+    "CoAP",
+    "HTTP/1.1",
+    "SMTP"
+  ],
+  "raw_data_location": "local",
+  "raw_records_unchanged": true,
+  "common_setup": {
+    "model": {
+      "model": "deepseek-flash",
+      "base_url": "https://api.deepseek.com",
+      "key_env": "DS_API",
+      "reasoning_effort": "high",
+      "max_tokens": 65536,
+      "thinking": "enabled",
+      "stream": false
+    },
+    "response_limits": {
+      "facts": 40,
+      "design": 100,
+      "specs": 180,
+      "code": 180,
+      "repair": 40,
+      "review": 60
+    },
+    "implementation_repair_limit": 3,
+    "spec_repair_limit": 1,
+    "framework_inputs_evaluators_and_configuration_match": true
+  },
+  "measurement_notes": {
+    "tokens": "input_tokens + output_tokens; reasoning is included in output; cache hits are included in input",
+    "model_calls": "recorded completed model responses; tool calls and unobserved SDK transport retries are not counted",
+    "stages": "specs includes initial review; code includes triggered spec repair, re-review and implementation repair",
+    "round_wall_seconds": "original per-round elapsed_seconds; sum excludes intervals between experimental dates",
+    "phases": "normal and sanitize executed independently; not-executed cases remain in planned_required"
+  },
+  "source_mapping": [
+    {
+      "source": "runs/stability/20261002T160137Z_two_rounds/round_01",
+      "destination": "runs/paper/round_01"
+    },
+    {
+      "source": "runs/stability/20261002T160137Z_two_rounds/round_02",
+      "destination": "runs/paper/round_02"
+    },
+    {
+      "source": "runs/validation/20261007T053821Z_cleanup_one_round/round_01",
+      "destination": "runs/paper/round_03"
+    },
+    {
+      "source": "runs/stability/20261002T160137Z_two_rounds",
+      "destination": "runs/paper/source_records/stability"
+    },
+    {
+      "source": "runs/validation/20261007T053821Z_cleanup_one_round",
+      "destination": "runs/paper/source_records/validation"
+    }
+  ],
+  "rounds": [
+    {
+      "id": "round_01",
+      "round": 1,
+      "path": "round_01",
+      "source": "source_records/stability",
+      "source_round": 1,
+      "started_at": "2026-10-02T16:03:51.325752+00:00",
+      "finished_at": "2026-10-02T17:02:22.072971+00:00",
+      "wall_seconds": 3510.747,
+      "aggregate": {
+        "attempts": 4,
+        "generation_passed": 4,
+        "independent_passed": 2,
+        "input_tokens": 70700938,
+        "output_tokens": 2656790,
+        "total_tokens": 73357728,
+        "model_calls": 1862,
+        "spec_repairs": 2,
+        "implementation_repairs": 4,
+        "protocol_wall_seconds_sum": 11807.993,
+        "builds": {
+          "development_normal": {
+            "passed": 4,
+            "not_executed": 0
+          },
+          "development_sanitize": {
+            "passed": 4,
+            "not_executed": 0
+          },
+          "development_delivery": {
+            "passed": 4,
+            "not_executed": 0
+          },
+          "independent_normal": {
+            "passed": 4,
+            "not_executed": 0
+          },
+          "independent_sanitize": {
+            "passed": 4,
+            "not_executed": 0
+          }
+        },
+        "phases": {
+          "normal": {
+            "planned_required": 52,
+            "executed_required": 52,
+            "passed": 47,
+            "failed": 5,
+            "not_executed": 0
+          },
+          "sanitize": {
+            "planned_required": 52,
+            "executed_required": 52,
+            "passed": 47,
+            "failed": 5,
+            "not_executed": 0
+          }
+        }
+      }
+    },
+    {
+      "id": "round_02",
+      "round": 2,
+      "path": "round_02",
+      "source": "source_records/stability",
+      "source_round": 2,
+      "started_at": "2026-10-02T17:02:22.107515+00:00",
+      "finished_at": "2026-10-02T17:56:31.798087+00:00",
+      "wall_seconds": 3249.689,
+      "aggregate": {
+        "attempts": 4,
+        "generation_passed": 3,
+        "independent_passed": 2,
+        "input_tokens": 55873966,
+        "output_tokens": 2587828,
+        "total_tokens": 58461794,
+        "model_calls": 1499,
+        "spec_repairs": 0,
+        "implementation_repairs": 0,
+        "protocol_wall_seconds_sum": 10973.763,
+        "builds": {
+          "development_normal": {
+            "passed": 3,
+            "not_executed": 1
+          },
+          "development_sanitize": {
+            "passed": 3,
+            "not_executed": 1
+          },
+          "development_delivery": {
+            "passed": 3,
+            "not_executed": 1
+          },
+          "independent_normal": {
+            "passed": 3,
+            "not_executed": 1
+          },
+          "independent_sanitize": {
+            "passed": 3,
+            "not_executed": 1
+          }
+        },
+        "phases": {
+          "normal": {
+            "planned_required": 52,
+            "executed_required": 42,
+            "passed": 40,
+            "failed": 2,
+            "not_executed": 10
+          },
+          "sanitize": {
+            "planned_required": 52,
+            "executed_required": 42,
+            "passed": 40,
+            "failed": 2,
+            "not_executed": 10
+          }
+        }
+      }
+    },
+    {
+      "id": "round_03",
+      "round": 3,
+      "path": "round_03",
+      "source": "source_records/validation",
+      "source_round": 1,
+      "started_at": "2026-10-07T05:47:02.032183+00:00",
+      "finished_at": "2026-10-07T06:40:52.003343+00:00",
+      "wall_seconds": 3229.971,
+      "aggregate": {
+        "attempts": 4,
+        "generation_passed": 4,
+        "independent_passed": 3,
+        "input_tokens": 63850450,
+        "output_tokens": 2640243,
+        "total_tokens": 66490693,
+        "model_calls": 1678,
+        "spec_repairs": 1,
+        "implementation_repairs": 2,
+        "protocol_wall_seconds_sum": 12365.281,
+        "builds": {
+          "development_normal": {
+            "passed": 4,
+            "not_executed": 0
+          },
+          "development_sanitize": {
+            "passed": 4,
+            "not_executed": 0
+          },
+          "development_delivery": {
+            "passed": 4,
+            "not_executed": 0
+          },
+          "independent_normal": {
+            "passed": 4,
+            "not_executed": 0
+          },
+          "independent_sanitize": {
+            "passed": 4,
+            "not_executed": 0
+          }
+        },
+        "phases": {
+          "normal": {
+            "planned_required": 52,
+            "executed_required": 52,
+            "passed": 51,
+            "failed": 1,
+            "not_executed": 0
+          },
+          "sanitize": {
+            "planned_required": 52,
+            "executed_required": 52,
+            "passed": 51,
+            "failed": 1,
+            "not_executed": 0
+          }
+        }
+      }
+    }
+  ],
+  "overall": {
+    "attempts": 12,
+    "generation_passed": 11,
+    "independent_passed": 7,
+    "input_tokens": 190425354,
+    "output_tokens": 7884861,
+    "total_tokens": 198310215,
+    "model_calls": 5039,
+    "spec_repairs": 3,
+    "implementation_repairs": 6,
+    "protocol_wall_seconds_sum": 35147.037,
+    "builds": {
+      "development_normal": {
+        "passed": 11,
+        "not_executed": 1
+      },
+      "development_sanitize": {
+        "passed": 11,
+        "not_executed": 1
+      },
+      "development_delivery": {
+        "passed": 11,
+        "not_executed": 1
+      },
+      "independent_normal": {
+        "passed": 11,
+        "not_executed": 1
+      },
+      "independent_sanitize": {
+        "passed": 11,
+        "not_executed": 1
+      }
+    },
+    "phases": {
+      "normal": {
+        "planned_required": 156,
+        "executed_required": 146,
+        "passed": 138,
+        "failed": 8,
+        "not_executed": 10
+      },
+      "sanitize": {
+        "planned_required": 156,
+        "executed_required": 146,
+        "passed": 138,
+        "failed": 8,
+        "not_executed": 10
+      }
+    },
+    "round_wall_seconds_sum": 9990.407
+  },
+  "by_protocol": {
+    "MQTT": {
+      "attempts": 3,
+      "generation_passed": 3,
+      "independent_passed": 3,
+      "input_tokens": 42103143,
+      "output_tokens": 1959544,
+      "total_tokens": 44062687,
+      "model_calls": 1129,
+      "spec_repairs": 1,
+      "implementation_repairs": 2,
+      "protocol_wall_seconds_sum": 8536.219,
+      "builds": {
+        "development_normal": {
+          "passed": 3,
+          "not_executed": 0
+        },
+        "development_sanitize": {
+          "passed": 3,
+          "not_executed": 0
+        },
+        "development_delivery": {
+          "passed": 3,
+          "not_executed": 0
+        },
+        "independent_normal": {
+          "passed": 3,
+          "not_executed": 0
+        },
+        "independent_sanitize": {
+          "passed": 3,
+          "not_executed": 0
+        }
+      },
+      "phases": {
+        "normal": {
+          "planned_required": 48,
+          "executed_required": 48,
+          "passed": 48,
+          "failed": 0,
+          "not_executed": 0
+        },
+        "sanitize": {
+          "planned_required": 48,
+          "executed_required": 48,
+          "passed": 48,
+          "failed": 0,
+          "not_executed": 0
+        }
+      }
+    },
+    "CoAP": {
+      "attempts": 3,
+      "generation_passed": 2,
+      "independent_passed": 2,
+      "input_tokens": 45496604,
+      "output_tokens": 1828744,
+      "total_tokens": 47325348,
+      "model_calls": 1185,
+      "spec_repairs": 1,
+      "implementation_repairs": 1,
+      "protocol_wall_seconds_sum": 7992.213,
+      "builds": {
+        "development_normal": {
+          "passed": 2,
+          "not_executed": 1
+        },
+        "development_sanitize": {
+          "passed": 2,
+          "not_executed": 1
+        },
+        "development_delivery": {
+          "passed": 2,
+          "not_executed": 1
+        },
+        "independent_normal": {
+          "passed": 2,
+          "not_executed": 1
+        },
+        "independent_sanitize": {
+          "passed": 2,
+          "not_executed": 1
+        }
+      },
+      "phases": {
+        "normal": {
+          "planned_required": 30,
+          "executed_required": 20,
+          "passed": 20,
+          "failed": 0,
+          "not_executed": 10
+        },
+        "sanitize": {
+          "planned_required": 30,
+          "executed_required": 20,
+          "passed": 20,
+          "failed": 0,
+          "not_executed": 10
+        }
+      }
+    },
+    "HTTP/1.1": {
+      "attempts": 3,
+      "generation_passed": 3,
+      "independent_passed": 2,
+      "input_tokens": 53355602,
+      "output_tokens": 2074673,
+      "total_tokens": 55430275,
+      "model_calls": 1396,
+      "spec_repairs": 0,
+      "implementation_repairs": 0,
+      "protocol_wall_seconds_sum": 9284.31,
+      "builds": {
+        "development_normal": {
+          "passed": 3,
+          "not_executed": 0
+        },
+        "development_sanitize": {
+          "passed": 3,
+          "not_executed": 0
+        },
+        "development_delivery": {
+          "passed": 3,
+          "not_executed": 0
+        },
+        "independent_normal": {
+          "passed": 3,
+          "not_executed": 0
+        },
+        "independent_sanitize": {
+          "passed": 3,
+          "not_executed": 0
+        }
+      },
+      "phases": {
+        "normal": {
+          "planned_required": 39,
+          "executed_required": 39,
+          "passed": 35,
+          "failed": 4,
+          "not_executed": 0
+        },
+        "sanitize": {
+          "planned_required": 39,
+          "executed_required": 39,
+          "passed": 35,
+          "failed": 4,
+          "not_executed": 0
+        }
+      }
+    },
+    "SMTP": {
+      "attempts": 3,
+      "generation_passed": 3,
+      "independent_passed": 0,
+      "input_tokens": 49470005,
+      "output_tokens": 2021900,
+      "total_tokens": 51491905,
+      "model_calls": 1329,
+      "spec_repairs": 1,
+      "implementation_repairs": 3,
+      "protocol_wall_seconds_sum": 9334.295,
+      "builds": {
+        "development_normal": {
+          "passed": 3,
+          "not_executed": 0
+        },
+        "development_sanitize": {
+          "passed": 3,
+          "not_executed": 0
+        },
+        "development_delivery": {
+          "passed": 3,
+          "not_executed": 0
+        },
+        "independent_normal": {
+          "passed": 3,
+          "not_executed": 0
+        },
+        "independent_sanitize": {
+          "passed": 3,
+          "not_executed": 0
+        }
+      },
+      "phases": {
+        "normal": {
+          "planned_required": 39,
+          "executed_required": 39,
+          "passed": 35,
+          "failed": 4,
+          "not_executed": 0
+        },
+        "sanitize": {
+          "planned_required": 39,
+          "executed_required": 39,
+          "passed": 35,
+          "failed": 4,
+          "not_executed": 0
+        }
+      }
+    }
+  },
+  "runs": [
+    {
+      "id": "round_01/mqtt_01",
+      "round": 1,
+      "protocol": "MQTT",
+      "path": "round_01/mqtt_01",
+      "case": "mqtt_min",
+      "source_record": "source_records/stability/report.json",
+      "source_run_id": "round_01/mqtt_01",
+      "generation": "passed",
+      "evaluation": "passed",
+      "stop_reason": "complete",
+      "fresh": true,
+      "resumed": false,
+      "manual_edits": false,
+      "started_at": "2026-10-02T16:03:51.326892+00:00",
+      "finished_at": "2026-10-02T16:46:29.158905+00:00",
+      "protocol_wall_seconds": 2557.832,
+      "generation_wall_seconds": 2549.942,
+      "spec_repairs": 0,
+      "implementation_repairs": 0,
+      "usage": {
+        "input_tokens": 13290557,
+        "output_tokens": 595897,
+        "total_tokens": 13886454,
+        "model_calls": 359
+      },
+      "stages": {
+        "prepare": {
+          "status": "passed",
+          "wall_seconds": 1.552,
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "total_tokens": 0,
+          "model_calls": 0
+        },
+        "facts": {
+          "status": "passed",
+          "wall_seconds": 135.601,
+          "input_tokens": 641748,
+          "output_tokens": 34784,
+          "total_tokens": 676532,
+          "model_calls": 18
+        },
+        "design": {
+          "status": "passed",
+          "wall_seconds": 583.0,
+          "input_tokens": 1529870,
+          "output_tokens": 143325,
+          "total_tokens": 1673195,
+          "model_calls": 47
+        },
+        "specs": {
+          "status": "passed",
+          "wall_seconds": 1359.478,
+          "input_tokens": 6712172,
+          "output_tokens": 319590,
+          "total_tokens": 7031762,
+          "model_calls": 165
+        },
+        "code": {
+          "status": "passed",
+          "wall_seconds": 470.3,
+          "input_tokens": 4406767,
+          "output_tokens": 98198,
+          "total_tokens": 4504965,
+          "model_calls": 129
+        },
+        "verify": {
+          "status": "passed",
+          "wall_seconds": 0.011,
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "total_tokens": 0,
+          "model_calls": 0
+        }
+      },
+      "builds": {
+        "development_normal": "passed",
+        "development_sanitize": "passed",
+        "development_delivery": "passed",
+        "independent_normal": "passed",
+        "independent_sanitize": "passed"
+      },
+      "phases": {
+        "normal": {
+          "status": "passed",
+          "planned_required": 16,
+          "executed_required": 16,
+          "passed": 16,
+          "failed": 0,
+          "not_executed": 0,
+          "scenarios": [
+            {
+              "id": "mqtt_cross_client_pubsub",
+              "status": "passed",
+              "elapsed_seconds": 0.005
+            },
+            {
+              "id": "mqtt_buffer_before_eof",
+              "status": "passed",
+              "elapsed_seconds": 0.023
+            },
+            {
+              "id": "mqtt_malformed_survival",
+              "status": "passed",
+              "elapsed_seconds": 0.024
+            },
+            {
+              "id": "mqtt_disconnect_handler",
+              "status": "passed",
+              "elapsed_seconds": 0.024
+            },
+            {
+              "id": "mqtt_smoke_test",
+              "status": "passed",
+              "elapsed_seconds": 0.188
+            },
+            {
+              "id": "mqtt_mosquitto_interop",
+              "status": "passed",
+              "elapsed_seconds": 0.033
+            },
+            {
+              "id": "mqtt_connect_semantics",
+              "status": "passed",
+              "elapsed_seconds": 0.024
+            },
+            {
+              "id": "mqtt_suback_contract",
+              "status": "passed",
+              "elapsed_seconds": 0.064
+            },
+            {
+              "id": "mqtt_exact_binary_payload",
+              "status": "passed",
+              "elapsed_seconds": 0.144
+            },
+            {
+              "id": "mqtt_plus_filter_boundaries",
+              "status": "passed",
+              "elapsed_seconds": 0.304
+            },
+            {
+              "id": "mqtt_hash_filter_boundaries",
+              "status": "passed",
+              "elapsed_seconds": 0.185
+            },
+            {
+              "id": "mqtt_fragmented_input",
+              "status": "passed",
+              "elapsed_seconds": 0.745
+            },
+            {
+              "id": "mqtt_coalesced_input",
+              "status": "passed",
+              "elapsed_seconds": 0.024
+            },
+            {
+              "id": "mqtt_ping_exchange",
+              "status": "passed",
+              "elapsed_seconds": 0.023
+            },
+            {
+              "id": "mqtt_disconnect_subscription_cleanup",
+              "status": "passed",
+              "elapsed_seconds": 0.145
+            },
+            {
+              "id": "mqtt_invalid_packet_connection_isolation",
+              "status": "passed",
+              "elapsed_seconds": 0.065
+            }
+          ]
+        },
+        "sanitize": {
+          "status": "passed",
+          "planned_required": 16,
+          "executed_required": 16,
+          "passed": 16,
+          "failed": 0,
+          "not_executed": 0,
+          "scenarios": [
+            {
+              "id": "mqtt_cross_client_pubsub",
+              "status": "passed",
+              "elapsed_seconds": 0.041
+            },
+            {
+              "id": "mqtt_buffer_before_eof",
+              "status": "passed",
+              "elapsed_seconds": 0.031
+            },
+            {
+              "id": "mqtt_malformed_survival",
+              "status": "passed",
+              "elapsed_seconds": 0.04
+            },
+            {
+              "id": "mqtt_disconnect_handler",
+              "status": "passed",
+              "elapsed_seconds": 0.032
+            },
+            {
+              "id": "mqtt_smoke_test",
+              "status": "passed",
+              "elapsed_seconds": 0.205
+            },
+            {
+              "id": "mqtt_mosquitto_interop",
+              "status": "passed",
+              "elapsed_seconds": 0.037
+            },
+            {
+              "id": "mqtt_connect_semantics",
+              "status": "passed",
+              "elapsed_seconds": 0.031
+            },
+            {
+              "id": "mqtt_suback_contract",
+              "status": "passed",
+              "elapsed_seconds": 0.08
+            },
+            {
+              "id": "mqtt_exact_binary_payload",
+              "status": "passed",
+              "elapsed_seconds": 0.159
+            },
+            {
+              "id": "mqtt_plus_filter_boundaries",
+              "status": "passed",
+              "elapsed_seconds": 0.32
+            },
+            {
+              "id": "mqtt_hash_filter_boundaries",
+              "status": "passed",
+              "elapsed_seconds": 0.192
+            },
+            {
+              "id": "mqtt_fragmented_input",
+              "status": "passed",
+              "elapsed_seconds": 0.759
+            },
+            {
+              "id": "mqtt_coalesced_input",
+              "status": "passed",
+              "elapsed_seconds": 0.031
+            },
+            {
+              "id": "mqtt_ping_exchange",
+              "status": "passed",
+              "elapsed_seconds": 0.031
+            },
+            {
+              "id": "mqtt_disconnect_subscription_cleanup",
+              "status": "passed",
+              "elapsed_seconds": 0.16
+            },
+            {
+              "id": "mqtt_invalid_packet_connection_isolation",
+              "status": "passed",
+              "elapsed_seconds": 0.081
+            }
+          ]
+        }
+      },
+      "development_report": "round_01/mqtt_01/reports/verify_005/report.json",
+      "evaluation_report": "round_01/mqtt_01/evaluation/evaluation_001/report.json"
+    },
+    {
+      "id": "round_01/coap_01",
+      "round": 1,
+      "protocol": "CoAP",
+      "path": "round_01/coap_01",
+      "case": "coap_min",
+      "source_record": "source_records/stability/report.json",
+      "source_run_id": "round_01/coap_01",
+      "generation": "passed",
+      "evaluation": "passed",
+      "stop_reason": "complete",
+      "fresh": true,
+      "resumed": false,
+      "manual_edits": false,
+      "started_at": "2026-10-02T16:03:51.327890+00:00",
+      "finished_at": "2026-10-02T16:49:59.226046+00:00",
+      "protocol_wall_seconds": 2767.899,
+      "generation_wall_seconds": 2756.887,
+      "spec_repairs": 1,
+      "implementation_repairs": 1,
+      "usage": {
+        "input_tokens": 18879240,
+        "output_tokens": 621503,
+        "total_tokens": 19500743,
+        "model_calls": 484
+      },
+      "stages": {
+        "prepare": {
+          "status": "passed",
+          "wall_seconds": 0.013,
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "total_tokens": 0,
+          "model_calls": 0
+        },
+        "facts": {
+          "status": "passed",
+          "wall_seconds": 86.716,
+          "input_tokens": 589029,
+          "output_tokens": 21502,
+          "total_tokens": 610531,
+          "model_calls": 18
+        },
+        "design": {
+          "status": "passed",
+          "wall_seconds": 479.058,
+          "input_tokens": 2048473,
+          "output_tokens": 117072,
+          "total_tokens": 2165545,
+          "model_calls": 57
+        },
+        "specs": {
+          "status": "passed",
+          "wall_seconds": 1207.141,
+          "input_tokens": 8208368,
+          "output_tokens": 278475,
+          "total_tokens": 8486843,
+          "model_calls": 188
+        },
+        "code": {
+          "status": "passed",
+          "wall_seconds": 983.949,
+          "input_tokens": 8033370,
+          "output_tokens": 204454,
+          "total_tokens": 8237824,
+          "model_calls": 221
+        },
+        "verify": {
+          "status": "passed",
+          "wall_seconds": 0.01,
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "total_tokens": 0,
+          "model_calls": 0
+        }
+      },
+      "builds": {
+        "development_normal": "passed",
+        "development_sanitize": "passed",
+        "development_delivery": "passed",
+        "independent_normal": "passed",
+        "independent_sanitize": "passed"
+      },
+      "phases": {
+        "normal": {
+          "status": "passed",
+          "planned_required": 10,
+          "executed_required": 10,
+          "passed": 10,
+          "failed": 0,
+          "not_executed": 0,
+          "scenarios": [
+            {
+              "id": "coap_con_get",
+              "status": "passed",
+              "elapsed_seconds": 0.124
+            },
+            {
+              "id": "coap_non_get",
+              "status": "passed",
+              "elapsed_seconds": 0.123
+            },
+            {
+              "id": "coap_binary_put_get",
+              "status": "passed",
+              "elapsed_seconds": 0.124
+            },
+            {
+              "id": "coap_endpoint_tokens",
+              "status": "passed",
+              "elapsed_seconds": 0.123
+            },
+            {
+              "id": "coap_option_boundaries",
+              "status": "passed",
+              "elapsed_seconds": 0.123
+            },
+            {
+              "id": "coap_duplicate_con",
+              "status": "passed",
+              "elapsed_seconds": 0.123
+            },
+            {
+              "id": "coap_empty_con_reset",
+              "status": "passed",
+              "elapsed_seconds": 0.123
+            },
+            {
+              "id": "coap_error_responses",
+              "status": "passed",
+              "elapsed_seconds": 0.123
+            },
+            {
+              "id": "coap_malformed_survival",
+              "status": "passed",
+              "elapsed_seconds": 0.365
+            },
+            {
+              "id": "coap_libcoap_interop",
+              "status": "passed",
+              "elapsed_seconds": 0.128
+            }
+          ]
+        },
+        "sanitize": {
+          "status": "passed",
+          "planned_required": 10,
+          "executed_required": 10,
+          "passed": 10,
+          "failed": 0,
+          "not_executed": 0,
+          "scenarios": [
+            {
+              "id": "coap_con_get",
+              "status": "passed",
+              "elapsed_seconds": 0.13
+            },
+            {
+              "id": "coap_non_get",
+              "status": "passed",
+              "elapsed_seconds": 0.129
+            },
+            {
+              "id": "coap_binary_put_get",
+              "status": "passed",
+              "elapsed_seconds": 0.13
+            },
+            {
+              "id": "coap_endpoint_tokens",
+              "status": "passed",
+              "elapsed_seconds": 0.138
+            },
+            {
+              "id": "coap_option_boundaries",
+              "status": "passed",
+              "elapsed_seconds": 0.138
+            },
+            {
+              "id": "coap_duplicate_con",
+              "status": "passed",
+              "elapsed_seconds": 0.129
+            },
+            {
+              "id": "coap_empty_con_reset",
+              "status": "passed",
+              "elapsed_seconds": 0.129
+            },
+            {
+              "id": "coap_error_responses",
+              "status": "passed",
+              "elapsed_seconds": 0.13
+            },
+            {
+              "id": "coap_malformed_survival",
+              "status": "passed",
+              "elapsed_seconds": 0.371
+            },
+            {
+              "id": "coap_libcoap_interop",
+              "status": "passed",
+              "elapsed_seconds": 0.135
+            }
+          ]
+        }
+      },
+      "development_report": "round_01/coap_01/reports/verify_007/report.json",
+      "evaluation_report": "round_01/coap_01/evaluation/evaluation_001/report.json"
+    },
+    {
+      "id": "round_01/http11_01",
+      "round": 1,
+      "protocol": "HTTP/1.1",
+      "path": "round_01/http11_01",
+      "case": "http11_min",
+      "source_record": "source_records/stability/report.json",
+      "source_run_id": "round_01/http11_01",
+      "generation": "passed",
+      "evaluation": "failed",
+      "stop_reason": "complete",
+      "fresh": true,
+      "resumed": false,
+      "manual_edits": false,
+      "started_at": "2026-10-02T16:03:51.328435+00:00",
+      "finished_at": "2026-10-02T16:53:22.924814+00:00",
+      "protocol_wall_seconds": 2971.597,
+      "generation_wall_seconds": 2964.447,
+      "spec_repairs": 0,
+      "implementation_repairs": 0,
+      "usage": {
+        "input_tokens": 18353102,
+        "output_tokens": 684535,
+        "total_tokens": 19037637,
+        "model_calls": 472
+      },
+      "stages": {
+        "prepare": {
+          "status": "passed",
+          "wall_seconds": 0.03,
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "total_tokens": 0,
+          "model_calls": 0
+        },
+        "facts": {
+          "status": "passed",
+          "wall_seconds": 135.576,
+          "input_tokens": 1141244,
+          "output_tokens": 31188,
+          "total_tokens": 1172432,
+          "model_calls": 32
+        },
+        "design": {
+          "status": "passed",
+          "wall_seconds": 631.596,
+          "input_tokens": 2444588,
+          "output_tokens": 155724,
+          "total_tokens": 2600312,
+          "model_calls": 65
+        },
+        "specs": {
+          "status": "passed",
+          "wall_seconds": 1385.951,
+          "input_tokens": 8239286,
+          "output_tokens": 326572,
+          "total_tokens": 8565858,
+          "model_calls": 196
+        },
+        "code": {
+          "status": "passed",
+          "wall_seconds": 811.279,
+          "input_tokens": 6527984,
+          "output_tokens": 171051,
+          "total_tokens": 6699035,
+          "model_calls": 179
+        },
+        "verify": {
+          "status": "passed",
+          "wall_seconds": 0.015,
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "total_tokens": 0,
+          "model_calls": 0
+        }
+      },
+      "builds": {
+        "development_normal": "passed",
+        "development_sanitize": "passed",
+        "development_delivery": "passed",
+        "independent_normal": "passed",
+        "independent_sanitize": "passed"
+      },
+      "phases": {
+        "normal": {
+          "status": "failed",
+          "planned_required": 13,
+          "executed_required": 13,
+          "passed": 9,
+          "failed": 4,
+          "not_executed": 0,
+          "scenarios": [
+            {
+              "id": "http_get_hello_contract",
+              "status": "passed",
+              "elapsed_seconds": 0.004
+            },
+            {
+              "id": "http_query_case_and_decoding",
+              "status": "failed",
+              "elapsed_seconds": 0.023,
+              "error": "AssertionError: EOF waiting for line (buffered b'')"
+            },
+            {
+              "id": "http_value_put_get_contract",
+              "status": "passed",
+              "elapsed_seconds": 0.024
+            },
+            {
+              "id": "http_post_echo_both_framings",
+              "status": "passed",
+              "elapsed_seconds": 0.023
+            },
+            {
+              "id": "http_head_semantics",
+              "status": "failed",
+              "elapsed_seconds": 0.023,
+              "error": "AssertionError: EOF waiting for line (buffered b'')"
+            },
+            {
+              "id": "http_content_length_edges",
+              "status": "passed",
+              "elapsed_seconds": 0.514
+            },
+            {
+              "id": "http_chunked_decoding_details",
+              "status": "passed",
+              "elapsed_seconds": 0.174
+            },
+            {
+              "id": "http_fragmentation_and_pipeline",
+              "status": "passed",
+              "elapsed_seconds": 0.065
+            },
+            {
+              "id": "http_persistent_and_connection_close",
+              "status": "failed",
+              "elapsed_seconds": 0.024,
+              "error": "AssertionError: EOF waiting for line (buffered b'')"
+            },
+            {
+              "id": "http_method_and_path_errors",
+              "status": "failed",
+              "elapsed_seconds": 0.023,
+              "error": "AssertionError: EOF waiting for line (buffered b'')"
+            },
+            {
+              "id": "http_malformed_rejection_policy",
+              "status": "passed",
+              "elapsed_seconds": 0.027
+            },
+            {
+              "id": "http_size_limits",
+              "status": "passed",
+              "elapsed_seconds": 0.025
+            },
+            {
+              "id": "http_http_client_interop",
+              "status": "passed",
+              "elapsed_seconds": 0.024
+            }
+          ]
+        },
+        "sanitize": {
+          "status": "failed",
+          "planned_required": 13,
+          "executed_required": 13,
+          "passed": 9,
+          "failed": 4,
+          "not_executed": 0,
+          "scenarios": [
+            {
+              "id": "http_get_hello_contract",
+              "status": "passed",
+              "elapsed_seconds": 0.033
+            },
+            {
+              "id": "http_query_case_and_decoding",
+              "status": "failed",
+              "elapsed_seconds": 0.039,
+              "error": "AssertionError: EOF waiting for line (buffered b'')"
+            },
+            {
+              "id": "http_value_put_get_contract",
+              "status": "passed",
+              "elapsed_seconds": 0.04
+            },
+            {
+              "id": "http_post_echo_both_framings",
+              "status": "passed",
+              "elapsed_seconds": 0.031
+            },
+            {
+              "id": "http_head_semantics",
+              "status": "failed",
+              "elapsed_seconds": 0.031,
+              "error": "ConnectionResetError: [Errno 104] Connection reset by peer"
+            },
+            {
+              "id": "http_content_length_edges",
+              "status": "passed",
+              "elapsed_seconds": 0.529
+            },
+            {
+              "id": "http_chunked_decoding_details",
+              "status": "passed",
+              "elapsed_seconds": 0.19
+            },
+            {
+              "id": "http_fragmentation_and_pipeline",
+              "status": "passed",
+              "elapsed_seconds": 0.072
+            },
+            {
+              "id": "http_persistent_and_connection_close",
+              "status": "failed",
+              "elapsed_seconds": 0.04,
+              "error": "AssertionError: EOF waiting for line (buffered b'')"
+            },
+            {
+              "id": "http_method_and_path_errors",
+              "status": "failed",
+              "elapsed_seconds": 0.039,
+              "error": "AssertionError: EOF waiting for line (buffered b'')"
+            },
+            {
+              "id": "http_malformed_rejection_policy",
+              "status": "passed",
+              "elapsed_seconds": 0.038
+            },
+            {
+              "id": "http_size_limits",
+              "status": "passed",
+              "elapsed_seconds": 0.042
+            },
+            {
+              "id": "http_http_client_interop",
+              "status": "passed",
+              "elapsed_seconds": 0.04
+            }
+          ]
+        }
+      },
+      "development_report": "round_01/http11_01/reports/verify_007/report.json",
+      "evaluation_report": "round_01/http11_01/evaluation/evaluation_001/report.json"
+    },
+    {
+      "id": "round_01/smtp_01",
+      "round": 1,
+      "protocol": "SMTP",
+      "path": "round_01/smtp_01",
+      "case": "smtp_min",
+      "source_record": "source_records/stability/report.json",
+      "source_run_id": "round_01/smtp_01",
+      "generation": "passed",
+      "evaluation": "failed",
+      "stop_reason": "complete",
+      "fresh": true,
+      "resumed": false,
+      "manual_edits": false,
+      "started_at": "2026-10-02T16:03:51.328918+00:00",
+      "finished_at": "2026-10-02T17:02:21.993680+00:00",
+      "protocol_wall_seconds": 3510.665,
+      "generation_wall_seconds": 3503.582,
+      "spec_repairs": 1,
+      "implementation_repairs": 3,
+      "usage": {
+        "input_tokens": 20178039,
+        "output_tokens": 754855,
+        "total_tokens": 20932894,
+        "model_calls": 547
+      },
+      "stages": {
+        "prepare": {
+          "status": "passed",
+          "wall_seconds": 0.013,
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "total_tokens": 0,
+          "model_calls": 0
+        },
+        "facts": {
+          "status": "passed",
+          "wall_seconds": 148.44,
+          "input_tokens": 518813,
+          "output_tokens": 35884,
+          "total_tokens": 554697,
+          "model_calls": 18
+        },
+        "design": {
+          "status": "passed",
+          "wall_seconds": 662.599,
+          "input_tokens": 2138457,
+          "output_tokens": 160414,
+          "total_tokens": 2298871,
+          "model_calls": 66
+        },
+        "specs": {
+          "status": "passed",
+          "wall_seconds": 1390.958,
+          "input_tokens": 8214130,
+          "output_tokens": 304168,
+          "total_tokens": 8518298,
+          "model_calls": 223
+        },
+        "code": {
+          "status": "passed",
+          "wall_seconds": 1301.559,
+          "input_tokens": 9306639,
+          "output_tokens": 254389,
+          "total_tokens": 9561028,
+          "model_calls": 240
+        },
+        "verify": {
+          "status": "passed",
+          "wall_seconds": 0.013,
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "total_tokens": 0,
+          "model_calls": 0
+        }
+      },
+      "builds": {
+        "development_normal": "passed",
+        "development_sanitize": "passed",
+        "development_delivery": "passed",
+        "independent_normal": "passed",
+        "independent_sanitize": "passed"
+      },
+      "phases": {
+        "normal": {
+          "status": "failed",
+          "planned_required": 13,
+          "executed_required": 13,
+          "passed": 12,
+          "failed": 1,
+          "not_executed": 0,
+          "scenarios": [
+            {
+              "id": "smtp_greeting_helo_ehlo",
+              "status": "passed",
+              "elapsed_seconds": 0.004
+            },
+            {
+              "id": "smtp_command_case_and_ehlo_reset",
+              "status": "passed",
+              "elapsed_seconds": 0.024
+            },
+            {
+              "id": "smtp_envelope_recipient_rules",
+              "status": "passed",
+              "elapsed_seconds": 0.024
+            },
+            {
+              "id": "smtp_data_capture_record",
+              "status": "passed",
+              "elapsed_seconds": 0.024
+            },
+            {
+              "id": "smtp_dot_transparency_and_empty_data",
+              "status": "passed",
+              "elapsed_seconds": 0.025
+            },
+            {
+              "id": "smtp_fragmented_and_coalesced_input",
+              "status": "passed",
+              "elapsed_seconds": 0.475
+            },
+            {
+              "id": "smtp_rset_noop_vrfy_quit",
+              "status": "passed",
+              "elapsed_seconds": 0.024
+            },
+            {
+              "id": "smtp_transaction_reuse_and_isolation",
+              "status": "passed",
+              "elapsed_seconds": 0.024
+            },
+            {
+              "id": "smtp_reply_code_matrix",
+              "status": "passed",
+              "elapsed_seconds": 0.024
+            },
+            {
+              "id": "smtp_size_limits",
+              "status": "failed",
+              "elapsed_seconds": 0.113,
+              "error": "AssertionError: Expected 552, got 250: b'250 OK\\r\\n'"
+            },
+            {
+              "id": "smtp_eof_and_aborted_data",
+              "status": "passed",
+              "elapsed_seconds": 0.324
+            },
+            {
+              "id": "smtp_storage_failure",
+              "status": "passed",
+              "elapsed_seconds": 0.024
+            },
+            {
+              "id": "smtp_smtplib_interop",
+              "status": "passed",
+              "elapsed_seconds": 0.025
+            }
+          ]
+        },
+        "sanitize": {
+          "status": "failed",
+          "planned_required": 13,
+          "executed_required": 13,
+          "passed": 12,
+          "failed": 1,
+          "not_executed": 0,
+          "scenarios": [
+            {
+              "id": "smtp_greeting_helo_ehlo",
+              "status": "passed",
+              "elapsed_seconds": 0.04
+            },
+            {
+              "id": "smtp_command_case_and_ehlo_reset",
+              "status": "passed",
+              "elapsed_seconds": 0.031
+            },
+            {
+              "id": "smtp_envelope_recipient_rules",
+              "status": "passed",
+              "elapsed_seconds": 0.031
+            },
+            {
+              "id": "smtp_data_capture_record",
+              "status": "passed",
+              "elapsed_seconds": 0.038
+            },
+            {
+              "id": "smtp_dot_transparency_and_empty_data",
+              "status": "passed",
+              "elapsed_seconds": 0.039
+            },
+            {
+              "id": "smtp_fragmented_and_coalesced_input",
+              "status": "passed",
+              "elapsed_seconds": 0.482
+            },
+            {
+              "id": "smtp_rset_noop_vrfy_quit",
+              "status": "passed",
+              "elapsed_seconds": 0.03
+            },
+            {
+              "id": "smtp_transaction_reuse_and_isolation",
+              "status": "passed",
+              "elapsed_seconds": 0.031
+            },
+            {
+              "id": "smtp_reply_code_matrix",
+              "status": "passed",
+              "elapsed_seconds": 0.039
+            },
+            {
+              "id": "smtp_size_limits",
+              "status": "failed",
+              "elapsed_seconds": 0.123,
+              "error": "AssertionError: Expected 552, got 250: b'250 OK\\r\\n'"
+            },
+            {
+              "id": "smtp_eof_and_aborted_data",
+              "status": "passed",
+              "elapsed_seconds": 0.339
+            },
+            {
+              "id": "smtp_storage_failure",
+              "status": "passed",
+              "elapsed_seconds": 0.03
+            },
+            {
+              "id": "smtp_smtplib_interop",
+              "status": "passed",
+              "elapsed_seconds": 0.031
+            }
+          ]
+        }
+      },
+      "development_report": "round_01/smtp_01/reports/verify_009/report.json",
+      "evaluation_report": "round_01/smtp_01/evaluation/evaluation_001/report.json"
+    },
+    {
+      "id": "round_02/mqtt_01",
+      "round": 2,
+      "protocol": "MQTT",
+      "path": "round_02/mqtt_01",
+      "case": "mqtt_min",
+      "source_record": "source_records/stability/report.json",
+      "source_run_id": "round_02/mqtt_01",
+      "generation": "passed",
+      "evaluation": "passed",
+      "stop_reason": "complete",
+      "fresh": true,
+      "resumed": false,
+      "manual_edits": false,
+      "started_at": "2026-10-02T17:02:22.109617+00:00",
+      "finished_at": "2026-10-02T17:48:10.597936+00:00",
+      "protocol_wall_seconds": 2748.489,
+      "generation_wall_seconds": 2740.248,
+      "spec_repairs": 0,
+      "implementation_repairs": 0,
+      "usage": {
+        "input_tokens": 13302732,
+        "output_tokens": 657864,
+        "total_tokens": 13960596,
+        "model_calls": 355
+      },
+      "stages": {
+        "prepare": {
+          "status": "passed",
+          "wall_seconds": 1.549,
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "total_tokens": 0,
+          "model_calls": 0
+        },
+        "facts": {
+          "status": "passed",
+          "wall_seconds": 98.853,
+          "input_tokens": 706731,
+          "output_tokens": 24064,
+          "total_tokens": 730795,
+          "model_calls": 18
+        },
+        "design": {
+          "status": "passed",
+          "wall_seconds": 679.042,
+          "input_tokens": 2015152,
+          "output_tokens": 166480,
+          "total_tokens": 2181632,
+          "model_calls": 59
+        },
+        "specs": {
+          "status": "passed",
+          "wall_seconds": 1322.139,
+          "input_tokens": 5767775,
+          "output_tokens": 325071,
+          "total_tokens": 6092846,
+          "model_calls": 148
+        },
+        "code": {
+          "status": "passed",
+          "wall_seconds": 638.653,
+          "input_tokens": 4813074,
+          "output_tokens": 142249,
+          "total_tokens": 4955323,
+          "model_calls": 130
+        },
+        "verify": {
+          "status": "passed",
+          "wall_seconds": 0.012,
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "total_tokens": 0,
+          "model_calls": 0
+        }
+      },
+      "builds": {
+        "development_normal": "passed",
+        "development_sanitize": "passed",
+        "development_delivery": "passed",
+        "independent_normal": "passed",
+        "independent_sanitize": "passed"
+      },
+      "phases": {
+        "normal": {
+          "status": "passed",
+          "planned_required": 16,
+          "executed_required": 16,
+          "passed": 16,
+          "failed": 0,
+          "not_executed": 0,
+          "scenarios": [
+            {
+              "id": "mqtt_cross_client_pubsub",
+              "status": "passed",
+              "elapsed_seconds": 0.045
+            },
+            {
+              "id": "mqtt_buffer_before_eof",
+              "status": "passed",
+              "elapsed_seconds": 0.064
+            },
+            {
+              "id": "mqtt_malformed_survival",
+              "status": "passed",
+              "elapsed_seconds": 0.064
+            },
+            {
+              "id": "mqtt_disconnect_handler",
+              "status": "passed",
+              "elapsed_seconds": 0.064
+            },
+            {
+              "id": "mqtt_smoke_test",
+              "status": "passed",
+              "elapsed_seconds": 0.187
+            },
+            {
+              "id": "mqtt_mosquitto_interop",
+              "status": "passed",
+              "elapsed_seconds": 0.093
+            },
+            {
+              "id": "mqtt_connect_semantics",
+              "status": "passed",
+              "elapsed_seconds": 0.024
+            },
+            {
+              "id": "mqtt_suback_contract",
+              "status": "passed",
+              "elapsed_seconds": 0.064
+            },
+            {
+              "id": "mqtt_exact_binary_payload",
+              "status": "passed",
+              "elapsed_seconds": 0.144
+            },
+            {
+              "id": "mqtt_plus_filter_boundaries",
+              "status": "passed",
+              "elapsed_seconds": 0.308
+            },
+            {
+              "id": "mqtt_hash_filter_boundaries",
+              "status": "passed",
+              "elapsed_seconds": 0.185
+            },
+            {
+              "id": "mqtt_fragmented_input",
+              "status": "passed",
+              "elapsed_seconds": 0.745
+            },
+            {
+              "id": "mqtt_coalesced_input",
+              "status": "passed",
+              "elapsed_seconds": 0.064
+            },
+            {
+              "id": "mqtt_ping_exchange",
+              "status": "passed",
+              "elapsed_seconds": 0.065
+            },
+            {
+              "id": "mqtt_disconnect_subscription_cleanup",
+              "status": "passed",
+              "elapsed_seconds": 0.144
+            },
+            {
+              "id": "mqtt_invalid_packet_connection_isolation",
+              "status": "passed",
+              "elapsed_seconds": 0.064
+            }
+          ]
+        },
+        "sanitize": {
+          "status": "passed",
+          "planned_required": 16,
+          "executed_required": 16,
+          "passed": 16,
+          "failed": 0,
+          "not_executed": 0,
+          "scenarios": [
+            {
+              "id": "mqtt_cross_client_pubsub",
+              "status": "passed",
+              "elapsed_seconds": 0.081
+            },
+            {
+              "id": "mqtt_buffer_before_eof",
+              "status": "passed",
+              "elapsed_seconds": 0.07
+            },
+            {
+              "id": "mqtt_malformed_survival",
+              "status": "passed",
+              "elapsed_seconds": 0.071
+            },
+            {
+              "id": "mqtt_disconnect_handler",
+              "status": "passed",
+              "elapsed_seconds": 0.071
+            },
+            {
+              "id": "mqtt_smoke_test",
+              "status": "passed",
+              "elapsed_seconds": 0.194
+            },
+            {
+              "id": "mqtt_mosquitto_interop",
+              "status": "passed",
+              "elapsed_seconds": 0.109
+            },
+            {
+              "id": "mqtt_connect_semantics",
+              "status": "passed",
+              "elapsed_seconds": 0.03
+            },
+            {
+              "id": "mqtt_suback_contract",
+              "status": "passed",
+              "elapsed_seconds": 0.071
+            },
+            {
+              "id": "mqtt_exact_binary_payload",
+              "status": "passed",
+              "elapsed_seconds": 0.159
+            },
+            {
+              "id": "mqtt_plus_filter_boundaries",
+              "status": "passed",
+              "elapsed_seconds": 0.319
+            },
+            {
+              "id": "mqtt_hash_filter_boundaries",
+              "status": "passed",
+              "elapsed_seconds": 0.199
+            },
+            {
+              "id": "mqtt_fragmented_input",
+              "status": "passed",
+              "elapsed_seconds": 0.751
+            },
+            {
+              "id": "mqtt_coalesced_input",
+              "status": "passed",
+              "elapsed_seconds": 0.071
+            },
+            {
+              "id": "mqtt_ping_exchange",
+              "status": "passed",
+              "elapsed_seconds": 0.079
+            },
+            {
+              "id": "mqtt_disconnect_subscription_cleanup",
+              "status": "passed",
+              "elapsed_seconds": 0.159
+            },
+            {
+              "id": "mqtt_invalid_packet_connection_isolation",
+              "status": "passed",
+              "elapsed_seconds": 0.073
+            }
+          ]
+        }
+      },
+      "development_report": "round_02/mqtt_01/reports/verify_006/report.json",
+      "evaluation_report": "round_02/mqtt_01/evaluation/evaluation_001/report.json"
+    },
+    {
+      "id": "round_02/coap_01",
+      "round": 2,
+      "protocol": "CoAP",
+      "path": "round_02/coap_01",
+      "case": "coap_min",
+      "source_record": "source_records/stability/report.json",
+      "source_run_id": "round_02/coap_01",
+      "generation": "failed",
+      "evaluation": "not_executed",
+      "stop_reason": "specs_failed",
+      "fresh": true,
+      "resumed": false,
+      "manual_edits": false,
+      "started_at": "2026-10-02T17:02:22.112725+00:00",
+      "finished_at": "2026-10-02T17:41:36.598862+00:00",
+      "protocol_wall_seconds": 2354.487,
+      "generation_wall_seconds": 2353.671,
+      "spec_repairs": 0,
+      "implementation_repairs": 0,
+      "usage": {
+        "input_tokens": 10801013,
+        "output_tokens": 588696,
+        "total_tokens": 11389709,
+        "model_calls": 283
+      },
+      "stages": {
+        "prepare": {
+          "status": "passed",
+          "wall_seconds": 0.015,
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "total_tokens": 0,
+          "model_calls": 0
+        },
+        "facts": {
+          "status": "passed",
+          "wall_seconds": 122.2,
+          "input_tokens": 751180,
+          "output_tokens": 28179,
+          "total_tokens": 779359,
+          "model_calls": 25
+        },
+        "design": {
+          "status": "passed",
+          "wall_seconds": 971.29,
+          "input_tokens": 3470031,
+          "output_tokens": 246407,
+          "total_tokens": 3716438,
+          "model_calls": 96
+        },
+        "specs": {
+          "status": "failed",
+          "wall_seconds": 1260.166,
+          "input_tokens": 6579802,
+          "output_tokens": 314110,
+          "total_tokens": 6893912,
+          "model_calls": 162
+        },
+        "code": {
+          "status": "pending",
+          "wall_seconds": 0,
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "total_tokens": 0,
+          "model_calls": 0
+        },
+        "verify": {
+          "status": "pending",
+          "wall_seconds": 0,
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "total_tokens": 0,
+          "model_calls": 0
+        }
+      },
+      "builds": {
+        "development_normal": "not_executed",
+        "development_sanitize": "not_executed",
+        "development_delivery": "not_executed",
+        "independent_normal": "not_executed",
+        "independent_sanitize": "not_executed"
+      },
+      "phases": {
+        "normal": {
+          "status": "not_executed",
+          "planned_required": 10,
+          "executed_required": 0,
+          "passed": 0,
+          "failed": 0,
+          "not_executed": 10,
+          "scenarios": []
+        },
+        "sanitize": {
+          "status": "not_executed",
+          "planned_required": 10,
+          "executed_required": 0,
+          "passed": 0,
+          "failed": 0,
+          "not_executed": 10,
+          "scenarios": []
+        }
+      }
+    },
+    {
+      "id": "round_02/http11_01",
+      "round": 2,
+      "protocol": "HTTP/1.1",
+      "path": "round_02/http11_01",
+      "case": "http11_min",
+      "source_record": "source_records/stability/report.json",
+      "source_run_id": "round_02/http11_01",
+      "generation": "passed",
+      "evaluation": "passed",
+      "stop_reason": "complete",
+      "fresh": true,
+      "resumed": false,
+      "manual_edits": false,
+      "started_at": "2026-10-02T17:02:22.112965+00:00",
+      "finished_at": "2026-10-02T17:56:31.720477+00:00",
+      "protocol_wall_seconds": 3249.608,
+      "generation_wall_seconds": 3233.276,
+      "spec_repairs": 0,
+      "implementation_repairs": 0,
+      "usage": {
+        "input_tokens": 19099209,
+        "output_tokens": 725311,
+        "total_tokens": 19824520,
+        "model_calls": 511
+      },
+      "stages": {
+        "prepare": {
+          "status": "passed",
+          "wall_seconds": 0.035,
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "total_tokens": 0,
+          "model_calls": 0
+        },
+        "facts": {
+          "status": "passed",
+          "wall_seconds": 158.992,
+          "input_tokens": 1547747,
+          "output_tokens": 36235,
+          "total_tokens": 1583982,
+          "model_calls": 40
+        },
+        "design": {
+          "status": "passed",
+          "wall_seconds": 767.693,
+          "input_tokens": 3640242,
+          "output_tokens": 173614,
+          "total_tokens": 3813856,
+          "model_calls": 92
+        },
+        "specs": {
+          "status": "passed",
+          "wall_seconds": 1571.925,
+          "input_tokens": 8853612,
+          "output_tokens": 361451,
+          "total_tokens": 9215063,
+          "model_calls": 225
+        },
+        "code": {
+          "status": "passed",
+          "wall_seconds": 734.615,
+          "input_tokens": 5057608,
+          "output_tokens": 154011,
+          "total_tokens": 5211619,
+          "model_calls": 154
+        },
+        "verify": {
+          "status": "passed",
+          "wall_seconds": 0.016,
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "total_tokens": 0,
+          "model_calls": 0
+        }
+      },
+      "builds": {
+        "development_normal": "passed",
+        "development_sanitize": "passed",
+        "development_delivery": "passed",
+        "independent_normal": "passed",
+        "independent_sanitize": "passed"
+      },
+      "phases": {
+        "normal": {
+          "status": "passed",
+          "planned_required": 13,
+          "executed_required": 13,
+          "passed": 13,
+          "failed": 0,
+          "not_executed": 0,
+          "scenarios": [
+            {
+              "id": "http_get_hello_contract",
+              "status": "passed",
+              "elapsed_seconds": 0.005
+            },
+            {
+              "id": "http_query_case_and_decoding",
+              "status": "passed",
+              "elapsed_seconds": 0.024
+            },
+            {
+              "id": "http_value_put_get_contract",
+              "status": "passed",
+              "elapsed_seconds": 0.024
+            },
+            {
+              "id": "http_post_echo_both_framings",
+              "status": "passed",
+              "elapsed_seconds": 0.024
+            },
+            {
+              "id": "http_head_semantics",
+              "status": "passed",
+              "elapsed_seconds": 0.024
+            },
+            {
+              "id": "http_content_length_edges",
+              "status": "passed",
+              "elapsed_seconds": 0.514
+            },
+            {
+              "id": "http_chunked_decoding_details",
+              "status": "passed",
+              "elapsed_seconds": 0.174
+            },
+            {
+              "id": "http_fragmentation_and_pipeline",
+              "status": "passed",
+              "elapsed_seconds": 0.065
+            },
+            {
+              "id": "http_persistent_and_connection_close",
+              "status": "passed",
+              "elapsed_seconds": 0.425
+            },
+            {
+              "id": "http_method_and_path_errors",
+              "status": "passed",
+              "elapsed_seconds": 0.024
+            },
+            {
+              "id": "http_malformed_rejection_policy",
+              "status": "passed",
+              "elapsed_seconds": 2.831
+            },
+            {
+              "id": "http_size_limits",
+              "status": "passed",
+              "elapsed_seconds": 0.826
+            },
+            {
+              "id": "http_http_client_interop",
+              "status": "passed",
+              "elapsed_seconds": 0.024
+            }
+          ]
+        },
+        "sanitize": {
+          "status": "passed",
+          "planned_required": 13,
+          "executed_required": 13,
+          "passed": 13,
+          "failed": 0,
+          "not_executed": 0,
+          "scenarios": [
+            {
+              "id": "http_get_hello_contract",
+              "status": "passed",
+              "elapsed_seconds": 0.041
+            },
+            {
+              "id": "http_query_case_and_decoding",
+              "status": "passed",
+              "elapsed_seconds": 0.031
+            },
+            {
+              "id": "http_value_put_get_contract",
+              "status": "passed",
+              "elapsed_seconds": 0.04
+            },
+            {
+              "id": "http_post_echo_both_framings",
+              "status": "passed",
+              "elapsed_seconds": 0.031
+            },
+            {
+              "id": "http_head_semantics",
+              "status": "passed",
+              "elapsed_seconds": 0.031
+            },
+            {
+              "id": "http_content_length_edges",
+              "status": "passed",
+              "elapsed_seconds": 0.529
+            },
+            {
+              "id": "http_chunked_decoding_details",
+              "status": "passed",
+              "elapsed_seconds": 0.192
+            },
+            {
+              "id": "http_fragmentation_and_pipeline",
+              "status": "passed",
+              "elapsed_seconds": 0.08
+            },
+            {
+              "id": "http_persistent_and_connection_close",
+              "status": "passed",
+              "elapsed_seconds": 0.441
+            },
+            {
+              "id": "http_method_and_path_errors",
+              "status": "passed",
+              "elapsed_seconds": 0.04
+            },
+            {
+              "id": "http_malformed_rejection_policy",
+              "status": "passed",
+              "elapsed_seconds": 2.849
+            },
+            {
+              "id": "http_size_limits",
+              "status": "passed",
+              "elapsed_seconds": 0.843
+            },
+            {
+              "id": "http_http_client_interop",
+              "status": "passed",
+              "elapsed_seconds": 0.039
+            }
+          ]
+        }
+      },
+      "development_report": "round_02/http11_01/reports/verify_007/report.json",
+      "evaluation_report": "round_02/http11_01/evaluation/evaluation_001/report.json"
+    },
+    {
+      "id": "round_02/smtp_01",
+      "round": 2,
+      "protocol": "SMTP",
+      "path": "round_02/smtp_01",
+      "case": "smtp_min",
+      "source_record": "source_records/stability/report.json",
+      "source_run_id": "round_02/smtp_01",
+      "generation": "passed",
+      "evaluation": "failed",
+      "stop_reason": "complete",
+      "fresh": true,
+      "resumed": false,
+      "manual_edits": false,
+      "started_at": "2026-10-02T17:02:22.116207+00:00",
+      "finished_at": "2026-10-02T17:46:03.295213+00:00",
+      "protocol_wall_seconds": 2621.179,
+      "generation_wall_seconds": 2613.225,
+      "spec_repairs": 0,
+      "implementation_repairs": 0,
+      "usage": {
+        "input_tokens": 12671012,
+        "output_tokens": 615957,
+        "total_tokens": 13286969,
+        "model_calls": 350
+      },
+      "stages": {
+        "prepare": {
+          "status": "passed",
+          "wall_seconds": 0.011,
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "total_tokens": 0,
+          "model_calls": 0
+        },
+        "facts": {
+          "status": "passed",
+          "wall_seconds": 157.35,
+          "input_tokens": 823116,
+          "output_tokens": 37318,
+          "total_tokens": 860434,
+          "model_calls": 29
+        },
+        "design": {
+          "status": "passed",
+          "wall_seconds": 781.62,
+          "input_tokens": 2097722,
+          "output_tokens": 186321,
+          "total_tokens": 2284043,
+          "model_calls": 62
+        },
+        "specs": {
+          "status": "passed",
+          "wall_seconds": 1226.806,
+          "input_tokens": 5752839,
+          "output_tokens": 298701,
+          "total_tokens": 6051540,
+          "model_calls": 146
+        },
+        "code": {
+          "status": "passed",
+          "wall_seconds": 447.427,
+          "input_tokens": 3997335,
+          "output_tokens": 93617,
+          "total_tokens": 4090952,
+          "model_calls": 113
+        },
+        "verify": {
+          "status": "passed",
+          "wall_seconds": 0.011,
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "total_tokens": 0,
+          "model_calls": 0
+        }
+      },
+      "builds": {
+        "development_normal": "passed",
+        "development_sanitize": "passed",
+        "development_delivery": "passed",
+        "independent_normal": "passed",
+        "independent_sanitize": "passed"
+      },
+      "phases": {
+        "normal": {
+          "status": "failed",
+          "planned_required": 13,
+          "executed_required": 13,
+          "passed": 11,
+          "failed": 2,
+          "not_executed": 0,
+          "scenarios": [
+            {
+              "id": "smtp_greeting_helo_ehlo",
+              "status": "passed",
+              "elapsed_seconds": 0.004
+            },
+            {
+              "id": "smtp_command_case_and_ehlo_reset",
+              "status": "passed",
+              "elapsed_seconds": 0.024
+            },
+            {
+              "id": "smtp_envelope_recipient_rules",
+              "status": "passed",
+              "elapsed_seconds": 0.025
+            },
+            {
+              "id": "smtp_data_capture_record",
+              "status": "passed",
+              "elapsed_seconds": 0.024
+            },
+            {
+              "id": "smtp_dot_transparency_and_empty_data",
+              "status": "passed",
+              "elapsed_seconds": 0.024
+            },
+            {
+              "id": "smtp_fragmented_and_coalesced_input",
+              "status": "passed",
+              "elapsed_seconds": 0.475
+            },
+            {
+              "id": "smtp_rset_noop_vrfy_quit",
+              "status": "failed",
+              "elapsed_seconds": 0.023,
+              "error": "AssertionError: Expected 252, got 501: b'501 Syntax error in parameters or arguments\\r\\n'"
+            },
+            {
+              "id": "smtp_transaction_reuse_and_isolation",
+              "status": "passed",
+              "elapsed_seconds": 0.024
+            },
+            {
+              "id": "smtp_reply_code_matrix",
+              "status": "failed",
+              "elapsed_seconds": 0.023,
+              "error": "AssertionError: Expected 502, got 500: b'500 Command unrecognized\\r\\n'"
+            },
+            {
+              "id": "smtp_size_limits",
+              "status": "passed",
+              "elapsed_seconds": 0.112
+            },
+            {
+              "id": "smtp_eof_and_aborted_data",
+              "status": "passed",
+              "elapsed_seconds": 0.324
+            },
+            {
+              "id": "smtp_storage_failure",
+              "status": "passed",
+              "elapsed_seconds": 0.023
+            },
+            {
+              "id": "smtp_smtplib_interop",
+              "status": "passed",
+              "elapsed_seconds": 0.025
+            }
+          ]
+        },
+        "sanitize": {
+          "status": "failed",
+          "planned_required": 13,
+          "executed_required": 13,
+          "passed": 11,
+          "failed": 2,
+          "not_executed": 0,
+          "scenarios": [
+            {
+              "id": "smtp_greeting_helo_ehlo",
+              "status": "passed",
+              "elapsed_seconds": 0.031
+            },
+            {
+              "id": "smtp_command_case_and_ehlo_reset",
+              "status": "passed",
+              "elapsed_seconds": 0.03
+            },
+            {
+              "id": "smtp_envelope_recipient_rules",
+              "status": "passed",
+              "elapsed_seconds": 0.03
+            },
+            {
+              "id": "smtp_data_capture_record",
+              "status": "passed",
+              "elapsed_seconds": 0.038
+            },
+            {
+              "id": "smtp_dot_transparency_and_empty_data",
+              "status": "passed",
+              "elapsed_seconds": 0.031
+            },
+            {
+              "id": "smtp_fragmented_and_coalesced_input",
+              "status": "passed",
+              "elapsed_seconds": 0.481
+            },
+            {
+              "id": "smtp_rset_noop_vrfy_quit",
+              "status": "failed",
+              "elapsed_seconds": 0.03,
+              "error": "AssertionError: Expected 252, got 501: b'501 Syntax error in parameters or arguments\\r\\n'"
+            },
+            {
+              "id": "smtp_transaction_reuse_and_isolation",
+              "status": "passed",
+              "elapsed_seconds": 0.031
+            },
+            {
+              "id": "smtp_reply_code_matrix",
+              "status": "failed",
+              "elapsed_seconds": 0.029,
+              "error": "AssertionError: Expected 502, got 500: b'500 Command unrecognized\\r\\n'"
+            },
+            {
+              "id": "smtp_size_limits",
+              "status": "passed",
+              "elapsed_seconds": 0.127
+            },
+            {
+              "id": "smtp_eof_and_aborted_data",
+              "status": "passed",
+              "elapsed_seconds": 0.331
+            },
+            {
+              "id": "smtp_storage_failure",
+              "status": "passed",
+              "elapsed_seconds": 0.03
+            },
+            {
+              "id": "smtp_smtplib_interop",
+              "status": "passed",
+              "elapsed_seconds": 0.031
+            }
+          ]
+        }
+      },
+      "development_report": "round_02/smtp_01/reports/verify_007/report.json",
+      "evaluation_report": "round_02/smtp_01/evaluation/evaluation_001/report.json"
+    },
+    {
+      "id": "round_03/mqtt_01",
+      "round": 3,
+      "protocol": "MQTT",
+      "path": "round_03/mqtt_01",
+      "case": "mqtt_min",
+      "source_record": "source_records/validation/report.json",
+      "source_run_id": "round_01/mqtt_01",
+      "generation": "passed",
+      "evaluation": "passed",
+      "stop_reason": "complete",
+      "fresh": true,
+      "resumed": false,
+      "manual_edits": false,
+      "started_at": "2026-10-07T05:47:02.033304+00:00",
+      "finished_at": "2026-10-07T06:40:51.931039+00:00",
+      "protocol_wall_seconds": 3229.898,
+      "generation_wall_seconds": 3220.277,
+      "spec_repairs": 1,
+      "implementation_repairs": 2,
+      "usage": {
+        "input_tokens": 15509854,
+        "output_tokens": 705783,
+        "total_tokens": 16215637,
+        "model_calls": 415
+      },
+      "stages": {
+        "prepare": {
+          "status": "passed",
+          "wall_seconds": 1.386,
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "total_tokens": 0,
+          "model_calls": 0
+        },
+        "facts": {
+          "status": "passed",
+          "wall_seconds": 132.483,
+          "input_tokens": 1051210,
+          "output_tokens": 28908,
+          "total_tokens": 1080118,
+          "model_calls": 33
+        },
+        "design": {
+          "status": "passed",
+          "wall_seconds": 528.197,
+          "input_tokens": 1824141,
+          "output_tokens": 128199,
+          "total_tokens": 1952340,
+          "model_calls": 48
+        },
+        "specs": {
+          "status": "passed",
+          "wall_seconds": 1534.807,
+          "input_tokens": 6452793,
+          "output_tokens": 355307,
+          "total_tokens": 6808100,
+          "model_calls": 163
+        },
+        "code": {
+          "status": "passed",
+          "wall_seconds": 1023.391,
+          "input_tokens": 6181710,
+          "output_tokens": 193369,
+          "total_tokens": 6375079,
+          "model_calls": 171
+        },
+        "verify": {
+          "status": "passed",
+          "wall_seconds": 0.013,
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "total_tokens": 0,
+          "model_calls": 0
+        }
+      },
+      "builds": {
+        "development_normal": "passed",
+        "development_sanitize": "passed",
+        "development_delivery": "passed",
+        "independent_normal": "passed",
+        "independent_sanitize": "passed"
+      },
+      "phases": {
+        "normal": {
+          "status": "passed",
+          "planned_required": 16,
+          "executed_required": 16,
+          "passed": 16,
+          "failed": 0,
+          "not_executed": 0,
+          "scenarios": [
+            {
+              "id": "mqtt_cross_client_pubsub",
+              "status": "passed",
+              "elapsed_seconds": 0.045
+            },
+            {
+              "id": "mqtt_buffer_before_eof",
+              "status": "passed",
+              "elapsed_seconds": 0.064
+            },
+            {
+              "id": "mqtt_malformed_survival",
+              "status": "passed",
+              "elapsed_seconds": 0.064
+            },
+            {
+              "id": "mqtt_disconnect_handler",
+              "status": "passed",
+              "elapsed_seconds": 0.064
+            },
+            {
+              "id": "mqtt_smoke_test",
+              "status": "passed",
+              "elapsed_seconds": 0.187
+            },
+            {
+              "id": "mqtt_mosquitto_interop",
+              "status": "passed",
+              "elapsed_seconds": 0.094
+            },
+            {
+              "id": "mqtt_connect_semantics",
+              "status": "passed",
+              "elapsed_seconds": 0.024
+            },
+            {
+              "id": "mqtt_suback_contract",
+              "status": "passed",
+              "elapsed_seconds": 0.064
+            },
+            {
+              "id": "mqtt_exact_binary_payload",
+              "status": "passed",
+              "elapsed_seconds": 0.144
+            },
+            {
+              "id": "mqtt_plus_filter_boundaries",
+              "status": "passed",
+              "elapsed_seconds": 0.304
+            },
+            {
+              "id": "mqtt_hash_filter_boundaries",
+              "status": "passed",
+              "elapsed_seconds": 0.184
+            },
+            {
+              "id": "mqtt_fragmented_input",
+              "status": "passed",
+              "elapsed_seconds": 0.745
+            },
+            {
+              "id": "mqtt_coalesced_input",
+              "status": "passed",
+              "elapsed_seconds": 0.064
+            },
+            {
+              "id": "mqtt_ping_exchange",
+              "status": "passed",
+              "elapsed_seconds": 0.064
+            },
+            {
+              "id": "mqtt_disconnect_subscription_cleanup",
+              "status": "passed",
+              "elapsed_seconds": 0.144
+            },
+            {
+              "id": "mqtt_invalid_packet_connection_isolation",
+              "status": "passed",
+              "elapsed_seconds": 0.065
+            }
+          ]
+        },
+        "sanitize": {
+          "status": "passed",
+          "planned_required": 16,
+          "executed_required": 16,
+          "passed": 16,
+          "failed": 0,
+          "not_executed": 0,
+          "scenarios": [
+            {
+              "id": "mqtt_cross_client_pubsub",
+              "status": "passed",
+              "elapsed_seconds": 0.081
+            },
+            {
+              "id": "mqtt_buffer_before_eof",
+              "status": "passed",
+              "elapsed_seconds": 0.074
+            },
+            {
+              "id": "mqtt_malformed_survival",
+              "status": "passed",
+              "elapsed_seconds": 0.079
+            },
+            {
+              "id": "mqtt_disconnect_handler",
+              "status": "passed",
+              "elapsed_seconds": 0.078
+            },
+            {
+              "id": "mqtt_smoke_test",
+              "status": "passed",
+              "elapsed_seconds": 0.202
+            },
+            {
+              "id": "mqtt_mosquitto_interop",
+              "status": "passed",
+              "elapsed_seconds": 0.101
+            },
+            {
+              "id": "mqtt_connect_semantics",
+              "status": "passed",
+              "elapsed_seconds": 0.03
+            },
+            {
+              "id": "mqtt_suback_contract",
+              "status": "passed",
+              "elapsed_seconds": 0.079
+            },
+            {
+              "id": "mqtt_exact_binary_payload",
+              "status": "passed",
+              "elapsed_seconds": 0.158
+            },
+            {
+              "id": "mqtt_plus_filter_boundaries",
+              "status": "passed",
+              "elapsed_seconds": 0.319
+            },
+            {
+              "id": "mqtt_hash_filter_boundaries",
+              "status": "passed",
+              "elapsed_seconds": 0.199
+            },
+            {
+              "id": "mqtt_fragmented_input",
+              "status": "passed",
+              "elapsed_seconds": 0.759
+            },
+            {
+              "id": "mqtt_coalesced_input",
+              "status": "passed",
+              "elapsed_seconds": 0.079
+            },
+            {
+              "id": "mqtt_ping_exchange",
+              "status": "passed",
+              "elapsed_seconds": 0.079
+            },
+            {
+              "id": "mqtt_disconnect_subscription_cleanup",
+              "status": "passed",
+              "elapsed_seconds": 0.151
+            },
+            {
+              "id": "mqtt_invalid_packet_connection_isolation",
+              "status": "passed",
+              "elapsed_seconds": 0.071
+            }
+          ]
+        }
+      },
+      "development_report": "round_03/mqtt_01/reports/verify_009/report.json",
+      "evaluation_report": "round_03/mqtt_01/evaluation/evaluation_001/report.json"
+    },
+    {
+      "id": "round_03/coap_01",
+      "round": 3,
+      "protocol": "CoAP",
+      "path": "round_03/coap_01",
+      "case": "coap_min",
+      "source_record": "source_records/validation/report.json",
+      "source_run_id": "round_01/coap_01",
+      "generation": "passed",
+      "evaluation": "passed",
+      "stop_reason": "complete",
+      "fresh": true,
+      "resumed": false,
+      "manual_edits": false,
+      "started_at": "2026-10-07T05:47:02.034282+00:00",
+      "finished_at": "2026-10-07T06:34:51.860212+00:00",
+      "protocol_wall_seconds": 2869.827,
+      "generation_wall_seconds": 2862.729,
+      "spec_repairs": 0,
+      "implementation_repairs": 0,
+      "usage": {
+        "input_tokens": 15816351,
+        "output_tokens": 618545,
+        "total_tokens": 16434896,
+        "model_calls": 418
+      },
+      "stages": {
+        "prepare": {
+          "status": "passed",
+          "wall_seconds": 0.015,
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "total_tokens": 0,
+          "model_calls": 0
+        },
+        "facts": {
+          "status": "passed",
+          "wall_seconds": 101.974,
+          "input_tokens": 762935,
+          "output_tokens": 23060,
+          "total_tokens": 785995,
+          "model_calls": 22
+        },
+        "design": {
+          "status": "passed",
+          "wall_seconds": 732.43,
+          "input_tokens": 2748901,
+          "output_tokens": 170169,
+          "total_tokens": 2919070,
+          "model_calls": 78
+        },
+        "specs": {
+          "status": "passed",
+          "wall_seconds": 1484.682,
+          "input_tokens": 7762866,
+          "output_tokens": 330067,
+          "total_tokens": 8092933,
+          "model_calls": 192
+        },
+        "code": {
+          "status": "passed",
+          "wall_seconds": 543.616,
+          "input_tokens": 4541649,
+          "output_tokens": 95249,
+          "total_tokens": 4636898,
+          "model_calls": 126
+        },
+        "verify": {
+          "status": "passed",
+          "wall_seconds": 0.012,
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "total_tokens": 0,
+          "model_calls": 0
+        }
+      },
+      "builds": {
+        "development_normal": "passed",
+        "development_sanitize": "passed",
+        "development_delivery": "passed",
+        "independent_normal": "passed",
+        "independent_sanitize": "passed"
+      },
+      "phases": {
+        "normal": {
+          "status": "passed",
+          "planned_required": 10,
+          "executed_required": 10,
+          "passed": 10,
+          "failed": 0,
+          "not_executed": 0,
+          "scenarios": [
+            {
+              "id": "coap_con_get",
+              "status": "passed",
+              "elapsed_seconds": 0.123
+            },
+            {
+              "id": "coap_non_get",
+              "status": "passed",
+              "elapsed_seconds": 0.123
+            },
+            {
+              "id": "coap_binary_put_get",
+              "status": "passed",
+              "elapsed_seconds": 0.124
+            },
+            {
+              "id": "coap_endpoint_tokens",
+              "status": "passed",
+              "elapsed_seconds": 0.124
+            },
+            {
+              "id": "coap_option_boundaries",
+              "status": "passed",
+              "elapsed_seconds": 0.123
+            },
+            {
+              "id": "coap_duplicate_con",
+              "status": "passed",
+              "elapsed_seconds": 0.123
+            },
+            {
+              "id": "coap_empty_con_reset",
+              "status": "passed",
+              "elapsed_seconds": 0.123
+            },
+            {
+              "id": "coap_error_responses",
+              "status": "passed",
+              "elapsed_seconds": 0.123
+            },
+            {
+              "id": "coap_malformed_survival",
+              "status": "passed",
+              "elapsed_seconds": 0.365
+            },
+            {
+              "id": "coap_libcoap_interop",
+              "status": "passed",
+              "elapsed_seconds": 0.128
+            }
+          ]
+        },
+        "sanitize": {
+          "status": "passed",
+          "planned_required": 10,
+          "executed_required": 10,
+          "passed": 10,
+          "failed": 0,
+          "not_executed": 0,
+          "scenarios": [
+            {
+              "id": "coap_con_get",
+              "status": "passed",
+              "elapsed_seconds": 0.138
+            },
+            {
+              "id": "coap_non_get",
+              "status": "passed",
+              "elapsed_seconds": 0.129
+            },
+            {
+              "id": "coap_binary_put_get",
+              "status": "passed",
+              "elapsed_seconds": 0.138
+            },
+            {
+              "id": "coap_endpoint_tokens",
+              "status": "passed",
+              "elapsed_seconds": 0.13
+            },
+            {
+              "id": "coap_option_boundaries",
+              "status": "passed",
+              "elapsed_seconds": 0.137
+            },
+            {
+              "id": "coap_duplicate_con",
+              "status": "passed",
+              "elapsed_seconds": 0.129
+            },
+            {
+              "id": "coap_empty_con_reset",
+              "status": "passed",
+              "elapsed_seconds": 0.138
+            },
+            {
+              "id": "coap_error_responses",
+              "status": "passed",
+              "elapsed_seconds": 0.138
+            },
+            {
+              "id": "coap_malformed_survival",
+              "status": "passed",
+              "elapsed_seconds": 0.38
+            },
+            {
+              "id": "coap_libcoap_interop",
+              "status": "passed",
+              "elapsed_seconds": 0.135
+            }
+          ]
+        }
+      },
+      "development_report": "round_03/coap_01/reports/verify_005/report.json",
+      "evaluation_report": "round_03/coap_01/evaluation/evaluation_001/report.json"
+    },
+    {
+      "id": "round_03/http11_01",
+      "round": 3,
+      "protocol": "HTTP/1.1",
+      "path": "round_03/http11_01",
+      "case": "http11_min",
+      "source_record": "source_records/validation/report.json",
+      "source_run_id": "round_01/http11_01",
+      "generation": "passed",
+      "evaluation": "passed",
+      "stop_reason": "complete",
+      "fresh": true,
+      "resumed": false,
+      "manual_edits": false,
+      "started_at": "2026-10-07T05:47:02.034927+00:00",
+      "finished_at": "2026-10-07T06:38:05.139374+00:00",
+      "protocol_wall_seconds": 3063.105,
+      "generation_wall_seconds": 3042.61,
+      "spec_repairs": 0,
+      "implementation_repairs": 0,
+      "usage": {
+        "input_tokens": 15903291,
+        "output_tokens": 664827,
+        "total_tokens": 16568118,
+        "model_calls": 413
+      },
+      "stages": {
+        "prepare": {
+          "status": "passed",
+          "wall_seconds": 0.03,
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "total_tokens": 0,
+          "model_calls": 0
+        },
+        "facts": {
+          "status": "passed",
+          "wall_seconds": 142.341,
+          "input_tokens": 968269,
+          "output_tokens": 30821,
+          "total_tokens": 999090,
+          "model_calls": 31
+        },
+        "design": {
+          "status": "passed",
+          "wall_seconds": 581.981,
+          "input_tokens": 1424757,
+          "output_tokens": 137524,
+          "total_tokens": 1562281,
+          "model_calls": 41
+        },
+        "specs": {
+          "status": "passed",
+          "wall_seconds": 1680.709,
+          "input_tokens": 8503673,
+          "output_tokens": 376301,
+          "total_tokens": 8879974,
+          "model_calls": 203
+        },
+        "code": {
+          "status": "passed",
+          "wall_seconds": 637.534,
+          "input_tokens": 5006592,
+          "output_tokens": 120181,
+          "total_tokens": 5126773,
+          "model_calls": 138
+        },
+        "verify": {
+          "status": "passed",
+          "wall_seconds": 0.015,
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "total_tokens": 0,
+          "model_calls": 0
+        }
+      },
+      "builds": {
+        "development_normal": "passed",
+        "development_sanitize": "passed",
+        "development_delivery": "passed",
+        "independent_normal": "passed",
+        "independent_sanitize": "passed"
+      },
+      "phases": {
+        "normal": {
+          "status": "passed",
+          "planned_required": 13,
+          "executed_required": 13,
+          "passed": 13,
+          "failed": 0,
+          "not_executed": 0,
+          "scenarios": [
+            {
+              "id": "http_get_hello_contract",
+              "status": "passed",
+              "elapsed_seconds": 0.218
+            },
+            {
+              "id": "http_query_case_and_decoding",
+              "status": "passed",
+              "elapsed_seconds": 0.237
+            },
+            {
+              "id": "http_value_put_get_contract",
+              "status": "passed",
+              "elapsed_seconds": 0.238
+            },
+            {
+              "id": "http_post_echo_both_framings",
+              "status": "passed",
+              "elapsed_seconds": 0.237
+            },
+            {
+              "id": "http_head_semantics",
+              "status": "passed",
+              "elapsed_seconds": 0.237
+            },
+            {
+              "id": "http_content_length_edges",
+              "status": "passed",
+              "elapsed_seconds": 0.687
+            },
+            {
+              "id": "http_chunked_decoding_details",
+              "status": "passed",
+              "elapsed_seconds": 0.387
+            },
+            {
+              "id": "http_fragmentation_and_pipeline",
+              "status": "passed",
+              "elapsed_seconds": 0.237
+            },
+            {
+              "id": "http_persistent_and_connection_close",
+              "status": "passed",
+              "elapsed_seconds": 0.637
+            },
+            {
+              "id": "http_method_and_path_errors",
+              "status": "passed",
+              "elapsed_seconds": 0.237
+            },
+            {
+              "id": "http_malformed_rejection_policy",
+              "status": "passed",
+              "elapsed_seconds": 3.043
+            },
+            {
+              "id": "http_size_limits",
+              "status": "passed",
+              "elapsed_seconds": 1.038
+            },
+            {
+              "id": "http_http_client_interop",
+              "status": "passed",
+              "elapsed_seconds": 0.237
+            }
+          ]
+        },
+        "sanitize": {
+          "status": "passed",
+          "planned_required": 13,
+          "executed_required": 13,
+          "passed": 13,
+          "failed": 0,
+          "not_executed": 0,
+          "scenarios": [
+            {
+              "id": "http_get_hello_contract",
+              "status": "passed",
+              "elapsed_seconds": 0.239
+            },
+            {
+              "id": "http_query_case_and_decoding",
+              "status": "passed",
+              "elapsed_seconds": 0.238
+            },
+            {
+              "id": "http_value_put_get_contract",
+              "status": "passed",
+              "elapsed_seconds": 0.239
+            },
+            {
+              "id": "http_post_echo_both_framings",
+              "status": "passed",
+              "elapsed_seconds": 0.239
+            },
+            {
+              "id": "http_head_semantics",
+              "status": "passed",
+              "elapsed_seconds": 0.238
+            },
+            {
+              "id": "http_content_length_edges",
+              "status": "passed",
+              "elapsed_seconds": 0.687
+            },
+            {
+              "id": "http_chunked_decoding_details",
+              "status": "passed",
+              "elapsed_seconds": 0.388
+            },
+            {
+              "id": "http_fragmentation_and_pipeline",
+              "status": "passed",
+              "elapsed_seconds": 0.239
+            },
+            {
+              "id": "http_persistent_and_connection_close",
+              "status": "passed",
+              "elapsed_seconds": 0.638
+            },
+            {
+              "id": "http_method_and_path_errors",
+              "status": "passed",
+              "elapsed_seconds": 0.239
+            },
+            {
+              "id": "http_malformed_rejection_policy",
+              "status": "passed",
+              "elapsed_seconds": 3.045
+            },
+            {
+              "id": "http_size_limits",
+              "status": "passed",
+              "elapsed_seconds": 1.039
+            },
+            {
+              "id": "http_http_client_interop",
+              "status": "passed",
+              "elapsed_seconds": 0.238
+            }
+          ]
+        }
+      },
+      "development_report": "round_03/http11_01/reports/verify_007/report.json",
+      "evaluation_report": "round_03/http11_01/evaluation/evaluation_001/report.json"
+    },
+    {
+      "id": "round_03/smtp_01",
+      "round": 3,
+      "protocol": "SMTP",
+      "path": "round_03/smtp_01",
+      "case": "smtp_min",
+      "source_record": "source_records/validation/report.json",
+      "source_run_id": "round_01/smtp_01",
+      "generation": "passed",
+      "evaluation": "failed",
+      "stop_reason": "complete",
+      "fresh": true,
+      "resumed": false,
+      "manual_edits": false,
+      "started_at": "2026-10-07T05:47:02.035391+00:00",
+      "finished_at": "2026-10-07T06:40:24.485917+00:00",
+      "protocol_wall_seconds": 3202.451,
+      "generation_wall_seconds": 3195.9739999999997,
+      "spec_repairs": 0,
+      "implementation_repairs": 0,
+      "usage": {
+        "input_tokens": 16620954,
+        "output_tokens": 651088,
+        "total_tokens": 17272042,
+        "model_calls": 432
+      },
+      "stages": {
+        "prepare": {
+          "status": "passed",
+          "wall_seconds": 0.013,
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "total_tokens": 0,
+          "model_calls": 0
+        },
+        "facts": {
+          "status": "passed",
+          "wall_seconds": 145.976,
+          "input_tokens": 793279,
+          "output_tokens": 32905,
+          "total_tokens": 826184,
+          "model_calls": 26
+        },
+        "design": {
+          "status": "passed",
+          "wall_seconds": 543.273,
+          "input_tokens": 1804367,
+          "output_tokens": 133910,
+          "total_tokens": 1938277,
+          "model_calls": 50
+        },
+        "specs": {
+          "status": "passed",
+          "wall_seconds": 1457.779,
+          "input_tokens": 7391642,
+          "output_tokens": 318204,
+          "total_tokens": 7709846,
+          "model_calls": 180
+        },
+        "code": {
+          "status": "passed",
+          "wall_seconds": 1048.918,
+          "input_tokens": 6631666,
+          "output_tokens": 166069,
+          "total_tokens": 6797735,
+          "model_calls": 176
+        },
+        "verify": {
+          "status": "passed",
+          "wall_seconds": 0.015,
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "total_tokens": 0,
+          "model_calls": 0
+        }
+      },
+      "builds": {
+        "development_normal": "passed",
+        "development_sanitize": "passed",
+        "development_delivery": "passed",
+        "independent_normal": "passed",
+        "independent_sanitize": "passed"
+      },
+      "phases": {
+        "normal": {
+          "status": "failed",
+          "planned_required": 13,
+          "executed_required": 13,
+          "passed": 12,
+          "failed": 1,
+          "not_executed": 0,
+          "scenarios": [
+            {
+              "id": "smtp_greeting_helo_ehlo",
+              "status": "passed",
+              "elapsed_seconds": 0.004
+            },
+            {
+              "id": "smtp_command_case_and_ehlo_reset",
+              "status": "passed",
+              "elapsed_seconds": 0.024
+            },
+            {
+              "id": "smtp_envelope_recipient_rules",
+              "status": "passed",
+              "elapsed_seconds": 0.024
+            },
+            {
+              "id": "smtp_data_capture_record",
+              "status": "passed",
+              "elapsed_seconds": 0.023
+            },
+            {
+              "id": "smtp_dot_transparency_and_empty_data",
+              "status": "passed",
+              "elapsed_seconds": 0.024
+            },
+            {
+              "id": "smtp_fragmented_and_coalesced_input",
+              "status": "passed",
+              "elapsed_seconds": 0.474
+            },
+            {
+              "id": "smtp_rset_noop_vrfy_quit",
+              "status": "passed",
+              "elapsed_seconds": 0.024
+            },
+            {
+              "id": "smtp_transaction_reuse_and_isolation",
+              "status": "passed",
+              "elapsed_seconds": 0.025
+            },
+            {
+              "id": "smtp_reply_code_matrix",
+              "status": "failed",
+              "elapsed_seconds": 0.024,
+              "error": "AssertionError: Expected 502, got 500: b'500 syntax error\\r\\n'"
+            },
+            {
+              "id": "smtp_size_limits",
+              "status": "passed",
+              "elapsed_seconds": 0.113
+            },
+            {
+              "id": "smtp_eof_and_aborted_data",
+              "status": "passed",
+              "elapsed_seconds": 0.324
+            },
+            {
+              "id": "smtp_storage_failure",
+              "status": "passed",
+              "elapsed_seconds": 0.023
+            },
+            {
+              "id": "smtp_smtplib_interop",
+              "status": "passed",
+              "elapsed_seconds": 0.025
+            }
+          ]
+        },
+        "sanitize": {
+          "status": "failed",
+          "planned_required": 13,
+          "executed_required": 13,
+          "passed": 12,
+          "failed": 1,
+          "not_executed": 0,
+          "scenarios": [
+            {
+              "id": "smtp_greeting_helo_ehlo",
+              "status": "passed",
+              "elapsed_seconds": 0.031
+            },
+            {
+              "id": "smtp_command_case_and_ehlo_reset",
+              "status": "passed",
+              "elapsed_seconds": 0.031
+            },
+            {
+              "id": "smtp_envelope_recipient_rules",
+              "status": "passed",
+              "elapsed_seconds": 0.031
+            },
+            {
+              "id": "smtp_data_capture_record",
+              "status": "passed",
+              "elapsed_seconds": 0.03
+            },
+            {
+              "id": "smtp_dot_transparency_and_empty_data",
+              "status": "passed",
+              "elapsed_seconds": 0.031
+            },
+            {
+              "id": "smtp_fragmented_and_coalesced_input",
+              "status": "passed",
+              "elapsed_seconds": 0.49
+            },
+            {
+              "id": "smtp_rset_noop_vrfy_quit",
+              "status": "passed",
+              "elapsed_seconds": 0.03
+            },
+            {
+              "id": "smtp_transaction_reuse_and_isolation",
+              "status": "passed",
+              "elapsed_seconds": 0.031
+            },
+            {
+              "id": "smtp_reply_code_matrix",
+              "status": "failed",
+              "elapsed_seconds": 0.038,
+              "error": "AssertionError: Expected 502, got 500: b'500 syntax error\\r\\n'"
+            },
+            {
+              "id": "smtp_size_limits",
+              "status": "passed",
+              "elapsed_seconds": 0.127
+            },
+            {
+              "id": "smtp_eof_and_aborted_data",
+              "status": "passed",
+              "elapsed_seconds": 0.339
+            },
+            {
+              "id": "smtp_storage_failure",
+              "status": "passed",
+              "elapsed_seconds": 0.038
+            },
+            {
+              "id": "smtp_smtplib_interop",
+              "status": "passed",
+              "elapsed_seconds": 0.031
+            }
+          ]
+        }
+      },
+      "development_report": "round_03/smtp_01/reports/verify_008/report.json",
+      "evaluation_report": "round_03/smtp_01/evaluation/evaluation_001/report.json"
+    }
+  ],
+  "relocation_integrity": {
+    "organized_on": "2026-10-08 (UTC+8)",
+    "all_original_entries_preserved": true,
+    "all_original_bytes_and_modes_unchanged": true,
+    "original_files": 26401,
+    "original_directories": 1837,
+    "original_symlinks": 0,
+    "original_bytes": 909209001,
+    "inventory_sha256": "1f566635cae745dcd1be6339fb4ccbb4ab5f64c5e3456c0a565fcb64aac9e40f",
+    "details": "source_records/relocation.json"
+  }
+}

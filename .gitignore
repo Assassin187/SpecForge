@@ -9,4 +9,10 @@ dist/
 *.so
 *.a
 .DS_Store
-runs/
+runs/*
+!runs/paper/
+runs/paper/*
+!runs/paper/README.md
+!runs/paper/summary.json
+!runs/paper/runs.csv
+!runs/paper/stages.csv

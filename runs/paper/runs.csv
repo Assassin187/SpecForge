@@ -1,0 +1,13 @@
+round,protocol,generation,evaluation,development_normal,development_sanitize,development_delivery,independent_normal,independent_sanitize,normal_passed,normal_required,normal_executed,sanitize_passed,sanitize_required,sanitize_executed,input_tokens,output_tokens,total_tokens,model_calls,generation_wall_seconds,protocol_wall_seconds,spec_repairs,implementation_repairs,path,stop_reason
+1,MQTT,passed,passed,passed,passed,passed,passed,passed,16,16,16,16,16,16,13290557,595897,13886454,359,2549.942,2557.832,0,0,round_01/mqtt_01,complete
+1,CoAP,passed,passed,passed,passed,passed,passed,passed,10,10,10,10,10,10,18879240,621503,19500743,484,2756.887,2767.899,1,1,round_01/coap_01,complete
+1,HTTP/1.1,passed,failed,passed,passed,passed,passed,passed,9,13,13,9,13,13,18353102,684535,19037637,472,2964.447,2971.597,0,0,round_01/http11_01,complete
+1,SMTP,passed,failed,passed,passed,passed,passed,passed,12,13,13,12,13,13,20178039,754855,20932894,547,3503.582,3510.665,1,3,round_01/smtp_01,complete
+2,MQTT,passed,passed,passed,passed,passed,passed,passed,16,16,16,16,16,16,13302732,657864,13960596,355,2740.248,2748.489,0,0,round_02/mqtt_01,complete
+2,CoAP,failed,not_executed,not_executed,not_executed,not_executed,not_executed,not_executed,0,10,0,0,10,0,10801013,588696,11389709,283,2353.671,2354.487,0,0,round_02/coap_01,specs_failed
+2,HTTP/1.1,passed,passed,passed,passed,passed,passed,passed,13,13,13,13,13,13,19099209,725311,19824520,511,3233.276,3249.608,0,0,round_02/http11_01,complete
+2,SMTP,passed,failed,passed,passed,passed,passed,passed,11,13,13,11,13,13,12671012,615957,13286969,350,2613.225,2621.179,0,0,round_02/smtp_01,complete
+3,MQTT,passed,passed,passed,passed,passed,passed,passed,16,16,16,16,16,16,15509854,705783,16215637,415,3220.277,3229.898,1,2,round_03/mqtt_01,complete
+3,CoAP,passed,passed,passed,passed,passed,passed,passed,10,10,10,10,10,10,15816351,618545,16434896,418,2862.729,2869.827,0,0,round_03/coap_01,complete
+3,HTTP/1.1,passed,passed,passed,passed,passed,passed,passed,13,13,13,13,13,13,15903291,664827,16568118,413,3042.61,3063.105,0,0,round_03/http11_01,complete
+3,SMTP,passed,failed,passed,passed,passed,passed,passed,12,13,13,12,13,13,16620954,651088,17272042,432,3195.9739999999997,3202.451,0,0,round_03/smtp_01,complete

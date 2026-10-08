@@ -5,6 +5,9 @@
 `b8a9130d23cd57c975f2f435bb1b1c2304cfee15`；框架、提示词、Schema、模型配置、
 四协议输入和验收器保持该稳定提交的原始内容。版本证据及历史限制见 [BASELINE.md](BASELINE.md)。
 
+论文实验数据统一为三轮四协议，共 12 次生成尝试，见
+[三轮四协议实验数据](runs/paper/README.md)。
+
 完整机制、能力边界和四轮真实实验（包含整理后的最新一轮），见
 [SpecForge 项目说明](PROJECT_OVERVIEW.md)。
 
@@ -36,11 +39,11 @@
 | `tests/` | 基线框架测试 |
 | `assets/mqtt_reference/bundle/` | 框架测试必需的规格夹具；fresh 生成不使用它 |
 | `runs/cost_optimization/20261002T125031Z_json_fields/` | 历史 R3 前序实验，版本与最终基线有差异 |
-| `runs/stability/20261002T160137Z_two_rounds/` | 最终基线的两轮冻结实验 |
-| `runs/validation/` | 本次清理后的一轮四协议验证及整理审计 |
+| `runs/paper/` | 三轮四协议统一数据集，包含原始数据、来源审计和联合汇总 |
 | `pyproject.toml` | Python 版本、固定依赖和 CLI 入口 |
 
-历史记录保留原目录名和原始内容。不得将前序 R3 误记为最终基线实验；不得跨版本
+三轮数据按 `round_01`、`round_02`、`round_03` 统一组织，原始记录内容保持不变，
+历史位置映射保存在数据集索引中。不得将前序 R3 误记为最终基线实验；不得跨版本
 恢复旧生成任务。此前 Token 优化和其他历史资产已备份移出当前工作区。
 
 ## 环境
