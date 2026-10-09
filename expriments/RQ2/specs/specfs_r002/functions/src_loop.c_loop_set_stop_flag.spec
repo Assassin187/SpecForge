@@ -1,0 +1,64 @@
+[PROMPT]
+Publish the address of the volatile sig_atomic_t object that a signal handler writes, so loop_run() can stop without the handler touching any other state.
+
+[RELY]
+STRUCT:
+  - NAME:
+struct loop
+    ROLE:
+reactor whose stop_flag field records the borrowed flag address
+FUNC:
+
+VAR:
+  - NAME:
+struct loop
+    ROLE:
+the field is only a pointer copy; the pointed-to object stays owned by main() (g_stop)
+
+[GUARANTEE]
+RAW:
+void loop_set_stop_flag(struct loop *l, volatile sig_atomic_t *stop_flag)
+NAME:
+loop_set_stop_flag
+RETURN:
+void
+PARAMS:
+  - TYPE:
+struct loop *
+    NAME:
+l
+    NULLABLE:
+true
+    OWNERSHIP:
+BORROWED
+  - TYPE:
+volatile sig_atomic_t *
+    NAME:
+stop_flag
+    NULLABLE:
+true
+    OWNERSHIP:
+BORROWED
+
+[SPECIFICATION]
+FUNCTION_TYPE:
+ALGORITHM
+LOGIC:
+  INPUT:
+l: reactor created by loop_create() (NULL tolerated). stop_flag: address of a volatile sig_atomic_t owned by the caller and also written by a signal handler; NULL clears the pointer.
+  ACTION:
+1. If l == NULL return without storing anything (there is no loop state to publish into). 2. l->stop_flag = stop_flag. No dereference of stop_flag happens here and no signal is installed, so this call is safe both before and after signal-handler installation; passing NULL removes a previously published flag.
+  OUTPUT:
+void. After the call loop_run() reads *l->stop_flag (when non-NULL) once per batch and returns 0 when it becomes non-zero; the flag object itself is never modified or freed by the loop.
+  INVARIANTS_USED:
+    - signal handlers only store into a volatile sig_atomic_t object; all cleanup is performed by ordinary code after loop_run() returns
+    - the flagged object must outlive the running loop because the loop only borrows its address
+    - the loop never allocates or frees the flag, so no ownership transfers
+  PRECONDITION:
+stop_flag, when non-NULL, points to a volatile sig_atomic_t object that stays valid for the whole loop_run() call.
+  POSTCONDITION:
+l->stop_flag is exactly the pointer passed in; a NULL argument leaves the loop with no external stop source (only loop_stop() can stop it).
+  IDEMPOTENT:
+true
+  THREAD_SAFETY:
+Called by ordinary code before loop_run(); the stored object is written asynchronously by a signal handler, which is why its type is volatile sig_atomic_t.

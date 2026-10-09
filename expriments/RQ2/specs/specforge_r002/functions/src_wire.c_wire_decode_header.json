@@ -1,0 +1,95 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "src/wire.c/wire_decode_header",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "Frame one MQTT control packet from the stream buffer: parse type, flags and Remaining Length, and report whether the whole packet is buffered.",
+  "SIGNATURE": {
+    "RAW": "enum wire_status wire_decode_header(const uint8_t *buf, size_t len, struct wire_header *out)",
+    "NAME": "wire_decode_header",
+    "RETURN": "enum wire_status",
+    "PARAMS": [
+      {"TYPE": "const uint8_t *", "NAME": "buf", "NULLABLE": true, "OWNERSHIP": "BORROWED"},
+      {"TYPE": "size_t", "NAME": "len", "NULLABLE": false, "OWNERSHIP": "BORROWED"},
+      {"TYPE": "struct wire_header *", "NAME": "out", "NULLABLE": true, "OWNERSHIP": "BORROWED"}
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {"NAME": "struct wire_header", "ROLE": "receives type, flags, header length, Remaining Length and total frame size"}
+    ],
+    "FUNC": [],
+    "VAR": [
+      {"NAME": "WIRE_MAX_REMAINING_LENGTH", "ROLE": "268435455 is the largest legal Remaining Length"},
+      {"NAME": "WIRE_MAX_REMAINING_LENGTH_BYTES", "ROLE": "at most 4 Remaining Length bytes"}
+    ]
+  },
+  "LOGIC": {
+    "INPUT": "buf holding len unconsumed stream bytes for one connection; out receiving the framing numbers.",
+    "ACTION": "1) If buf is NULL or out is NULL return WIRE_INVALID. 2) If len < 1 return WIRE_INCOMPLETE with out untouched (nothing decoded yet). 3) type = buf[0] >> 4; flags = buf[0] & 0x0F. If type == 0 or type == 15 return WIRE_INVALID with out untouched (reserved control packet types, facts F002/F003). 4) Parse the Remaining Length field starting at index 1, multiplier 1 then 128, 16384, 2097152; before reading byte number 1+i require 1+i < len, otherwise return WIRE_INCOMPLETE with out untouched (the Remaining Length field itself is unfinished). Accumulate (byte & 0x7F) * multiplier and stop when the continuation bit 0x80 is clear. If the fourth byte still has the continuation bit set return WIRE_INVALID (a Remaining Length field longer than 4 bytes is malformed). 5) out->type = type; out->flags = flags; out->remaining_length = value; out->header_len = 1 + encoded_byte_count (2..5); out->total_len = out->header_len + value (value <= 268435455 so no size_t overflow). 6) Return WIRE_COMPLETE when len >= out->total_len, otherwise WIRE_INCOMPLETE.",
+    "OUTPUT": "WIRE_COMPLETE when the buffer holds at least total_len bytes and out describes the packet; WIRE_INCOMPLETE when more bytes are needed - out is filled once the Remaining Length field parsed (so the caller may size a read request from total_len) and untouched while the Remaining Length field itself is unfinished; WIRE_INVALID for a reserved type or a Remaining Length field wider than 4 bytes, with out untouched. The caller consumes exactly total_len bytes for one packet.",
+    "INVARIANTS_USED": ["control packet type 0 and 15 are reserved and forbidden", "Remaining Length counts every byte after the Remaining Length field", "at most 4 Remaining Length bytes are legal"],
+    "PRECONDITION": "buf points to len readable bytes of the connection's stream (a slice may contain a partial packet, one packet or several).",
+    "POSTCONDITION": "No byte of buf is modified; the caller's buffer length is unchanged.",
+    "IDEMPOTENT": true,
+    "THREAD_SAFETY": "Pure function of its arguments."
+  },
+  "WIRE_MAPPING": [
+    {
+      "PACKET": "all control packets",
+      "WIRE_FIELD": "byte 1, bits 7-4 (type) and bits 3-0 (flags)",
+      "STRATEGY": "store_in_field",
+      "TARGET": "wire_header.type / wire_header.flags",
+      "SOURCE": "first stream byte",
+      "RULE": "type 1..14 stored, values 0 and 15 rejected as WIRE_INVALID; the low 4 bits are stored verbatim and validated per packet type by the packet decoder (CONNECT/CONNACK/PUBACK/PUBREC/PUBCOMP/SUBACK/UNSUBACK/PINGREQ/PINGRESP/DISCONNECT flags 0, PUBREL 2, SUBSCRIBE 2, UNSUBSCRIBE 2, PUBLISH bit3 DUP, bits2-1 QoS, bit0 RETAIN)."
+    },
+    {
+      "PACKET": "all control packets",
+      "WIRE_FIELD": "Remaining Length",
+      "STRATEGY": "store_in_field",
+      "TARGET": "wire_header.remaining_length / header_len / total_len",
+      "RULE": "7 bits per byte, low group first; at most 4 bytes, so a fifth continuation byte is rejected as WIRE_INVALID. total_len = header_len + remaining_length is the exact number of bytes the caller consumes for this packet."
+    }
+  ],
+  "TEST_VECTORS": [
+    {
+      "NAME": "multibyte_remaining_length_is_framed_exactly",
+      "INPUT": {"packet_prefix_hex": "31 C1 02", "bytes_buffered": 324},
+      "EXPECT": {
+        "status": "WIRE_COMPLETE",
+        "type": 3,
+        "flags": 1,
+        "remaining_length": 321,
+        "header_len": 3,
+        "total_len": 324,
+        "derivation": "0xC1 = 1100 0001 -> continue, low 7 bits 0x41 = 65; 0x02 -> value = 65 + 2*128 = 321; total = 3 + 321 = 324"
+      },
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": ["src/wire.c/wire_decode_header"]
+    },
+    {
+      "NAME": "incomplete_frames_and_invalid_framing",
+      "INPUT": {"cases": [{"hex": "30", "note": "only the fixed header byte"}, {"hex": "30 FF", "note": "Remaining Length field unfinished"}, {"hex": "30 05 01 02 03", "note": "declared body incomplete"}, {"hex": "30 FF FF FF FF", "note": "fifth Remaining Length byte"}, {"hex": "00 00", "note": "reserved type 0"}, {"hex": "F0 00", "note": "reserved type 15"}]},
+      "EXPECT": {
+        "status": ["WIRE_INCOMPLETE", "WIRE_INCOMPLETE", "WIRE_INCOMPLETE", "WIRE_INVALID", "WIRE_INVALID", "WIRE_INVALID"],
+        "out_untouched_for": ["30", "30 FF", "00 00", "F0 00"],
+        "out_filled_for": ["30 05 01 02 03: remaining_length 5, header_len 2, total_len 7"]
+      },
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": ["src/wire.c/wire_decode_header"]
+    },
+    {
+      "NAME": "maximum_and_non_minimal_remaining_length_boundaries",
+      "INPUT": {"cases": [{"hex": "30 FF FF FF 7F", "buffered": 5}, {"hex": "30 80 80 80 00", "buffered": 5}]},
+      "EXPECT": {
+        "status": ["WIRE_INCOMPLETE", "WIRE_COMPLETE"],
+        "remaining_length": [268435455, 0],
+        "header_len": [5, 5],
+        "total_len": [268435460, 5],
+        "derivation": "0x7F<<21 | 0x7F<<14 | 0x7F<<7 | 0x7F = 268435455; 0x80 0x80 0x80 0x00 is a legal (non-minimal) encoding of 0",
+        "note": "out is filled in both cases: only the buffered byte count differs"
+      },
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": ["src/wire.c/wire_decode_header"]
+    }
+  ]
+}

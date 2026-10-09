@@ -1,0 +1,386 @@
+{
+  "KIND": "FILE_SPEC",
+  "FILE": {
+    "TRACE_ID": "src/net.c",
+    "LANG": "C99",
+    "ROLE": "POSIX TCP helper layer: strict <port> parsing, nonblocking close-on-exec listener creation, accept() plus explicit fcntl mode setup for every accepted descriptormode for every peer, EINTR-safe partial read/write helpers and an idempotent close.",
+    "DOC_REF": [
+      "REQUIREMENTS.md:3",
+      "REQUIREMENTS.md:14"
+    ]
+  },
+  "HEADER": {
+    "PATH": "src/net.h",
+    "DEPENDENCY": [],
+    "SYSTEM_DEPENDENCY": [
+      "stddef.h",
+      "stdint.h"
+    ],
+    "DATA": [
+      {
+        "NAME": "enum net_io_result",
+        "KIND": "TYPE",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "Outcome of one nonblocking read/write attempt",
+        "TYPE_SPEC": {
+          "TYPE_KIND": "ENUM",
+          "ENUM_VALUES": [
+            {
+              "NAME": "NET_IO_PROGRESS",
+              "VALUE": 1,
+              "ROLE": "Bytes were transferred"
+            },
+            {
+              "NAME": "NET_IO_WOULD_BLOCK",
+              "VALUE": 0,
+              "ROLE": "No progress possible right now"
+            },
+            {
+              "NAME": "NET_IO_CLOSED",
+              "VALUE": -1,
+              "ROLE": "Read only: orderly peer close"
+            },
+            {
+              "NAME": "NET_IO_ERROR",
+              "VALUE": -2,
+              "ROLE": "Fatal error on this descriptor"
+            }
+          ]
+        }
+      }
+    ],
+    "INTERFACE": [
+      {
+        "SIGNATURE": "int net_parse_port(const char *text, uint16_t *out_port)",
+        "NAME": "net_parse_port",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "Parse the <port> argv argument",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "int net_listen(uint16_t port, int backlog)",
+        "NAME": "net_listen",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "Create a nonblocking close-on-exec TCP listener",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "int net_accept(int listener_fd, int *out_fd)",
+        "NAME": "net_accept",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "Accept a nonblocking close-on-exec peer descriptor",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "enum net_io_result net_read_some(int fd, uint8_t *buf, size_t cap, size_t *out_n)",
+        "NAME": "net_read_some",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "One bounded nonblocking read",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "enum net_io_result net_write_some(int fd, const uint8_t *buf, size_t len, size_t *out_n)",
+        "NAME": "net_write_some",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "One bounded nonblocking write without SIGPIPE",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "void net_close_fd(int *fd)",
+        "NAME": "net_close_fd",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "Idempotent descriptor close",
+        "VISIBILITY": "public"
+      }
+    ]
+  },
+  "SOURCE": {
+    "PATH": "src/net.c",
+    "DEPENDENCY": [
+      "src/net.h"
+    ],
+    "SYSTEM_DEPENDENCY": [
+      "sys/types.h",
+      "sys/socket.h",
+      "netinet/in.h",
+      "arpa/inet.h",
+      "unistd.h",
+      "fcntl.h",
+      "errno.h",
+      "stddef.h",
+      "stdint.h",
+      "string.h"
+    ],
+    "DATA": [],
+    "INTERFACE": [
+      {
+        "TRACE_ID": "src/net.c/net_parse_port",
+        "SIGNATURE": "int net_parse_port(const char *text, uint16_t *out_port)",
+        "NAME": "net_parse_port",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "Decimal-only, whitespace-free, overflow-checked parse into 1..65535",
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "src/net.c/net_listen",
+        "SIGNATURE": "int net_listen(uint16_t port, int backlog)",
+        "NAME": "net_listen",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "socket with SOCK_NONBLOCK|SOCK_CLOEXEC, SO_REUSEADDR, bind INADDR_ANY, listen",
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "src/net.c/net_accept",
+        "SIGNATURE": "int net_accept(int listener_fd, int *out_fd)",
+        "NAME": "net_accept",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "accept() then explicit fcntl O_NONBLOCK|FD_CLOEXEC with explicit would-block mapping",
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "src/net.c/net_read_some",
+        "SIGNATURE": "enum net_io_result net_read_some(int fd, uint8_t *buf, size_t cap, size_t *out_n)",
+        "NAME": "net_read_some",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "recv loop honouring EINTR, mapping 0 bytes to NET_IO_CLOSED",
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "src/net.c/net_write_some",
+        "SIGNATURE": "enum net_io_result net_write_some(int fd, const uint8_t *buf, size_t len, size_t *out_n)",
+        "NAME": "net_write_some",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "send with MSG_NOSIGNAL honouring EINTR and partial writes",
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "src/net.c/net_close_fd",
+        "SIGNATURE": "void net_close_fd(int *fd)",
+        "NAME": "net_close_fd",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "close(*fd) when *fd >= 0 then set *fd = -1",
+        "VISIBILITY": "public"
+      }
+    ]
+  },
+  "PUBLIC_SYMBOLS": [
+    {
+      "NAME": "enum net_io_result",
+      "KIND": "TYPE",
+      "ROLE": "Read/write outcome"
+    },
+    {
+      "NAME": "net_parse_port",
+      "KIND": "FUNC",
+      "SIGNATURE": "int net_parse_port(const char *text, uint16_t *out_port)",
+      "ROLE": "Parse port"
+    },
+    {
+      "NAME": "net_listen",
+      "KIND": "FUNC",
+      "SIGNATURE": "int net_listen(uint16_t port, int backlog)",
+      "ROLE": "Create listener"
+    },
+    {
+      "NAME": "net_accept",
+      "KIND": "FUNC",
+      "SIGNATURE": "int net_accept(int listener_fd, int *out_fd)",
+      "ROLE": "Accept peer"
+    },
+    {
+      "NAME": "net_read_some",
+      "KIND": "FUNC",
+      "SIGNATURE": "enum net_io_result net_read_some(int fd, uint8_t *buf, size_t cap, size_t *out_n)",
+      "ROLE": "Partial read"
+    },
+    {
+      "NAME": "net_write_some",
+      "KIND": "FUNC",
+      "SIGNATURE": "enum net_io_result net_write_some(int fd, const uint8_t *buf, size_t len, size_t *out_n)",
+      "ROLE": "Partial write"
+    },
+    {
+      "NAME": "net_close_fd",
+      "KIND": "FUNC",
+      "SIGNATURE": "void net_close_fd(int *fd)",
+      "ROLE": "Close descriptor"
+    }
+  ],
+  "TEST_VECTORS": [
+    {
+      "NAME": "parse_port_accepts_decimal_in_range",
+      "INPUT": {
+        "args": [
+          "1883",
+          "1",
+          "65535",
+          "01883",
+          "8080"
+        ]
+      },
+      "EXPECT": {
+        "return": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "port": [
+          1883,
+          1,
+          65535,
+          1883,
+          8080
+        ]
+      },
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": [
+        "src/net.c/net_parse_port"
+      ]
+    },
+    {
+      "NAME": "parse_port_rejects_zero_overflow_sign_space_and_junk",
+      "INPUT": {
+        "args": [
+          "0",
+          "65536",
+          "-1",
+          "",
+          "1883 ",
+          " 1883",
+          "+80",
+          "18a3",
+          "8.8",
+          "99999999999",
+          "0x10"
+        ]
+      },
+      "EXPECT": {
+        "return": [
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1
+        ],
+        "out_port_untouched": true
+      },
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": [
+        "src/net.c/net_parse_port"
+      ]
+    },
+    {
+      "NAME": "listener_and_accepted_peer_modes_are_established_at_creation",
+      "INPUT": {
+        "runtime": [
+          "net_listen(0, 64)",
+          "getsockname to learn the ephemeral port",
+          "client connect() to that port",
+          "net_accept(listener, &peer)",
+          "fcntl(peer, F_GETFL) and F_GETFD"
+        ]
+      },
+      "EXPECT": {
+        "listen_fd_ge_0": true,
+        "listener_has_O_NONBLOCK": true,
+        "listener_has_FD_CLOEXEC": true,
+        "accept_return": 1,
+        "peer_ge_0": true,
+        "peer_has_O_NONBLOCK": true,
+        "peer_has_FD_CLOEXEC": true,
+        "note": "the accepted descriptor must not rely on inheriting the listener's flags"
+      },
+      "LEVEL": "RUNTIME",
+      "TRACE_REFS": [
+        "src/net.c/net_listen",
+        "src/net.c/net_accept"
+      ]
+    },
+    {
+      "NAME": "accept_reports_would_block_and_error_without_breaking_the_listener",
+      "INPUT": {
+        "runtime": [
+          "net_accept(listener) with no pending connection",
+          "net_accept on a connected (non-listening) descriptor",
+          "then connect and net_accept on the listener again"
+        ]
+      },
+      "EXPECT": {
+        "idle_accept_return": 0,
+        "error_accept_return": -1,
+        "later_accept_return": 1,
+        "listener_still_usable": true
+      },
+      "LEVEL": "RUNTIME",
+      "TRACE_REFS": [
+        "src/net.c/net_accept"
+      ]
+    },
+    {
+      "NAME": "partial_write_progress_then_drain_and_orderly_close",
+      "INPUT": {
+        "runtime": [
+          "connected pair",
+          "net_write_some larger than the socket buffer in bounded chunks",
+          "net_read_some on the other end until all bytes arrive",
+          "peer closes",
+          "net_read_some again"
+        ]
+      },
+      "EXPECT": {
+        "each_write_progress_out_n_between_1_and_len": true,
+        "at_least_one_would_block_or_partial_write": true,
+        "bytes_received_equal_bytes_sent": true,
+        "read_after_peer_close": "NET_IO_CLOSED",
+        "read_on_empty_open_socket": "NET_IO_WOULD_BLOCK",
+        "read_with_size_zero_cap": "no crash, *out_n == 0"
+      },
+      "LEVEL": "RUNTIME",
+      "TRACE_REFS": [
+        "src/net.c/net_write_some",
+        "src/net.c/net_read_some"
+      ]
+    },
+    {
+      "NAME": "close_fd_is_idempotent",
+      "INPUT": {
+        "runtime": [
+          "fd = socket(...)",
+          "net_close_fd(&fd)",
+          "net_close_fd(&fd)",
+          "net_close_fd on an already -1 int"
+        ]
+      },
+      "EXPECT": {
+        "fd_after_first": -1,
+        "second_call_no_error": true,
+        "fd_after_second": -1,
+        "no_double_close": true
+      },
+      "LEVEL": "RUNTIME",
+      "TRACE_REFS": [
+        "src/net.c/net_close_fd"
+      ]
+    }
+  ]
+}

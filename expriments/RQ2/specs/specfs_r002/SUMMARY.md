@@ -1,0 +1,95 @@
+# Generic engineering specifications
+
+Read scope.md and project.spec first.
+Function specifications use [RELY], [GUARANTEE] and [SPECIFICATION].
+
+## Sources
+- src/broker.c: files/src/broker.c.spec
+- src/buffer.c: files/src/buffer.c.spec
+- src/loop.c: files/src/loop.c.spec
+- src/main.c: files/src/main.c.spec
+- src/net.c: files/src/net.c.spec
+- src/session.c: files/src/session.c.spec
+- src/topic.c: files/src/topic.c.spec
+- src/wire.c: files/src/wire.c.spec
+
+## Functions
+- add_session: functions/src_broker.c_add_session.spec
+- broker_accept: functions/src_broker.c_broker_accept.spec
+- broker_create: functions/src_broker.c_broker_create.spec
+- broker_destroy: functions/src_broker.c_broker_destroy.spec
+- broker_process_input: functions/src_broker.c_broker_process_input.spec
+- broker_reap: functions/src_broker.c_broker_reap.spec
+- broker_session_at: functions/src_broker.c_broker_session_at.spec
+- broker_session_count: functions/src_broker.c_broker_session_count.spec
+- broker_session_eof: functions/src_broker.c_broker_session_eof.spec
+- handle_connect: functions/src_broker.c_handle_connect.spec
+- handle_disconnect: functions/src_broker.c_handle_disconnect.spec
+- handle_pingreq: functions/src_broker.c_handle_pingreq.spec
+- handle_publish: functions/src_broker.c_handle_publish.spec
+- handle_subscribe: functions/src_broker.c_handle_subscribe.spec
+- remove_session_at: functions/src_broker.c_remove_session_at.spec
+- route_publish: functions/src_broker.c_route_publish.spec
+- buffer_append: functions/src_buffer.c_buffer_append.spec
+- buffer_commit: functions/src_buffer.c_buffer_commit.spec
+- buffer_consume: functions/src_buffer.c_buffer_consume.spec
+- buffer_free: functions/src_buffer.c_buffer_free.spec
+- buffer_init: functions/src_buffer.c_buffer_init.spec
+- buffer_reserve: functions/src_buffer.c_buffer_reserve.spec
+- buffer_tail: functions/src_buffer.c_buffer_tail.spec
+- accept_ready: functions/src_loop.c_accept_ready.spec
+- dispatch_event: functions/src_loop.c_dispatch_event.spec
+- is_registered: functions/src_loop.c_is_registered.spec
+- loop_add_listener: functions/src_loop.c_loop_add_listener.spec
+- loop_create: functions/src_loop.c_loop_create.spec
+- loop_destroy: functions/src_loop.c_loop_destroy.spec
+- loop_run: functions/src_loop.c_loop_run.spec
+- loop_set_stop_flag: functions/src_loop.c_loop_set_stop_flag.spec
+- loop_stop: functions/src_loop.c_loop_stop.spec
+- mask_sync: functions/src_loop.c_mask_sync.spec
+- pump_read: functions/src_loop.c_pump_read.spec
+- pump_write: functions/src_loop.c_pump_write.spec
+- main: functions/src_main.c_main.spec
+- on_signal: functions/src_main.c_on_signal.spec
+- net_accept: functions/src_net.c_net_accept.spec
+- net_close_fd: functions/src_net.c_net_close_fd.spec
+- net_listen: functions/src_net.c_net_listen.spec
+- net_parse_port: functions/src_net.c_net_parse_port.spec
+- net_read_some: functions/src_net.c_net_read_some.spec
+- net_write_some: functions/src_net.c_net_write_some.spec
+- free_subscriptions: functions/src_session.c_free_subscriptions.spec
+- release_fd: functions/src_session.c_release_fd.spec
+- session_add_subscription: functions/src_session.c_session_add_subscription.spec
+- session_client_id: functions/src_session.c_session_client_id.spec
+- session_close_after_flush: functions/src_session.c_session_close_after_flush.spec
+- session_close_immediately: functions/src_session.c_session_close_immediately.spec
+- session_create: functions/src_session.c_session_create.spec
+- session_destroy: functions/src_session.c_session_destroy.spec
+- session_enqueue: functions/src_session.c_session_enqueue.spec
+- session_fd: functions/src_session.c_session_fd.spec
+- session_input: functions/src_session.c_session_input.spec
+- session_mark_ready: functions/src_session.c_session_mark_ready.spec
+- session_matches_topic: functions/src_session.c_session_matches_topic.spec
+- session_output: functions/src_session.c_session_output.spec
+- session_set_client_id: functions/src_session.c_session_set_client_id.spec
+- session_state: functions/src_session.c_session_state.spec
+- session_subscription_at: functions/src_session.c_session_subscription_at.spec
+- session_subscription_count: functions/src_session.c_session_subscription_count.spec
+- topic_filter_matches: functions/src_topic.c_topic_filter_matches.spec
+- topic_filter_validate: functions/src_topic.c_topic_filter_validate.spec
+- topic_name_validate: functions/src_topic.c_topic_name_validate.spec
+- topic_utf8_validate: functions/src_topic.c_topic_utf8_validate.spec
+- wire_declared_body_len: functions/src_wire.c_wire_declared_body_len.spec
+- wire_decode_connect: functions/src_wire.c_wire_decode_connect.spec
+- wire_decode_empty: functions/src_wire.c_wire_decode_empty.spec
+- wire_decode_header: functions/src_wire.c_wire_decode_header.spec
+- wire_decode_publish: functions/src_wire.c_wire_decode_publish.spec
+- wire_decode_string: functions/src_wire.c_wire_decode_string.spec
+- wire_decode_subscribe: functions/src_wire.c_wire_decode_subscribe.spec
+- wire_encode_connack: functions/src_wire.c_wire_encode_connack.spec
+- wire_encode_pingresp: functions/src_wire.c_wire_encode_pingresp.spec
+- wire_encode_publish: functions/src_wire.c_wire_encode_publish.spec
+- wire_encode_suback: functions/src_wire.c_wire_encode_suback.spec
+- wire_read_u16: functions/src_wire.c_wire_read_u16.spec
+- wire_subscribe_next: functions/src_wire.c_wire_subscribe_next.spec
+- wire_write_remaining_length: functions/src_wire.c_wire_write_remaining_length.spec

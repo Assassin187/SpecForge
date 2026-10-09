@@ -1,0 +1,51 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "src/wire.c/wire_declared_body_len",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "Re-parse the Remaining Length field of an already framed packet and report whether len is exactly the declared frame size (private).",
+  "SIGNATURE": {
+    "RAW": "static enum wire_status wire_declared_body_len(const uint8_t *packet, size_t len, size_t *header_len, size_t *remaining_length)",
+    "NAME": "wire_declared_body_len",
+    "RETURN": "enum wire_status",
+    "PARAMS": [
+      {"TYPE": "const uint8_t *", "NAME": "packet", "NULLABLE": true, "OWNERSHIP": "BORROWED"},
+      {"TYPE": "size_t", "NAME": "len", "NULLABLE": false, "OWNERSHIP": "BORROWED"},
+      {"TYPE": "size_t *", "NAME": "header_len", "NULLABLE": true, "OWNERSHIP": "BORROWED"},
+      {"TYPE": "size_t *", "NAME": "remaining_length", "NULLABLE": true, "OWNERSHIP": "BORROWED"}
+    ]
+  },
+  "RELY": {
+    "STRUCT": [],
+    "FUNC": [],
+    "VAR": [
+      {"NAME": "WIRE_MAX_REMAINING_LENGTH_BYTES", "ROLE": "a Remaining Length field is at most 4 bytes"},
+      {"NAME": "WIRE_MAX_REMAINING_LENGTH", "ROLE": "268435455 is the largest Remaining Length value"}
+    ]
+  },
+  "LOGIC": {
+    "INPUT": "packet with len bytes (the caller passes exactly the frame length reported by wire_decode_header.total_len, or a shorter buffer when the frame is not yet complete), header_len/remaining_length receiving the parsed numbers.",
+    "ACTION": "1) If packet is NULL return WIRE_INVALID. 2) If len < 1 return WIRE_INCOMPLETE (no fixed header byte buffered) - the caller maps this to WIRE_INVALID because it already framed the packet. 3) Walk the Remaining Length field from index 1 with multiplier 1, 128, 16384, 2097152: for i = 0..3 read packet[1+i] if 2+i <= len, else return WIRE_INCOMPLETE; accumulate (byte & 0x7F) * multiplier; stop when the continuation bit is clear. If the fourth byte still has the continuation bit set, return WIRE_INVALID (a Remaining Length field longer than 4 bytes is malformed, fact F004/F005). 4) h = 1 + number_of_bytes_consumed; total = h + value. 5) If len < total return WIRE_INCOMPLETE. 6) If len > total return WIRE_INVALID (the buffer holds more bytes than this packet declares, so it is not exactly one framed packet). 7) Write *header_len = h and *remaining_length = value when the pointers are non-NULL and return WIRE_COMPLETE.",
+    "OUTPUT": "WIRE_COMPLETE with *header_len (2..5) and *remaining_length (0..268435455) set when len == header_len + remaining_length; WIRE_INCOMPLETE when fewer bytes than the declared frame are buffered; WIRE_INVALID when the Remaining Length field is unusable or len exceeds the declared frame. Public packet decoders treat every non-COMPLETE result as WIRE_INVALID, so a short buffer never escapes as INCOMPLETE.",
+    "INVARIANTS_USED": ["Remaining Length is encoded in at most 4 bytes of 7 bits each", "a decoder only runs on a complete packet"],
+    "PRECONDITION": "packet points to len readable bytes beginning with a fixed header byte.",
+    "POSTCONDITION": "The output numbers are the ones carried by the packet bytes; the packet is never modified.",
+    "IDEMPOTENT": true,
+    "THREAD_SAFETY": "Pure function of its arguments."
+  },
+  "TEST_VECTORS": [
+    {
+      "NAME": "exact_frame_reports_complete_with_numbers",
+      "INPUT": {"hex": "82 10 00 0A 00 03 61 2F 62 00 00 05 61 2F 62 2F 23 02", "len": 18},
+      "EXPECT": {"status": "WIRE_COMPLETE", "header_len": 2, "remaining_length": 16, "header_plus_body": 18},
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": ["src/wire.c/wire_declared_body_len"]
+    },
+    {
+      "NAME": "short_and_long_buffers_are_not_complete",
+      "INPUT": {"cases": [{"hex": "30 05 01 02 03", "len": 5, "note": "5 bytes of a 7 byte frame"}, {"hex": "30 02 00 01", "len": 6, "note": "buffer longer than the declared frame"}, {"hex": "30 FF FF FF FF", "len": 5, "note": "fifth Remaining Length byte"}]},
+      "EXPECT": {"status": ["WIRE_INCOMPLETE", "WIRE_INVALID", "WIRE_INVALID"]},
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": ["src/wire.c/wire_declared_body_len"]
+    }
+  ]
+}

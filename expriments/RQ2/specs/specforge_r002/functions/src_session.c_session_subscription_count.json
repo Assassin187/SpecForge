@@ -1,0 +1,50 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "src/session.c/session_subscription_count",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "Report how many subscriptions a session stores, so iteration bounds and SUBACK result counts are derived from actual stored state.",
+  "SIGNATURE": {
+    "RAW": "size_t session_subscription_count(const struct session *s)",
+    "NAME": "session_subscription_count",
+    "RETURN": "size_t",
+    "PARAMS": [
+      {"TYPE": "const struct session *", "NAME": "s", "NULLABLE": true, "OWNERSHIP": "BORROWED"}
+    ]
+  },
+  "RELY": {
+    "STRUCT": [{"NAME": "struct session", "ROLE": "source of the subscription count"}],
+    "FUNC": [],
+    "VAR": []
+  },
+  "CALL_CONTRACTS": [],
+  "LOGIC": {
+    "INPUT": "s: borrowed session pointer, possibly NULL.",
+    "ACTION": "1) If s is NULL return 0. 2) Return s->sub_count. The count reflects stored entries only: a fresh session reports 0, an identical filter replaced in place does not increase the count, and a CLOSED session reports the same count as before closing because dropping a connection never transfers its subscriptions to another session.",
+    "OUTPUT": "Number of stored subscriptions, 0 for a NULL session or a session with none.",
+    "INVARIANTS_USED": [
+      "subscriptions are stored with no clean-session persistence across new connections",
+      "sub_count counts stored entries and never exceeds sub_cap",
+      "iteration uses count as the exclusive upper bound for session_subscription_at"
+    ],
+    "PRECONDITION": "s is NULL or points to a live session.",
+    "POSTCONDITION": "the session is unchanged.",
+    "IDEMPOTENT": true,
+    "THREAD_SAFETY": "Not thread safe with respect to session_add_subscription() on the same session."
+  },
+  "TEST_VECTORS": [
+    {
+      "NAME": "count_tracks_adds_and_in_place_replacements",
+      "INPUT": {"calls": ["count on fresh session", "session_add_subscription(\"a/+\",3,0) x2 with same filter then different filter"]},
+      "EXPECT": {"fresh": 0, "after_first_add": 1, "after_identical_filter": 1, "after_second_distinct_filter": 2},
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": ["src/session.c/session_subscription_count", "src/session.c/session_add_subscription"]
+    },
+    {
+      "NAME": "null_session_reports_zero",
+      "INPUT": {"session": null},
+      "EXPECT": {"return": 0},
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": ["src/session.c/session_subscription_count"]
+    }
+  ]
+}

@@ -1,0 +1,273 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "src/loop.c/dispatch_event",
+  "FUNCTION_TYPE": "EVENT",
+  "ROLE": "Apply the readiness preconditions that decide, for one already-validated session, whether a read pump runs, whether a write pump runs, or both, so that writable readiness never permits a blocking read and queued output always gets written.",
+  "SIGNATURE": {
+    "RAW": "static void dispatch_event(struct loop *l, struct session *s, uint32_t events)",
+    "NAME": "dispatch_event",
+    "RETURN": "void",
+    "PARAMS": [
+      {
+        "TYPE": "struct loop *",
+        "NAME": "l",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "struct session *",
+        "NAME": "s",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "uint32_t",
+        "NAME": "events",
+        "NULLABLE": false,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct loop",
+        "ROLE": "reactor that owns the pumps"
+      },
+      {
+        "NAME": "struct session",
+        "ROLE": "state and queue inspected to choose the operations"
+      },
+      {
+        "NAME": "struct byte_buf",
+        "ROLE": "queue whose length decides whether a write is permitted"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "is_registered",
+        "KIND": "CALL",
+        "ROLE": "reject an event whose session was already reaped"
+      },
+      {
+        "NAME": "session_state",
+        "KIND": "CALL",
+        "ROLE": "read the lifecycle state before and after the read pump"
+      },
+      {
+        "NAME": "session_output",
+        "KIND": "CALL",
+        "ROLE": "check that queued output exists before writing"
+      },
+      {
+        "NAME": "pump_read",
+        "KIND": "CALL",
+        "ROLE": "consume readable input under the read preconditions"
+      },
+      {
+        "NAME": "pump_write",
+        "KIND": "CALL",
+        "ROLE": "drain queued output under the write preconditions"
+      }
+    ],
+    "VAR": [
+      {
+        "NAME": "EPOLLIN",
+        "ROLE": "readable readiness: permits the read pump"
+      },
+      {
+        "NAME": "EPOLLHUP",
+        "ROLE": "peer hang-up: permits a read attempt that observes the close and the final frames"
+      },
+      {
+        "NAME": "EPOLLERR",
+        "ROLE": "descriptor error: permits a read or write attempt that fails fast"
+      },
+      {
+        "NAME": "EPOLLRDHUP",
+        "ROLE": "peer half close when the constant is available; treated like EPOLLIN for reading"
+      },
+      {
+        "NAME": "EPOLLOUT",
+        "ROLE": "writable readiness: permits the write pump only when output is queued"
+      },
+      {
+        "NAME": "SESSION_AWAITING_CONNECT",
+        "ROLE": "state in which input is still accepted (CONNECT not yet seen)"
+      },
+      {
+        "NAME": "SESSION_READY",
+        "ROLE": "state in which input and queued output are both active"
+      },
+      {
+        "NAME": "SESSION_CLOSING",
+        "ROLE": "state in which output may still be flushed but no further input is read"
+      },
+      {
+        "NAME": "SESSION_CLOSED",
+        "ROLE": "terminal state: no read and no write is permitted"
+      }
+    ]
+  },
+  "CALL_CONTRACTS": [
+    {
+      "NAME": "session_state",
+      "SIGNATURE": "enum session_state session_state(const struct session *s)",
+      "RETURN": "the session's current state; SESSION_CLOSED for NULL",
+      "OWNERSHIP": "read-only",
+      "FAILURE": "no failure under documented preconditions; any state other than AWAITING_CONNECT/READY forbids reading",
+      "PARAMS": [
+        {
+          "TYPE": "const struct session *",
+          "NAME": "s",
+          "NULLABLE": true,
+          "OWNERSHIP": "BORROWED"
+        }
+      ]
+    },
+    {
+      "NAME": "session_output",
+      "SIGNATURE": "struct byte_buf *session_output(struct session *s)",
+      "RETURN": "borrowed queued-output buffer (NULL only for a NULL session); len > 0 means bytes are still owed to the peer",
+      "OWNERSHIP": "borrowed; the pump consumes its prefix and the session keeps the storage",
+      "FAILURE": "no failure under documented preconditions; NULL or len == 0 means an EPOLLOUT notification is ignored instead of issuing a pointless write",
+      "PARAMS": [
+        {
+          "TYPE": "struct session *",
+          "NAME": "s",
+          "NULLABLE": true,
+          "OWNERSHIP": "BORROWED"
+        }
+      ]
+    }
+  ],
+  "EVENT": {
+    "TRIGGER": "epoll_wait reports one or more events for a descriptor whose data.ptr is a non-NULL session pointer (listener events carry data.ptr == NULL and are handled by the accept path instead).",
+    "PRECONDITION": "l and s are non-NULL, s is still one of the broker's registry entries (checked with is_registered), the descriptor is nonblocking and close-on-exec, and it is registered level-triggered with an interest mask computed by mask_sync.",
+    "INPUT": "s and the raw epoll event mask in events. The mask is only a hint; the pumps and the protocol core decide what actually happens, and every syscall made is nonblocking.",
+    "ACTION": "1. If l == NULL or s == NULL, return. 2. If is_registered(l, s) == 0, return without touching s: the session was destroyed by an earlier reap in this loop iteration, so its pointer must not be dereferenced. 3. read_mask = EPOLLIN | EPOLLHUP | EPOLLERR, plus EPOLLRDHUP guarded by #ifdef EPOLLRDHUP (so no feature-test macro is required to compile this file). 4. state = session_state(s). 5. READ GATE: if (state == SESSION_AWAITING_CONNECT || state == SESSION_READY) and (events & read_mask) != 0, call pump_read(l, s). A pure EPOLLOUT event never satisfies this gate, so writable readiness can never trigger a read; a pure hup/err event does, which is how a FIN that arrives together with the last data (or a hard reset) is observed. 6. Re-read state = session_state(s) after the read pump, because the input may have closed the session (malformed packet, non-CONNECT before CONNECT, EOF, read error, unbuffered input). 7. WRITE GATE: if state == SESSION_READY or state == SESSION_CLOSING, then out = session_output(s) and, ONLY if out != NULL and out->len > 0, call pump_write(l, s) when (events & EPOLLOUT) != 0 OR when the event carries EPOLLHUP/EPOLLERR (an error-driven drain attempt that either makes progress or fails immediately inside pump_write and closes the session, so a CLOSING session can never be stranded with undeliverable bytes). If out->len == 0 the write pump is not called at all, so EPOLLOUT on an idle queue costs nothing. 8. state == SESSION_CLOSED forbids both pumps: the descriptor is already closed and the queue released. 9. Nothing is reaped here; loop_run calls broker_reap and then mask_sync after the whole event batch, which is what turns a drained CLOSING session into a removed one and what registers a newly created session for EPOLLIN.",
+    "STATE_CHANGE": "s may stay AWAITING_CONNECT/READY, move READY -> CLOSING (orderly close or read error after the buffered complete frames were processed, queued output preserved), or move to CLOSED (its input was rejected or its descriptor failed; the queue storage is released). A CLOSING session may have its queue shortened or emptied by the write gate. No other session is affected.",
+    "RESPONSE": "No return value. Observable effects: bytes read from the kernel and handed to the protocol core, complete responses queued, queued bytes written to the peer, and possibly this one session closed. The reactor then reaps finished sessions and recomputes interest masks for all sessions.",
+    "EVENT_TYPE": "level-triggered epoll readiness event for one session descriptor",
+    "INVARIANTS_USED": [
+      "EPOLLOUT alone never permits a read; reads happen only under EPOLLIN/EPOLLRDHUP/EPOLLHUP/EPOLLERR",
+      "a write is attempted only when the session actually has queued output",
+      "every descriptor is nonblocking, so any pump call returns promptly and cannot stall unrelated peers",
+      "an event for an already reaped session is ignored instead of dereferenced",
+      "no session is destroyed inside a dispatched handler, so a session pointer stays valid for the remainder of the batch",
+      "queued output is delivered even when the recipient sends nothing further, because EPOLLOUT remains registered while len > 0"
+    ],
+    "POSTCONDITION": "Every readable byte that the kernel had ready has been read (up to the burst bound), every queued byte that the socket accepted has been consumed from the queue, and no session was read or written in a state that forbids it.",
+    "IDEMPOTENT": false,
+    "THREAD_SAFETY": "Single-threaded reactor."
+  },
+  "TEST_VECTORS": [
+    {
+      "NAME": "epollout_without_epollin_never_reads",
+      "INPUT": {
+        "runtime": [
+          "socketpair of nonblocking fds; register one end as a session in the loop",
+          "peer writes 5 bytes but the event mask is EPOLLOUT only (queue empty)",
+          "ioctl(FIONREAD) on the registered fd before and after dispatch"
+        ]
+      },
+      "EXPECT": {
+        "read_dispatched": false,
+        "write_dispatched": false,
+        "fionread_before": 5,
+        "fionread_after": 5,
+        "note": "writable readiness alone must never trigger a read, and an empty queue makes the write gate inert"
+      },
+      "LEVEL": "RUNTIME",
+      "TRACE_REFS": [
+        "src/loop.c/dispatch_event",
+        "src/loop.c/pump_read"
+      ]
+    },
+    {
+      "NAME": "readable_event_with_queued_output_does_both_pumps",
+      "INPUT": {
+        "runtime": [
+          "session READY with 90 03 00 01 00 queued (SUBACK for pid 1)",
+          "peer sends c0 00 (PINGREQ) in the same segment that makes the socket readable",
+          "dispatch with events = EPOLLIN | EPOLLOUT"
+        ]
+      },
+      "EXPECT": {
+        "read_dispatched": true,
+        "write_dispatched": true,
+        "peer_receives": "90 03 00 01 00 d0 00",
+        "note": "PINGRESP is appended after the pending SUBACK, then the whole queue is drained in the same dispatch"
+      },
+      "LEVEL": "RUNTIME",
+      "TRACE_REFS": [
+        "src/loop.c/dispatch_event",
+        "src/loop.c/pump_read",
+        "src/loop.c/pump_write",
+        "src/broker.c/handle_pingreq"
+      ]
+    },
+    {
+      "NAME": "error_event_drains_a_closing_session_instead_of_stranding_it",
+      "INPUT": {
+        "runtime": [
+          "session CLOSING with 6 queued bytes whose peer vanished, so the next readiness event is EPOLLERR|EPOLLHUP with no EPOLLOUT",
+          "dispatch_event"
+        ]
+      },
+      "EXPECT": {
+        "write_attempted": true,
+        "net_write_some_result": "NET_IO_ERROR",
+        "state_after": "SESSION_CLOSED",
+        "queue_released": true,
+        "note": "without the error-driven write attempt the session could stay CLOSING forever"
+      },
+      "LEVEL": "RUNTIME",
+      "TRACE_REFS": [
+        "src/loop.c/dispatch_event",
+        "src/loop.c/pump_write",
+        "src/session.c/session_close_immediately"
+      ]
+    },
+    {
+      "NAME": "stale_event_for_a_reaped_session_is_ignored",
+      "INPUT": {
+        "runtime": [
+          "session S closed its own connection by a DISCONNECT packet and was reaped",
+          "a fabricated event carrying S's pointer is dispatched in the same batch"
+        ]
+      },
+      "EXPECT": {
+        "event_skipped": true,
+        "no_use_after_free": true,
+        "registry_consistent": true
+      },
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": [
+        "src/loop.c/dispatch_event",
+        "src/loop.c/is_registered",
+        "src/broker.c/broker_reap"
+      ]
+    },
+    {
+      "NAME": "closed_session_gets_no_pump",
+      "INPUT": {
+        "runtime": [
+          "session whose input was malformed: broker_process_input returned -1 and the state is SESSION_CLOSED",
+          "the same event batch still carries EPOLLIN|EPOLLOUT for that descriptor"
+        ]
+      },
+      "EXPECT": {
+        "read_dispatched": false,
+        "write_dispatched": false,
+        "state": "SESSION_CLOSED",
+        "session_removed_by_reap": true
+      },
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": [
+        "src/loop.c/dispatch_event",
+        "src/broker.c/broker_process_input"
+      ]
+    }
+  ]
+}

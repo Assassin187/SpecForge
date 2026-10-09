@@ -1,0 +1,80 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "src/wire.c/wire_write_remaining_length",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "Append the 7-bits-per-byte Remaining Length encoding of value (private).",
+  "SIGNATURE": {
+    "RAW": "static int wire_write_remaining_length(struct byte_buf *out, size_t value)",
+    "NAME": "wire_write_remaining_length",
+    "RETURN": "int",
+    "PARAMS": [
+      {"TYPE": "struct byte_buf *", "NAME": "out", "NULLABLE": true, "OWNERSHIP": "BORROWED"},
+      {"TYPE": "size_t", "NAME": "value", "NULLABLE": false, "OWNERSHIP": "BORROWED"}
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {"NAME": "struct byte_buf", "ROLE": "destination buffer whose cap must already cover the encoded field"}
+    ],
+    "FUNC": [
+      {"NAME": "buffer_append", "KIND": "CALL", "ROLE": "append each encoded byte after the capacity reservation"}
+    ],
+    "VAR": [
+      {"NAME": "WIRE_MAX_REMAINING_LENGTH", "ROLE": "268435455 is the largest encodable value"}
+    ]
+  },
+  "CALL_CONTRACTS": [
+    {
+      "NAME": "buffer_append",
+      "SIGNATURE": "int buffer_append(struct byte_buf *buf, const void *src, size_t len)",
+      "PARAMS": [
+        {"NAME": "buf", "TYPE": "struct byte_buf *", "OWNERSHIP": "BORROWED"},
+        {"NAME": "src", "TYPE": "const void *", "OWNERSHIP": "BORROWED"},
+        {"NAME": "len", "TYPE": "size_t", "OWNERSHIP": "BORROWED"}
+      ],
+      "RETURN": "0 when all len bytes were appended in order; -1 when nothing was appended",
+      "OWNERSHIP": "src is borrowed for the duration of the call only",
+      "FAILURE": "-1 leaves the buffer contents unchanged; the caller returns -1 and the packet is not emitted"
+    }
+  ],
+  "LOGIC": {
+    "INPUT": "out (the packet buffer being built) and value in 0..268435455.",
+    "ACTION": "1) If out is NULL return -1. 2) If value > 268435455 return -1 (the encoding cannot express it; a longer field is malformed, fact F004). 3) Encode into a 4-byte stack array: repeated do { b = value % 128; value /= 128; if (value > 0) b |= 0x80; field[i++] = b; } while (value > 0) so the low 7 bits come first and the continuation bit 0x80 marks 'more bytes follow'. 4) Append the i bytes in order with buffer_append (i is 1..4); buffer_append itself guarantees all-or-nothing behaviour, so an allocation failure returns -1 with the output unchanged. 5) Return 0. Encoders call this after reserving the whole packet size, so the append cannot reallocate; the worst case is therefore reported as a generic failure.",
+    "OUTPUT": "0 when the 1..4 byte field was appended; the buffer length grew by exactly i. -1 when out is NULL, value exceeds 268435455, or the append failed; in every -1 case no byte was appended.",
+    "INVARIANTS_USED": ["the low 7 bits of the value are transmitted first", "the high bit of every byte except the last is 1", "standard encoding never uses more than 4 bytes for a legal value"],
+    "PRECONDITION": "out is NULL or a valid buffer.",
+    "POSTCONDITION": "On success buffer[len-i .. len-1] is the field and the rest of the buffer is untouched.",
+    "IDEMPOTENT": false,
+    "THREAD_SAFETY": "Not thread safe; the caller owns the buffer."
+  },
+  "WIRE_MAPPING": [
+    {
+      "PACKET": "all control packets",
+      "WIRE_FIELD": "Remaining Length",
+      "STRATEGY": "store_in_field",
+      "TARGET": "appended bytes at buffer[len .. len+i-1]",
+      "SOURCE": "value (body byte count)",
+      "RULE": "7 bits per byte, least significant group first; each byte except the last sets 0x80. 127 -> 7F (1 byte); 128 -> 80 01 (2 bytes); 16383 -> FF 7F (2 bytes); 16384 -> 80 80 01 (3 bytes); 268435455 -> FF FF FF 7F (4 bytes)."
+    }
+  ],
+  "TEST_VECTORS": [
+    {
+      "NAME": "encodes_boundary_values_matching_the_fact_derived_table",
+      "INPUT": {"values": [0, 127, 128, 16383, 16384, 2097151, 2097152, 268435455]},
+      "EXPECT": {
+        "hex": ["00", "7F", "80 01", "FF 7F", "80 80 01", "FF FF 7F", "80 80 80 01", "FF FF FF 7F"],
+        "return": 0,
+        "note": "127 = 0x7F; 128 = 0x80|(1<<7) field; 16383 = 0x7F<<7 | 0x7F; 268435455 = 0x7F<<21|0x7F<<14|0x7F<<7|0x7F"
+      },
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": ["src/wire.c/wire_write_remaining_length"]
+    },
+    {
+      "NAME": "value_above_the_maximum_is_rejected_without_touching_the_buffer",
+      "INPUT": {"ops": ["buffer holds AA", "wire_write_remaining_length(&buf, 268435456)"]},
+      "EXPECT": {"return": -1, "hex": "AA", "len": 1},
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": ["src/wire.c/wire_write_remaining_length"]
+    }
+  ]
+}

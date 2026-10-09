@@ -1,0 +1,46 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "src/buffer.c/buffer_commit",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "Publish n bytes written through the borrowed slot returned by buffer_tail by advancing the valid length; no bytes are copied.",
+  "SIGNATURE": {
+    "RAW": "void buffer_commit(struct byte_buf *buf, size_t n)",
+    "NAME": "buffer_commit",
+    "RETURN": "void",
+    "PARAMS": [
+      {"TYPE": "struct byte_buf *", "NAME": "buf", "NULLABLE": true, "OWNERSHIP": "BORROWED"},
+      {"TYPE": "size_t", "NAME": "n", "NULLABLE": false, "OWNERSHIP": "BORROWED"}
+    ]
+  },
+  "RELY": {
+    "STRUCT": [{"NAME": "struct byte_buf", "ROLE": "buffer whose length advances"}],
+    "FUNC": [],
+    "VAR": []
+  },
+  "LOGIC": {
+    "INPUT": "buf (NULL allowed) and n, the number of bytes that were written starting at the pointer most recently returned by buffer_tail for this buffer.",
+    "ACTION": "If buf is NULL return. If n > buf->cap - buf->len the precondition was violated: change nothing (defensive, so a misbehaving caller cannot make len exceed cap). Otherwise add n to buf->len. n == 0 is a permitted no-op.",
+    "OUTPUT": "len increased by n (or unchanged on a violated precondition); no value returned.",
+    "INVARIANTS_USED": ["len <= cap", "commit is the only way bytes written through buffer_tail become visible"],
+    "PRECONDITION": "n bytes were written at buffer_tail(buf) and n <= cap - len.",
+    "POSTCONDITION": "len <= cap and the first len bytes are valid",
+    "IDEMPOTENT": false,
+    "THREAD_SAFETY": "Not thread safe; the caller owns the buffer exclusively."
+  },
+  "TEST_VECTORS": [
+    {
+      "NAME": "commit_makes_tail_bytes_visible",
+      "INPUT": {"calls": ["buffer_init(&buf)", "buffer_reserve(&buf, 4)", "p = buffer_tail(&buf, &avail)", "memcpy(p, \"ab\", 2)", "buffer_commit(&buf, 2)"]},
+      "EXPECT": {"len": 2, "data_bytes": "ab", "cap_at_least": 4},
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": ["src/buffer.c/buffer_commit"]
+    },
+    {
+      "NAME": "commit_beyond_capacity_is_ignored",
+      "INPUT": {"calls": ["buffer_init(&buf)", "buffer_reserve(&buf, 2)", "buffer_commit(&buf, 3)"]},
+      "EXPECT": {"len": 0, "cap": 2},
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": ["src/buffer.c/buffer_commit"]
+    }
+  ]
+}

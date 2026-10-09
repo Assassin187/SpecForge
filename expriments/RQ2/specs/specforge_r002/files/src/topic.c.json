@@ -1,0 +1,468 @@
+{
+  "KIND": "FILE_SPEC",
+  "FILE": {
+    "TRACE_ID": "src/topic.c",
+    "LANG": "C99",
+    "ROLE": "MQTT Topic Name / Topic Filter validation and level-wise case-sensitive matching with '+' and '#' wildcards, empty levels, '/' separators and the '$' rule.",
+    "DOC_REF": [
+      "REQUIREMENTS.md:7",
+      "REQUIREMENTS.md:10"
+    ]
+  },
+  "HEADER": {
+    "PATH": "src/topic.h",
+    "DEPENDENCY": [],
+    "SYSTEM_DEPENDENCY": [
+      "stddef.h",
+      "stdint.h"
+    ],
+    "DATA": [],
+    "INTERFACE": [
+      {
+        "SIGNATURE": "int topic_utf8_validate(const uint8_t *data, size_t len)",
+        "NAME": "topic_utf8_validate",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "Well-formed UTF-8 without U+0000 and without surrogate/invalid ranges",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "int topic_name_validate(const uint8_t *name, size_t len)",
+        "NAME": "topic_name_validate",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "Legal Topic Name: nonempty, UTF-8, no wildcards",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "int topic_filter_validate(const uint8_t *filter, size_t len)",
+        "NAME": "topic_filter_validate",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "Legal Topic Filter including wildcard placement",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "int topic_filter_matches(const uint8_t *filter, size_t filter_len, const uint8_t *topic, size_t topic_len)",
+        "NAME": "topic_filter_matches",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "Level-wise match of a filter against a topic name",
+        "VISIBILITY": "public"
+      }
+    ]
+  },
+  "SOURCE": {
+    "PATH": "src/topic.c",
+    "DEPENDENCY": [
+      "src/topic.h"
+    ],
+    "SYSTEM_DEPENDENCY": [
+      "stddef.h",
+      "stdint.h"
+    ],
+    "DATA": [
+      {
+        "NAME": "topic_utf8_decode",
+        "KIND": "TYPE",
+        "VISIBILITY": "PRIVATE",
+        "ROLE": "Private helper result for one decoded code point: length in bytes and code point value"
+      },
+      {
+        "NAME": "topic_starts_wildcard",
+        "KIND": "MACRO",
+        "VISIBILITY": "PRIVATE",
+        "VALUE": "'#' or '+'",
+        "ROLE": "Private test for a filter whose first character is a wildcard"
+      }
+    ],
+    "INTERFACE": [
+      {
+        "TRACE_ID": "src/topic.c/topic_utf8_validate",
+        "SIGNATURE": "int topic_utf8_validate(const uint8_t *data, size_t len)",
+        "NAME": "topic_utf8_validate",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "Decode every sequence, reject overlong forms, surrogates, >U+10FFFF and the encoded NUL",
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "src/topic.c/topic_name_validate",
+        "SIGNATURE": "int topic_name_validate(const uint8_t *name, size_t len)",
+        "NAME": "topic_name_validate",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "Require len>=1, len<=65535, no 0x23/0x2B byte, then topic_utf8_validate",
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "src/topic.c/topic_filter_validate",
+        "SIGNATURE": "int topic_filter_validate(const uint8_t *filter, size_t len)",
+        "NAME": "topic_filter_validate",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "Require len>=1, len<=65535, UTF-8, '#' whole last level and '+' whole levels",
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "src/topic.c/topic_filter_matches",
+        "SIGNATURE": "int topic_filter_matches(const uint8_t *filter, size_t filter_len, const uint8_t *topic, size_t topic_len)",
+        "NAME": "topic_filter_matches",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "Walk levels by '/' with '+' one level and '#' tail; apply the '$' rule; no normalization",
+        "VISIBILITY": "public"
+      }
+    ]
+  },
+  "PUBLIC_SYMBOLS": [
+    {
+      "NAME": "topic_utf8_validate",
+      "KIND": "FUNC",
+      "SIGNATURE": "int topic_utf8_validate(const uint8_t *data, size_t len)",
+      "ROLE": "UTF-8 validation"
+    },
+    {
+      "NAME": "topic_name_validate",
+      "KIND": "FUNC",
+      "SIGNATURE": "int topic_name_validate(const uint8_t *name, size_t len)",
+      "ROLE": "Topic Name validation"
+    },
+    {
+      "NAME": "topic_filter_validate",
+      "KIND": "FUNC",
+      "SIGNATURE": "int topic_filter_validate(const uint8_t *filter, size_t len)",
+      "ROLE": "Topic Filter validation"
+    },
+    {
+      "NAME": "topic_filter_matches",
+      "KIND": "FUNC",
+      "SIGNATURE": "int topic_filter_matches(const uint8_t *filter, size_t filter_len, const uint8_t *topic, size_t topic_len)",
+      "ROLE": "Topic matching"
+    }
+  ],
+  "TEST_VECTORS": [
+    {
+      "NAME": "utf8_accepts_ascii_2_3_4_byte_and_bom",
+      "INPUT": {
+        "utf8": [
+          "MQTT",
+          "sport/tennis",
+          "a\\x2Fb\\x2B",
+          "\\xC3\\xA9",
+          "\\xE2\\x82\\xAC",
+          "\\xF0\\x9F\\x98\\x80",
+          "\\xEF\\xBB\\xBF$SYS/x",
+          ""
+        ]
+      },
+      "EXPECT": {
+        "valid": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ]
+      },
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": [
+        "src/topic.c/topic_utf8_validate"
+      ]
+    },
+    {
+      "NAME": "utf8_rejects_ill_formed_and_nul_and_surrogate",
+      "INPUT": {
+        "utf8": [
+          "\\x80",
+          "\\xC0\\x80",
+          "\\xC1\\xBF",
+          "\\xE0\\x80\\xAF",
+          "\\xED\\xA0\\x80",
+          "\\xF4\\x90\\x80\\x80",
+          "\\xF5\\x80\\x80\\x80",
+          "\\x00",
+          "a\\x00b",
+          "\\xE2\\x82"
+        ]
+      },
+      "EXPECT": {
+        "valid": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ]
+      },
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": [
+        "src/topic.c/topic_utf8_validate"
+      ]
+    },
+    {
+      "NAME": "name_validation_rejects_wildcards_and_empty",
+      "INPUT": {
+        "names": [
+          "sport/tennis",
+          "",
+          "sport/#",
+          "sport/+",
+          "sp#rt",
+          "+"
+        ]
+      },
+      "EXPECT": {
+        "valid": [
+          true,
+          false,
+          false,
+          false,
+          false,
+          false
+        ]
+      },
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": [
+        "src/topic.c/topic_name_validate"
+      ]
+    },
+    {
+      "NAME": "name_validation_accepts_empty_levels_and_dollar_prefix",
+      "INPUT": {
+        "names": [
+          "/",
+          "a//b",
+          "/finance",
+          "$SYS/broker/uptime",
+          " leading space ",
+          "sport/tennis/player1"
+        ]
+      },
+      "EXPECT": {
+        "valid": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ]
+      },
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": [
+        "src/topic.c/topic_name_validate"
+      ]
+    },
+    {
+      "NAME": "filter_validation_wildcard_placement",
+      "INPUT": {
+        "filters": [
+          "#",
+          "sport/tennis/#",
+          "+",
+          "+/+",
+          "sport/+/player1",
+          "+/tennis/#",
+          "/",
+          "a//b",
+          "$SYS/#",
+          "sport/tennis#",
+          "sport/#/ranking",
+          "sport+",
+          "sport/+player",
+          "",
+          "sport/tennis/player1"
+        ]
+      },
+      "EXPECT": {
+        "valid": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          false,
+          false,
+          false,
+          false,
+          false,
+          true
+        ]
+      },
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": [
+        "src/topic.c/topic_filter_validate"
+      ]
+    },
+    {
+      "NAME": "matching_spec_examples",
+      "INPUT": {
+        "pairs": [
+          [
+            "sport/tennis/player1/#",
+            "sport/tennis/player1"
+          ],
+          [
+            "sport/tennis/player1/#",
+            "sport/tennis/player1/ranking"
+          ],
+          [
+            "sport/tennis/player1/#",
+            "sport/tennis/player1/score/wimbledon"
+          ],
+          [
+            "sport/#",
+            "sport"
+          ],
+          [
+            "sport/+",
+            "sport/"
+          ],
+          [
+            "sport/+",
+            "sport/tennis"
+          ],
+          [
+            "+/+",
+            "/finance"
+          ],
+          [
+            "+",
+            "/finance"
+          ],
+          [
+            "#",
+            "a/b/c"
+          ],
+          [
+            "+/monitor/Clients",
+            "$SYS/monitor/Clients"
+          ],
+          [
+            "#",
+            "$SYS/x"
+          ],
+          [
+            "sport/+",
+            "sport/tennis/player1"
+          ],
+          [
+            "sport/tennis",
+            "sport/tennis/player1"
+          ],
+          [
+            "sport/tennis",
+            "sport/tennis"
+          ],
+          [
+            "$SYS/#",
+            "$SYS/x"
+          ],
+          [
+            "sport/+/player1",
+            "sport/tennis/player1"
+          ],
+          [
+            "a//b",
+            "a//b"
+          ],
+          [
+            "+",
+            "finance"
+          ]
+        ],
+        "note": "'/finance' has two levels ('' and 'finance') per F051, so single-level '+' cannot match it (F053); '+' vs 'finance' is the one-level contrast. Indices: 0-8 wildcard/level cases, 9-10 the '$' rule (F054), 11-16 boundary cases."
+      },
+      "EXPECT": {
+        "match": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          false,
+          true,
+          false,
+          false,
+          false,
+          false,
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "note": "match[i] corresponds to pairs[i]; '+' matches exactly one level so index 7 ('+' vs '/finance', two levels) is false while index 6 ('+/+' vs '/finance') is true"
+      },
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": [
+        "src/topic.c/topic_filter_matches"
+      ]
+    },
+    {
+      "NAME": "matching_is_case_sensitive_and_utf8_exact",
+      "INPUT": {
+        "pairs": [
+          [
+            "sport/tennis",
+            "sport/Tennis"
+          ],
+          [
+            "a/b",
+            "a/b/"
+          ],
+          [
+            "a/b",
+            "a /b"
+          ],
+          [
+            "\\xC3\\xA9",
+            "\\xC3\\xA9"
+          ],
+          [
+            "SYS/#",
+            "$SYS/x"
+          ],
+          [
+            "+",
+            "$SYS"
+          ],
+          [
+            "$share/x",
+            "$share/x"
+          ]
+        ]
+      },
+      "EXPECT": {
+        "match": [
+          false,
+          false,
+          false,
+          true,
+          false,
+          false,
+          true
+        ]
+      },
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": [
+        "src/topic.c/topic_filter_matches"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,61 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "src/session.c/release_fd",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "Close the descriptor owned by a session exactly once by routing the release through net_close_fd, which invalidates the slot.",
+  "SIGNATURE": {
+    "RAW": "static void release_fd(struct session *s)",
+    "NAME": "release_fd",
+    "RETURN": "void",
+    "PARAMS": [
+      {"TYPE": "struct session *", "NAME": "s", "NULLABLE": true, "OWNERSHIP": "BORROWED"}
+    ]
+  },
+  "RELY": {
+    "STRUCT": [{"NAME": "struct session", "ROLE": "owner of the descriptor being released"}],
+    "FUNC": [
+      {"NAME": "net_close_fd", "KIND": "CALL", "ROLE": "close s->fd when it is >= 0 and set it to -1"}
+    ],
+    "VAR": []
+  },
+  "CALL_CONTRACTS": [
+    {
+      "NAME": "net_close_fd",
+      "SIGNATURE": "void net_close_fd(int *fd)",
+      "PARAMS": [{"NAME": "fd", "TYPE": "int *", "OWNERSHIP": "BORROWED"}],
+      "RETURN": "void; on return *fd == -1 and the previous descriptor, if any, was closed exactly once",
+      "OWNERSHIP": "the descriptor owned by the session is released; ownership does not move to net_close_fd",
+      "FAILURE": "no failure under documented preconditions; a slot already holding -1 is a no-op, so repeated teardown cannot close a recycled descriptor number"
+    }
+  ],
+  "LOGIC": {
+    "INPUT": "s: borrowed session pointer, possibly NULL.",
+    "ACTION": "1) If s is NULL return. 2) net_close_fd(&s->fd). That helper returns immediately when s->fd < 0 and otherwise closes the descriptor and stores -1, so the descriptor is released at most once no matter how often this function runs (immediate close, flush completion, destroy, or a repeated teardown). 3) Return. This is the only place in src/session.c that closes a descriptor, which keeps the ownership sequence uniform: the descriptor enters the session in session_create() and leaves here.",
+    "OUTPUT": "No return value. After the call s->fd is -1 and any descriptor previously owned by s has been closed exactly once.",
+    "INVARIANTS_USED": [
+      "a session closes its own descriptor and never another session's",
+      "the descriptor field is -1 exactly when the descriptor is already released",
+      "closing twice would close a descriptor that accept reused, so the slot must be invalidated after the close"
+    ],
+    "PRECONDITION": "s is NULL or points to a live session whose descriptor field holds either -1 or a descriptor owned by that session.",
+    "POSTCONDITION": "s->fd == -1; no other session state is touched.",
+    "IDEMPOTENT": true,
+    "THREAD_SAFETY": "Not thread safe with respect to concurrent teardown of the same session."
+  },
+  "TEST_VECTORS": [
+    {
+      "NAME": "repeated_teardown_closes_the_descriptor_only_once",
+      "INPUT": {"calls": ["session_create(fd = 8, &s)", "session_close_immediately(s)", "session_destroy(s)"]},
+      "EXPECT": {"close_calls_for_8": 1, "fd_after_close": -1, "note": "session_destroy's release is a no-op because the slot is already -1"},
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": ["src/session.c/release_fd", "src/session.c/session_close_immediately", "src/session.c/session_destroy"]
+    },
+    {
+      "NAME": "releasing_one_session_leaves_another_descriptor_open",
+      "INPUT": {"calls": ["sessions A (fd a) and B (fd b)", "session_close_immediately(A)"]},
+      "EXPECT": {"a_closed": true, "b_still_open": true, "note": "per-connection teardown isolation"},
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": ["src/session.c/release_fd", "src/session.c/session_close_immediately"]
+    }
+  ]
+}

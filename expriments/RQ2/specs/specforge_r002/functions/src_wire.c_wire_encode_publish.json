@@ -1,0 +1,201 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "src/wire.c/wire_encode_publish",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "Append one outbound QoS 0 PUBLISH packet, copying the topic name and the arbitrary binary payload verbatim, with the RETAIN bit as given.",
+  "SIGNATURE": {
+    "RAW": "int wire_encode_publish(struct byte_buf *out, const uint8_t *topic, size_t topic_len, const uint8_t *payload, size_t payload_len, uint8_t qos, uint8_t dup, uint8_t retain)",
+    "NAME": "wire_encode_publish",
+    "RETURN": "int",
+    "PARAMS": [
+      {"TYPE": "struct byte_buf *", "NAME": "out", "NULLABLE": true, "OWNERSHIP": "BORROWED"},
+      {"TYPE": "const uint8_t *", "NAME": "topic", "NULLABLE": true, "OWNERSHIP": "BORROWED"},
+      {"TYPE": "size_t", "NAME": "topic_len", "NULLABLE": false, "OWNERSHIP": "BORROWED"},
+      {"TYPE": "const uint8_t *", "NAME": "payload", "NULLABLE": true, "OWNERSHIP": "BORROWED"},
+      {"TYPE": "size_t", "NAME": "payload_len", "NULLABLE": false, "OWNERSHIP": "BORROWED"},
+      {"TYPE": "uint8_t", "NAME": "qos", "NULLABLE": false, "OWNERSHIP": "BORROWED"},
+      {"TYPE": "uint8_t", "NAME": "dup", "NULLABLE": false, "OWNERSHIP": "BORROWED"},
+      {"TYPE": "uint8_t", "NAME": "retain", "NULLABLE": false, "OWNERSHIP": "BORROWED"}
+    ]
+  },
+  "RELY": {
+    "STRUCT": [{"NAME": "struct byte_buf", "ROLE": "destination for the encoded packet bytes"}],
+    "FUNC": [
+      {"NAME": "buffer_reserve", "KIND": "CALL", "ROLE": "allocate the whole packet before the first byte is written"},
+      {"NAME": "buffer_append", "KIND": "CALL", "ROLE": "append the fixed header, the topic length prefix, the topic and the payload"},
+      {"NAME": "wire_write_remaining_length", "KIND": "CALL", "ROLE": "append the Remaining Length encoding of 2 + topic_len + payload_len"},
+      {"NAME": "topic_name_validate", "KIND": "CALL", "ROLE": "refuse an outbound topic that is empty, too long, not UTF-8 or contains a wildcard"}
+    ],
+    "VAR": [
+      {"NAME": "WIRE_PACKET_PUBLISH", "ROLE": "control packet type 3 (fixed header nibble 0x30)"},
+      {"NAME": "WIRE_MAX_REMAINING_LENGTH", "ROLE": "268435455; upper bound of the encoded Remaining Length value"}
+    ]
+  },
+  "CALL_CONTRACTS": [
+    {
+      "NAME": "topic_name_validate",
+      "SIGNATURE": "int topic_name_validate(const uint8_t *name, size_t len)",
+      "PARAMS": [
+        {"NAME": "name", "TYPE": "const uint8_t *", "OWNERSHIP": "BORROWED"},
+        {"NAME": "len", "TYPE": "size_t", "OWNERSHIP": "BORROWED"}
+      ],
+      "RETURN": "1 when name is 1..65535 bytes of valid UTF-8 with neither 0x23 nor 0x2B; 0 otherwise",
+      "OWNERSHIP": "borrows name only for the call",
+      "FAILURE": "0 means the topic cannot be encoded, so this function returns -1 before writing anything"
+    },
+    {
+      "NAME": "wire_write_remaining_length",
+      "SIGNATURE": "static int wire_write_remaining_length(struct byte_buf *out, size_t value)",
+      "PARAMS": [
+        {"NAME": "out", "TYPE": "struct byte_buf *", "OWNERSHIP": "BORROWED"},
+        {"NAME": "value", "TYPE": "size_t", "OWNERSHIP": "BORROWED"}
+      ],
+      "RETURN": "0 after appending the minimal 1..4 byte encoding of value; -1 when value exceeds 268435455 or the buffer cannot grow",
+      "OWNERSHIP": "no transfer; bytes are appended to the caller's buffer",
+      "FAILURE": "nonzero means no complete packet is written, so the caller returns -2 after reserving the full packet size"
+    },
+    {
+      "NAME": "buffer_reserve",
+      "SIGNATURE": "int buffer_reserve(struct byte_buf *buf, size_t extra)",
+      "PARAMS": [
+        {"NAME": "buf", "TYPE": "struct byte_buf *", "OWNERSHIP": "BORROWED"},
+        {"NAME": "extra", "TYPE": "size_t", "OWNERSHIP": "BORROWED"}
+      ],
+      "RETURN": "0 when cap >= len + extra; -1 on overflow or allocation failure",
+      "OWNERSHIP": "no transfer",
+      "FAILURE": "-1 leaves the contents unchanged, so the caller returns -2 without writing any byte"
+    },
+    {
+      "NAME": "buffer_append",
+      "SIGNATURE": "int buffer_append(struct byte_buf *buf, const void *src, size_t len)",
+      "PARAMS": [
+        {"NAME": "buf", "TYPE": "struct byte_buf *", "OWNERSHIP": "BORROWED"},
+        {"NAME": "src", "TYPE": "const void *", "OWNERSHIP": "BORROWED"},
+        {"NAME": "len", "TYPE": "size_t", "OWNERSHIP": "BORROWED"}
+      ],
+      "RETURN": "0 when all len bytes were appended (a zero length append succeeds without reading src); -1 when nothing was appended",
+      "OWNERSHIP": "no transfer; topic and payload bytes are copied into the queue",
+      "FAILURE": "cannot fail after the full-packet reserve; a -1 is propagated as -2"
+    }
+  ],
+  "LOGIC": {
+    "INPUT": "out: caller-owned output buffer. topic/topic_len: borrowed Topic Name bytes, normally a slice of the received PUBLISH. payload/payload_len: borrowed payload bytes, any binary content including 0x00 and possibly empty (payload may be NULL when payload_len is 0). qos/dup/retain: outbound flag bits.",
+    "ACTION": "1) If out is NULL return -1. 2) Validate before writing: if qos != 0 return -1 (this broker only sends QoS 0, and a QoS 1/2 packet would need a Packet Identifier); if dup != 0 return -1 (DUP must be 0 for QoS 0, MQTT-3.3.1-2); if retain > 1 return -1 (one bit); if topic is NULL return -1; if payload is NULL and payload_len > 0 return -1; if topic_name_validate(topic, topic_len) != 1 return -1 (empty topic, more than 65535 bytes, ill-formed UTF-8 or a wildcard byte). 3) body = 2 + topic_len + payload_len (size_t arithmetic); if body > WIRE_MAX_REMAINING_LENGTH return -1 (the Remaining Length field cannot express it). 4) rl_width = (body < 128) ? 1 : (body < 16384) ? 2 : (body < 2097152) ? 3 : 4; if buffer_reserve(out, 1 + rl_width + body) != 0 return -2. 5) hdr = ((WIRE_PACKET_PUBLISH << 4) & 0xF0) | (uint8_t)((retain & 0x01)) = 0x30 | retain; buffer_append(out, &hdr, 1); wire_write_remaining_length(out, body); tlen_hi = (uint8_t)(topic_len >> 8); tlen_lo = (uint8_t)(topic_len & 0xFF); buffer_append(out, &tlen_hi, 1); buffer_append(out, &tlen_lo, 1); buffer_append(out, topic, topic_len); buffer_append(out, payload, payload_len). A nonzero return after the reserve means the packet is incomplete: return -2 and let the caller discard the buffer. 6) Return 0. Topic and payload are never inspected beyond topic validation, so 0x00 bytes, 0xFF bytes and an empty payload survive byte for byte, and no NUL terminator is added.",
+    "OUTPUT": "0 when 0x30|retain, the Remaining Length of 2 + topic_len + payload_len, the two topic length bytes (MSB first), the topic bytes and the payload bytes were appended in that order. -1 for a NULL out/topic, a NULL payload with a nonzero length, qos != 0, dup != 0, retain > 1, an illegal topic name or a packet too large for the Remaining Length field, with nothing written. -2 when the buffer could not be grown.",
+    "INVARIANTS_USED": [
+      "outbound broker PUBLISH is always QoS 0 with DUP 0",
+      "the topic name is written as a 2-byte length prefix followed by the exact bytes, with no wildcards",
+      "the payload is copied verbatim and its length comes from the frame, not from a terminator",
+      "the RETAIN bit is the only variable fixed-header flag bit in an outbound PUBLISH",
+      "a queue append preserves already queued bytes"
+    ],
+    "PRECONDITION": "out is NULL or a valid byte_buf; topic points to topic_len bytes and payload to payload_len bytes when their lengths are nonzero.",
+    "POSTCONDITION": "on success one complete PUBLISH packet follows the previously queued bytes; on -1 nothing changed; on -2 no complete packet was appended.",
+    "IDEMPOTENT": false,
+    "THREAD_SAFETY": "Not thread safe with respect to out; topic and payload are only read."
+  },
+  "WIRE_MAPPING": [
+    {
+      "PACKET": "PUBLISH",
+      "WIRE_FIELD": "fixed header byte",
+      "STRATEGY": "store_in_field",
+      "TARGET": "out byte 0",
+      "RULE": "0x30 | retain: type 3 in the high nibble, DUP bit 3 = 0, QoS bits 2-1 = 00, RETAIN bit 0 = retain."
+    },
+    {
+      "PACKET": "PUBLISH",
+      "WIRE_FIELD": "Remaining Length",
+      "STRATEGY": "store_in_field",
+      "TARGET": "the bytes after byte 0",
+      "RULE": "minimal encoding of 2 + topic_len + payload_len, rejected with -1 when it exceeds 268435455 (wire_write_remaining_length)."
+    },
+    {
+      "PACKET": "PUBLISH",
+      "WIRE_FIELD": "Topic Name length prefix",
+      "STRATEGY": "store_in_field",
+      "TARGET": "the two bytes after the Remaining Length",
+      "RULE": "topic_len written MSB first; topic_len is 1..65535 because topic_name_validate enforces that range."
+    },
+    {
+      "PACKET": "PUBLISH",
+      "WIRE_FIELD": "Topic Name",
+      "STRATEGY": "store_in_field",
+      "TARGET": "topic_len bytes copied from topic",
+      "RULE": "the received bytes are copied unchanged: case is preserved and no normalisation happens, so a subscriber's filter is matched against the same bytes the publisher sent (scope R04/R05)."
+    },
+    {
+      "PACKET": "PUBLISH",
+      "WIRE_FIELD": "Payload",
+      "STRATEGY": "store_in_field",
+      "TARGET": "payload_len bytes copied from payload",
+      "RULE": "copied verbatim including 0x00; a zero-length payload appends nothing and is a legal empty payload (scope R06)."
+    }
+  ],
+  "TEST_VECTORS": [
+    {
+      "NAME": "qos0_publish_with_binary_payload_is_reproduced",
+      "INPUT": {"topic": "74 65 6D 70", "topic_len": 4, "payload": "00 FF", "payload_len": 2, "qos": 0, "dup": 0, "retain": 0},
+      "EXPECT": {
+        "return": 0,
+        "bytes": "30 08 00 04 74 65 6D 70 00 FF",
+        "derivation": "Remaining Length 2 + 4 + 2 = 8 = 0x08 | topic length 0x0004 | topic 'temp' | payload bytes unchanged",
+        "len_delta": 10
+      },
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": ["src/wire.c/wire_encode_publish", "src/broker.c/route_publish"]
+    },
+    {
+      "NAME": "empty_payload_is_encoded_as_a_zero_length_payload",
+      "INPUT": {"topic": "74 65 6D 70", "topic_len": 4, "payload": null, "payload_len": 0, "qos": 0, "dup": 0, "retain": 0},
+      "EXPECT": {
+        "return": 0,
+        "bytes": "30 06 00 04 74 65 6D 70",
+        "derivation": "Remaining Length 2 + 4 + 0 = 6; the packet ends after the topic and no NUL byte is added",
+        "len_delta": 8
+      },
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": ["src/wire.c/wire_encode_publish", "src/broker.c/route_publish"]
+    },
+    {
+      "NAME": "retain_bit_round_trips",
+      "INPUT": {"topic": "61 2F 62", "topic_len": 3, "payload": "78", "payload_len": 1, "qos": 0, "dup": 0, "retain": 1},
+      "EXPECT": {
+        "return": 0,
+        "bytes": "31 06 00 03 61 2F 62 78",
+        "derivation": "0x30 | 0x01 = 0x31 | Remaining Length 2 + 3 + 1 = 6"
+      },
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": ["src/wire.c/wire_encode_publish"]
+    },
+    {
+      "NAME": "remaining_length_width_boundary",
+      "INPUT": {"cases": [
+        {"topic_len": 125, "payload_len": 0, "note": "Remaining Length 127 fits in one byte"},
+        {"topic_len": 126, "payload_len": 0, "note": "Remaining Length 128 needs two bytes"}
+      ]},
+      "EXPECT": {
+        "first_bytes": ["30 7F 00 7D", "30 80 01 00 7E"],
+        "len_delta": [129, 131],
+        "derivation": "127 < 128 -> one byte 0x7F, total 1 + 1 + 127 = 129; 128 -> 128 % 128 = 0 with continuation then 1, i.e. 0x80 0x01, total 1 + 2 + 128 = 131"
+      },
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": ["src/wire.c/wire_encode_publish", "src/wire.c/wire_write_remaining_length"]
+    },
+    {
+      "NAME": "invalid_arguments_are_refused_without_writing",
+      "INPUT": {"cases": [
+        {"out": null, "note": "NULL destination"},
+        {"topic": null, "topic_len": 4, "note": "NULL topic"},
+        {"topic": "61", "topic_len": 1, "payload": null, "payload_len": 1, "note": "NULL payload with nonzero length"},
+        {"qos": 1, "note": "QoS 1 is not encoded by this broker"},
+        {"dup": 1, "note": "DUP with QoS 0 is a protocol error"},
+        {"retain": 2, "note": "retain is one bit"},
+        {"topic": "61 2F 23", "topic_len": 3, "note": "wildcard in an outbound topic name"},
+        {"topic_len": 0, "note": "empty topic name"}
+      ]},
+      "EXPECT": {"returns": [-1, -1, -1, -1, -1, -1, -1, -1], "len_delta": [0, 0, 0, 0, 0, 0, 0, 0]},
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": ["src/wire.c/wire_encode_publish", "src/topic.c/topic_name_validate"]
+    }
+  ]
+}

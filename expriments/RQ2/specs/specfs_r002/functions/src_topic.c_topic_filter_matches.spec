@@ -1,0 +1,75 @@
+[PROMPT]
+Decide whether one validated Topic Filter matches one validated Topic Name by walking levels: case-sensitive byte comparison, '+' matching exactly one level (possibly empty), '#' matching the parent level and all remaining levels including zero, and never matching a '$'-leading name from a wildcard-leading filter.
+
+[RELY]
+STRUCT:
+
+FUNC:
+
+VAR:
+
+
+[GUARANTEE]
+RAW:
+int topic_filter_matches(const uint8_t *filter, size_t filter_len, const uint8_t *topic, size_t topic_len)
+NAME:
+topic_filter_matches
+RETURN:
+int
+PARAMS:
+  - TYPE:
+const uint8_t *
+    NAME:
+filter
+    NULLABLE:
+true
+    OWNERSHIP:
+BORROWED
+  - TYPE:
+size_t
+    NAME:
+filter_len
+    NULLABLE:
+false
+    OWNERSHIP:
+BORROWED
+  - TYPE:
+const uint8_t *
+    NAME:
+topic
+    NULLABLE:
+true
+    OWNERSHIP:
+BORROWED
+  - TYPE:
+size_t
+    NAME:
+topic_len
+    NULLABLE:
+false
+    OWNERSHIP:
+BORROWED
+
+[SPECIFICATION]
+FUNCTION_TYPE:
+ALGORITHM
+LOGIC:
+  INPUT:
+A Topic Filter slice (filter, filter_len) and a Topic Name slice (topic, topic_len), both borrowed for the duration of the call and both already validated by topic_filter_validate / topic_name_validate; '/' (0x2F) separates levels and adjacent separators denote an empty level.
+  ACTION:
+Reject obvious non-inputs first: filter NULL or filter_len == 0 or topic NULL or topic_len == 0 returns 0. Then apply the mandatory '$' rule (MQTT-4.7.2-1): if topic[0] == 0x24 and (filter[0] == 0x23 || filter[0] == 0x2B) return 0, because a filter that starts with a wildcard character never matches a name starting with '$'. Otherwise walk the levels: keep fi over the filter and ti over the topic. At each step (a) compute the filter level extent [fi, fj) where fj is the next '/' or filter_len; if that level is exactly one byte '#' return 1 immediately, because '#' matches the parent level and any number of child levels, including zero, so remaining topic levels are irrelevant; (b) compute the topic level extent [ti, tj) the same way; (c) if the filter level is not the single byte '+', the two levels must have equal length and byte-identical contents (memcmp == 0) - comparison is case sensitive and no normalization is applied; a '+' level accepts any single topic level including the empty level produced by '//' or a trailing '/'; (d) if both fj == filter_len and tj == topic_len return 1 (the level lists are equally long); (e) if fj == filter_len return 0 (the filter has fewer levels than the name); if tj == topic_len return 1 only when the whole remaining filter is the single level '#' (filter_len - (fj + 1) == 1 and filter[fj + 1] == 0x23), because '#' also matches the parent level with zero further levels (facts F051, F052), and otherwise return 0 (the name has fewer levels than the filter requires, and a trailing separator in the filter denotes a further empty level that the name does not provide); (f) advance fi = fj + 1 and ti = tj + 1 and continue. The filter and topic slices are read only: the caller keeps ownership of both and no storage is allocated.
+  OUTPUT:
+1 on match, 0 on no match; input slices are unmodified and no state is retained.
+  INVARIANTS_USED:
+    - no normalization, no case folding, no character substitution (MQTT-4.7.3-4)
+    - matching is level based; each non-wildcard level matches character for character
+    - '#' also matches the parent level itself
+    - empty levels are real levels
+  PRECONDITION:
+Both slices are either NULL with length 0 or point to their stated number of readable bytes.
+  POSTCONDITION:
+the result depends only on the two slices; nothing is written
+  IDEMPOTENT:
+true
+  THREAD_SAFETY:
+Reentrant and read-only.

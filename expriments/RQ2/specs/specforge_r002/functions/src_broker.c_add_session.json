@@ -1,0 +1,260 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "src/broker.c/add_session",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "Create a session for an accepted descriptor and append it to the registry, growing the slot array only when it is full, with ownership of the descriptor moving to the broker exactly when this function succeeds.",
+  "SIGNATURE": {
+    "RAW": "static int add_session(struct broker *b, int fd, struct session **out_session)",
+    "NAME": "add_session",
+    "RETURN": "int",
+    "PARAMS": [
+      {
+        "TYPE": "struct broker *",
+        "NAME": "b",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      },
+      {
+        "TYPE": "int",
+        "NAME": "fd",
+        "NULLABLE": false,
+        "OWNERSHIP": "OWNED_BY_CALLER"
+      },
+      {
+        "TYPE": "struct session **",
+        "NAME": "out_session",
+        "NULLABLE": true,
+        "OWNERSHIP": "BORROWED"
+      }
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {
+        "NAME": "struct broker",
+        "ROLE": "registry receiving the new owned session pointer"
+      },
+      {
+        "NAME": "struct session",
+        "ROLE": "newly created connection, owned by the broker after success"
+      }
+    ],
+    "FUNC": [
+      {
+        "NAME": "session_create",
+        "KIND": "CALL",
+        "ROLE": "allocate the session and adopt the descriptor"
+      },
+      {
+        "NAME": "session_destroy",
+        "KIND": "CALL",
+        "ROLE": "undo the creation when the registry could not grow, which also closes the adopted descriptor"
+      },
+      {
+        "NAME": "realloc",
+        "KIND": "CALL",
+        "ROLE": "grow the session pointer array without losing the existing pointers"
+      }
+    ],
+    "VAR": [
+      {
+        "NAME": "BROKER_INITIAL_SESSION_CAP",
+        "ROLE": "slots requested when the array is still empty (guards against a zero-size growth request)"
+      },
+      {
+        "NAME": "struct broker",
+        "ROLE": "b->count, b->cap and b->sessions are updated together so the array never holds an unowned pointer"
+      }
+    ]
+  },
+  "CALL_CONTRACTS": [
+    {
+      "NAME": "session_create",
+      "SIGNATURE": "int session_create(int fd, struct session **out_session)",
+      "RETURN": "0 with *out_session set to a session that owns fd and is in SESSION_AWAITING_CONNECT; -1 with *out_session == NULL for invalid arguments or allocation failure",
+      "OWNERSHIP": "on 0 the caller owns the session; on -1 the descriptor is still open and still owned by the caller, so this function must not close it",
+      "FAILURE": "-1 means no session exists: the caller returns -1 so the execution layer closes fd through net_close_fd",
+      "PARAMS": [
+        {
+          "TYPE": "int",
+          "NAME": "fd",
+          "NULLABLE": false,
+          "OWNERSHIP": "BORROWED"
+        },
+        {
+          "TYPE": "struct session **",
+          "NAME": "out_session",
+          "NULLABLE": true,
+          "OWNERSHIP": "OWNED_BY_CALLER"
+        }
+      ]
+    },
+    {
+      "NAME": "session_destroy",
+      "SIGNATURE": "void session_destroy(struct session *s)",
+      "RETURN": "void; closes the descriptor if still open and frees all session-owned storage (NULL is ignored)",
+      "OWNERSHIP": "transfers the freshly created session back: after this call no registry slot references it",
+      "FAILURE": "no failure under documented preconditions; used only on a session that was never published in the registry, so no other caller holds the pointer",
+      "PARAMS": [
+        {
+          "TYPE": "struct session *",
+          "NAME": "s",
+          "NULLABLE": true,
+          "OWNERSHIP": "TRANSFER"
+        }
+      ]
+    }
+  ],
+  "LOGIC": {
+    "INPUT": "b: broker registry (non-NULL). fd: an accepted descriptor already set to nonblocking and close-on-exec by the accept step; it is borrowed until the session adopts it. out_session: optional output slot for the created session pointer.",
+    "ACTION": "1. s = NULL; rc = session_create(fd, &s). 2. If rc != 0 return -1: no session was created and fd is still open and still the caller's responsibility, so the execution layer closes it and other sessions are unaffected. 3. If b->count == b->cap, grow the array: new_cap = (b->cap == 0) ? BROKER_INITIAL_SESSION_CAP : b->cap * 2; if new_cap < b->cap or new_cap > (SIZE_MAX / sizeof *b->sessions) (overflow) or realloc(b->sessions, new_cap * sizeof *b->sessions) returns NULL, then session_destroy(s) to release the creation (which also closes the just-adopted descriptor) and return -1. realloc keeps the existing slot values, so the move never invalidates the sessions themselves - only borrowed slot pointers held elsewhere, which callers do not keep. 4. On success: b->sessions = grown array, b->cap = new_cap. 5. b->sessions[b->count] = s; b->count++. 6. If out_session is non-NULL set *out_session = s (borrowed). 7. Return 0.",
+    "OUTPUT": "0 with the new session appended at index b->count - 1, the broker owning the descriptor and the session starting in SESSION_AWAITING_CONNECT with no identifier and no subscriptions. -1 when the session could not be created or the array could not grow; on -1 the registry is unchanged (same count, same capacity, no slot holds the new session), fd is closed only in the case where the session had already adopted it, and out_session is untouched.",
+    "INVARIANTS_USED": [
+      "an accepted descriptor belongs to the broker only after the session adopts it; a failure before that leaves the descriptor to the caller",
+      "every pointer stored in the registry is owned by the broker and destroyed exactly once",
+      "the array grows geometrically and never shrinks, so a burst of reconnects does not repeatedly reallocate",
+      "capacity growth is checked against overflow before allocation so the slot count cannot wrap",
+      "a fresh session never inherits subscriptions or an identifier from an earlier connection"
+    ],
+    "PRECONDITION": "b is non-NULL with a consistent sessions/count/cap triple (from broker_create); fd is a valid accepted nonblocking descriptor not owned by any other session.",
+    "POSTCONDITION": "either the registry has one more live session and the broker owns fd, or the registry is exactly as before and the descriptor's ownership is unchanged (caller's) or already released by the rolled-back session.",
+    "IDEMPOTENT": false,
+    "THREAD_SAFETY": "Single-threaded reactor; the registry triple is only mutated here and in remove_session_at."
+  },
+  "TEST_VECTORS": [
+    {
+      "NAME": "first_session_is_appended_at_index_zero",
+      "INPUT": {
+        "registry_before": {
+          "count": 0,
+          "cap": 8
+        },
+        "fd": 5,
+        "fd_nonblocking": true
+      },
+      "EXPECT": {
+        "result": 0,
+        "count_after": 1,
+        "cap_after": 8,
+        "session_state": "SESSION_AWAITING_CONNECT",
+        "in_registry": true,
+        "note": "no reallocation for the first eight sessions"
+      },
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": [
+        "src/broker.c/add_session",
+        "src/session.c/session_create"
+      ]
+    },
+    {
+      "NAME": "full_registry_grows_before_appending",
+      "INPUT": {
+        "registry_before": {
+          "count": 8,
+          "cap": 8,
+          "clients": [
+            "c0",
+            "c1",
+            "c2",
+            "c3",
+            "c4",
+            "c5",
+            "c6",
+            "c7"
+          ]
+        },
+        "fd": 21
+      },
+      "EXPECT": {
+        "result": 0,
+        "count_after": 9,
+        "cap_after": 16,
+        "order_after": [
+          "c0",
+          "c1",
+          "c2",
+          "c3",
+          "c4",
+          "c5",
+          "c6",
+          "c7",
+          "new"
+        ],
+        "existing_sessions_untouched": true,
+        "note": "existing session objects keep their identity across the array reallocation"
+      },
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": [
+        "src/broker.c/add_session"
+      ]
+    },
+    {
+      "NAME": "session_creation_failure_leaves_the_descriptor_to_the_caller",
+      "INPUT": {
+        "registry_before": {
+          "count": 3,
+          "cap": 8
+        },
+        "fd": 9,
+        "injected_failure": "session_create calloc fails"
+      },
+      "EXPECT": {
+        "result": -1,
+        "count_after": 3,
+        "cap_after": 8,
+        "fd_still_open": true,
+        "caller_closes_fd": true,
+        "note": "the execution layer calls net_close_fd on -1 because the broker never adopted the descriptor"
+      },
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": [
+        "src/broker.c/add_session",
+        "src/net.c/net_close_fd"
+      ]
+    },
+    {
+      "NAME": "array_growth_failure_rolls_back_the_adopted_descriptor",
+      "INPUT": {
+        "registry_before": {
+          "count": 4,
+          "cap": 4
+        },
+        "fd": 12,
+        "injected_failure": "realloc of the slot array fails"
+      },
+      "EXPECT": {
+        "result": -1,
+        "count_after": 4,
+        "cap_after": 4,
+        "session_destroyed": true,
+        "fd_closed_by_rollback": true,
+        "other_sessions_untouched": true,
+        "note": "the half-built session is destroyed so the adopted descriptor is not leaked"
+      },
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": [
+        "src/broker.c/add_session",
+        "src/session.c/session_destroy"
+      ]
+    },
+    {
+      "NAME": "concurrent_clients_are_all_registered_and_counted",
+      "INPUT": {
+        "runtime": [
+          "create 10 TCP connections to the listening port without sending anything yet"
+        ]
+      },
+      "EXPECT": {
+        "session_count": 10,
+        "each_state": "SESSION_AWAITING_CONNECT",
+        "note": "the registry grew from 8 to 16 slots; no accepted descriptor is lost or closed"
+      },
+      "LEVEL": "RUNTIME",
+      "TRACE_REFS": [
+        "src/broker.c/add_session",
+        "src/broker.c/broker_session_count",
+        "src/loop.c/accept_ready"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,79 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "src/session.c/session_add_subscription",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "Copy an accepted filter into session-owned storage, replacing an identical filter in place or appending a new slot, so routing matches stored state and the connection's subscriptions die with it.",
+  "SIGNATURE": {
+    "RAW": "int session_add_subscription(struct session *s, const char *filter, size_t filter_len, uint8_t qos)",
+    "NAME": "session_add_subscription",
+    "RETURN": "int",
+    "PARAMS": [
+      {"TYPE": "struct session *", "NAME": "s", "NULLABLE": true, "OWNERSHIP": "BORROWED"},
+      {"TYPE": "const char *", "NAME": "filter", "NULLABLE": true, "OWNERSHIP": "BORROWED"},
+      {"TYPE": "size_t", "NAME": "filter_len", "NULLABLE": false, "OWNERSHIP": "BORROWED"},
+      {"TYPE": "uint8_t", "NAME": "qos", "NULLABLE": false, "OWNERSHIP": "BORROWED"}
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {"NAME": "struct session", "ROLE": "owner of the subscription array and its growth"},
+      {"NAME": "struct session_sub_entry", "ROLE": "slot receiving the public view and the owned filter copy"}
+    ],
+    "FUNC": [
+      {"NAME": "malloc", "KIND": "TYPE_REF", "ROLE": "allocate the filter copy"},
+      {"NAME": "realloc", "KIND": "TYPE_REF", "ROLE": "grow the slot array, preserving existing entries and their owned copies"},
+      {"NAME": "memcmp", "KIND": "TYPE_REF", "ROLE": "detect an identical filter (length-delimited, not a C string comparison)"},
+      {"NAME": "memcpy", "KIND": "TYPE_REF", "ROLE": "copy the filter bytes"},
+      {"NAME": "free", "KIND": "TYPE_REF", "ROLE": "release the candidate copy when the array cannot grow"}
+    ],
+    "VAR": [
+      {"NAME": "SESSION_INITIAL_SUB_CAP", "ROLE": "slot count allocated for the first subscription (4)"}
+    ]
+  },
+  "CALL_CONTRACTS": [],
+  "LOGIC": {
+    "INPUT": "s: borrowed session pointer. filter: borrowed filter bytes (not NUL terminated), already validated as a legal Topic Filter by the caller. filter_len: its length, at least 1. qos: the granted QoS to store, 0..2.",
+    "ACTION": "1) If s is NULL, filter is NULL, filter_len == 0 or qos > 2 return -1 (storage-level argument check; full filter syntax was validated before this call). 2) Scan slots i = 0 .. sub_count - 1: when s->subs[i].view.filter_len == filter_len and memcmp(s->subs[i].view.filter, filter, filter_len) == 0, this is the same filter — set s->subs[i].view.qos = qos and return 0. The position and the existing owned copy are reused, exactly like an MQTT client that re-subscribes to a filter it already has, so no duplicate is created and no allocation happens. 3) Otherwise make the copy: copy = malloc(filter_len); if copy is NULL return -1 with the subscription list unchanged. memcpy(copy, filter, filter_len). 4) If sub_count == sub_cap, grow the array: new_cap = (sub_cap == 0) ? SESSION_INITIAL_SUB_CAP : sub_cap * 2; reject new_cap < sub_cap (size_t overflow) by freeing copy and returning -1; tmp = realloc(s->subs, new_cap * sizeof *tmp) and on NULL free(copy) and return -1 (the old array and all existing filter copies stay valid and reachable through s->subs); otherwise s->subs = tmp and s->sub_cap = new_cap. 5) Install the new slot at index sub_count: view.filter = copy, view.filter_len = filter_len, view.qos = qos, owned = copy; sub_count += 1. 6) Return 0. Failure paths never leave a partially grown array or an orphaned copy: either the copy is adopted by a slot and counted, or it is freed before returning.",
+    "OUTPUT": "0 when the filter was replaced in place (identical filter, same count) or appended as a new slot (count + 1) with its own owned copy. -1 for invalid arguments, an overflowed capacity computation or allocation failure, with the stored subscriptions unchanged.",
+    "INVARIANTS_USED": [
+      "the session owns a copy of every filter it stores; the borrowed packet bytes do not outlive the decoded packet",
+      "0 <= sub_count <= sub_cap and every slot below sub_count holds one owned copy",
+      "an identical filter is replaced in place rather than duplicated",
+      "on any failure the stored subscription list must remain exactly as it was"
+    ],
+    "PRECONDITION": "s is NULL or points to a live, non-destroyed session; filter points to filter_len readable bytes when filter_len > 0.",
+    "POSTCONDITION": "on success the filter is stored with the given QoS and session_subscription_count() is unchanged or grew by one; on failure the list, its copies and its capacity are unchanged.",
+    "IDEMPOTENT": false,
+    "THREAD_SAFETY": "Not thread safe; single-threaded per session."
+  },
+  "TEST_VECTORS": [
+    {
+      "NAME": "distinct_filters_append_and_identical_filter_is_replaced_in_place",
+      "INPUT": {"calls": ["session_add_subscription(s, \"a/+\", 3, 0)", "session_add_subscription(s, \"b/#\", 3, 0)", "session_add_subscription(s, \"a/+\", 3, 0)"]},
+      "EXPECT": {"returns": [0, 0, 0], "count": 2, "order": ["a/+", "b/#"], "index_of_a_is_still_0": true},
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": ["src/session.c/session_add_subscription", "src/session.c/session_subscription_count", "src/session.c/session_subscription_at"]
+    },
+    {
+      "NAME": "array_growth_keeps_earlier_filters_usable_across_many_adds",
+      "INPUT": {"calls": ["add 20 distinct filters 'f/0' .. 'f/19', then re-read every slot"]},
+      "EXPECT": {"count": 20, "all_filters_readable_in_order": true, "capacity_at_least_20": true, "leaked_copies": 0},
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": ["src/session.c/session_add_subscription", "src/session.c/session_subscription_at"]
+    },
+    {
+      "NAME": "failure_paths_leave_the_subscription_list_unchanged",
+      "INPUT": {"calls": ["session_add_subscription(s, \"keep/#\", 6, 0)", "session_add_subscription(s, NULL, 3, 0)", "session_add_subscription(s, \"x\", 0, 0)", "session_add_subscription(s, \"y\", 1, 3)", "session_add_subscription(s, \"z\", 1, 0) with injected allocation failure"]},
+      "EXPECT": {"returns": [0, -1, -1, -1, -1], "count_after": 1, "filter_after": "keep/#", "no_orphaned_copy": true},
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": ["src/session.c/session_add_subscription"]
+    },
+    {
+      "NAME": "subscriptions_of_a_closed_client_are_not_inherited_by_a_new_connection",
+      "INPUT": {"runtime": ["client A CONNECT + SUBSCRIBE 'sensors/#'", "client A DISCONNECT", "client B CONNECT with a fresh (different) client id, then PUBLISH handled by the broker targeting 'sensors/x'"]},
+      "EXPECT": {"b_subscription_count": 0, "b_receives_nothing": true, "a_state": "SESSION_CLOSED", "note": "no clean-session persistence of subscriptions to new connections"},
+      "LEVEL": "RUNTIME",
+      "TRACE_REFS": ["src/session.c/session_add_subscription", "src/broker.c/handle_subscribe", "src/broker.c/handle_disconnect"]
+    }
+  ]
+}

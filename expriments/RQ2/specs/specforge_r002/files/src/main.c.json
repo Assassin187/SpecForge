@@ -1,0 +1,216 @@
+{
+  "KIND": "FILE_SPEC",
+  "FILE": {
+    "TRACE_ID": "src/main.c",
+    "LANG": "C99",
+    "ROLE": "Program entry point: argument and <port> validation, signal-handler installation that only writes a volatile sig_atomic_t flag, creation of broker/listener/reactor, run, then ordered teardown that closes the listener and releases the broker and the loop.",
+    "DOC_REF": [
+      "TASK.md:6",
+      "REQUIREMENTS.md:3",
+      "REQUIREMENTS.md:14"
+    ]
+  },
+  "SOURCE": {
+    "PATH": "src/main.c",
+    "DEPENDENCY": [
+      "src/broker.h",
+      "src/loop.h",
+      "src/net.h",
+      "src/session.h"
+    ],
+    "SYSTEM_DEPENDENCY": [
+      "signal.h",
+      "stdio.h",
+      "stdlib.h",
+      "stddef.h",
+      "stdint.h"
+    ],
+    "DATA": [
+      {
+        "NAME": "MAIN_BACKLOG",
+        "KIND": "MACRO",
+        "VISIBILITY": "PRIVATE",
+        "ROLE": "listen() backlog passed to net_listen",
+        "VALUE": 64
+      },
+      {
+        "NAME": "g_stop",
+        "KIND": "VAR",
+        "VISIBILITY": "PRIVATE",
+        "ROLE": "volatile sig_atomic_t flag written only by the signal handler and read by loop_run",
+        "VALUE": 0
+      },
+      {
+        "NAME": "g_stop_flag",
+        "KIND": "VAR",
+        "VISIBILITY": "PRIVATE",
+        "ROLE": "Address published to loop_set_stop_flag; identical to g_stop",
+        "VALUE": "&g_stop"
+      }
+    ],
+    "INTERFACE": [
+      {
+        "TRACE_ID": "src/main.c/on_signal",
+        "SIGNATURE": "static void on_signal(int signum)",
+        "NAME": "on_signal",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "EVENT_HANDLER",
+        "ROLE": "Signal handler: stores 1 into the sig_atomic_t stop flag and does nothing else",
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "src/main.c/main",
+        "SIGNATURE": "int main(int argc, char **argv)",
+        "NAME": "main",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ENTRYPOINT",
+        "ROLE": "Validate argv, ignore SIGPIPE, install handlers, run the broker loop, tear down in order",
+        "VISIBILITY": "public"
+      }
+    ]
+  },
+  "PUBLIC_SYMBOLS": [
+    {
+      "NAME": "main",
+      "KIND": "FUNC",
+      "SIGNATURE": "int main(int argc, char **argv)",
+      "ROLE": "Program entry point"
+    }
+  ],
+  "TEST_VECTORS": [
+    {
+      "NAME": "usage_error_when_port_argument_is_missing_or_extra",
+      "INPUT": {
+        "runtime": [
+          "./mqtt_broker",
+          "./mqtt_broker 1883 extra"
+        ]
+      },
+      "EXPECT": {
+        "exit_code": [
+          1,
+          1
+        ],
+        "stderr_nonempty": true,
+        "no_socket_bound": true
+      },
+      "LEVEL": "RUNTIME",
+      "TRACE_REFS": [
+        "src/main.c/main"
+      ]
+    },
+    {
+      "NAME": "invalid_port_argument_exits_with_status_1",
+      "INPUT": {
+        "runtime": [
+          "./mqtt_broker 0",
+          "./mqtt_broker 65536",
+          "./mqtt_broker abc",
+          "./mqtt_broker -1"
+        ]
+      },
+      "EXPECT": {
+        "exit_code": 1,
+        "stderr_nonempty": true,
+        "listener_not_created": true
+      },
+      "LEVEL": "RUNTIME",
+      "TRACE_REFS": [
+        "src/main.c/main",
+        "src/net.c/net_parse_port"
+      ]
+    },
+    {
+      "NAME": "sigterm_leads_to_clean_exit_status_0_and_released_port",
+      "INPUT": {
+        "runtime": [
+          "start ./mqtt_broker <free_port>",
+          "wait until the port accepts connections",
+          "send SIGTERM",
+          "wait for exit",
+          "immediately bind the same port again"
+        ]
+      },
+      "EXPECT": {
+        "exit_code": 0,
+        "terminated_within_seconds": 1,
+        "port_rebindable": true,
+        "no_orphan_connections": true
+      },
+      "LEVEL": "RUNTIME",
+      "TRACE_REFS": [
+        "src/main.c/main",
+        "src/main.c/on_signal",
+        "src/loop.c/loop_run"
+      ]
+    },
+    {
+      "NAME": "sigint_and_sigterm_handlers_only_touch_the_sig_atomic_t_flag",
+      "INPUT": {
+        "runtime": [
+          "inspect the handler body",
+          "deliver SIGINT while a 1 MiB PUBLISH fan-out is in flight and confirm every recipient still receives its copy and no response is truncated"
+        ]
+      },
+      "EXPECT": {
+        "handler_writes_only_flag": true,
+        "cleanup_performed_by_ordinary_code": true,
+        "queued_output_flushed_before_exit_or_socket_closed_by_the_process": true
+      },
+      "LEVEL": "RUNTIME",
+      "TRACE_REFS": [
+        "src/main.c/on_signal",
+        "src/loop.c/loop_set_stop_flag"
+      ]
+    },
+    {
+      "NAME": "end_to_end_connect_subscribe_publish_delivery",
+      "INPUT": {
+        "runtime": [
+          "start ./mqtt_broker <free_port>",
+          "client A: CONNECT(level 4, clean session, client id 'a'), expect CONNACK 20 02 00 00",
+          "client A: SUBSCRIBE pid 1 'sensors/+' QoS 1, expect SUBACK 90 03 00 01 00",
+          "client B: CONNECT client id 'b', SUBSCRIBE pid 2 'sensors/#' QoS 0, expect SUBACK 90 03 00 02 00",
+          "client B: PUBLISH 'sensors/temp' payload '21'",
+          "client A and B: PINGREQ -> PINGRESP d0 00",
+          "both clients: DISCONNECT"
+        ]
+      },
+      "EXPECT": {
+        "a_receives": "30 10 00 0c 73 65 6e 73 6f 72 73 2f 74 65 6d 70 32 31",
+        "b_receives_same_copy": true,
+        "pingresp": "d0 00",
+        "server_stays_up": true
+      },
+      "LEVEL": "RUNTIME",
+      "TRACE_REFS": [
+        "src/main.c/main",
+        "src/broker.c/broker_process_input",
+        "src/broker.c/route_publish"
+      ]
+    },
+    {
+      "NAME": "many_clients_and_abrupt_disconnects_do_not_affect_others",
+      "INPUT": {
+        "runtime": [
+          "start ./mqtt_broker <free_port>",
+          "20 clients connect and subscribe to 'load/#'",
+          "10 of them close the socket abruptly without DISCONNECT while the others keep their connections",
+          "the remaining clients publish and PINGREQ"
+        ]
+      },
+      "EXPECT": {
+        "survivors_still_served": true,
+        "no_hang": true,
+        "abrupt_closes_reaped": true,
+        "new_client_can_still_connect": true
+      },
+      "LEVEL": "RUNTIME",
+      "TRACE_REFS": [
+        "src/main.c/main",
+        "src/broker.c/broker_reap",
+        "src/loop.c/accept_ready"
+      ]
+    }
+  ]
+}

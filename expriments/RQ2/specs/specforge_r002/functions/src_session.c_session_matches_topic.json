@@ -1,0 +1,95 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "src/session.c/session_matches_topic",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "Decide whether a session wants a topic name, by testing the topic against every stored filter with the MQTT wildcard rules.",
+  "SIGNATURE": {
+    "RAW": "int session_matches_topic(const struct session *s, const char *topic, size_t topic_len)",
+    "NAME": "session_matches_topic",
+    "RETURN": "int",
+    "PARAMS": [
+      {"TYPE": "const struct session *", "NAME": "s", "NULLABLE": true, "OWNERSHIP": "BORROWED"},
+      {"TYPE": "const char *", "NAME": "topic", "NULLABLE": true, "OWNERSHIP": "BORROWED"},
+      {"TYPE": "size_t", "NAME": "topic_len", "NULLABLE": false, "OWNERSHIP": "BORROWED"}
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {"NAME": "struct session", "ROLE": "source of the stored filters"},
+      {"NAME": "struct session_sub_entry", "ROLE": "per-slot public view with the owned filter bytes"}
+    ],
+    "FUNC": [
+      {"NAME": "topic_filter_matches", "KIND": "CALL", "ROLE": "apply the wildcard and '$' matching rules to one stored filter"},
+      {"NAME": "session_subscription_count", "KIND": "CALL", "ROLE": "bound the scan by the stored entry count"}
+    ],
+    "VAR": []
+  },
+  "CALL_CONTRACTS": [
+    {
+      "NAME": "topic_filter_matches",
+      "SIGNATURE": "int topic_filter_matches(const uint8_t *filter, size_t filter_len, const uint8_t *topic, size_t topic_len)",
+      "PARAMS": [
+        {"NAME": "filter", "TYPE": "const uint8_t *", "OWNERSHIP": "BORROWED"},
+        {"NAME": "filter_len", "TYPE": "size_t", "OWNERSHIP": "BORROWED"},
+        {"NAME": "topic", "TYPE": "const uint8_t *", "OWNERSHIP": "BORROWED"},
+        {"NAME": "topic_len", "TYPE": "size_t", "OWNERSHIP": "BORROWED"}
+      ],
+      "RETURN": "1 when the stored filter matches the topic under MQTT 3.1.1 wildcard rules, 0 otherwise; both arguments are length-delimited byte strings so embedded separators and binary bytes are handled",
+      "OWNERSHIP": "no ownership transfer; both inputs are borrowed for the duration of the call only",
+      "FAILURE": "no failure under documented preconditions; a malformed filter returns 0 rather than an error, and every stored filter was validated before it was stored"
+    },
+    {
+      "NAME": "session_subscription_count",
+      "SIGNATURE": "size_t session_subscription_count(const struct session *s)",
+      "PARAMS": [{"NAME": "s", "TYPE": "const struct session *", "OWNERSHIP": "BORROWED"}],
+      "RETURN": "number of stored subscriptions, 0 for a NULL session",
+      "OWNERSHIP": "no transfer",
+      "FAILURE": "no failure under documented preconditions"
+    }
+  ],
+  "LOGIC": {
+    "INPUT": "s: borrowed session pointer. topic: borrowed topic-name bytes (not NUL terminated), already validated as a legal, nonempty, wildcard-free Topic Name by the PUBLISH decoder. topic_len: its length in bytes.",
+    "ACTION": "1) If s is NULL or topic is NULL return 0. 2) n = session_subscription_count(s); for i = 0 .. n - 1: v = &s->subs[i].view; if topic_filter_matches((const uint8_t *)v->filter, v->filter_len, (const uint8_t *)topic, topic_len) return 1. 3) Return 0. The scan is a plain linear search over the session's own slots, so no allocation happens and the borrowed topic is used only during the call. Matching is case sensitive and applies no normalization: the bytes of the topic must equal the bytes of the filter levels, with '+' standing for exactly one whole level and '#' for the current level and everything below it (including zero further levels) when it is the last level; filters that begin with a wildcard never match a topic whose first level begins with '$' (that rule is implemented inside topic_filter_matches). Because a filter is compared byte-wise and never as a C string, a topic containing binary bytes is matched exactly.",
+    "OUTPUT": "1 when at least one stored filter matches the topic; 0 when no filter matches, when the session stores no subscriptions, or when s or topic is NULL.",
+    "INVARIANTS_USED": [
+      "only validated filters are stored, so matching never needs to re-validate syntax",
+      "matching is case sensitive and performs no normalization or percent decoding",
+      "level boundaries are the separators between filters and topics; a wildcard covers whole levels only",
+      "routing uses the same predicate for every recipient, including the publisher itself"
+    ],
+    "PRECONDITION": "s is NULL or points to a live session; topic points to topic_len readable bytes when topic_len > 0.",
+    "POSTCONDITION": "no session state changes.",
+    "IDEMPOTENT": true,
+    "THREAD_SAFETY": "Read-only over the session; not safe against a concurrent session_add_subscription() on the same session."
+  },
+  "TEST_VECTORS": [
+    {
+      "NAME": "wildcards_and_case_sensitivity_across_stored_filters",
+      "INPUT": {"calls": ["store filters \"sport/+/player1\" and \"temp/#\"", "query topic \"sport/tennis/player1\"", "query topic \"SPORT/tennis/player1\"", "query topic \"temp\"", "query topic \"temp/x/y\""]},
+      "EXPECT": {"results": [1, 0, 1, 1], "note": "'#' also matches the parent level with zero further levels; a different case does not match"},
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": ["src/session.c/session_matches_topic", "src/topic.c/topic_filter_matches"]
+    },
+    {
+      "NAME": "empty_levels_and_level_boundaries",
+      "INPUT": {"calls": ["store filters \"a//b\" and \"a/+\"", "query \"a//b\"", "query \"a/x\""]},
+      "EXPECT": {"results": [1, 1], "note": "'+' is one whole level, so it matches the empty level of 'a//b' too but never a multi-level span"},
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": ["src/session.c/session_matches_topic", "src/topic.c/topic_filter_matches"]
+    },
+    {
+      "NAME": "root_wildcard_does_not_capture_dollar_topics",
+      "INPUT": {"calls": ["store filters \"#\" and \"+/monitor\"", "query \"$SYS/monitor\"", "query \"$SYS/x\"", "query \"house/monitor\""]},
+      "EXPECT": {"results": [0, 0, 1], "note": "a leading wildcard does not match the first level '$SYS'"},
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": ["src/session.c/session_matches_topic", "src/topic.c/topic_filter_matches"]
+    },
+    {
+      "NAME": "no_subscriptions_and_null_arguments_do_not_match",
+      "INPUT": {"calls": ["fresh session, any topic", "session_matches_topic(NULL, \"t\", 1)", "session_matches_topic(s, NULL, 1)"]},
+      "EXPECT": {"results": [0, 0, 0]},
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": ["src/session.c/session_matches_topic"]
+    }
+  ]
+}

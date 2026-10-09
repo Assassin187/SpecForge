@@ -1,0 +1,64 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "src/main.c/on_signal",
+  "FUNCTION_TYPE": "EVENT",
+  "ROLE": "Asynchronous SIGINT/SIGTERM handler: records the shutdown request in a volatile sig_atomic_t flag and performs no other work, so all cleanup stays in ordinary code.",
+  "SIGNATURE": {
+    "RAW": "static void on_signal(int signum)",
+    "NAME": "on_signal",
+    "RETURN": "void",
+    "PARAMS": [
+      {"TYPE": "int", "NAME": "signum", "NULLABLE": false, "OWNERSHIP": "BORROWED"}
+    ]
+  },
+  "RELY": {
+    "STRUCT": [],
+    "FUNC": [],
+    "VAR": [
+      {"NAME": "g_stop", "ROLE": "the volatile sig_atomic_t object written to 1; its address is published to the reactor with loop_set_stop_flag"},
+      {"NAME": "SIGINT", "ROLE": "one of the two signals whose handler is this function"},
+      {"NAME": "SIGTERM", "ROLE": "the other of the two signals whose handler is this function"}
+    ]
+  },
+  "CALL_CONTRACTS": [],
+  "EVENT": {
+    "TRIGGER": "Delivery of SIGINT or SIGTERM, installed with sigaction() by main() before loop_run() begins.",
+    "PRECONDITION": "The process is running the reactor loop; signal handlers for SIGINT and SIGTERM have been installed with on_signal as sa_handler and with the signal not blocked in the running thread. The handler does not depend on any argument value.",
+    "INPUT": "signum: the delivered signal number (SIGINT or SIGTERM); it is not needed to decide anything because both request the same shutdown.",
+    "ACTION": "1. Store the value 1 into the process-global volatile sig_atomic_t object g_stop (a single async-signal-safe assignment; the object is also published to the reactor via loop_set_stop_flag(&g_stop)). 2. Return immediately. No other statement is executed: no malloc/free/close/send/recv/printf, no errno inspection, no session, broker, loop or buffer access, no iteration over the registry, and no call to loop_stop(). (signum is unused; the parameter exists only to match the sa_handler signature.)",
+    "STATE_CHANGE": "g_stop changes from 0 to 1 exactly once; no other state changes. The reactor observes the flag at the top of its next batch, loop_run() returns 0, and ordinary code in main() then performs the ordered teardown (loop_destroy, net_close_fd(&listener), broker_destroy).",
+    "RESPONSE": "Interrupted blocking calls return with errno == EINTR: epoll_wait() reports EINTR and loop_run() continues its loop, re-checks the flag and returns 0; recv()/send() wrappers similarly retry, so at most the current batch of work is unfinished. Queued output is not discarded by the handler: a session whose output buffer still has bytes stays registered for EPOLLOUT, and main() tears down with broker_destroy() which closes every session descriptor (the process exit releases any unflushed bytes).",
+    "EVENT_TYPE": "ASYNCHRONOUS_SIGNAL",
+    "INVARIANTS_USED": [
+      "a signal handler may only store into a volatile sig_atomic_t object: all cleanup is performed by ordinary execution after loop_run() returns",
+      "the flag object outlives the handler because it is a static object in main()",
+      "no descriptor, buffer or registry object is touched asynchronously, so no data race or double-free can be introduced by a signal"
+    ],
+    "IDEMPOTENT": true,
+    "THREAD_SAFETY": "Async-signal-safe by construction: the single assignment is atomic with respect to the interrupted ordinary code for the volatile sig_atomic_t type, and no other object is read or written.",
+    "POSTCONDITION": "g_stop == 1 and no other observable state has changed; the shutdown is completed by ordinary code, giving exit status 0."
+  },
+  "TEST_VECTORS": [
+    {
+      "NAME": "handler_only_sets_the_sig_atomic_t_flag",
+      "INPUT": {"runtime": ["main() running with the loop active", "deliver SIGTERM from another process", "inspect g_stop before and after"]},
+      "EXPECT": {"before": 0, "after": 1, "loop_returns": 0, "exit_code": 0, "no_io_performed_in_handler": true, "no_broker_call_from_handler": true},
+      "LEVEL": "RUNTIME",
+      "TRACE_REFS": ["src/main.c/on_signal", "src/main.c/main", "src/loop.c/loop_set_stop_flag"]
+    },
+    {
+      "NAME": "signal_during_a_large_fan_out_does_not_truncate_queued_output",
+      "INPUT": {"runtime": ["two subscribers of 'load/#'", "publisher writes a 1 MiB payload in one frame", "SIGINT delivered while the copies are being written"]},
+      "EXPECT": {"loop_returns_cleanly": true, "no_partial_packet_written_by_the_handler": true, "sockets_closed_by_ordinary_teardown": true, "broker_remains_consistent": true},
+      "LEVEL": "RUNTIME",
+      "TRACE_REFS": ["src/main.c/on_signal", "src/loop.c/loop_run", "src/broker.c/broker_destroy"]
+    },
+    {
+      "NAME": "repeated_signals_are_harmless",
+      "INPUT": {"runtime": ["deliver SIGINT five times in a row while the loop runs", "SIGTERM once afterwards"]},
+      "EXPECT": {"exit_code": 0, "flag_value": 1, "no_cleanup_run_twice": true, "no_hang": true},
+      "LEVEL": "RUNTIME",
+      "TRACE_REFS": ["src/main.c/on_signal"]
+    }
+  ]
+}

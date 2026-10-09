@@ -1,0 +1,50 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "src/session.c/session_fd",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "Borrow the descriptor owned by a session, or -1 when there is none, so callers can register/synchronize a descriptor without owning it.",
+  "SIGNATURE": {
+    "RAW": "int session_fd(const struct session *s)",
+    "NAME": "session_fd",
+    "RETURN": "int",
+    "PARAMS": [
+      {"TYPE": "const struct session *", "NAME": "s", "NULLABLE": true, "OWNERSHIP": "BORROWED"}
+    ]
+  },
+  "RELY": {
+    "STRUCT": [{"NAME": "struct session", "ROLE": "source of the owned descriptor number"}],
+    "FUNC": [],
+    "VAR": []
+  },
+  "CALL_CONTRACTS": [],
+  "LOGIC": {
+    "INPUT": "s: borrowed session pointer, possibly NULL.",
+    "ACTION": "1) If s is NULL return -1. 2) Return s->fd. The value is read only; this function never closes, registers or modifies the descriptor, and it does not take ownership. After session_close_immediately() the field is -1, so the returned value becomes -1 and a caller that later registers the descriptor would use -1 (an invalid epoll target) rather than a recycled descriptor number.",
+    "OUTPUT": "-1 for a NULL session or for a session whose descriptor has already been closed; otherwise the nonnegative descriptor number owned by the session.",
+    "INVARIANTS_USED": [
+      "a session owns at most one descriptor at a time",
+      "the descriptor field is -1 exactly when the descriptor is already released",
+      "reading session state is observation only and must not change ownership"
+    ],
+    "PRECONDITION": "s is NULL or points to a live session that has not been destroyed.",
+    "POSTCONDITION": "the session is unchanged.",
+    "IDEMPOTENT": true,
+    "THREAD_SAFETY": "Not thread safe with respect to concurrent mutation of s."
+  },
+  "TEST_VECTORS": [
+    {
+      "NAME": "returns_the_adopted_descriptor",
+      "INPUT": {"session": "session_create(fd=7) succeeded"},
+      "EXPECT": {"return": 7, "session_unchanged": true},
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": ["src/session.c/session_fd", "src/session.c/session_create"]
+    },
+    {
+      "NAME": "null_and_closed_sessions_report_minus_one",
+      "INPUT": {"calls": ["session_fd(NULL)", "session_close_immediately(s); session_fd(s)"]},
+      "EXPECT": {"null_return": -1, "after_close_return": -1, "note": "never returns a recycled descriptor number"},
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": ["src/session.c/session_fd", "src/session.c/session_close_immediately"]
+    }
+  ]
+}

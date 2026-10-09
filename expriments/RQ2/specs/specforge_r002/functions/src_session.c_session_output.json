@@ -1,0 +1,53 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "src/session.c/session_output",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "Borrow the queued-output buffer so the write pump can drain complete encoded packets and the readiness mask can be derived from its length.",
+  "SIGNATURE": {
+    "RAW": "struct byte_buf *session_output(struct session *s)",
+    "NAME": "session_output",
+    "RETURN": "struct byte_buf *",
+    "PARAMS": [
+      {"TYPE": "struct session *", "NAME": "s", "NULLABLE": true, "OWNERSHIP": "BORROWED"}
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {"NAME": "struct session", "ROLE": "owner of the queued-output buffer"},
+      {"NAME": "struct byte_buf", "ROLE": "borrowed view of the bytes waiting to be written"}
+    ],
+    "FUNC": [],
+    "VAR": []
+  },
+  "CALL_CONTRACTS": [],
+  "LOGIC": {
+    "INPUT": "s: borrowed session pointer, possibly NULL.",
+    "ACTION": "1) If s is NULL return NULL. 2) Return &s->output. The buffer holds only complete encoded packets; the writer consumes from the front with buffer_consume(buf, n) after a partial write and must not free it. A non-empty output buffer is the condition that keeps EPOLLOUT set for this session, so an idle recipient with queued output is still drained. session_close_immediately() discards the contents with buffer_free() so a CLOSED session always reports length 0.",
+    "OUTPUT": "Pointer to the session's queued-output buffer, or NULL for a NULL session.",
+    "INVARIANTS_USED": [
+      "the queue contains complete packets only, so consuming any prefix leaves a valid packet boundary",
+      "queued bytes are preserved until written or until the session is closed immediately",
+      "a non-empty queue implies the session needs EPOLLOUT"
+    ],
+    "PRECONDITION": "s is NULL or points to a live session.",
+    "POSTCONDITION": "the session is unchanged.",
+    "IDEMPOTENT": true,
+    "THREAD_SAFETY": "Not thread safe; the buffer must be used by one thread at a time."
+  },
+  "TEST_VECTORS": [
+    {
+      "NAME": "queued_output_survives_until_written_then_is_consumed",
+      "INPUT": {"calls": ["session_enqueue(s, \"\\x20\\x02\\x00\\x00\", 4)", "session_output(s) -> len 4", "net_write_some wrote 2 bytes; buffer_consume(out, 2)", "session_output(s) -> len 2, first byte 0x00"]},
+      "EXPECT": {"len_after_partial_write": 2, "remaining_bytes": "00 00", "packet_boundary_preserved": true},
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": ["src/session.c/session_output", "src/session.c/session_enqueue"]
+    },
+    {
+      "NAME": "closing_immediately_empties_the_output_buffer",
+      "INPUT": {"calls": ["session_enqueue(s, 4 bytes)", "session_close_immediately(s)", "session_output(s) -> len"]},
+      "EXPECT": {"len": 0, "storage_released": true},
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": ["src/session.c/session_output", "src/session.c/session_close_immediately"]
+    }
+  ]
+}

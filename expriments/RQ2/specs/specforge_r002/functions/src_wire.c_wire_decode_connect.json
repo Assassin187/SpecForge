@@ -1,0 +1,355 @@
+{
+ "KIND": "FUNCTION_SPEC",
+ "TRACE_ID": "src/wire.c/wire_decode_connect",
+ "FUNCTION_TYPE": "ALGORITHM",
+ "ROLE": "Decode a complete CONNECT packet: validate the fixed header flags, protocol name, connect flags and field presence, and borrow the client identifier, user name and password slices.",
+ "SIGNATURE": {
+  "RAW": "enum wire_status wire_decode_connect(const uint8_t *packet, size_t len, struct wire_connect *out)",
+  "NAME": "wire_decode_connect",
+  "RETURN": "enum wire_status",
+  "PARAMS": [
+   {
+    "TYPE": "const uint8_t *",
+    "NAME": "packet",
+    "NULLABLE": true,
+    "OWNERSHIP": "BORROWED"
+   },
+   {
+    "TYPE": "size_t",
+    "NAME": "len",
+    "NULLABLE": false,
+    "OWNERSHIP": "BORROWED"
+   },
+   {
+    "TYPE": "struct wire_connect *",
+    "NAME": "out",
+    "NULLABLE": true,
+    "OWNERSHIP": "BORROWED"
+   }
+  ]
+ },
+ "RELY": {
+  "STRUCT": [
+   {
+    "NAME": "struct wire_connect",
+    "ROLE": "decoded CONNECT fields, all slices borrowed from packet"
+   },
+   {
+    "NAME": "struct wire_span",
+    "ROLE": "borrowed slice of client identifier, user name or password"
+   }
+  ],
+  "FUNC": [
+   {
+    "NAME": "wire_declared_body_len",
+    "KIND": "CALL",
+    "ROLE": "confirm len is exactly the declared frame size"
+   },
+   {
+    "NAME": "wire_decode_string",
+    "KIND": "CALL",
+    "ROLE": "read the length-prefixed protocol name, client id, will topic, user name and password fields"
+   },
+   {
+    "NAME": "wire_read_u16",
+    "KIND": "CALL",
+    "ROLE": "read the Keep Alive field"
+   }
+  ],
+  "VAR": [
+   {
+    "NAME": "WIRE_PACKET_CONNECT",
+    "ROLE": "control packet type 1"
+   },
+   {
+    "NAME": "WIRE_COMPLETE",
+    "ROLE": "successful outcome"
+   },
+   {
+    "NAME": "WIRE_INVALID",
+    "ROLE": "malformed CONNECT outcome"
+   }
+  ]
+ },
+ "CALL_CONTRACTS": [
+  {
+   "NAME": "wire_declared_body_len",
+   "SIGNATURE": "static enum wire_status wire_declared_body_len(const uint8_t *packet, size_t len, size_t *header_len, size_t *remaining_length)",
+   "PARAMS": [
+    {
+     "NAME": "packet",
+     "TYPE": "const uint8_t *",
+     "OWNERSHIP": "BORROWED"
+    },
+    {
+     "NAME": "len",
+     "TYPE": "size_t",
+     "OWNERSHIP": "BORROWED"
+    },
+    {
+     "NAME": "header_len",
+     "TYPE": "size_t *",
+     "OWNERSHIP": "BORROWED"
+    },
+    {
+     "NAME": "remaining_length",
+     "TYPE": "size_t *",
+     "OWNERSHIP": "BORROWED"
+    }
+   ],
+   "RETURN": "WIRE_COMPLETE with header_len (2..5) and remaining_length when len equals header_len + remaining_length; WIRE_INCOMPLETE when fewer bytes than declared are buffered; WIRE_INVALID for an unusable Remaining Length field or a buffer longer than the declared frame",
+   "OWNERSHIP": "no ownership transfer; the packet stays with the caller",
+   "FAILURE": "any result other than WIRE_COMPLETE means the caller must return WIRE_INVALID without writing out"
+  },
+  {
+   "NAME": "wire_decode_string",
+   "SIGNATURE": "static int wire_decode_string(const uint8_t *packet, size_t len, size_t *pos, struct wire_span *out, int validate_utf8)",
+   "PARAMS": [
+    {
+     "NAME": "packet",
+     "TYPE": "const uint8_t *",
+     "OWNERSHIP": "BORROWED"
+    },
+    {
+     "NAME": "len",
+     "TYPE": "size_t",
+     "OWNERSHIP": "BORROWED"
+    },
+    {
+     "NAME": "pos",
+     "TYPE": "size_t *",
+     "OWNERSHIP": "BORROWED"
+    },
+    {
+     "NAME": "out",
+     "TYPE": "struct wire_span *",
+     "OWNERSHIP": "BORROWED"
+    },
+    {
+     "NAME": "validate_utf8",
+     "TYPE": "int",
+     "OWNERSHIP": "BORROWED"
+    }
+   ],
+   "RETURN": "1 with *pos advanced by 2 + field length and *out = borrowed slice; 0 when the field runs past len (cursor unchanged); -1 when the field is complete but not valid UTF-8",
+   "OWNERSHIP": "the returned span borrows bytes from packet and must not outlive it",
+   "FAILURE": "results 0 and -1 both mean the CONNECT packet is malformed, so the caller returns WIRE_INVALID"
+  },
+  {
+   "NAME": "wire_read_u16",
+   "SIGNATURE": "static uint16_t wire_read_u16(const uint8_t *p)",
+   "PARAMS": [
+    {
+     "NAME": "p",
+     "TYPE": "const uint8_t *",
+     "OWNERSHIP": "BORROWED"
+    }
+   ],
+   "RETURN": "MSB-first 16-bit value at p",
+   "OWNERSHIP": "no ownership transfer",
+   "FAILURE": "no failure under documented preconditions (the caller has already verified that two bytes remain)"
+  }
+ ],
+ "LOGIC": {
+  "INPUT": "packet with len bytes holding exactly one framed CONNECT (the caller obtained len from wire_decode_header.total_len); out receiving the decoded fields.",
+  "ACTION": "1) If packet is NULL or out is NULL return WIRE_INVALID. 2) Zero *out. 3) wire_declared_body_len(packet, len, &header_len, &rl); if it is not WIRE_COMPLETE return WIRE_INVALID (a decoder never runs on a partial packet, and a short buffer must not be reported as incomplete). 4) Fixed header flags: if (packet[0] & 0x0F) != 0 return WIRE_INVALID (CONNECT reserved flags, fact F003). 5) pos = header_len. Protocol name: wire_decode_string(packet, len, &pos, &span, 1) must return 1, span.len must be 4 and the bytes must be 4D 51 54 54 ('MQTT'); otherwise return WIRE_INVALID. 6) Protocol level: pos must be < len, else WIRE_INVALID; out->protocol_level = packet[pos++]. The value is stored verbatim: a level other than 4 is well formed and is refused later with CONNACK 0x01, never here. 7) Connect flags: require 2 bytes; flags = packet[pos++]; if (flags & 0x01) return WIRE_INVALID (reserved bit 0). will_qos = (flags >> 3) & 0x03; if will_qos == 3 return WIRE_INVALID (reserved Will QoS). If (flags & 0x40) and !(flags & 0x80) return WIRE_INVALID (password flag requires the user name flag). If ((flags >> 2) & 0x01) == 0 and (will_qos != 0 || (flags & 0x20) != 0) return WIRE_INVALID (with the Will flag clear the Will QoS and Will Retain flags MUST be zero, fact F019; such a packet is malformed and must be closed without a CONNACK, facts F017/F058). out->clean_session = (flags >> 1) & 0x01; out->has_will = (flags >> 2) & 0x01; out->has_password = (flags >> 6) & 0x01; out->has_user_name = (flags >> 7) & 0x01. 8) Keep Alive: require 2 bytes, out->keep_alive = wire_read_u16(packet + pos), pos += 2. 9) Client identifier: wire_decode_string(..., 1) must return 1; store the span in out->client_id (empty identifier is stored and refused by broker policy, so the wire decoder does not invent a length rule). 10) If out->has_will: read the Will Topic with UTF-8 validation and the Will Message as a binary field (validate_utf8 = 0); both must decode, both are validated then skipped - the broker does not accept a Will, so no will bytes are retained. 11) If out->has_user_name: decode the user name with UTF-8 validation into out->user_name. 12) If out->has_password: decode the password as a binary field into out->password. 13) If pos != len return WIRE_INVALID (bytes after the last field of the packet). 14) Return WIRE_COMPLETE. Every borrowed span points into packet, which the caller must keep alive until it has copied what it needs (only the client identifier is copied, by session_set_client_id).",
+  "OUTPUT": "WIRE_COMPLETE with *out filled from the packet: protocol_level, clean_session, keep_alive, has_user_name, has_password, has_will and the borrowed client_id/user_name/password spans; empty fields are reported as spans of length 0 rather than as NULL. WIRE_INVALID for reserved flags, a protocol name other than MQTT, a reserved Will QoS, non-zero Will QoS or Will Retain bits with the Will flag clear (fact F019), a password flag without a user name flag, any truncated field, any ill-formed UTF-8 string field, or trailing bytes. The function never returns WIRE_INCOMPLETE and performs no policy decision: level != 4, an empty/non-ASCII client identifier, a Will or Clean Session = 0 are all decoded successfully so that the caller can answer with the mandated CONNACK or close with the mandated silence.",
+  "INVARIANTS_USED": [
+   "CONNECT is the first packet of a connection",
+   "the CONNECT fixed header flags are 0",
+   "the protocol name is exactly MQTT",
+   "reserved CONNECT flag bit 0 and Will QoS 3 are malformed",
+   "a password flag without a user name flag is malformed",
+   "a clear Will flag requires Will QoS 0 and Will Retain 0 (fact F019)",
+   "fields are present exactly when their flag is set and in protocol order"
+  ],
+  "PRECONDITION": "packet holds one complete CONNECT frame of len bytes.",
+  "POSTCONDITION": "*out describes the packet and every span is a borrowed slice inside packet; nothing is allocated.",
+  "IDEMPOTENT": true,
+  "THREAD_SAFETY": "Pure function of its arguments; the packet buffer must not be mutated concurrently."
+ },
+ "WIRE_MAPPING": [
+  {
+   "PACKET": "CONNECT",
+   "WIRE_FIELD": "fixed header type/flags",
+   "STRATEGY": "parse_and_skip",
+   "RULE": "type must be 1 and the low 4 flag bits must be 0, else WIRE_INVALID (fact F003)."
+  },
+  {
+   "PACKET": "CONNECT",
+   "WIRE_FIELD": "Protocol Name (2-byte length prefix + bytes)",
+   "STRATEGY": "parse_and_skip",
+   "RULE": "length-prefixed field that must encode exactly 4D 51 54 54; any other name is WIRE_INVALID (facts F009/F010 style: the name is MQTT and the level is 4 for this broker)."
+  },
+  {
+   "PACKET": "CONNECT",
+   "WIRE_FIELD": "Protocol Level",
+   "STRATEGY": "store_in_field",
+   "TARGET": "wire_connect.protocol_level",
+   "RULE": "stored verbatim (1 byte); the broker answers CONNACK return code 0x01 when it is not 4."
+  },
+  {
+   "PACKET": "CONNECT",
+   "WIRE_FIELD": "Connect Flags (bit7 user name, bit6 password, bit5 will retain, bits4-3 will QoS, bit2 will flag, bit1 clean session, bit0 reserved)",
+   "STRATEGY": "store_in_field",
+   "TARGET": "wire_connect.has_user_name / has_password / has_will / clean_session",
+   "RULE": "bit0 must be 0; will QoS 3, will QoS or will retain set while the Will flag is clear (fact F019), and password-without-user-name are rejected as WIRE_INVALID; the Will flag itself is stored, not rejected (its presence is a policy decision for the broker); when the Will flag is set the will retain and will QoS bits are parsed then skipped."
+  },
+  {
+   "PACKET": "CONNECT",
+   "WIRE_FIELD": "Keep Alive",
+   "STRATEGY": "store_in_field",
+   "TARGET": "wire_connect.keep_alive",
+   "RULE": "2-byte MSB-first value stored verbatim; no keepalive timeout is implemented by this broker (scope R09)."
+  },
+  {
+   "PACKET": "CONNECT",
+   "WIRE_FIELD": "Client Identifier",
+   "STRATEGY": "store_in_field",
+   "TARGET": "wire_connect.client_id (borrowed span)",
+   "RULE": "2-byte length prefix plus that many UTF-8 bytes; no length or character restriction at the wire layer (an empty identifier is a legal UTF-8 string), the ASCII/non-empty rule is broker policy."
+  },
+  {
+   "PACKET": "CONNECT",
+   "WIRE_FIELD": "Will Topic and Will Message",
+   "STRATEGY": "parse_and_skip",
+   "RULE": "present if and only if the Will flag is set, in that order; the topic is a UTF-8 string and the message a length-prefixed binary field; both must be well formed or the packet is WIRE_INVALID, and neither is retained because this broker does not accept a Will (scope R02)."
+  },
+  {
+   "PACKET": "CONNECT",
+   "WIRE_FIELD": "User Name",
+   "STRATEGY": "store_in_field",
+   "TARGET": "wire_connect.user_name (borrowed span)",
+   "RULE": "present if and only if the user name flag is set; UTF-8 validated, then ignored by broker policy (anonymous connections only)."
+  },
+  {
+   "PACKET": "CONNECT",
+   "WIRE_FIELD": "Password",
+   "STRATEGY": "store_in_field",
+   "TARGET": "wire_connect.password (borrowed span)",
+   "RULE": "present if and only if the password flag is set (which requires the user name flag); arbitrary binary bytes, so no UTF-8 check; ignored by broker policy."
+  }
+ ],
+ "TEST_VECTORS": [
+  {
+   "NAME": "clean_session_client_id_decodes_with_borrowed_spans",
+   "INPUT": {
+    "hex": "10 0F 00 04 4D 51 54 54 04 02 00 3C 00 03 63 6C 69"
+   },
+   "EXPECT": {
+    "status": "WIRE_COMPLETE",
+    "frame_len": 17,
+    "derivation": "header_len 2 + remaining_length 15 = 17 bytes; variable header 6+1+1+2 = 10 bytes then 2+3 = 5 payload bytes",
+    "protocol_level": 4,
+    "clean_session": 1,
+    "has_will": 0,
+    "has_user_name": 0,
+    "has_password": 0,
+    "keep_alive": 60,
+    "client_id_len": 3,
+    "client_id_bytes": "63 6C 69",
+    "client_id_borrowed": true
+   },
+   "LEVEL": "FUNCTION",
+   "TRACE_REFS": [
+    "src/wire.c/wire_decode_connect"
+   ]
+  },
+  {
+   "NAME": "malformed_connects_are_rejected",
+   "INPUT": {
+    "cases": [
+     {
+      "hex": "10 0F 00 04 4D 51 54 54 04 03 00 3C 00 03 63 6C 69",
+      "note": "reserved flag bit 0"
+     },
+     {
+      "hex": "10 0F 00 04 4D 51 54 44 04 02 00 3C 00 03 63 6C 69",
+      "note": "protocol name MQTD"
+     },
+     {
+      "hex": "10 0F 00 04 4D 51 54 54 04 02 00 3C 00 03 63 6C",
+      "note": "truncated client id"
+     },
+     {
+      "hex": "10 10 00 04 4D 51 54 54 04 02 00 3C 00 03 63 6C 69 00",
+      "note": "trailing byte"
+     },
+     {
+      "hex": "10 0F 00 04 4D 51 54 54 04 42 00 3C 00 03 63 6C 69",
+      "note": "password flag without user name flag"
+     },
+     {
+      "hex": "10 0A 00 04 4D 51 54 54 04 04 00 3C",
+      "note": "will flag set but the client id and will fields are missing"
+     },
+     {
+      "hex": "10 12 00 04 4D 51 54 54 04 1C 00 3C 00 03 63 6C 69 00 01 61",
+      "note": "will flag set with will QoS bits 11 (3) and a well formed will pair"
+     },
+     {
+      "hex": "10 0F 00 04 4D 51 54 54 04 0A 00 3C 00 03 63 6C 69",
+      "note": "will flag clear with will QoS bits 01 - fact F019"
+     },
+     {
+      "hex": "10 0F 00 04 4D 51 54 54 04 22 00 3C 00 03 63 6C 69",
+      "note": "will flag clear with the will retain bit set - fact F019"
+     }
+    ]
+   },
+   "EXPECT": {
+    "status": [
+     "WIRE_INVALID",
+     "WIRE_INVALID",
+     "WIRE_INVALID",
+     "WIRE_INVALID",
+     "WIRE_INVALID",
+     "WIRE_INVALID",
+     "WIRE_INVALID",
+     "WIRE_INVALID",
+     "WIRE_INVALID"
+    ]
+   },
+   "LEVEL": "FUNCTION",
+   "TRACE_REFS": [
+    "src/wire.c/wire_decode_connect"
+   ]
+  },
+  {
+   "NAME": "wellformed_but_unsupported_connect_is_decoded_not_rejected",
+   "INPUT": {
+    "hex": "10 17 00 04 4D 51 54 54 05 04 00 3C 00 03 63 6C 69 00 03 61 2F 62 00 01 78",
+    "note": "protocol level 5, clean session 0, will flag 1 with will topic a/b and will message x"
+   },
+   "EXPECT": {
+    "status": "WIRE_COMPLETE",
+    "protocol_level": 5,
+    "clean_session": 0,
+    "has_will": 1,
+    "client_id_len": 3,
+    "note": "refusal is policy: the broker answers CONNACK 0x01 for the level instead of treating this as malformed"
+   },
+   "LEVEL": "FUNCTION",
+   "TRACE_REFS": [
+    "src/wire.c/wire_decode_connect",
+    "src/broker.c/handle_connect"
+   ]
+  },
+  {
+   "NAME": "ill_formed_utf8_client_id_is_rejected",
+   "INPUT": {
+    "hex": "10 0E 00 04 4D 51 54 54 04 02 00 3C 00 02 C3 28",
+    "frame_len": 16
+   },
+   "EXPECT": {
+    "status": "WIRE_INVALID",
+    "reason": "C3 28 is not a valid UTF-8 sequence"
+   },
+   "LEVEL": "FUNCTION",
+   "TRACE_REFS": [
+    "src/wire.c/wire_decode_connect",
+    "src/topic.c/topic_utf8_validate"
+   ]
+  }
+ ]
+}

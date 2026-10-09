@@ -1,0 +1,53 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "src/buffer.c/buffer_free",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "Release the storage owned by a buffer and return it to the canonical empty state; safe to call repeatedly and after a failed reserve/append.",
+  "SIGNATURE": {
+    "RAW": "void buffer_free(struct byte_buf *buf)",
+    "NAME": "buffer_free",
+    "RETURN": "void",
+    "PARAMS": [{"TYPE": "struct byte_buf *", "NAME": "buf", "NULLABLE": true, "OWNERSHIP": "BORROWED"}]
+  },
+  "RELY": {
+    "STRUCT": [{"NAME": "struct byte_buf", "ROLE": "buffer whose storage is released"}],
+    "FUNC": [{"NAME": "buffer_init", "KIND": "CALL", "ROLE": "Reset the fields after the release"}],
+    "VAR": []
+  },
+  "CALL_CONTRACTS": [
+    {
+      "NAME": "buffer_init",
+      "SIGNATURE": "void buffer_init(struct byte_buf *buf)",
+      "PARAMS": [{"NAME": "buf", "TYPE": "struct byte_buf *", "OWNERSHIP": "BORROWED"}],
+      "RETURN": "no value; the buffer becomes empty (data NULL, len 0, cap 0)",
+      "OWNERSHIP": "releases nothing; only field values are set",
+      "FAILURE": "no failure under documented preconditions (NULL is accepted and ignored)"
+    }
+  ],
+  "LOGIC": {
+    "INPUT": "buf, a caller-owned buffer, or NULL. Precondition: any storage reachable through buf->data was allocated by buffer_reserve/buffer_append and has not been transferred to another owner.",
+    "ACTION": "If buf is NULL, return. Otherwise call free(buf->data) exactly once (free(NULL) is permitted and is the path taken by a buffer that never allocated storage), then set data = NULL, len = 0, cap = 0 by calling buffer_init(buf). The length is not simply cleared: the allocation itself is released so that no memory is retained after the call.",
+    "OUTPUT": "The allocation is returned to the allocator and buf is empty; no value is returned.",
+    "INVARIANTS_USED": ["only the owner frees storage", "consume/shorten never frees storage, so free() must target buf->data, not a suffix"],
+    "PRECONDITION": "buf is NULL or holds a valid struct byte_buf; no aliasing owner of buf->data remains.",
+    "POSTCONDITION": "data == NULL, len == 0, cap == 0",
+    "IDEMPOTENT": true,
+    "THREAD_SAFETY": "Not thread safe; the caller owns the buffer exclusively."
+  },
+  "TEST_VECTORS": [
+    {
+      "NAME": "free_releases_storage_and_resets_fields",
+      "INPUT": {"call": "buffer_append(&buf, \"abc\", 3); buffer_free(&buf)"},
+      "EXPECT": {"len": 0, "cap": 0, "data": null, "leak": "none"},
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": ["src/buffer.c/buffer_free", "src/buffer.c/buffer_append"]
+    },
+    {
+      "NAME": "free_is_idempotent_and_null_safe",
+      "INPUT": {"call": "buffer_free(&buf); buffer_free(&buf); buffer_free(NULL)"},
+      "EXPECT": {"no_double_free": true, "data": null, "len": 0, "cap": 0},
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": ["src/buffer.c/buffer_free"]
+    }
+  ]
+}

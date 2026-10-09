@@ -1,0 +1,90 @@
+{
+  "KIND": "FUNCTION_SPEC",
+  "TRACE_ID": "src/session.c/session_destroy",
+  "FUNCTION_TYPE": "ALGORITHM",
+  "ROLE": "Release a session completely: descriptor first when still open, then the two buffers, the identifier copy, the subscriptions and finally the object itself.",
+  "SIGNATURE": {
+    "RAW": "void session_destroy(struct session *s)",
+    "NAME": "session_destroy",
+    "RETURN": "void",
+    "PARAMS": [
+      {"TYPE": "struct session *", "NAME": "s", "NULLABLE": true, "OWNERSHIP": "TRANSFER"}
+    ]
+  },
+  "RELY": {
+    "STRUCT": [
+      {"NAME": "struct session", "ROLE": "the object being destroyed"},
+      {"NAME": "struct byte_buf", "ROLE": "receive and output buffers released here"}
+    ],
+    "FUNC": [
+      {"NAME": "release_fd", "KIND": "CALL", "ROLE": "close the descriptor if it is still open"},
+      {"NAME": "buffer_free", "KIND": "CALL", "ROLE": "release the storage of both buffers"},
+      {"NAME": "free_subscriptions", "KIND": "CALL", "ROLE": "release every filter copy and the slot array"},
+      {"NAME": "free", "KIND": "TYPE_REF", "ROLE": "release the identifier copy and the session object"}
+    ],
+    "VAR": []
+  },
+  "CALL_CONTRACTS": [
+    {
+      "NAME": "release_fd",
+      "SIGNATURE": "static void release_fd(struct session *s)",
+      "PARAMS": [{"NAME": "s", "TYPE": "struct session *", "OWNERSHIP": "BORROWED"}],
+      "RETURN": "void; closes s->fd exactly once when it is >= 0 and leaves it -1",
+      "OWNERSHIP": "the session's descriptor is released, not transferred",
+      "FAILURE": "no failure under documented preconditions; already released slots are a no-op"
+    },
+    {
+      "NAME": "buffer_free",
+      "SIGNATURE": "void buffer_free(struct byte_buf *buf)",
+      "PARAMS": [{"NAME": "buf", "TYPE": "struct byte_buf *", "OWNERSHIP": "BORROWED"}],
+      "RETURN": "void; the buffer returns to the empty state (data NULL, len 0, cap 0)",
+      "OWNERSHIP": "the buffer's heap storage is released; the byte_buf struct belongs to the session",
+      "FAILURE": "no failure under documented preconditions; freeing an empty buffer is a no-op, which makes double teardown safe"
+    },
+    {
+      "NAME": "free_subscriptions",
+      "SIGNATURE": "static void free_subscriptions(struct session *s)",
+      "PARAMS": [{"NAME": "s", "TYPE": "struct session *", "OWNERSHIP": "BORROWED"}],
+      "RETURN": "void; every owned filter copy and the slot array are released and the list is emptied",
+      "OWNERSHIP": "releases session-owned storage",
+      "FAILURE": "no failure under documented preconditions"
+    }
+  ],
+  "LOGIC": {
+    "INPUT": "s: the session to destroy, whose ownership is transferred to this function; NULL is allowed and ignored.",
+    "ACTION": "1) If s is NULL return. 2) release_fd(s) FIRST, so the descriptor stops generating events before the buffers holding its pending bytes are freed; this calls net_close_fd(&s->fd) which is a no-op when the session already closed itself. 3) buffer_free(&s->input) — unconsumed stream bytes, including a trailing partial frame, are dropped. 4) buffer_free(&s->output) — if the session was closed immediately this is already empty; if it is destroyed while CLOSING (loop or broker shutdown) any unflushed queued packets are dropped here, which is the documented shutdown behaviour. 5) free(s->client_id); s->client_id = NULL; s->client_id_len = 0. 6) free_subscriptions(s) releases each filter copy and the slot array. 7) free(s). Every owned resource is reached through an owning pointer that is either NULL or a live allocation, so a session created but never used destroys cleanly, and a session that was closed first destroys cleanly because every release is idempotent.",
+    "OUTPUT": "No return value. The descriptor is closed if still open and all session-owned heap storage is released; the pointer s must not be used again.",
+    "INVARIANTS_USED": [
+      "every owned allocation is reachable from the session through an owning pointer",
+      "releasing one session must not touch another session's descriptor or storage",
+      "clearing a length does not release storage, so each owner is freed explicitly"
+    ],
+    "PRECONDITION": "s is NULL or a pointer to a session created by session_create that has not already been destroyed.",
+    "POSTCONDITION": "no descriptor and no heap block owned by s remains reachable; the session object itself is freed.",
+    "IDEMPOTENT": false,
+    "THREAD_SAFETY": "Not thread safe; the caller is the single owner of s and must have removed it from any registry already."
+  },
+  "TEST_VECTORS": [
+    {
+      "NAME": "destroy_after_full_use_releases_descriptor_and_all_storage",
+      "INPUT": {"calls": ["session_create(fd = 5, &s)", "session_set_client_id(s, \"a\", 1)", "session_add_subscription(s, \"t/#\", 3, 0)", "session_enqueue(s, 4 bytes)", "session_close_immediately(s)", "session_destroy(s)"]},
+      "EXPECT": {"descriptor_closed": true, "buffers_freed": 2, "identifier_freed": 1, "filter_copies_freed": 1, "open_allocations_after": 0},
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": ["src/session.c/session_destroy", "src/session.c/session_close_immediately"]
+    },
+    {
+      "NAME": "destroy_while_closing_drops_unflushed_output_and_leaves_peers_untouched",
+      "INPUT": {"calls": ["two sessions A and B with queued output", "session_close_after_flush(A)", "session_destroy(A) while A's queue is non-empty"]},
+      "EXPECT": {"a_descriptor_closed": true, "a_queue_discarded": true, "b_state": "unchanged with its queue intact"},
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": ["src/session.c/session_destroy", "src/session.c/session_close_after_flush"]
+    },
+    {
+      "NAME": "destroy_on_null_is_ignored",
+      "INPUT": {"session": null},
+      "EXPECT": {"return": "void", "no_crash": true},
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": ["src/session.c/session_destroy"]
+    }
+  ]
+}

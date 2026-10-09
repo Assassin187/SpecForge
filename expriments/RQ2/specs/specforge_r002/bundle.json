@@ -1,0 +1,582 @@
+{
+  "schema_version": 2,
+  "revision": 2,
+  "origin": "automatic",
+  "protocol": "MQTT",
+  "version": "3.1.1",
+  "role": "Server (broker) accepting multiple concurrent client network connections",
+  "runtime_contract": {
+    "binary_name": "./mqtt_broker",
+    "argv_contract": "./mqtt_broker <port>"
+  },
+  "module": "module_spec.json",
+  "files": [
+    {
+      "spec": "files/src/broker.c.json",
+      "trace_id": "src/broker.c",
+      "path": "src/broker.c"
+    },
+    {
+      "spec": "files/src/buffer.c.json",
+      "trace_id": "src/buffer.c",
+      "path": "src/buffer.c"
+    },
+    {
+      "spec": "files/src/loop.c.json",
+      "trace_id": "src/loop.c",
+      "path": "src/loop.c"
+    },
+    {
+      "spec": "files/src/main.c.json",
+      "trace_id": "src/main.c",
+      "path": "src/main.c"
+    },
+    {
+      "spec": "files/src/net.c.json",
+      "trace_id": "src/net.c",
+      "path": "src/net.c"
+    },
+    {
+      "spec": "files/src/session.c.json",
+      "trace_id": "src/session.c",
+      "path": "src/session.c"
+    },
+    {
+      "spec": "files/src/topic.c.json",
+      "trace_id": "src/topic.c",
+      "path": "src/topic.c"
+    },
+    {
+      "spec": "files/src/wire.c.json",
+      "trace_id": "src/wire.c",
+      "path": "src/wire.c"
+    }
+  ],
+  "functions": [
+    {
+      "spec": "functions/src_broker.c_add_session.json",
+      "trace_id": "src/broker.c/add_session",
+      "name": "add_session"
+    },
+    {
+      "spec": "functions/src_broker.c_broker_accept.json",
+      "trace_id": "src/broker.c/broker_accept",
+      "name": "broker_accept"
+    },
+    {
+      "spec": "functions/src_broker.c_broker_create.json",
+      "trace_id": "src/broker.c/broker_create",
+      "name": "broker_create"
+    },
+    {
+      "spec": "functions/src_broker.c_broker_destroy.json",
+      "trace_id": "src/broker.c/broker_destroy",
+      "name": "broker_destroy"
+    },
+    {
+      "spec": "functions/src_broker.c_broker_process_input.json",
+      "trace_id": "src/broker.c/broker_process_input",
+      "name": "broker_process_input"
+    },
+    {
+      "spec": "functions/src_broker.c_broker_reap.json",
+      "trace_id": "src/broker.c/broker_reap",
+      "name": "broker_reap"
+    },
+    {
+      "spec": "functions/src_broker.c_broker_session_at.json",
+      "trace_id": "src/broker.c/broker_session_at",
+      "name": "broker_session_at"
+    },
+    {
+      "spec": "functions/src_broker.c_broker_session_count.json",
+      "trace_id": "src/broker.c/broker_session_count",
+      "name": "broker_session_count"
+    },
+    {
+      "spec": "functions/src_broker.c_broker_session_eof.json",
+      "trace_id": "src/broker.c/broker_session_eof",
+      "name": "broker_session_eof"
+    },
+    {
+      "spec": "functions/src_broker.c_handle_connect.json",
+      "trace_id": "src/broker.c/handle_connect",
+      "name": "handle_connect"
+    },
+    {
+      "spec": "functions/src_broker.c_handle_disconnect.json",
+      "trace_id": "src/broker.c/handle_disconnect",
+      "name": "handle_disconnect"
+    },
+    {
+      "spec": "functions/src_broker.c_handle_pingreq.json",
+      "trace_id": "src/broker.c/handle_pingreq",
+      "name": "handle_pingreq"
+    },
+    {
+      "spec": "functions/src_broker.c_handle_publish.json",
+      "trace_id": "src/broker.c/handle_publish",
+      "name": "handle_publish"
+    },
+    {
+      "spec": "functions/src_broker.c_handle_subscribe.json",
+      "trace_id": "src/broker.c/handle_subscribe",
+      "name": "handle_subscribe"
+    },
+    {
+      "spec": "functions/src_broker.c_remove_session_at.json",
+      "trace_id": "src/broker.c/remove_session_at",
+      "name": "remove_session_at"
+    },
+    {
+      "spec": "functions/src_broker.c_route_publish.json",
+      "trace_id": "src/broker.c/route_publish",
+      "name": "route_publish"
+    },
+    {
+      "spec": "functions/src_buffer.c_buffer_append.json",
+      "trace_id": "src/buffer.c/buffer_append",
+      "name": "buffer_append"
+    },
+    {
+      "spec": "functions/src_buffer.c_buffer_commit.json",
+      "trace_id": "src/buffer.c/buffer_commit",
+      "name": "buffer_commit"
+    },
+    {
+      "spec": "functions/src_buffer.c_buffer_consume.json",
+      "trace_id": "src/buffer.c/buffer_consume",
+      "name": "buffer_consume"
+    },
+    {
+      "spec": "functions/src_buffer.c_buffer_free.json",
+      "trace_id": "src/buffer.c/buffer_free",
+      "name": "buffer_free"
+    },
+    {
+      "spec": "functions/src_buffer.c_buffer_init.json",
+      "trace_id": "src/buffer.c/buffer_init",
+      "name": "buffer_init"
+    },
+    {
+      "spec": "functions/src_buffer.c_buffer_reserve.json",
+      "trace_id": "src/buffer.c/buffer_reserve",
+      "name": "buffer_reserve"
+    },
+    {
+      "spec": "functions/src_buffer.c_buffer_tail.json",
+      "trace_id": "src/buffer.c/buffer_tail",
+      "name": "buffer_tail"
+    },
+    {
+      "spec": "functions/src_loop.c_accept_ready.json",
+      "trace_id": "src/loop.c/accept_ready",
+      "name": "accept_ready"
+    },
+    {
+      "spec": "functions/src_loop.c_dispatch_event.json",
+      "trace_id": "src/loop.c/dispatch_event",
+      "name": "dispatch_event"
+    },
+    {
+      "spec": "functions/src_loop.c_is_registered.json",
+      "trace_id": "src/loop.c/is_registered",
+      "name": "is_registered"
+    },
+    {
+      "spec": "functions/src_loop.c_loop_add_listener.json",
+      "trace_id": "src/loop.c/loop_add_listener",
+      "name": "loop_add_listener"
+    },
+    {
+      "spec": "functions/src_loop.c_loop_create.json",
+      "trace_id": "src/loop.c/loop_create",
+      "name": "loop_create"
+    },
+    {
+      "spec": "functions/src_loop.c_loop_destroy.json",
+      "trace_id": "src/loop.c/loop_destroy",
+      "name": "loop_destroy"
+    },
+    {
+      "spec": "functions/src_loop.c_loop_run.json",
+      "trace_id": "src/loop.c/loop_run",
+      "name": "loop_run"
+    },
+    {
+      "spec": "functions/src_loop.c_loop_set_stop_flag.json",
+      "trace_id": "src/loop.c/loop_set_stop_flag",
+      "name": "loop_set_stop_flag"
+    },
+    {
+      "spec": "functions/src_loop.c_loop_stop.json",
+      "trace_id": "src/loop.c/loop_stop",
+      "name": "loop_stop"
+    },
+    {
+      "spec": "functions/src_loop.c_mask_sync.json",
+      "trace_id": "src/loop.c/mask_sync",
+      "name": "mask_sync"
+    },
+    {
+      "spec": "functions/src_loop.c_pump_read.json",
+      "trace_id": "src/loop.c/pump_read",
+      "name": "pump_read"
+    },
+    {
+      "spec": "functions/src_loop.c_pump_write.json",
+      "trace_id": "src/loop.c/pump_write",
+      "name": "pump_write"
+    },
+    {
+      "spec": "functions/src_main.c_main.json",
+      "trace_id": "src/main.c/main",
+      "name": "main"
+    },
+    {
+      "spec": "functions/src_main.c_on_signal.json",
+      "trace_id": "src/main.c/on_signal",
+      "name": "on_signal"
+    },
+    {
+      "spec": "functions/src_net.c_net_accept.json",
+      "trace_id": "src/net.c/net_accept",
+      "name": "net_accept"
+    },
+    {
+      "spec": "functions/src_net.c_net_close_fd.json",
+      "trace_id": "src/net.c/net_close_fd",
+      "name": "net_close_fd"
+    },
+    {
+      "spec": "functions/src_net.c_net_listen.json",
+      "trace_id": "src/net.c/net_listen",
+      "name": "net_listen"
+    },
+    {
+      "spec": "functions/src_net.c_net_parse_port.json",
+      "trace_id": "src/net.c/net_parse_port",
+      "name": "net_parse_port"
+    },
+    {
+      "spec": "functions/src_net.c_net_read_some.json",
+      "trace_id": "src/net.c/net_read_some",
+      "name": "net_read_some"
+    },
+    {
+      "spec": "functions/src_net.c_net_write_some.json",
+      "trace_id": "src/net.c/net_write_some",
+      "name": "net_write_some"
+    },
+    {
+      "spec": "functions/src_session.c_free_subscriptions.json",
+      "trace_id": "src/session.c/free_subscriptions",
+      "name": "free_subscriptions"
+    },
+    {
+      "spec": "functions/src_session.c_release_fd.json",
+      "trace_id": "src/session.c/release_fd",
+      "name": "release_fd"
+    },
+    {
+      "spec": "functions/src_session.c_session_add_subscription.json",
+      "trace_id": "src/session.c/session_add_subscription",
+      "name": "session_add_subscription"
+    },
+    {
+      "spec": "functions/src_session.c_session_client_id.json",
+      "trace_id": "src/session.c/session_client_id",
+      "name": "session_client_id"
+    },
+    {
+      "spec": "functions/src_session.c_session_close_after_flush.json",
+      "trace_id": "src/session.c/session_close_after_flush",
+      "name": "session_close_after_flush"
+    },
+    {
+      "spec": "functions/src_session.c_session_close_immediately.json",
+      "trace_id": "src/session.c/session_close_immediately",
+      "name": "session_close_immediately"
+    },
+    {
+      "spec": "functions/src_session.c_session_create.json",
+      "trace_id": "src/session.c/session_create",
+      "name": "session_create"
+    },
+    {
+      "spec": "functions/src_session.c_session_destroy.json",
+      "trace_id": "src/session.c/session_destroy",
+      "name": "session_destroy"
+    },
+    {
+      "spec": "functions/src_session.c_session_enqueue.json",
+      "trace_id": "src/session.c/session_enqueue",
+      "name": "session_enqueue"
+    },
+    {
+      "spec": "functions/src_session.c_session_fd.json",
+      "trace_id": "src/session.c/session_fd",
+      "name": "session_fd"
+    },
+    {
+      "spec": "functions/src_session.c_session_input.json",
+      "trace_id": "src/session.c/session_input",
+      "name": "session_input"
+    },
+    {
+      "spec": "functions/src_session.c_session_mark_ready.json",
+      "trace_id": "src/session.c/session_mark_ready",
+      "name": "session_mark_ready"
+    },
+    {
+      "spec": "functions/src_session.c_session_matches_topic.json",
+      "trace_id": "src/session.c/session_matches_topic",
+      "name": "session_matches_topic"
+    },
+    {
+      "spec": "functions/src_session.c_session_output.json",
+      "trace_id": "src/session.c/session_output",
+      "name": "session_output"
+    },
+    {
+      "spec": "functions/src_session.c_session_set_client_id.json",
+      "trace_id": "src/session.c/session_set_client_id",
+      "name": "session_set_client_id"
+    },
+    {
+      "spec": "functions/src_session.c_session_state.json",
+      "trace_id": "src/session.c/session_state",
+      "name": "session_state"
+    },
+    {
+      "spec": "functions/src_session.c_session_subscription_at.json",
+      "trace_id": "src/session.c/session_subscription_at",
+      "name": "session_subscription_at"
+    },
+    {
+      "spec": "functions/src_session.c_session_subscription_count.json",
+      "trace_id": "src/session.c/session_subscription_count",
+      "name": "session_subscription_count"
+    },
+    {
+      "spec": "functions/src_topic.c_topic_filter_matches.json",
+      "trace_id": "src/topic.c/topic_filter_matches",
+      "name": "topic_filter_matches"
+    },
+    {
+      "spec": "functions/src_topic.c_topic_filter_validate.json",
+      "trace_id": "src/topic.c/topic_filter_validate",
+      "name": "topic_filter_validate"
+    },
+    {
+      "spec": "functions/src_topic.c_topic_name_validate.json",
+      "trace_id": "src/topic.c/topic_name_validate",
+      "name": "topic_name_validate"
+    },
+    {
+      "spec": "functions/src_topic.c_topic_utf8_validate.json",
+      "trace_id": "src/topic.c/topic_utf8_validate",
+      "name": "topic_utf8_validate"
+    },
+    {
+      "spec": "functions/src_wire.c_wire_declared_body_len.json",
+      "trace_id": "src/wire.c/wire_declared_body_len",
+      "name": "wire_declared_body_len"
+    },
+    {
+      "spec": "functions/src_wire.c_wire_decode_connect.json",
+      "trace_id": "src/wire.c/wire_decode_connect",
+      "name": "wire_decode_connect"
+    },
+    {
+      "spec": "functions/src_wire.c_wire_decode_empty.json",
+      "trace_id": "src/wire.c/wire_decode_empty",
+      "name": "wire_decode_empty"
+    },
+    {
+      "spec": "functions/src_wire.c_wire_decode_header.json",
+      "trace_id": "src/wire.c/wire_decode_header",
+      "name": "wire_decode_header"
+    },
+    {
+      "spec": "functions/src_wire.c_wire_decode_publish.json",
+      "trace_id": "src/wire.c/wire_decode_publish",
+      "name": "wire_decode_publish"
+    },
+    {
+      "spec": "functions/src_wire.c_wire_decode_string.json",
+      "trace_id": "src/wire.c/wire_decode_string",
+      "name": "wire_decode_string"
+    },
+    {
+      "spec": "functions/src_wire.c_wire_decode_subscribe.json",
+      "trace_id": "src/wire.c/wire_decode_subscribe",
+      "name": "wire_decode_subscribe"
+    },
+    {
+      "spec": "functions/src_wire.c_wire_encode_connack.json",
+      "trace_id": "src/wire.c/wire_encode_connack",
+      "name": "wire_encode_connack"
+    },
+    {
+      "spec": "functions/src_wire.c_wire_encode_pingresp.json",
+      "trace_id": "src/wire.c/wire_encode_pingresp",
+      "name": "wire_encode_pingresp"
+    },
+    {
+      "spec": "functions/src_wire.c_wire_encode_publish.json",
+      "trace_id": "src/wire.c/wire_encode_publish",
+      "name": "wire_encode_publish"
+    },
+    {
+      "spec": "functions/src_wire.c_wire_encode_suback.json",
+      "trace_id": "src/wire.c/wire_encode_suback",
+      "name": "wire_encode_suback"
+    },
+    {
+      "spec": "functions/src_wire.c_wire_read_u16.json",
+      "trace_id": "src/wire.c/wire_read_u16",
+      "name": "wire_read_u16"
+    },
+    {
+      "spec": "functions/src_wire.c_wire_subscribe_next.json",
+      "trace_id": "src/wire.c/wire_subscribe_next",
+      "name": "wire_subscribe_next"
+    },
+    {
+      "spec": "functions/src_wire.c_wire_write_remaining_length.json",
+      "trace_id": "src/wire.c/wire_write_remaining_length",
+      "name": "wire_write_remaining_length"
+    }
+  ],
+  "headers": [
+    {
+      "path": "src/broker.h",
+      "artifact": "abi/src/broker.h"
+    },
+    {
+      "path": "src/buffer.h",
+      "artifact": "abi/src/buffer.h"
+    },
+    {
+      "path": "src/loop.h",
+      "artifact": "abi/src/loop.h"
+    },
+    {
+      "path": "src/net.h",
+      "artifact": "abi/src/net.h"
+    },
+    {
+      "path": "src/session.h",
+      "artifact": "abi/src/session.h"
+    },
+    {
+      "path": "src/topic.h",
+      "artifact": "abi/src/topic.h"
+    },
+    {
+      "path": "src/wire.h",
+      "artifact": "abi/src/wire.h"
+    }
+  ],
+  "hashes": {
+    "SUMMARY.md": "e12ea9b0d460e297275b39b78b36132865d8af36ae4363fce807b2ec1e3351c9",
+    "abi/src/broker.h": "de6ba26cc20be683faa1c0aed67ee03757cdd397d6d7a7d175ee7f9a5953ff50",
+    "abi/src/buffer.h": "f24f107e757c16a152146b9a705c5dc896810763759540c45dd60cf33d641896",
+    "abi/src/loop.h": "1f84b478f4d1105ac3d219f4021e8de20ec415c4b1eeaca34c9f480c08415353",
+    "abi/src/net.h": "73aa174fa89588e9795ec0948566ff713d45d2d82adb08a70ead8a12cd1a35d2",
+    "abi/src/session.h": "f29466b9f0fd8ed18347673398b3ad75bf868e977948a1bd48d7dca33cc44eaf",
+    "abi/src/topic.h": "81b66962c1637d15897de5994a4ce50dbdab074beaf91fffa5d7ea9ce28252fc",
+    "abi/src/wire.h": "c2f9d2dfdd3fb20d921ea3d2554edadd1e43a61c6cfccf4bfb96acd8c5d41697",
+    "files/src/broker.c.json": "f0b8f27a463d30db2dec8d059e7dbbb9383a066c59bedfa751853e35e4ac6adc",
+    "files/src/buffer.c.json": "c39d629f84472bd1e73d6a33f0cc929c7ecbf22fb90d53531a46b5fc6b476aa4",
+    "files/src/loop.c.json": "8b7dd34501d14c23ad1fe6a574b970688441eb66c0eba9c759def7e084e998f1",
+    "files/src/main.c.json": "8eb04cb9ad79ca8a51925908c6f8b6b1ba82f66621c0356bc46f60e891ef4643",
+    "files/src/net.c.json": "ffae30f1cc05ea74c41614f5ee28c4e35be796551a1a633e7ee4bbcb9797999c",
+    "files/src/session.c.json": "0b6e1d50a8c2d6b2a811f3cd4b677a088500a92328ed0ad9efb5f35b91a8847b",
+    "files/src/topic.c.json": "7fd9d16f9fe97232a90081fb6c7fe56b1a92609c5f99ad0f083a5a01f5a300ff",
+    "files/src/wire.c.json": "3e0fb0ff01cc3cfac15497d512ff83a8fb93e0aff34b9c07b225c6f136f37667",
+    "functions/src_broker.c_add_session.json": "e78abe7da21962548c86109aad86798bcb66788c263106c34e76aa59cdc6f6cd",
+    "functions/src_broker.c_broker_accept.json": "cf8ea7fb4e68a3eaf628635488ac3993dfa9589098f568e62dd4c9764a86d46c",
+    "functions/src_broker.c_broker_create.json": "7ee40dc3cb1e25054fbf5fa728700006bbce0cd3eacf390b33f391ba2d790a59",
+    "functions/src_broker.c_broker_destroy.json": "4b703c30b1b990ae8e2f4e38aae876654f07d99a715ef3abf111709dbb4fabc1",
+    "functions/src_broker.c_broker_process_input.json": "0d3a6fa2f9a86dc06948d4d2a6663c43fc48a1de6474b54cba366a72ea0f7d3b",
+    "functions/src_broker.c_broker_reap.json": "d99b0095fc36b609f82518dfe20685f8aa2fedc1155a19eb9f170457a223d7ce",
+    "functions/src_broker.c_broker_session_at.json": "f31fa33de5c4750f138c6de253bec23aec876ce15a8a16f2ecfcb6e9511635aa",
+    "functions/src_broker.c_broker_session_count.json": "059c3e3862dbdbf2de91ae2831d89e8ec19b9c4e0c4b14bf7bbe4971d6d39f20",
+    "functions/src_broker.c_broker_session_eof.json": "61274e7935406c4365190ee66ee4516d4d97b55c39c22f1c3f04fbf6422ac2e1",
+    "functions/src_broker.c_handle_connect.json": "f1c6f9202e2080828fb17a121fb6ac39588426ba19b1d22f77ea20fc0460a1ff",
+    "functions/src_broker.c_handle_disconnect.json": "97fca116ae3601924fdd52ed396514735bd850bb093ca7946ca3027d33471666",
+    "functions/src_broker.c_handle_pingreq.json": "017ed0821a51a9ea2491b0aa0c7b0a52107d0210746f22545ba0fa08736290e6",
+    "functions/src_broker.c_handle_publish.json": "d1f0a2fcf5fb85ee4ca0136c443a2a9a44b39297b4a842234c2452b86a296693",
+    "functions/src_broker.c_handle_subscribe.json": "202a262719bf1b2830cbd454009a688c5f6c5b83e73d57adeeee4b8205925070",
+    "functions/src_broker.c_remove_session_at.json": "1ec3d20c484d6602f4add6111eb4e5b1e4f7973722dbb76ffe7053dbc4959075",
+    "functions/src_broker.c_route_publish.json": "ff6fcbcc410f9a49a8e1ee5fc28c58654c706ff0cc15db7292774f47126c3266",
+    "functions/src_buffer.c_buffer_append.json": "ba9f135edd131cd625947f7145cea65daf6ff3848e6c18f92e731b0bbee8e689",
+    "functions/src_buffer.c_buffer_commit.json": "7920bba954498a65abb206e2143cf1af2085d35b0a0de7433a056ee76432594b",
+    "functions/src_buffer.c_buffer_consume.json": "d1beedf5bc2e27bdb59049f6cd4ac7b5d9a001d4b52af01c3ed9163d9d586b27",
+    "functions/src_buffer.c_buffer_free.json": "e779ab80722ca780ce20ac34a884742d39671db6e85f9090805d5a94d7de95d5",
+    "functions/src_buffer.c_buffer_init.json": "f851c21b6bb503ff9240e7eb8f0f17ee31508e41688ad448677f01241bd00931",
+    "functions/src_buffer.c_buffer_reserve.json": "087c537606547e76d394b3d91ee2a2194da080fc50155190193bccdf75bc0a22",
+    "functions/src_buffer.c_buffer_tail.json": "004916083956bf0910ee6f55252dcb3a2a5b2855dd31d034a3df9e6d65d94527",
+    "functions/src_loop.c_accept_ready.json": "0ae69a81524ad5ec90b6478b7b3691518fbb959c03215581333b4b528ab65cb3",
+    "functions/src_loop.c_dispatch_event.json": "3948bfc3bc3e8f91f6e44cc70e43464630c936a0a5eb93b402be4c9f28077a55",
+    "functions/src_loop.c_is_registered.json": "bf38fe715a7ffebb02cbf4f0ab66b08d8a946f6ab606771b467d0c9835742bba",
+    "functions/src_loop.c_loop_add_listener.json": "84d7b8768564efced1096e7eeac9f67ce785902c4ea0c764dd0c90b3742379e7",
+    "functions/src_loop.c_loop_create.json": "8bc0750a41a563e074853f2bfb80c29ef41c15ec49d1f5943f43583f5a3df45d",
+    "functions/src_loop.c_loop_destroy.json": "33e7239693449100ea581141c85ff2d3a9cb1bbae64ff0ddccd7a628e33d5868",
+    "functions/src_loop.c_loop_run.json": "abc3865d4e107b280dc443bbb2a70e94202fd20fc58e1a471faeff7d42f66701",
+    "functions/src_loop.c_loop_set_stop_flag.json": "89bf606b966164c7c75600212c302eb8dba967dcd615c8c934dd5446ece41aed",
+    "functions/src_loop.c_loop_stop.json": "1e7cbb6b54b1621c09878564f80369fb58b56e5fc9b8f73c433ad864b3a232aa",
+    "functions/src_loop.c_mask_sync.json": "09876aae99bf2390130d5387e8e0a722c97f2fc9c7e5efa653c0e59c863e1a42",
+    "functions/src_loop.c_pump_read.json": "d31e9391abda9d569d3d18f2c717ad2dc017479cae32c2e288f16f8a958cbb34",
+    "functions/src_loop.c_pump_write.json": "f0f836c451b206e11b5cc37b93e49a74a2579ccea9cde18924dd07e99ea62b0a",
+    "functions/src_main.c_main.json": "08d104b1b3ed0090ef5ff9fa021323b4b5f463642744d3dab83a1ca9132604f0",
+    "functions/src_main.c_on_signal.json": "24211f031f8d89d38f32dcc63e3fa8a6e2d64d9cbd569baa190aed3d8076259b",
+    "functions/src_net.c_net_accept.json": "1ff5b96b983418c04a49855c984be49a57abfa1460f52b80738bb69b3b3aa1db",
+    "functions/src_net.c_net_close_fd.json": "ee435cd7fb5bdb856785af8b0c3125563559bcc0fa122ca54f69047dc92bf37a",
+    "functions/src_net.c_net_listen.json": "bde76d8a80577f131bc9d49f2fc167059d98b85fdbdebdf0969b707e456f2001",
+    "functions/src_net.c_net_parse_port.json": "7800d9a34f455e4e5fabe344cc38fcd9549252ec0ba21111cabd63e4257555d4",
+    "functions/src_net.c_net_read_some.json": "d7df9f79f603d7d02d420c1ad8d3fac8a67963a52725abfd080defaf7d0a5275",
+    "functions/src_net.c_net_write_some.json": "067887b1df3de4dd81fc1b9c6facbe2844fba78f7ca5ac316c3627ff5a595bce",
+    "functions/src_session.c_free_subscriptions.json": "496605915f294a0b425e1203075698ee08664498a43d86d88776932a674e4ae0",
+    "functions/src_session.c_release_fd.json": "cc9219e34e202f03a36b86260d7a679daec7b297dc9ef669d2018a57e192a25f",
+    "functions/src_session.c_session_add_subscription.json": "22cdde8d9976029e367f9ec361b284ae3a6b462da428394d6e53051d2ba84ad1",
+    "functions/src_session.c_session_client_id.json": "e6a40dd269670943f4f241c5b0102a83b3176d25c8e307dcc8324ecd7feaf6cf",
+    "functions/src_session.c_session_close_after_flush.json": "6edbfe0aa732820786d984328d1edd20945fea3964eaba441e126473018cf068",
+    "functions/src_session.c_session_close_immediately.json": "0d23845ec863a3880271540595986043a3f58783d2945831f8070725a51036cc",
+    "functions/src_session.c_session_create.json": "8a6286f2ee357ff00a5e4b33e1481d482061ec6870358d69003168f0ffc4eca5",
+    "functions/src_session.c_session_destroy.json": "e93359b5c70a2fa40d8a77060dc9d5f40f9d8506423b48167a78d27a4a05595a",
+    "functions/src_session.c_session_enqueue.json": "3c1ce6bdb7abcb02734f16b2eb03a25b7a869c0dd323472d774e8e4e0f9dcbb9",
+    "functions/src_session.c_session_fd.json": "7d4fde575d24ace8f19ddbab31fd69683492eb80ea951743e2edfb8d20dcc5e2",
+    "functions/src_session.c_session_input.json": "19652cbff2954cc6e33ae5c8ea02bcd9a5f3935fde662717a55043ef9018a77e",
+    "functions/src_session.c_session_mark_ready.json": "d9dbf7324a2a5cbe74daf9c07f20f09c02bbf687dfe038435e24282b0ebd3e59",
+    "functions/src_session.c_session_matches_topic.json": "d9815146037df6f84d32acb27dddf37620860e056d3f95dea36c84272665198f",
+    "functions/src_session.c_session_output.json": "1d86dfb40fe8405d8517cbab5382da77e296fccfc2609d7130ae603641fa117a",
+    "functions/src_session.c_session_set_client_id.json": "c663dc2fab6d21fb364289a33efc733c3c45d370da27cd97a195ccc86c1e262f",
+    "functions/src_session.c_session_state.json": "a7b36974fa9fff8aa389d70e13202ebc7325835af997a32b04391a348a659565",
+    "functions/src_session.c_session_subscription_at.json": "013c2aa472eedc9715e1b820bd4d15ccc5a44e507c709f8170f728ea6675697b",
+    "functions/src_session.c_session_subscription_count.json": "e89077ffec7689918f4b7a777f93149cd49dad4c292fc2386733a6758e789e89",
+    "functions/src_topic.c_topic_filter_matches.json": "b80d02e4578499df0037d1a0641d5f337e747092e8b552320b6f52d250fe4711",
+    "functions/src_topic.c_topic_filter_validate.json": "3f725f4598b96cfa0b9dda380bf21a7b19a89d31b8bebc4dbdedf8198a65191e",
+    "functions/src_topic.c_topic_name_validate.json": "9d06f615c92a886f74787fc74544a9fb78b18a3dce11d8d2d227a6d082e5d68b",
+    "functions/src_topic.c_topic_utf8_validate.json": "b7bd46dba522122cd75349854f16335b80f34062a785cfe8209c7445813f1d74",
+    "functions/src_wire.c_wire_declared_body_len.json": "04a9e2b928f4b8e60104cac1c879e8d6e304f6d4ef7ed1e1dbaf7fecec39e539",
+    "functions/src_wire.c_wire_decode_connect.json": "a90f768fa5c652011eaced8e37823f42651690c27615a7122b9898871d401ecc",
+    "functions/src_wire.c_wire_decode_empty.json": "a4c117f67a01de6bd17472aa3e9938c468fbea96257e411a6e8817f7f1ec1808",
+    "functions/src_wire.c_wire_decode_header.json": "8be4755c86bc5fda109503881cf5478db86d936dd6a104621a0bf5e7f6e272d4",
+    "functions/src_wire.c_wire_decode_publish.json": "404390a59da6ad974e44456d9b7233bbbdec1cbef6822d56f78f25c576e7ba5e",
+    "functions/src_wire.c_wire_decode_string.json": "24f67e2d8778653e71465768f2fe0b61bfbcf51fb4c72ab53350844a375840e9",
+    "functions/src_wire.c_wire_decode_subscribe.json": "1ef362885b2ac2d29b759a2f90c4975b6df629e67d31ae2b2788045bb1ca664d",
+    "functions/src_wire.c_wire_encode_connack.json": "c8ab00f695185e3c849e80490ccd935a61eb26bf40810b22561b17e1d677e857",
+    "functions/src_wire.c_wire_encode_pingresp.json": "92df92cd8481022e06cef6bc2ff2316a6d2ba22801074c2c6460a930fa4a0426",
+    "functions/src_wire.c_wire_encode_publish.json": "189fbc11fd4b61af92e538d0a60655a888156af9658154a846135c3069156aec",
+    "functions/src_wire.c_wire_encode_suback.json": "59181d32672a95e5d00abb1e7f3c2609e4c0f5a510baae4666af2026aa0b5ff5",
+    "functions/src_wire.c_wire_read_u16.json": "6eea81980bb6dc25014cde876bf6a2a27cfb74ab71a925c763bd5d02eeb55c95",
+    "functions/src_wire.c_wire_subscribe_next.json": "be1fd97ee81a22397ad170f6772d58b0a2af5811f3dbfb35d554936a7d77b7c8",
+    "functions/src_wire.c_wire_write_remaining_length.json": "0a55307462ddc3cc45d33296fad73702eb8c7fb05b7575bef98e1fdebd96f5e3",
+    "module_spec.json": "d1ae773505d23379c5173239ef488c068fdecdaa79b3ebe83360280bfd22ab07",
+    "scope.json": "6c3294ec170efdf19e460f6f8328f9830bb372c39fb1d0a7757e26c747b8e714",
+    "traceability.json": "35326ce37bf4150ec62bfe2e6e26904b45511ff189ee3161cc58bd135e7b12b6"
+  }
+}

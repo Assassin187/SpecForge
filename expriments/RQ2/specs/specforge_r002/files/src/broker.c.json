@@ -1,0 +1,820 @@
+{
+  "KIND": "FILE_SPEC",
+  "FILE": {
+    "TRACE_ID": "src/broker.c",
+    "LANG": "C99",
+    "ROLE": "MQTT protocol core: connection registry, input framing loop, per-packet dispatch, CONNECT/CONNACK policy with client-id eviction, SUBSCRIBE/SUBACK policy with in-place filter replacement, QoS 0 publish fan-out with per-recipient enqueue isolation, EOF draining and session reaping.",
+    "DOC_REF": [
+      "REQUIREMENTS.md:4",
+      "REQUIREMENTS.md:5",
+      "REQUIREMENTS.md:6",
+      "REQUIREMENTS.md:10",
+      "REQUIREMENTS.md:11"
+    ]
+  },
+  "HEADER": {
+    "PATH": "src/broker.h",
+    "DEPENDENCY": [
+      "src/session.h"
+    ],
+    "SYSTEM_DEPENDENCY": [
+      "stddef.h"
+    ],
+    "DATA": [
+      {
+        "NAME": "enum broker_result",
+        "KIND": "TYPE",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "Continue or close outcome of handling one packet",
+        "TYPE_SPEC": {
+          "TYPE_KIND": "ENUM",
+          "ENUM_VALUES": [
+            {
+              "NAME": "BROKER_CONTINUE",
+              "VALUE": 0,
+              "ROLE": "Session stays usable"
+            },
+            {
+              "NAME": "BROKER_CLOSE",
+              "VALUE": 1,
+              "ROLE": "Session is or must be closed"
+            }
+          ]
+        }
+      },
+      {
+        "NAME": "struct broker",
+        "KIND": "TYPE",
+        "VISIBILITY": "PUBLIC",
+        "ROLE": "Opaque registry of active connections; definition is private to src/broker.c",
+        "TYPE_SPEC": {
+          "TYPE_KIND": "OPAQUE"
+        }
+      }
+    ],
+    "INTERFACE": [
+      {
+        "SIGNATURE": "int broker_create(struct broker **out_broker)",
+        "NAME": "broker_create",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "Create an empty registry",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "void broker_destroy(struct broker *b)",
+        "NAME": "broker_destroy",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "Destroy all sessions and the registry",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "int broker_accept(struct broker *b, int fd)",
+        "NAME": "broker_accept",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "Adopt an accepted descriptor as a new session",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "int broker_process_input(struct broker *b, struct session *s)",
+        "NAME": "broker_process_input",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "Consume all complete frames from the session input buffer",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "void broker_session_eof(struct broker *b, struct session *s)",
+        "NAME": "broker_session_eof",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "Drain complete frames then close after flush",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "void broker_reap(struct broker *b)",
+        "NAME": "broker_reap",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "Promote drained CLOSING sessions and destroy CLOSED ones",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "size_t broker_session_count(const struct broker *b)",
+        "NAME": "broker_session_count",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "Registry iteration bound",
+        "VISIBILITY": "public"
+      },
+      {
+        "SIGNATURE": "struct session *broker_session_at(const struct broker *b, size_t index)",
+        "NAME": "broker_session_at",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "Registry iteration accessor",
+        "VISIBILITY": "public"
+      }
+    ]
+  },
+  "SOURCE": {
+    "PATH": "src/broker.c",
+    "DEPENDENCY": [
+      "src/broker.h",
+      "src/session.h",
+      "src/wire.h",
+      "src/topic.h",
+      "src/buffer.h"
+    ],
+    "SYSTEM_DEPENDENCY": [
+      "stdlib.h",
+      "string.h",
+      "stddef.h",
+      "stdint.h"
+    ],
+    "DATA": [
+      {
+        "NAME": "BROKER_INITIAL_SESSION_CAP",
+        "KIND": "MACRO",
+        "VISIBILITY": "PRIVATE",
+        "ROLE": "Initial registry capacity in session slots",
+        "VALUE": 8
+      },
+      {
+        "NAME": "BROKER_INITIAL_SUB_CAP",
+        "KIND": "MACRO",
+        "VISIBILITY": "PRIVATE",
+        "ROLE": "Initial subscription slots requested per session",
+        "VALUE": 4
+      },
+      {
+        "NAME": "CONNACK_UNACCEPTABLE_PROTOCOL_LEVEL",
+        "KIND": "MACRO",
+        "VISIBILITY": "PRIVATE",
+        "ROLE": "CONNACK return code 0x01 sent when the protocol level is not 4",
+        "VALUE": "0x01"
+      },
+      {
+        "NAME": "CONNACK_IDENTIFIER_REJECTED",
+        "KIND": "MACRO",
+        "VISIBILITY": "PRIVATE",
+        "ROLE": "CONNACK return code 0x02 sent for an empty or non-ASCII client identifier",
+        "VALUE": "0x02"
+      },
+      {
+        "NAME": "GRANTED_QOS",
+        "KIND": "MACRO",
+        "VISIBILITY": "PRIVATE",
+        "ROLE": "Granted QoS reported in every SUBACK result code (this broker grants QoS 0)",
+        "VALUE": 0
+      },
+      {
+        "NAME": "struct broker",
+        "KIND": "TYPE",
+        "VISIBILITY": "PRIVATE",
+        "ROLE": "Private registry definition: session pointer array plus a reusable encode scratch buffer",
+        "TYPE_SPEC": {
+          "TYPE_KIND": "STRUCT",
+          "FIELDS": [
+            {
+              "NAME": "sessions",
+              "TYPE": "struct session **",
+              "ROLE": "Owned array of owned session pointers"
+            },
+            {
+              "NAME": "count",
+              "TYPE": "size_t",
+              "ROLE": "Live sessions"
+            },
+            {
+              "NAME": "cap",
+              "TYPE": "size_t",
+              "ROLE": "Allocated slots"
+            },
+            {
+              "NAME": "scratch",
+              "TYPE": "struct byte_buf",
+              "ROLE": "Reusable buffer holding one encoded outbound PUBLISH; cleared with buffer_consume after fan-out"
+            }
+          ]
+        }
+      }
+    ],
+    "INTERFACE": [
+      {
+        "TRACE_ID": "src/broker.c/remove_session_at",
+        "SIGNATURE": "static void remove_session_at(struct broker *b, size_t index)",
+        "NAME": "remove_session_at",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "Destroy the session at index and shift the tail down",
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "src/broker.c/add_session",
+        "SIGNATURE": "static int add_session(struct broker *b, int fd, struct session **out_session)",
+        "NAME": "add_session",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "Create a session and append it to the registry, growing the array if needed",
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "src/broker.c/handle_connect",
+        "SIGNATURE": "static enum broker_result handle_connect(struct broker *b, struct session *s, const struct wire_connect *c)",
+        "NAME": "handle_connect",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "Apply CONNECT policy, store the client id, send CONNACK, evict a same-id READY session",
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "src/broker.c/handle_subscribe",
+        "SIGNATURE": "static enum broker_result handle_subscribe(struct broker *b, struct session *s, const struct wire_subscribe *sub)",
+        "NAME": "handle_subscribe",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "Store each filter QoS 0 and queue the SUBACK with one granted code per filter in order",
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "src/broker.c/handle_publish",
+        "SIGNATURE": "static enum broker_result handle_publish(struct broker *b, struct session *s, const struct wire_publish *pub)",
+        "NAME": "handle_publish",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "Reject QoS 1/2 and DUP-with-QoS-0, otherwise fan out one QoS 0 copy",
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "src/broker.c/handle_pingreq",
+        "SIGNATURE": "static enum broker_result handle_pingreq(struct broker *b, struct session *s)",
+        "NAME": "handle_pingreq",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "Queue PINGRESP",
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "src/broker.c/handle_disconnect",
+        "SIGNATURE": "static enum broker_result handle_disconnect(struct broker *b, struct session *s)",
+        "NAME": "handle_disconnect",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "Close the connection immediately without flushing",
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "src/broker.c/route_publish",
+        "SIGNATURE": "static void route_publish(struct broker *b, const struct wire_publish *pub)",
+        "NAME": "route_publish",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "Encode one QoS 0 PUBLISH into scratch and enqueue it to every READY matching session, including the publisher, closing only a failing recipient",
+        "VISIBILITY": "private"
+      },
+      {
+        "TRACE_ID": "src/broker.c/broker_create",
+        "SIGNATURE": "int broker_create(struct broker **out_broker)",
+        "NAME": "broker_create",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "Allocate the registry and its scratch buffer",
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "src/broker.c/broker_destroy",
+        "SIGNATURE": "void broker_destroy(struct broker *b)",
+        "NAME": "broker_destroy",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "Destroy every session, free the arrays and the scratch buffer",
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "src/broker.c/broker_accept",
+        "SIGNATURE": "int broker_accept(struct broker *b, int fd)",
+        "NAME": "broker_accept",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "Take ownership of fd through add_session",
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "src/broker.c/broker_process_input",
+        "SIGNATURE": "int broker_process_input(struct broker *b, struct session *s)",
+        "NAME": "broker_process_input",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "Frame, dispatch, consume; stop on INCOMPLETE, close on INVALID or non-CONNECT before CONNECT",
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "src/broker.c/broker_session_eof",
+        "SIGNATURE": "void broker_session_eof(struct broker *b, struct session *s)",
+        "NAME": "broker_session_eof",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "Process buffered complete frames, then enter CLOSING with the queue preserved",
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "src/broker.c/broker_reap",
+        "SIGNATURE": "void broker_reap(struct broker *b)",
+        "NAME": "broker_reap",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "Close drained CLOSING sessions and destroy CLOSED sessions",
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "src/broker.c/broker_session_count",
+        "SIGNATURE": "size_t broker_session_count(const struct broker *b)",
+        "NAME": "broker_session_count",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "Return count (0 for NULL)",
+        "VISIBILITY": "public"
+      },
+      {
+        "TRACE_ID": "src/broker.c/broker_session_at",
+        "SIGNATURE": "struct session *broker_session_at(const struct broker *b, size_t index)",
+        "NAME": "broker_session_at",
+        "KIND": "FUNC",
+        "FUNCTION_TYPE": "ALGORITHM",
+        "ROLE": "Borrowed session pointer or NULL when out of range",
+        "VISIBILITY": "public"
+      }
+    ]
+  },
+  "PUBLIC_SYMBOLS": [
+    {
+      "NAME": "enum broker_result",
+      "KIND": "TYPE",
+      "ROLE": "Packet handling outcome"
+    },
+    {
+      "NAME": "struct broker",
+      "KIND": "TYPE",
+      "ROLE": "Opaque registry"
+    },
+    {
+      "NAME": "broker_create",
+      "KIND": "FUNC",
+      "SIGNATURE": "int broker_create(struct broker **out_broker)",
+      "ROLE": "Create registry"
+    },
+    {
+      "NAME": "broker_destroy",
+      "KIND": "FUNC",
+      "SIGNATURE": "void broker_destroy(struct broker *b)",
+      "ROLE": "Destroy registry"
+    },
+    {
+      "NAME": "broker_accept",
+      "KIND": "FUNC",
+      "SIGNATURE": "int broker_accept(struct broker *b, int fd)",
+      "ROLE": "Adopt descriptor"
+    },
+    {
+      "NAME": "broker_process_input",
+      "KIND": "FUNC",
+      "SIGNATURE": "int broker_process_input(struct broker *b, struct session *s)",
+      "ROLE": "Framing pump"
+    },
+    {
+      "NAME": "broker_session_eof",
+      "KIND": "FUNC",
+      "SIGNATURE": "void broker_session_eof(struct broker *b, struct session *s)",
+      "ROLE": "EOF handling"
+    },
+    {
+      "NAME": "broker_reap",
+      "KIND": "FUNC",
+      "SIGNATURE": "void broker_reap(struct broker *b)",
+      "ROLE": "Reap finished sessions"
+    },
+    {
+      "NAME": "broker_session_count",
+      "KIND": "FUNC",
+      "SIGNATURE": "size_t broker_session_count(const struct broker *b)",
+      "ROLE": "Session count"
+    },
+    {
+      "NAME": "broker_session_at",
+      "KIND": "FUNC",
+      "SIGNATURE": "struct session *broker_session_at(const struct broker *b, size_t index)",
+      "ROLE": "Session accessor"
+    }
+  ],
+  "TEST_VECTORS": [
+    {
+      "NAME": "connect_level4_clean_session_empty_client_id_gets_rc2_then_close",
+      "INPUT": {
+        "bytes": "10 0c 00 04 4d 51 54 54 04 02 00 3c 00 00",
+        "note": "protocol name MQTT, level 4, flags 0x02 (clean session), keep alive 60, client id length 0"
+      },
+      "EXPECT": {
+        "connack_queued": "20 02 00 02",
+        "return_code": 2,
+        "session_state_after": "SESSION_CLOSED",
+        "fd_closed": true
+      },
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": [
+        "src/broker.c/handle_connect",
+        "src/broker.c/broker_process_input"
+      ]
+    },
+    {
+      "NAME": "connect_level3_with_empty_client_id_reports_rc1_not_rc2",
+      "INPUT": {
+        "bytes": "10 0c 00 04 4d 51 54 54 03 02 00 3c 00 00",
+        "note": "level 3 (unsupported) and an empty client id: the level check must win"
+      },
+      "EXPECT": {
+        "connack_queued": "20 02 00 01",
+        "return_code": 1,
+        "session_state_after": "SESSION_CLOSED"
+      },
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": [
+        "src/broker.c/handle_connect"
+      ]
+    },
+    {
+      "NAME": "connect_non_ascii_client_id_gets_rc2_but_ill_formed_utf8_closes_without_connack",
+      "INPUT": {
+        "cases": [
+          "client id bytes 41 c3 a9 42 (well-formed UTF-8 'AéB', non-mandatory charset) with level 4",
+          "client id bytes e0 80 41 (ill-formed UTF-8) with level 4",
+          "client id bytes 41 c0 80 42 (overlong U+0000) with level 4"
+        ]
+      },
+      "EXPECT": {
+        "case_0": {
+          "connack_queued": "20 02 00 02",
+          "then": "close"
+        },
+        "case_1": {
+          "connack_queued": null,
+          "then": "close"
+        },
+        "case_2": {
+          "connack_queued": null,
+          "then": "close"
+        },
+        "note": "non-ASCII is outside the mandatory charset but is well-formed UTF-8, so it is rejected by return code 0x02; ill-formed UTF-8 encodings (case_1, case_2) are malformed and close silently"
+      },
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": [
+        "src/broker.c/handle_connect"
+      ]
+    },
+    {
+      "NAME": "connect_reserved_flag_or_wrong_protocol_name_closes_without_connack",
+      "INPUT": {
+        "cases": [
+          "fixed header byte 0x11 (flags bit 0 set) with an otherwise valid CONNECT body",
+          "protocol name MQTX with level 4",
+          "protocol name MQTT with will flag 0x04 set",
+          "clean session bit 0"
+        ]
+      },
+      "EXPECT": {
+        "connack_queued": null,
+        "session_state_after": "SESSION_CLOSED",
+        "note": "reserved flag, protocol name, will flag and clean session 0 all close without CONNACK"
+      },
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": [
+        "src/broker.c/handle_connect"
+      ]
+    },
+    {
+      "NAME": "valid_connect_produces_connack_and_ready_state",
+      "INPUT": {
+        "bytes": "10 13 00 04 4d 51 54 54 04 02 00 3c 00 07 63 6c 69 65 6e 74 31",
+        "note": "level 4, clean session 1, keep alive 60, client id 'client1'"
+      },
+      "EXPECT": {
+        "connack_queued": "20 02 00 00",
+        "session_state_after": "SESSION_READY",
+        "client_id": "client1",
+        "sub_count": 0
+      },
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": [
+        "src/broker.c/handle_connect",
+        "src/broker.c/broker_process_input"
+      ]
+    },
+    {
+      "NAME": "second_connect_with_same_client_id_evicts_the_first_ready_session",
+      "INPUT": {
+        "runtime": [
+          "session A CONNECT client id 'dup' -> READY",
+          "session B CONNECT client id 'dup'",
+          "broker_reap"
+        ]
+      },
+      "EXPECT": {
+        "a_closed": true,
+        "b_state": "SESSION_READY",
+        "session_count": 1,
+        "b_connack": "20 02 00 00"
+      },
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": [
+        "src/broker.c/handle_connect",
+        "src/broker.c/broker_reap"
+      ]
+    },
+    {
+      "NAME": "subscribe_two_filters_grants_qos0_in_order",
+      "INPUT": {
+        "bytes": "82 10 00 0a 00 05 61 2f 62 2f 63 02 00 03 61 2f 2b 01",
+        "note": "flags 0x2, packet id 10, filter 'a/b/c' requested QoS 2, filter 'a/+' requested QoS 1; the broker grants its maximum supported QoS 0 to every filter"
+      },
+      "EXPECT": {
+        "suback_queued": "90 04 00 0a 00 00",
+        "remaining_length": 4,
+        "count_codes": 2,
+        "code_0": 0,
+        "code_1": 0,
+        "session_sub_count": 2,
+        "note": "one return code per filter, in filter order, each 0x00 (success maximum QoS 0) since granted QoS 0 is <= requested QoS"
+      },
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": [
+        "src/broker.c/handle_subscribe"
+      ]
+    },
+    {
+      "NAME": "subscribe_identical_filter_replaces_and_suback_still_reports_it",
+      "INPUT": {
+        "runtime": [
+          "SUBSCRIBE pid 1 filter 'a/b' requested QoS 0",
+          "SUBSCRIBE pid 2 filter 'a/b' requested QoS 1",
+          "session_subscription_count"
+        ]
+      },
+      "EXPECT": {
+        "count": 1,
+        "stored_qos": 0,
+        "subacks": [
+          "90 03 00 01 00",
+          "90 03 00 02 00"
+        ],
+        "no_duplicate_filter": true,
+        "note": "granted QoS is 0 for a requested QoS 0 or 1, so the stored maximum QoS stays 0"
+      },
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": [
+        "src/broker.c/handle_subscribe",
+        "src/session.c/session_add_subscription"
+      ]
+    },
+    {
+      "NAME": "subscribe_with_zero_packet_id_or_bad_qos_byte_closes_the_connection",
+      "INPUT": {
+        "cases": [
+          "SUBSCRIBE pid 0 with filter 'a' QoS 0",
+          "SUBSCRIBE pid 1 filter 'a' QoS 3",
+          "SUBSCRIBE pid 1 filter 'a' QoS byte 0x04 (bits 7-2 nonzero)",
+          "SUBSCRIBE pid 1 with an empty payload",
+          "SUBSCRIBE fixed header flags 0x0"
+        ]
+      },
+      "EXPECT": {
+        "suback_queued": null,
+        "session_state_after": "SESSION_CLOSED",
+        "other_sessions_unaffected": true
+      },
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": [
+        "src/broker.c/handle_subscribe",
+        "src/broker.c/broker_process_input"
+      ]
+    },
+    {
+      "NAME": "publish_fanout_reaches_match_everything_and_publisher",
+      "INPUT": {
+        "runtime": [
+          "A SUBSCRIBE 'sport/#'",
+          "B SUBSCRIBE 'sport/+/score'",
+          "C SUBSCRIBE 'news/#' with no matching topic",
+          "A PUBLISH topic 'sport/tennis/score' payload 'h1'"
+        ]
+      },
+      "EXPECT": {
+        "a_receives": {
+          "packet": "30 16 00 12 73 70 6f 72 74 2f 74 65 6e 6e 69 73 2f 73 63 6f 72 65 68 31",
+          "note": "topic 18 bytes, payload 2 bytes, Remaining Length 22, packet length 24"
+        },
+        "b_receives_same_packet": true,
+        "c_receives": null,
+        "publisher_included": true
+      },
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": [
+        "src/broker.c/handle_publish",
+        "src/broker.c/route_publish"
+      ]
+    },
+    {
+      "NAME": "fanout_progresses_for_a_passive_recipient_created_before_the_publisher",
+      "INPUT": {
+        "runtime": [
+          "B connects (client id 'b') then SUBSCRIBE 'alerts/#' with no further input from B",
+          "A connects later (client id 'a') then PUBLISH 'alerts/fire' payload 0x00 0x01 as a single write",
+          "reactor batch: read A, dispatch, reap, mask sync",
+          "next EPOLLOUT batch writes B's queue while B sends nothing"
+        ]
+      },
+      "EXPECT": {
+        "b_output_len_after_dispatch": 17,
+        "b_receives_without_sending": true,
+        "a_receives_same_copy": true,
+        "no_blocking_on_b": true
+      },
+      "LEVEL": "RUNTIME",
+      "TRACE_REFS": [
+        "src/broker.c/route_publish",
+        "src/loop.c/loop_run"
+      ]
+    },
+    {
+      "NAME": "publish_qos1_qos2_and_dup_qos0_and_qos3_are_distinguished",
+      "INPUT": {
+        "cases": [
+          "PUBLISH flags 0x02 (QoS 1) topic 'a' pid 5 payload 'x'",
+          "PUBLISH flags 0x04 (QoS 2) topic 'a' pid 5 payload 'x'",
+          "PUBLISH flags 0x08 (DUP) with QoS 0 topic 'a' payload 'x'",
+          "PUBLISH flags 0x06 (QoS 3) topic 'a' payload 'x'",
+          "PUBLISH fixed header 0x30 with a topic containing '+'"
+        ]
+      },
+      "EXPECT": {
+        "case_0": {
+          "outcome": "close connection, well-formed but unsupported QoS 1"
+        },
+        "case_1": {
+          "outcome": "close connection, well-formed but unsupported QoS 2"
+        },
+        "case_2": {
+          "outcome": "close connection, malformed DUP flag with QoS 0"
+        },
+        "case_3": {
+          "outcome": "close connection, malformed reserved QoS value"
+        },
+        "case_4": {
+          "outcome": "close connection, wildcard in topic name"
+        },
+        "no_puback_or_pubrec_ever_sent": true
+      },
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": [
+        "src/broker.c/handle_publish",
+        "src/broker.c/broker_process_input"
+      ]
+    },
+    {
+      "NAME": "enqueue_failure_on_one_recipient_closes_only_that_recipient",
+      "INPUT": {
+        "runtime": [
+          "sessions A and B both subscribed to 't'",
+          "inject allocation failure in session B's output buffer (test hook)",
+          "A PUBLISH topic 't' payload 'v'",
+          "broker_reap"
+        ]
+      },
+      "EXPECT": {
+        "b_closed": true,
+        "a_state": "SESSION_READY",
+        "a_receives": "30 04 00 01 74 76",
+        "session_count": 1,
+        "note": "one failing recipient must not abort the fan-out or affect the publisher"
+      },
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": [
+        "src/broker.c/route_publish",
+        "src/broker.c/broker_reap"
+      ]
+    },
+    {
+      "NAME": "pingreq_answered_and_disconnect_closes_immediately",
+      "INPUT": {
+        "runtime": [
+          "READY session, input c0 00",
+          "then input e0 00",
+          "then input c0 01 00 (complete frame, Remaining Length 1 != 0)"
+        ]
+      },
+      "EXPECT": {
+        "pingresp_queued": "d0 00",
+        "after_disconnect": {
+          "state": "SESSION_CLOSED",
+          "output_discarded": true
+        },
+        "bad_pingreq": {
+          "connack_queued": null,
+          "closed": true,
+          "note": "wire_decode_empty returns WIRE_INVALID for PINGREQ with Remaining Length != 0 (F042), so the connection is closed"
+        }
+      },
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": [
+        "src/broker.c/handle_pingreq",
+        "src/broker.c/handle_disconnect"
+      ]
+    },
+    {
+      "NAME": "eof_processes_all_complete_frames_and_discards_a_partial_tail",
+      "INPUT": {
+        "runtime": [
+          "A and B subscribed to 'x'",
+          "A writes PUBLISH 'x' payload 'k' immediately followed by 3 bytes of an unfinished next packet in the same stream",
+          "peer closes its write side",
+          "broker_session_eof(A)",
+          "flush A's queue"
+        ]
+      },
+      "EXPECT": {
+        "final_publish_routed_to_b": true,
+        "a_after_drain": "SESSION_CLOSED",
+        "partial_tail_discarded": true,
+        "note": "incomplete trailing bytes must not be treated as a packet and must not prevent the queued frames from draining"
+      },
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": [
+        "src/broker.c/broker_session_eof",
+        "src/broker.c/broker_process_input"
+      ]
+    },
+    {
+      "NAME": "non_connect_packet_before_connect_closes_without_response",
+      "INPUT": {
+        "runtime": [
+          "fresh session",
+          "input bytes: 30 06 00 03 61 2f 62 00 (a complete PUBLISH before CONNECT)"
+        ]
+      },
+      "EXPECT": {
+        "suback_queued": null,
+        "connack_queued": null,
+        "session_state_after": "SESSION_CLOSED",
+        "note": "only CONNECT is accepted in AWAITING_CONNECT"
+      },
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": [
+        "src/broker.c/broker_process_input"
+      ]
+    },
+    {
+      "NAME": "unsupported_packet_types_close_only_the_sending_connection",
+      "INPUT": {
+        "runtime": [
+          "READY sessions A and B; A sends each of 0x00/0xf0/0x20/0x40/0x50/0x60/0x70/0x90/0xa0/0xb0/0xd0 fixed headers in separate runs",
+          "broker_reap"
+        ]
+      },
+      "EXPECT": {
+        "per_case": "A closed, no response queued",
+        "b_unaffected": true,
+        "session_count_after_reap": 1
+      },
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": [
+        "src/broker.c/broker_process_input",
+        "src/broker.c/broker_reap"
+      ]
+    },
+    {
+      "NAME": "close_after_flush_then_reap_destroys_exactly_once",
+      "INPUT": {
+        "runtime": [
+          "session with queued output and state CLOSING after EOF",
+          "broker_reap with output still non-empty then broker_reap again",
+          "drain output to zero and broker_reap"
+        ]
+      },
+      "EXPECT": {
+        "first_reap_keeps_session": true,
+        "count_while_closing": 1,
+        "after_drain": {
+          "count": 0,
+          "fd_closed_once": true
+        },
+        "second_reap_noop": true
+      },
+      "LEVEL": "FUNCTION",
+      "TRACE_REFS": [
+        "src/broker.c/broker_reap",
+        "src/broker.c/broker_session_count"
+      ]
+    }
+  ]
+}

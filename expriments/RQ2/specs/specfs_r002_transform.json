@@ -1,0 +1,3671 @@
+{
+  "source": "/home/ljf/SpecForge/runs/paper/round_03/mqtt_01/specs/r002",
+  "source_manifest_sha256": "8859611d0d3c14189ac52da28713d18c4990cb756880f32d3923567e7c58b954",
+  "specforge_snapshot": "specforge_r002",
+  "specfs_snapshot": "specfs_r002",
+  "converter": "/home/ljf/SpecForge/expriments/RQ2/spec_views.py",
+  "converter_sha256": "0ba00f43511d97df0e7349d80504fb4c904c0b3b9029247ca36efcfbe05ecc3d",
+  "format_reference": "/home/ljf/specfs-ae/sysspec/specfs",
+  "specforge_hashes": {
+    "SUMMARY.md": "e12ea9b0d460e297275b39b78b36132865d8af36ae4363fce807b2ec1e3351c9",
+    "abi/src/broker.h": "de6ba26cc20be683faa1c0aed67ee03757cdd397d6d7a7d175ee7f9a5953ff50",
+    "abi/src/buffer.h": "f24f107e757c16a152146b9a705c5dc896810763759540c45dd60cf33d641896",
+    "abi/src/loop.h": "1f84b478f4d1105ac3d219f4021e8de20ec415c4b1eeaca34c9f480c08415353",
+    "abi/src/net.h": "73aa174fa89588e9795ec0948566ff713d45d2d82adb08a70ead8a12cd1a35d2",
+    "abi/src/session.h": "f29466b9f0fd8ed18347673398b3ad75bf868e977948a1bd48d7dca33cc44eaf",
+    "abi/src/topic.h": "81b66962c1637d15897de5994a4ce50dbdab074beaf91fffa5d7ea9ce28252fc",
+    "abi/src/wire.h": "c2f9d2dfdd3fb20d921ea3d2554edadd1e43a61c6cfccf4bfb96acd8c5d41697",
+    "bundle.json": "8859611d0d3c14189ac52da28713d18c4990cb756880f32d3923567e7c58b954",
+    "files/src/broker.c.json": "f0b8f27a463d30db2dec8d059e7dbbb9383a066c59bedfa751853e35e4ac6adc",
+    "files/src/buffer.c.json": "c39d629f84472bd1e73d6a33f0cc929c7ecbf22fb90d53531a46b5fc6b476aa4",
+    "files/src/loop.c.json": "8b7dd34501d14c23ad1fe6a574b970688441eb66c0eba9c759def7e084e998f1",
+    "files/src/main.c.json": "8eb04cb9ad79ca8a51925908c6f8b6b1ba82f66621c0356bc46f60e891ef4643",
+    "files/src/net.c.json": "ffae30f1cc05ea74c41614f5ee28c4e35be796551a1a633e7ee4bbcb9797999c",
+    "files/src/session.c.json": "0b6e1d50a8c2d6b2a811f3cd4b677a088500a92328ed0ad9efb5f35b91a8847b",
+    "files/src/topic.c.json": "7fd9d16f9fe97232a90081fb6c7fe56b1a92609c5f99ad0f083a5a01f5a300ff",
+    "files/src/wire.c.json": "3e0fb0ff01cc3cfac15497d512ff83a8fb93e0aff34b9c07b225c6f136f37667",
+    "functions/src_broker.c_add_session.json": "e78abe7da21962548c86109aad86798bcb66788c263106c34e76aa59cdc6f6cd",
+    "functions/src_broker.c_broker_accept.json": "cf8ea7fb4e68a3eaf628635488ac3993dfa9589098f568e62dd4c9764a86d46c",
+    "functions/src_broker.c_broker_create.json": "7ee40dc3cb1e25054fbf5fa728700006bbce0cd3eacf390b33f391ba2d790a59",
+    "functions/src_broker.c_broker_destroy.json": "4b703c30b1b990ae8e2f4e38aae876654f07d99a715ef3abf111709dbb4fabc1",
+    "functions/src_broker.c_broker_process_input.json": "0d3a6fa2f9a86dc06948d4d2a6663c43fc48a1de6474b54cba366a72ea0f7d3b",
+    "functions/src_broker.c_broker_reap.json": "d99b0095fc36b609f82518dfe20685f8aa2fedc1155a19eb9f170457a223d7ce",
+    "functions/src_broker.c_broker_session_at.json": "f31fa33de5c4750f138c6de253bec23aec876ce15a8a16f2ecfcb6e9511635aa",
+    "functions/src_broker.c_broker_session_count.json": "059c3e3862dbdbf2de91ae2831d89e8ec19b9c4e0c4b14bf7bbe4971d6d39f20",
+    "functions/src_broker.c_broker_session_eof.json": "61274e7935406c4365190ee66ee4516d4d97b55c39c22f1c3f04fbf6422ac2e1",
+    "functions/src_broker.c_handle_connect.json": "f1c6f9202e2080828fb17a121fb6ac39588426ba19b1d22f77ea20fc0460a1ff",
+    "functions/src_broker.c_handle_disconnect.json": "97fca116ae3601924fdd52ed396514735bd850bb093ca7946ca3027d33471666",
+    "functions/src_broker.c_handle_pingreq.json": "017ed0821a51a9ea2491b0aa0c7b0a52107d0210746f22545ba0fa08736290e6",
+    "functions/src_broker.c_handle_publish.json": "d1f0a2fcf5fb85ee4ca0136c443a2a9a44b39297b4a842234c2452b86a296693",
+    "functions/src_broker.c_handle_subscribe.json": "202a262719bf1b2830cbd454009a688c5f6c5b83e73d57adeeee4b8205925070",
+    "functions/src_broker.c_remove_session_at.json": "1ec3d20c484d6602f4add6111eb4e5b1e4f7973722dbb76ffe7053dbc4959075",
+    "functions/src_broker.c_route_publish.json": "ff6fcbcc410f9a49a8e1ee5fc28c58654c706ff0cc15db7292774f47126c3266",
+    "functions/src_buffer.c_buffer_append.json": "ba9f135edd131cd625947f7145cea65daf6ff3848e6c18f92e731b0bbee8e689",
+    "functions/src_buffer.c_buffer_commit.json": "7920bba954498a65abb206e2143cf1af2085d35b0a0de7433a056ee76432594b",
+    "functions/src_buffer.c_buffer_consume.json": "d1beedf5bc2e27bdb59049f6cd4ac7b5d9a001d4b52af01c3ed9163d9d586b27",
+    "functions/src_buffer.c_buffer_free.json": "e779ab80722ca780ce20ac34a884742d39671db6e85f9090805d5a94d7de95d5",
+    "functions/src_buffer.c_buffer_init.json": "f851c21b6bb503ff9240e7eb8f0f17ee31508e41688ad448677f01241bd00931",
+    "functions/src_buffer.c_buffer_reserve.json": "087c537606547e76d394b3d91ee2a2194da080fc50155190193bccdf75bc0a22",
+    "functions/src_buffer.c_buffer_tail.json": "004916083956bf0910ee6f55252dcb3a2a5b2855dd31d034a3df9e6d65d94527",
+    "functions/src_loop.c_accept_ready.json": "0ae69a81524ad5ec90b6478b7b3691518fbb959c03215581333b4b528ab65cb3",
+    "functions/src_loop.c_dispatch_event.json": "3948bfc3bc3e8f91f6e44cc70e43464630c936a0a5eb93b402be4c9f28077a55",
+    "functions/src_loop.c_is_registered.json": "bf38fe715a7ffebb02cbf4f0ab66b08d8a946f6ab606771b467d0c9835742bba",
+    "functions/src_loop.c_loop_add_listener.json": "84d7b8768564efced1096e7eeac9f67ce785902c4ea0c764dd0c90b3742379e7",
+    "functions/src_loop.c_loop_create.json": "8bc0750a41a563e074853f2bfb80c29ef41c15ec49d1f5943f43583f5a3df45d",
+    "functions/src_loop.c_loop_destroy.json": "33e7239693449100ea581141c85ff2d3a9cb1bbae64ff0ddccd7a628e33d5868",
+    "functions/src_loop.c_loop_run.json": "abc3865d4e107b280dc443bbb2a70e94202fd20fc58e1a471faeff7d42f66701",
+    "functions/src_loop.c_loop_set_stop_flag.json": "89bf606b966164c7c75600212c302eb8dba967dcd615c8c934dd5446ece41aed",
+    "functions/src_loop.c_loop_stop.json": "1e7cbb6b54b1621c09878564f80369fb58b56e5fc9b8f73c433ad864b3a232aa",
+    "functions/src_loop.c_mask_sync.json": "09876aae99bf2390130d5387e8e0a722c97f2fc9c7e5efa653c0e59c863e1a42",
+    "functions/src_loop.c_pump_read.json": "d31e9391abda9d569d3d18f2c717ad2dc017479cae32c2e288f16f8a958cbb34",
+    "functions/src_loop.c_pump_write.json": "f0f836c451b206e11b5cc37b93e49a74a2579ccea9cde18924dd07e99ea62b0a",
+    "functions/src_main.c_main.json": "08d104b1b3ed0090ef5ff9fa021323b4b5f463642744d3dab83a1ca9132604f0",
+    "functions/src_main.c_on_signal.json": "24211f031f8d89d38f32dcc63e3fa8a6e2d64d9cbd569baa190aed3d8076259b",
+    "functions/src_net.c_net_accept.json": "1ff5b96b983418c04a49855c984be49a57abfa1460f52b80738bb69b3b3aa1db",
+    "functions/src_net.c_net_close_fd.json": "ee435cd7fb5bdb856785af8b0c3125563559bcc0fa122ca54f69047dc92bf37a",
+    "functions/src_net.c_net_listen.json": "bde76d8a80577f131bc9d49f2fc167059d98b85fdbdebdf0969b707e456f2001",
+    "functions/src_net.c_net_parse_port.json": "7800d9a34f455e4e5fabe344cc38fcd9549252ec0ba21111cabd63e4257555d4",
+    "functions/src_net.c_net_read_some.json": "d7df9f79f603d7d02d420c1ad8d3fac8a67963a52725abfd080defaf7d0a5275",
+    "functions/src_net.c_net_write_some.json": "067887b1df3de4dd81fc1b9c6facbe2844fba78f7ca5ac316c3627ff5a595bce",
+    "functions/src_session.c_free_subscriptions.json": "496605915f294a0b425e1203075698ee08664498a43d86d88776932a674e4ae0",
+    "functions/src_session.c_release_fd.json": "cc9219e34e202f03a36b86260d7a679daec7b297dc9ef669d2018a57e192a25f",
+    "functions/src_session.c_session_add_subscription.json": "22cdde8d9976029e367f9ec361b284ae3a6b462da428394d6e53051d2ba84ad1",
+    "functions/src_session.c_session_client_id.json": "e6a40dd269670943f4f241c5b0102a83b3176d25c8e307dcc8324ecd7feaf6cf",
+    "functions/src_session.c_session_close_after_flush.json": "6edbfe0aa732820786d984328d1edd20945fea3964eaba441e126473018cf068",
+    "functions/src_session.c_session_close_immediately.json": "0d23845ec863a3880271540595986043a3f58783d2945831f8070725a51036cc",
+    "functions/src_session.c_session_create.json": "8a6286f2ee357ff00a5e4b33e1481d482061ec6870358d69003168f0ffc4eca5",
+    "functions/src_session.c_session_destroy.json": "e93359b5c70a2fa40d8a77060dc9d5f40f9d8506423b48167a78d27a4a05595a",
+    "functions/src_session.c_session_enqueue.json": "3c1ce6bdb7abcb02734f16b2eb03a25b7a869c0dd323472d774e8e4e0f9dcbb9",
+    "functions/src_session.c_session_fd.json": "7d4fde575d24ace8f19ddbab31fd69683492eb80ea951743e2edfb8d20dcc5e2",
+    "functions/src_session.c_session_input.json": "19652cbff2954cc6e33ae5c8ea02bcd9a5f3935fde662717a55043ef9018a77e",
+    "functions/src_session.c_session_mark_ready.json": "d9dbf7324a2a5cbe74daf9c07f20f09c02bbf687dfe038435e24282b0ebd3e59",
+    "functions/src_session.c_session_matches_topic.json": "d9815146037df6f84d32acb27dddf37620860e056d3f95dea36c84272665198f",
+    "functions/src_session.c_session_output.json": "1d86dfb40fe8405d8517cbab5382da77e296fccfc2609d7130ae603641fa117a",
+    "functions/src_session.c_session_set_client_id.json": "c663dc2fab6d21fb364289a33efc733c3c45d370da27cd97a195ccc86c1e262f",
+    "functions/src_session.c_session_state.json": "a7b36974fa9fff8aa389d70e13202ebc7325835af997a32b04391a348a659565",
+    "functions/src_session.c_session_subscription_at.json": "013c2aa472eedc9715e1b820bd4d15ccc5a44e507c709f8170f728ea6675697b",
+    "functions/src_session.c_session_subscription_count.json": "e89077ffec7689918f4b7a777f93149cd49dad4c292fc2386733a6758e789e89",
+    "functions/src_topic.c_topic_filter_matches.json": "b80d02e4578499df0037d1a0641d5f337e747092e8b552320b6f52d250fe4711",
+    "functions/src_topic.c_topic_filter_validate.json": "3f725f4598b96cfa0b9dda380bf21a7b19a89d31b8bebc4dbdedf8198a65191e",
+    "functions/src_topic.c_topic_name_validate.json": "9d06f615c92a886f74787fc74544a9fb78b18a3dce11d8d2d227a6d082e5d68b",
+    "functions/src_topic.c_topic_utf8_validate.json": "b7bd46dba522122cd75349854f16335b80f34062a785cfe8209c7445813f1d74",
+    "functions/src_wire.c_wire_declared_body_len.json": "04a9e2b928f4b8e60104cac1c879e8d6e304f6d4ef7ed1e1dbaf7fecec39e539",
+    "functions/src_wire.c_wire_decode_connect.json": "a90f768fa5c652011eaced8e37823f42651690c27615a7122b9898871d401ecc",
+    "functions/src_wire.c_wire_decode_empty.json": "a4c117f67a01de6bd17472aa3e9938c468fbea96257e411a6e8817f7f1ec1808",
+    "functions/src_wire.c_wire_decode_header.json": "8be4755c86bc5fda109503881cf5478db86d936dd6a104621a0bf5e7f6e272d4",
+    "functions/src_wire.c_wire_decode_publish.json": "404390a59da6ad974e44456d9b7233bbbdec1cbef6822d56f78f25c576e7ba5e",
+    "functions/src_wire.c_wire_decode_string.json": "24f67e2d8778653e71465768f2fe0b61bfbcf51fb4c72ab53350844a375840e9",
+    "functions/src_wire.c_wire_decode_subscribe.json": "1ef362885b2ac2d29b759a2f90c4975b6df629e67d31ae2b2788045bb1ca664d",
+    "functions/src_wire.c_wire_encode_connack.json": "c8ab00f695185e3c849e80490ccd935a61eb26bf40810b22561b17e1d677e857",
+    "functions/src_wire.c_wire_encode_pingresp.json": "92df92cd8481022e06cef6bc2ff2316a6d2ba22801074c2c6460a930fa4a0426",
+    "functions/src_wire.c_wire_encode_publish.json": "189fbc11fd4b61af92e538d0a60655a888156af9658154a846135c3069156aec",
+    "functions/src_wire.c_wire_encode_suback.json": "59181d32672a95e5d00abb1e7f3c2609e4c0f5a510baae4666af2026aa0b5ff5",
+    "functions/src_wire.c_wire_read_u16.json": "6eea81980bb6dc25014cde876bf6a2a27cfb74ab71a925c763bd5d02eeb55c95",
+    "functions/src_wire.c_wire_subscribe_next.json": "be1fd97ee81a22397ad170f6772d58b0a2af5811f3dbfb35d554936a7d77b7c8",
+    "functions/src_wire.c_wire_write_remaining_length.json": "0a55307462ddc3cc45d33296fad73702eb8c7fb05b7575bef98e1fdebd96f5e3",
+    "module_spec.json": "d1ae773505d23379c5173239ef488c068fdecdaa79b3ebe83360280bfd22ab07",
+    "scope.json": "6c3294ec170efdf19e460f6f8328f9830bb372c39fb1d0a7757e26c747b8e714",
+    "traceability.json": "35326ce37bf4150ec62bfe2e6e26904b45511ff189ee3161cc58bd135e7b12b6"
+  },
+  "mapping": [
+    {
+      "source": "scope.json",
+      "target": "scope.md",
+      "operation": "render_scope_without_source_locations"
+    },
+    {
+      "source": "abi/src/broker.h",
+      "target": "abi/src/broker.h",
+      "operation": "copy_abi"
+    },
+    {
+      "source": "abi/src/buffer.h",
+      "target": "abi/src/buffer.h",
+      "operation": "copy_abi"
+    },
+    {
+      "source": "abi/src/loop.h",
+      "target": "abi/src/loop.h",
+      "operation": "copy_abi"
+    },
+    {
+      "source": "abi/src/net.h",
+      "target": "abi/src/net.h",
+      "operation": "copy_abi"
+    },
+    {
+      "source": "abi/src/session.h",
+      "target": "abi/src/session.h",
+      "operation": "copy_abi"
+    },
+    {
+      "source": "abi/src/topic.h",
+      "target": "abi/src/topic.h",
+      "operation": "copy_abi"
+    },
+    {
+      "source": "abi/src/wire.h",
+      "target": "abi/src/wire.h",
+      "operation": "copy_abi"
+    },
+    {
+      "source": "module_spec.json",
+      "target": "project.spec",
+      "operation": "render_design"
+    },
+    {
+      "source": "files/src/broker.c.json",
+      "target": "files/src/broker.c.spec",
+      "operation": "render_file"
+    },
+    {
+      "source": "files/src/buffer.c.json",
+      "target": "files/src/buffer.c.spec",
+      "operation": "render_file"
+    },
+    {
+      "source": "files/src/loop.c.json",
+      "target": "files/src/loop.c.spec",
+      "operation": "render_file"
+    },
+    {
+      "source": "files/src/main.c.json",
+      "target": "files/src/main.c.spec",
+      "operation": "render_file"
+    },
+    {
+      "source": "files/src/net.c.json",
+      "target": "files/src/net.c.spec",
+      "operation": "render_file"
+    },
+    {
+      "source": "files/src/session.c.json",
+      "target": "files/src/session.c.spec",
+      "operation": "render_file"
+    },
+    {
+      "source": "files/src/topic.c.json",
+      "target": "files/src/topic.c.spec",
+      "operation": "render_file"
+    },
+    {
+      "source": "files/src/wire.c.json",
+      "target": "files/src/wire.c.spec",
+      "operation": "render_file"
+    },
+    {
+      "source": "functions/src_broker.c_add_session.json#/RELY",
+      "target": "functions/src_broker.c_add_session.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_broker.c_add_session.json#/SIGNATURE",
+      "target": "functions/src_broker.c_add_session.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_broker.c_add_session.json#/LOGIC",
+      "target": "functions/src_broker.c_add_session.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_broker.c_broker_accept.json#/RELY",
+      "target": "functions/src_broker.c_broker_accept.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_broker.c_broker_accept.json#/SIGNATURE",
+      "target": "functions/src_broker.c_broker_accept.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_broker.c_broker_accept.json#/LOGIC",
+      "target": "functions/src_broker.c_broker_accept.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_broker.c_broker_create.json#/RELY",
+      "target": "functions/src_broker.c_broker_create.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_broker.c_broker_create.json#/SIGNATURE",
+      "target": "functions/src_broker.c_broker_create.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_broker.c_broker_create.json#/LOGIC",
+      "target": "functions/src_broker.c_broker_create.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_broker.c_broker_destroy.json#/RELY",
+      "target": "functions/src_broker.c_broker_destroy.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_broker.c_broker_destroy.json#/SIGNATURE",
+      "target": "functions/src_broker.c_broker_destroy.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_broker.c_broker_destroy.json#/LOGIC",
+      "target": "functions/src_broker.c_broker_destroy.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_broker.c_broker_process_input.json#/RELY",
+      "target": "functions/src_broker.c_broker_process_input.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_broker.c_broker_process_input.json#/SIGNATURE",
+      "target": "functions/src_broker.c_broker_process_input.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_broker.c_broker_process_input.json#/LOGIC",
+      "target": "functions/src_broker.c_broker_process_input.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_broker.c_broker_reap.json#/RELY",
+      "target": "functions/src_broker.c_broker_reap.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_broker.c_broker_reap.json#/SIGNATURE",
+      "target": "functions/src_broker.c_broker_reap.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_broker.c_broker_reap.json#/LOGIC",
+      "target": "functions/src_broker.c_broker_reap.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_broker.c_broker_session_at.json#/RELY",
+      "target": "functions/src_broker.c_broker_session_at.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_broker.c_broker_session_at.json#/SIGNATURE",
+      "target": "functions/src_broker.c_broker_session_at.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_broker.c_broker_session_at.json#/LOGIC",
+      "target": "functions/src_broker.c_broker_session_at.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_broker.c_broker_session_count.json#/RELY",
+      "target": "functions/src_broker.c_broker_session_count.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_broker.c_broker_session_count.json#/SIGNATURE",
+      "target": "functions/src_broker.c_broker_session_count.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_broker.c_broker_session_count.json#/LOGIC",
+      "target": "functions/src_broker.c_broker_session_count.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_broker.c_broker_session_eof.json#/RELY",
+      "target": "functions/src_broker.c_broker_session_eof.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_broker.c_broker_session_eof.json#/SIGNATURE",
+      "target": "functions/src_broker.c_broker_session_eof.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_broker.c_broker_session_eof.json#/LOGIC",
+      "target": "functions/src_broker.c_broker_session_eof.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_broker.c_handle_connect.json#/RELY",
+      "target": "functions/src_broker.c_handle_connect.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_broker.c_handle_connect.json#/SIGNATURE",
+      "target": "functions/src_broker.c_handle_connect.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_broker.c_handle_connect.json#/LOGIC",
+      "target": "functions/src_broker.c_handle_connect.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_broker.c_handle_disconnect.json#/RELY",
+      "target": "functions/src_broker.c_handle_disconnect.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_broker.c_handle_disconnect.json#/SIGNATURE",
+      "target": "functions/src_broker.c_handle_disconnect.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_broker.c_handle_disconnect.json#/LOGIC",
+      "target": "functions/src_broker.c_handle_disconnect.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_broker.c_handle_pingreq.json#/RELY",
+      "target": "functions/src_broker.c_handle_pingreq.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_broker.c_handle_pingreq.json#/SIGNATURE",
+      "target": "functions/src_broker.c_handle_pingreq.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_broker.c_handle_pingreq.json#/LOGIC",
+      "target": "functions/src_broker.c_handle_pingreq.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_broker.c_handle_publish.json#/RELY",
+      "target": "functions/src_broker.c_handle_publish.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_broker.c_handle_publish.json#/SIGNATURE",
+      "target": "functions/src_broker.c_handle_publish.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_broker.c_handle_publish.json#/LOGIC",
+      "target": "functions/src_broker.c_handle_publish.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_broker.c_handle_subscribe.json#/RELY",
+      "target": "functions/src_broker.c_handle_subscribe.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_broker.c_handle_subscribe.json#/SIGNATURE",
+      "target": "functions/src_broker.c_handle_subscribe.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_broker.c_handle_subscribe.json#/LOGIC",
+      "target": "functions/src_broker.c_handle_subscribe.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_broker.c_remove_session_at.json#/RELY",
+      "target": "functions/src_broker.c_remove_session_at.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_broker.c_remove_session_at.json#/SIGNATURE",
+      "target": "functions/src_broker.c_remove_session_at.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_broker.c_remove_session_at.json#/LOGIC",
+      "target": "functions/src_broker.c_remove_session_at.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_broker.c_route_publish.json#/RELY",
+      "target": "functions/src_broker.c_route_publish.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_broker.c_route_publish.json#/SIGNATURE",
+      "target": "functions/src_broker.c_route_publish.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_broker.c_route_publish.json#/LOGIC",
+      "target": "functions/src_broker.c_route_publish.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_buffer.c_buffer_append.json#/RELY",
+      "target": "functions/src_buffer.c_buffer_append.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_buffer.c_buffer_append.json#/SIGNATURE",
+      "target": "functions/src_buffer.c_buffer_append.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_buffer.c_buffer_append.json#/LOGIC",
+      "target": "functions/src_buffer.c_buffer_append.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_buffer.c_buffer_commit.json#/RELY",
+      "target": "functions/src_buffer.c_buffer_commit.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_buffer.c_buffer_commit.json#/SIGNATURE",
+      "target": "functions/src_buffer.c_buffer_commit.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_buffer.c_buffer_commit.json#/LOGIC",
+      "target": "functions/src_buffer.c_buffer_commit.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_buffer.c_buffer_consume.json#/RELY",
+      "target": "functions/src_buffer.c_buffer_consume.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_buffer.c_buffer_consume.json#/SIGNATURE",
+      "target": "functions/src_buffer.c_buffer_consume.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_buffer.c_buffer_consume.json#/LOGIC",
+      "target": "functions/src_buffer.c_buffer_consume.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_buffer.c_buffer_free.json#/RELY",
+      "target": "functions/src_buffer.c_buffer_free.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_buffer.c_buffer_free.json#/SIGNATURE",
+      "target": "functions/src_buffer.c_buffer_free.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_buffer.c_buffer_free.json#/LOGIC",
+      "target": "functions/src_buffer.c_buffer_free.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_buffer.c_buffer_init.json#/RELY",
+      "target": "functions/src_buffer.c_buffer_init.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_buffer.c_buffer_init.json#/SIGNATURE",
+      "target": "functions/src_buffer.c_buffer_init.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_buffer.c_buffer_init.json#/LOGIC",
+      "target": "functions/src_buffer.c_buffer_init.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_buffer.c_buffer_reserve.json#/RELY",
+      "target": "functions/src_buffer.c_buffer_reserve.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_buffer.c_buffer_reserve.json#/SIGNATURE",
+      "target": "functions/src_buffer.c_buffer_reserve.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_buffer.c_buffer_reserve.json#/LOGIC",
+      "target": "functions/src_buffer.c_buffer_reserve.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_buffer.c_buffer_tail.json#/RELY",
+      "target": "functions/src_buffer.c_buffer_tail.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_buffer.c_buffer_tail.json#/SIGNATURE",
+      "target": "functions/src_buffer.c_buffer_tail.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_buffer.c_buffer_tail.json#/LOGIC",
+      "target": "functions/src_buffer.c_buffer_tail.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_loop.c_accept_ready.json#/RELY",
+      "target": "functions/src_loop.c_accept_ready.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_loop.c_accept_ready.json#/SIGNATURE",
+      "target": "functions/src_loop.c_accept_ready.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_loop.c_accept_ready.json#/LOGIC",
+      "target": "functions/src_loop.c_accept_ready.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_loop.c_dispatch_event.json#/RELY",
+      "target": "functions/src_loop.c_dispatch_event.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_loop.c_dispatch_event.json#/SIGNATURE",
+      "target": "functions/src_loop.c_dispatch_event.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_loop.c_dispatch_event.json#/EVENT",
+      "target": "functions/src_loop.c_dispatch_event.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_loop.c_is_registered.json#/RELY",
+      "target": "functions/src_loop.c_is_registered.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_loop.c_is_registered.json#/SIGNATURE",
+      "target": "functions/src_loop.c_is_registered.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_loop.c_is_registered.json#/LOGIC",
+      "target": "functions/src_loop.c_is_registered.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_loop.c_loop_add_listener.json#/RELY",
+      "target": "functions/src_loop.c_loop_add_listener.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_loop.c_loop_add_listener.json#/SIGNATURE",
+      "target": "functions/src_loop.c_loop_add_listener.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_loop.c_loop_add_listener.json#/LOGIC",
+      "target": "functions/src_loop.c_loop_add_listener.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_loop.c_loop_create.json#/RELY",
+      "target": "functions/src_loop.c_loop_create.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_loop.c_loop_create.json#/SIGNATURE",
+      "target": "functions/src_loop.c_loop_create.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_loop.c_loop_create.json#/LOGIC",
+      "target": "functions/src_loop.c_loop_create.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_loop.c_loop_destroy.json#/RELY",
+      "target": "functions/src_loop.c_loop_destroy.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_loop.c_loop_destroy.json#/SIGNATURE",
+      "target": "functions/src_loop.c_loop_destroy.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_loop.c_loop_destroy.json#/LOGIC",
+      "target": "functions/src_loop.c_loop_destroy.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_loop.c_loop_run.json#/RELY",
+      "target": "functions/src_loop.c_loop_run.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_loop.c_loop_run.json#/SIGNATURE",
+      "target": "functions/src_loop.c_loop_run.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_loop.c_loop_run.json#/LOGIC",
+      "target": "functions/src_loop.c_loop_run.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_loop.c_loop_set_stop_flag.json#/RELY",
+      "target": "functions/src_loop.c_loop_set_stop_flag.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_loop.c_loop_set_stop_flag.json#/SIGNATURE",
+      "target": "functions/src_loop.c_loop_set_stop_flag.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_loop.c_loop_set_stop_flag.json#/LOGIC",
+      "target": "functions/src_loop.c_loop_set_stop_flag.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_loop.c_loop_stop.json#/RELY",
+      "target": "functions/src_loop.c_loop_stop.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_loop.c_loop_stop.json#/SIGNATURE",
+      "target": "functions/src_loop.c_loop_stop.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_loop.c_loop_stop.json#/LOGIC",
+      "target": "functions/src_loop.c_loop_stop.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_loop.c_mask_sync.json#/RELY",
+      "target": "functions/src_loop.c_mask_sync.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_loop.c_mask_sync.json#/SIGNATURE",
+      "target": "functions/src_loop.c_mask_sync.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_loop.c_mask_sync.json#/LOGIC",
+      "target": "functions/src_loop.c_mask_sync.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_loop.c_pump_read.json#/RELY",
+      "target": "functions/src_loop.c_pump_read.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_loop.c_pump_read.json#/SIGNATURE",
+      "target": "functions/src_loop.c_pump_read.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_loop.c_pump_read.json#/LOGIC",
+      "target": "functions/src_loop.c_pump_read.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_loop.c_pump_write.json#/RELY",
+      "target": "functions/src_loop.c_pump_write.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_loop.c_pump_write.json#/SIGNATURE",
+      "target": "functions/src_loop.c_pump_write.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_loop.c_pump_write.json#/LOGIC",
+      "target": "functions/src_loop.c_pump_write.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_main.c_main.json#/RELY",
+      "target": "functions/src_main.c_main.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_main.c_main.json#/SIGNATURE",
+      "target": "functions/src_main.c_main.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_main.c_main.json#/LOGIC",
+      "target": "functions/src_main.c_main.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_main.c_on_signal.json#/RELY",
+      "target": "functions/src_main.c_on_signal.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_main.c_on_signal.json#/SIGNATURE",
+      "target": "functions/src_main.c_on_signal.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_main.c_on_signal.json#/EVENT",
+      "target": "functions/src_main.c_on_signal.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_net.c_net_accept.json#/RELY",
+      "target": "functions/src_net.c_net_accept.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_net.c_net_accept.json#/SIGNATURE",
+      "target": "functions/src_net.c_net_accept.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_net.c_net_accept.json#/LOGIC",
+      "target": "functions/src_net.c_net_accept.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_net.c_net_close_fd.json#/RELY",
+      "target": "functions/src_net.c_net_close_fd.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_net.c_net_close_fd.json#/SIGNATURE",
+      "target": "functions/src_net.c_net_close_fd.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_net.c_net_close_fd.json#/LOGIC",
+      "target": "functions/src_net.c_net_close_fd.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_net.c_net_listen.json#/RELY",
+      "target": "functions/src_net.c_net_listen.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_net.c_net_listen.json#/SIGNATURE",
+      "target": "functions/src_net.c_net_listen.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_net.c_net_listen.json#/LOGIC",
+      "target": "functions/src_net.c_net_listen.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_net.c_net_parse_port.json#/RELY",
+      "target": "functions/src_net.c_net_parse_port.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_net.c_net_parse_port.json#/SIGNATURE",
+      "target": "functions/src_net.c_net_parse_port.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_net.c_net_parse_port.json#/LOGIC",
+      "target": "functions/src_net.c_net_parse_port.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_net.c_net_read_some.json#/RELY",
+      "target": "functions/src_net.c_net_read_some.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_net.c_net_read_some.json#/SIGNATURE",
+      "target": "functions/src_net.c_net_read_some.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_net.c_net_read_some.json#/LOGIC",
+      "target": "functions/src_net.c_net_read_some.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_net.c_net_write_some.json#/RELY",
+      "target": "functions/src_net.c_net_write_some.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_net.c_net_write_some.json#/SIGNATURE",
+      "target": "functions/src_net.c_net_write_some.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_net.c_net_write_some.json#/LOGIC",
+      "target": "functions/src_net.c_net_write_some.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_free_subscriptions.json#/RELY",
+      "target": "functions/src_session.c_free_subscriptions.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_free_subscriptions.json#/SIGNATURE",
+      "target": "functions/src_session.c_free_subscriptions.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_free_subscriptions.json#/LOGIC",
+      "target": "functions/src_session.c_free_subscriptions.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_release_fd.json#/RELY",
+      "target": "functions/src_session.c_release_fd.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_release_fd.json#/SIGNATURE",
+      "target": "functions/src_session.c_release_fd.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_release_fd.json#/LOGIC",
+      "target": "functions/src_session.c_release_fd.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_session_add_subscription.json#/RELY",
+      "target": "functions/src_session.c_session_add_subscription.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_session_add_subscription.json#/SIGNATURE",
+      "target": "functions/src_session.c_session_add_subscription.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_session_add_subscription.json#/LOGIC",
+      "target": "functions/src_session.c_session_add_subscription.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_session_client_id.json#/RELY",
+      "target": "functions/src_session.c_session_client_id.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_session_client_id.json#/SIGNATURE",
+      "target": "functions/src_session.c_session_client_id.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_session_client_id.json#/LOGIC",
+      "target": "functions/src_session.c_session_client_id.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_session_close_after_flush.json#/RELY",
+      "target": "functions/src_session.c_session_close_after_flush.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_session_close_after_flush.json#/SIGNATURE",
+      "target": "functions/src_session.c_session_close_after_flush.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_session_close_after_flush.json#/LOGIC",
+      "target": "functions/src_session.c_session_close_after_flush.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_session_close_immediately.json#/RELY",
+      "target": "functions/src_session.c_session_close_immediately.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_session_close_immediately.json#/SIGNATURE",
+      "target": "functions/src_session.c_session_close_immediately.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_session_close_immediately.json#/LOGIC",
+      "target": "functions/src_session.c_session_close_immediately.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_session_create.json#/RELY",
+      "target": "functions/src_session.c_session_create.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_session_create.json#/SIGNATURE",
+      "target": "functions/src_session.c_session_create.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_session_create.json#/LOGIC",
+      "target": "functions/src_session.c_session_create.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_session_destroy.json#/RELY",
+      "target": "functions/src_session.c_session_destroy.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_session_destroy.json#/SIGNATURE",
+      "target": "functions/src_session.c_session_destroy.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_session_destroy.json#/LOGIC",
+      "target": "functions/src_session.c_session_destroy.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_session_enqueue.json#/RELY",
+      "target": "functions/src_session.c_session_enqueue.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_session_enqueue.json#/SIGNATURE",
+      "target": "functions/src_session.c_session_enqueue.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_session_enqueue.json#/LOGIC",
+      "target": "functions/src_session.c_session_enqueue.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_session_fd.json#/RELY",
+      "target": "functions/src_session.c_session_fd.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_session_fd.json#/SIGNATURE",
+      "target": "functions/src_session.c_session_fd.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_session_fd.json#/LOGIC",
+      "target": "functions/src_session.c_session_fd.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_session_input.json#/RELY",
+      "target": "functions/src_session.c_session_input.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_session_input.json#/SIGNATURE",
+      "target": "functions/src_session.c_session_input.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_session_input.json#/LOGIC",
+      "target": "functions/src_session.c_session_input.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_session_mark_ready.json#/RELY",
+      "target": "functions/src_session.c_session_mark_ready.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_session_mark_ready.json#/SIGNATURE",
+      "target": "functions/src_session.c_session_mark_ready.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_session_mark_ready.json#/LOGIC",
+      "target": "functions/src_session.c_session_mark_ready.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_session_matches_topic.json#/RELY",
+      "target": "functions/src_session.c_session_matches_topic.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_session_matches_topic.json#/SIGNATURE",
+      "target": "functions/src_session.c_session_matches_topic.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_session_matches_topic.json#/LOGIC",
+      "target": "functions/src_session.c_session_matches_topic.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_session_output.json#/RELY",
+      "target": "functions/src_session.c_session_output.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_session_output.json#/SIGNATURE",
+      "target": "functions/src_session.c_session_output.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_session_output.json#/LOGIC",
+      "target": "functions/src_session.c_session_output.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_session_set_client_id.json#/RELY",
+      "target": "functions/src_session.c_session_set_client_id.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_session_set_client_id.json#/SIGNATURE",
+      "target": "functions/src_session.c_session_set_client_id.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_session_set_client_id.json#/LOGIC",
+      "target": "functions/src_session.c_session_set_client_id.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_session_state.json#/RELY",
+      "target": "functions/src_session.c_session_state.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_session_state.json#/SIGNATURE",
+      "target": "functions/src_session.c_session_state.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_session_state.json#/LOGIC",
+      "target": "functions/src_session.c_session_state.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_session_subscription_at.json#/RELY",
+      "target": "functions/src_session.c_session_subscription_at.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_session_subscription_at.json#/SIGNATURE",
+      "target": "functions/src_session.c_session_subscription_at.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_session_subscription_at.json#/LOGIC",
+      "target": "functions/src_session.c_session_subscription_at.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_session_subscription_count.json#/RELY",
+      "target": "functions/src_session.c_session_subscription_count.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_session_subscription_count.json#/SIGNATURE",
+      "target": "functions/src_session.c_session_subscription_count.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_session.c_session_subscription_count.json#/LOGIC",
+      "target": "functions/src_session.c_session_subscription_count.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_topic.c_topic_filter_matches.json#/RELY",
+      "target": "functions/src_topic.c_topic_filter_matches.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_topic.c_topic_filter_matches.json#/SIGNATURE",
+      "target": "functions/src_topic.c_topic_filter_matches.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_topic.c_topic_filter_matches.json#/LOGIC",
+      "target": "functions/src_topic.c_topic_filter_matches.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_topic.c_topic_filter_validate.json#/RELY",
+      "target": "functions/src_topic.c_topic_filter_validate.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_topic.c_topic_filter_validate.json#/SIGNATURE",
+      "target": "functions/src_topic.c_topic_filter_validate.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_topic.c_topic_filter_validate.json#/LOGIC",
+      "target": "functions/src_topic.c_topic_filter_validate.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_topic.c_topic_name_validate.json#/RELY",
+      "target": "functions/src_topic.c_topic_name_validate.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_topic.c_topic_name_validate.json#/SIGNATURE",
+      "target": "functions/src_topic.c_topic_name_validate.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_topic.c_topic_name_validate.json#/LOGIC",
+      "target": "functions/src_topic.c_topic_name_validate.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_topic.c_topic_utf8_validate.json#/RELY",
+      "target": "functions/src_topic.c_topic_utf8_validate.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_topic.c_topic_utf8_validate.json#/SIGNATURE",
+      "target": "functions/src_topic.c_topic_utf8_validate.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_topic.c_topic_utf8_validate.json#/LOGIC",
+      "target": "functions/src_topic.c_topic_utf8_validate.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_wire.c_wire_declared_body_len.json#/RELY",
+      "target": "functions/src_wire.c_wire_declared_body_len.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_wire.c_wire_declared_body_len.json#/SIGNATURE",
+      "target": "functions/src_wire.c_wire_declared_body_len.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_wire.c_wire_declared_body_len.json#/LOGIC",
+      "target": "functions/src_wire.c_wire_declared_body_len.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_wire.c_wire_decode_connect.json#/RELY",
+      "target": "functions/src_wire.c_wire_decode_connect.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_wire.c_wire_decode_connect.json#/SIGNATURE",
+      "target": "functions/src_wire.c_wire_decode_connect.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_wire.c_wire_decode_connect.json#/LOGIC",
+      "target": "functions/src_wire.c_wire_decode_connect.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_wire.c_wire_decode_empty.json#/RELY",
+      "target": "functions/src_wire.c_wire_decode_empty.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_wire.c_wire_decode_empty.json#/SIGNATURE",
+      "target": "functions/src_wire.c_wire_decode_empty.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_wire.c_wire_decode_empty.json#/LOGIC",
+      "target": "functions/src_wire.c_wire_decode_empty.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_wire.c_wire_decode_header.json#/RELY",
+      "target": "functions/src_wire.c_wire_decode_header.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_wire.c_wire_decode_header.json#/SIGNATURE",
+      "target": "functions/src_wire.c_wire_decode_header.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_wire.c_wire_decode_header.json#/LOGIC",
+      "target": "functions/src_wire.c_wire_decode_header.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_wire.c_wire_decode_publish.json#/RELY",
+      "target": "functions/src_wire.c_wire_decode_publish.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_wire.c_wire_decode_publish.json#/SIGNATURE",
+      "target": "functions/src_wire.c_wire_decode_publish.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_wire.c_wire_decode_publish.json#/LOGIC",
+      "target": "functions/src_wire.c_wire_decode_publish.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_wire.c_wire_decode_string.json#/RELY",
+      "target": "functions/src_wire.c_wire_decode_string.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_wire.c_wire_decode_string.json#/SIGNATURE",
+      "target": "functions/src_wire.c_wire_decode_string.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_wire.c_wire_decode_string.json#/LOGIC",
+      "target": "functions/src_wire.c_wire_decode_string.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_wire.c_wire_decode_subscribe.json#/RELY",
+      "target": "functions/src_wire.c_wire_decode_subscribe.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_wire.c_wire_decode_subscribe.json#/SIGNATURE",
+      "target": "functions/src_wire.c_wire_decode_subscribe.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_wire.c_wire_decode_subscribe.json#/LOGIC",
+      "target": "functions/src_wire.c_wire_decode_subscribe.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_wire.c_wire_encode_connack.json#/RELY",
+      "target": "functions/src_wire.c_wire_encode_connack.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_wire.c_wire_encode_connack.json#/SIGNATURE",
+      "target": "functions/src_wire.c_wire_encode_connack.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_wire.c_wire_encode_connack.json#/LOGIC",
+      "target": "functions/src_wire.c_wire_encode_connack.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_wire.c_wire_encode_pingresp.json#/RELY",
+      "target": "functions/src_wire.c_wire_encode_pingresp.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_wire.c_wire_encode_pingresp.json#/SIGNATURE",
+      "target": "functions/src_wire.c_wire_encode_pingresp.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_wire.c_wire_encode_pingresp.json#/LOGIC",
+      "target": "functions/src_wire.c_wire_encode_pingresp.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_wire.c_wire_encode_publish.json#/RELY",
+      "target": "functions/src_wire.c_wire_encode_publish.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_wire.c_wire_encode_publish.json#/SIGNATURE",
+      "target": "functions/src_wire.c_wire_encode_publish.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_wire.c_wire_encode_publish.json#/LOGIC",
+      "target": "functions/src_wire.c_wire_encode_publish.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_wire.c_wire_encode_suback.json#/RELY",
+      "target": "functions/src_wire.c_wire_encode_suback.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_wire.c_wire_encode_suback.json#/SIGNATURE",
+      "target": "functions/src_wire.c_wire_encode_suback.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_wire.c_wire_encode_suback.json#/LOGIC",
+      "target": "functions/src_wire.c_wire_encode_suback.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_wire.c_wire_read_u16.json#/RELY",
+      "target": "functions/src_wire.c_wire_read_u16.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_wire.c_wire_read_u16.json#/SIGNATURE",
+      "target": "functions/src_wire.c_wire_read_u16.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_wire.c_wire_read_u16.json#/LOGIC",
+      "target": "functions/src_wire.c_wire_read_u16.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_wire.c_wire_subscribe_next.json#/RELY",
+      "target": "functions/src_wire.c_wire_subscribe_next.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_wire.c_wire_subscribe_next.json#/SIGNATURE",
+      "target": "functions/src_wire.c_wire_subscribe_next.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_wire.c_wire_subscribe_next.json#/LOGIC",
+      "target": "functions/src_wire.c_wire_subscribe_next.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_wire.c_wire_write_remaining_length.json#/RELY",
+      "target": "functions/src_wire.c_wire_write_remaining_length.spec#[RELY]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_wire.c_wire_write_remaining_length.json#/SIGNATURE",
+      "target": "functions/src_wire.c_wire_write_remaining_length.spec#[GUARANTEE]",
+      "operation": "render_literal"
+    },
+    {
+      "source": "functions/src_wire.c_wire_write_remaining_length.json#/LOGIC",
+      "target": "functions/src_wire.c_wire_write_remaining_length.spec#[SPECIFICATION]",
+      "operation": "render_literal"
+    }
+  ],
+  "changes": [
+    {
+      "source": "module_spec.json#/MODULES/0/DOC_REF",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "c9af98d2dbcde1e4c1d1a57bbe3d35034c8b11e8509b5975fe9d2b1525f24f8c"
+    },
+    {
+      "source": "module_spec.json#/MODULES/1/DOC_REF",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "2151bfeffaf35fa53aacc909c9d2529036ff024e53bae799d4ff3763ad75a7cd"
+    },
+    {
+      "source": "module_spec.json#/MODULES/2/DOC_REF",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "d0b73173fc8feab112bc36b0f41dd093b07239e80bedf3ac9b14c27022d807f8"
+    },
+    {
+      "source": "module_spec.json#/MODULES/3/DOC_REF",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "978bf7eca99baba25e854a4f3ae45287ffa2374b733278fc355e34e12c52d180"
+    },
+    {
+      "source": "module_spec.json#/MODULES/4/DOC_REF",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "e6ad09d38a690e8e36ddc05609d73b2fce1446e7a5910f792c1b2aecb5295263"
+    },
+    {
+      "source": "module_spec.json#/MODULES/5/DOC_REF",
+      "operation": "remove",
+      "item_count": 5,
+      "sha256": "aa07df96e7db21aa0745f6d5ce2acaf0317bb4d3fd6e4504884f9d2e4541102e"
+    },
+    {
+      "source": "module_spec.json#/MODULES/6/DOC_REF",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "dbded89ee5bb9cf695177fb4ed868efd13e5c50b17e8efba1e5411b01e838824"
+    },
+    {
+      "source": "module_spec.json#/MODULES/7/DOC_REF",
+      "operation": "remove",
+      "item_count": 3,
+      "sha256": "485e01411d7af7acd4fcb6e89a4a5994e61beee40ff4f6106f0d428de9409798"
+    },
+    {
+      "source": "module_spec.json#/CONSISTENCY_RULES/0/DOC_REF",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "576d3b18dadd412022a2a46cc42d17a0389957b2d7962d84fd8b84938fb1300e"
+    },
+    {
+      "source": "module_spec.json#/CONSISTENCY_RULES/1/DOC_REF",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "d0b73173fc8feab112bc36b0f41dd093b07239e80bedf3ac9b14c27022d807f8"
+    },
+    {
+      "source": "module_spec.json#/CONSISTENCY_RULES/2/DOC_REF",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "ccaef3d922e9dbc9af5e8fb3274b31a53dfbebe303eeb5161455008495a43e66"
+    },
+    {
+      "source": "module_spec.json#/CONSISTENCY_RULES/3/DOC_REF",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "87d2d8e5da9561aee0a0dcc5bb70715641913de2f3d4db582415ab902fb2318e"
+    },
+    {
+      "source": "module_spec.json#/CONSISTENCY_RULES/4/DOC_REF",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "7fe3ad0f6f1946a260a0d2854c668afbe33f82ff40cdda374167ba3fba62cc60"
+    },
+    {
+      "source": "module_spec.json#/CONSISTENCY_RULES/5/DOC_REF",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "10a062f8e827f2e9b2cd6140c80fd66204379bafa96e4961be36551f5db511ef"
+    },
+    {
+      "source": "module_spec.json#/CONSISTENCY_RULES/6/DOC_REF",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "27aa3f21a3ce270c54510483519795752565a0253a0a5b1834a57f3ecb4532f9"
+    },
+    {
+      "source": "module_spec.json#/CONSISTENCY_RULES/7/DOC_REF",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "27aa3f21a3ce270c54510483519795752565a0253a0a5b1834a57f3ecb4532f9"
+    },
+    {
+      "source": "module_spec.json#/CONSISTENCY_RULES/8/DOC_REF",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "4f7a22dff9879cc7a000324d78fdab614dc068d0b9e82f56a51090ea97922bc9"
+    },
+    {
+      "source": "module_spec.json#/CONSISTENCY_RULES/9/DOC_REF",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "3fab1785f475ac5cf24a70127e0f82f1e8ae6827daf95f202324969f217cae14"
+    },
+    {
+      "source": "files/src/broker.c.json#/FILE/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "901832314114f4380dc090fffe53aba88937893b428539663f4d6978c684645c"
+    },
+    {
+      "source": "files/src/broker.c.json#/FILE/DOC_REF",
+      "operation": "remove",
+      "item_count": 5,
+      "sha256": "aa07df96e7db21aa0745f6d5ce2acaf0317bb4d3fd6e4504884f9d2e4541102e"
+    },
+    {
+      "source": "files/src/broker.c.json#/SOURCE/INTERFACE/0/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "9cc67f54ed3a7e81eb228fb464b6d99bdcf9c8726310858001955abbf6c2505d"
+    },
+    {
+      "source": "files/src/broker.c.json#/SOURCE/INTERFACE/1/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "7677f83ac04869a2431f8536569bc8f19019c6865fb46f0c69f746644a460302"
+    },
+    {
+      "source": "files/src/broker.c.json#/SOURCE/INTERFACE/2/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "58c84825dd023e60466afe044009aeb10fb2eecc02074aa8f47b4cc8731afc7a"
+    },
+    {
+      "source": "files/src/broker.c.json#/SOURCE/INTERFACE/3/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "4d1d58001836ca562fccd20f4120e870b5c433aefe5e0a10fab87477fd7e9b34"
+    },
+    {
+      "source": "files/src/broker.c.json#/SOURCE/INTERFACE/4/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "f39de9486c0cfa10b06730fdc3fe4b64e1aa8dbe95a3a3cc517f952441b09a6d"
+    },
+    {
+      "source": "files/src/broker.c.json#/SOURCE/INTERFACE/5/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "e32396782ffeaf3c0712b9485fb533d8a98ed4073638b432b058f56a943f4056"
+    },
+    {
+      "source": "files/src/broker.c.json#/SOURCE/INTERFACE/6/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "59c80fb1bd3350bacacf36650675d21fb0f0f9fd3ae7a14a6596654326a322a8"
+    },
+    {
+      "source": "files/src/broker.c.json#/SOURCE/INTERFACE/7/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "b95220a8fa49c535e8a1fb2443c7d47410b9268eed6ec97daa1e4bb28c54e4f6"
+    },
+    {
+      "source": "files/src/broker.c.json#/SOURCE/INTERFACE/8/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "53ff9e12676ece1327576cb01cd4adbb3c3ef39382a23db301d40ebaac31bbfa"
+    },
+    {
+      "source": "files/src/broker.c.json#/SOURCE/INTERFACE/9/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "a75b297969a90d1b7b055d04e62d8a44316fb163a6f97831184bc27ebdeab95b"
+    },
+    {
+      "source": "files/src/broker.c.json#/SOURCE/INTERFACE/10/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "68fc38f8d0c4fe13b3fac2899901c0ed10ad6c6abb8c1c71e9bfe224fb20db1a"
+    },
+    {
+      "source": "files/src/broker.c.json#/SOURCE/INTERFACE/11/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "1440c93a840811871e61fa64f05bf3736895d77169da0c7a6343249b1ee9c47a"
+    },
+    {
+      "source": "files/src/broker.c.json#/SOURCE/INTERFACE/12/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "3c7dcfb755a3cd4474d1cdcb8848ded8f1745657b42b92772ce0bb0c646b62d0"
+    },
+    {
+      "source": "files/src/broker.c.json#/SOURCE/INTERFACE/13/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "110e7fd2fc9afde48ecee58a2404d8707d95bba9284793fb6b65ad12a2604fcc"
+    },
+    {
+      "source": "files/src/broker.c.json#/SOURCE/INTERFACE/14/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "f2ed6e7a047e1aa28d2afb43da89bd6485268c3b5140ca38de7cfea092ab9ea2"
+    },
+    {
+      "source": "files/src/broker.c.json#/SOURCE/INTERFACE/15/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "7506ff1e3d39e23665f309e17c56bdafd3f457489a748110b01757273465492c"
+    },
+    {
+      "source": "files/src/broker.c.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 18,
+      "sha256": "6315a7c6290fde9a7b448786972d4c0170afbb46af983536d9c7258ed8d86b7e"
+    },
+    {
+      "source": "files/src/buffer.c.json#/FILE/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "0ba3aac7a65f5132954b47084eec8c06fceadf5e24ac4b49603b5c2e9b78a469"
+    },
+    {
+      "source": "files/src/buffer.c.json#/FILE/DOC_REF",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "5170517be2a3f885805689950c3d0e452221acae89ccee930d3b2879b5384fb2"
+    },
+    {
+      "source": "files/src/buffer.c.json#/SOURCE/INTERFACE/0/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "eed83740356ca525649780ec360584e92b062c26a9ff683ea491b2b021c1a751"
+    },
+    {
+      "source": "files/src/buffer.c.json#/SOURCE/INTERFACE/1/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "50626d13f40e5539e3bac0038e78c53861012999d6dd700ae5c17a2ee05fa71a"
+    },
+    {
+      "source": "files/src/buffer.c.json#/SOURCE/INTERFACE/2/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "d8a6f8a13d8eb3f7d04c4a068839c7816d7f81ebf18f7be710480fe0ae42d343"
+    },
+    {
+      "source": "files/src/buffer.c.json#/SOURCE/INTERFACE/3/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "2d6276be2946d523b4a8d41f8f4443d8bd5cbb9b0351866c20b888afb7d59759"
+    },
+    {
+      "source": "files/src/buffer.c.json#/SOURCE/INTERFACE/4/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "9d329f20cb45ea19038e31c79625a9745acb9f36c5efe33aec15a8d3c2a6ad4f"
+    },
+    {
+      "source": "files/src/buffer.c.json#/SOURCE/INTERFACE/5/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "195136184210c2a146f9d6359aaca74f0ce8908941e46b4274bf91619f027a8d"
+    },
+    {
+      "source": "files/src/buffer.c.json#/SOURCE/INTERFACE/6/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "09e317881212b730e60150f213036bc1ae64c45e9338392ed309ce50d40f5d5a"
+    },
+    {
+      "source": "files/src/buffer.c.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 4,
+      "sha256": "3944fcdf596fa0e4aa6f6af7e9d21a557aba2bc4fcbe8a2cc2d7bb63c39fc721"
+    },
+    {
+      "source": "files/src/loop.c.json#/FILE/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "e0a46058102e0f88c05e4e5ce2080cc25bc2042e37745f99000b2ef0221b666b"
+    },
+    {
+      "source": "files/src/loop.c.json#/FILE/DOC_REF",
+      "operation": "remove",
+      "item_count": 3,
+      "sha256": "3e8a86beea07c17fcd1309a3a7ba5640b30dc40b30ced9595cd002009e3e5455"
+    },
+    {
+      "source": "files/src/loop.c.json#/SOURCE/INTERFACE/0/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "ea2a3465c8e5c0ca60c7531fa2865f5675318c194b6f150329549c8fbd3333b8"
+    },
+    {
+      "source": "files/src/loop.c.json#/SOURCE/INTERFACE/1/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "e4b6dd9f8e52bb9b63ea0bb895e310893323ba80103adc41b09fc4737c429179"
+    },
+    {
+      "source": "files/src/loop.c.json#/SOURCE/INTERFACE/2/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "a3b4a641f9c63256f01810216965dbb170a7ea4d976ef6d424e40f18bc212011"
+    },
+    {
+      "source": "files/src/loop.c.json#/SOURCE/INTERFACE/3/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "58b26e940c9b9d8d0a5a50ebe2e0449a5de8ff47935d685bae802155438b0a94"
+    },
+    {
+      "source": "files/src/loop.c.json#/SOURCE/INTERFACE/4/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "19a5eba3c22303728de9a3782a2827e94ac8ff8834dcad84ba5244e5486f5ae8"
+    },
+    {
+      "source": "files/src/loop.c.json#/SOURCE/INTERFACE/5/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "826baff910ea49794c7391964937e6d7127e05a874f01970ffa373af9fec9dfc"
+    },
+    {
+      "source": "files/src/loop.c.json#/SOURCE/INTERFACE/6/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "d22b1e5dfa5f4e70718109df66ab621704c3b99b6a573874d87fd54aa05cbc65"
+    },
+    {
+      "source": "files/src/loop.c.json#/SOURCE/INTERFACE/7/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "5d0c3d6b5918e413c1d30f85443b952c4bdeecf7b0faa9cfce9b47f2471be7dc"
+    },
+    {
+      "source": "files/src/loop.c.json#/SOURCE/INTERFACE/8/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "cbf6df1a9eddf69f115788e7cd84155e37496ad96fad7c889c0f65a1effd8c0a"
+    },
+    {
+      "source": "files/src/loop.c.json#/SOURCE/INTERFACE/9/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "6c58c84912b99a720e32729c0ebad5da8708a31b3b42ea360fdc0ed0d579861f"
+    },
+    {
+      "source": "files/src/loop.c.json#/SOURCE/INTERFACE/10/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "1f089888c19d0294ea36e39e20f8c1574ee37c12e4ab5efcfb35294b4d3d5fe7"
+    },
+    {
+      "source": "files/src/loop.c.json#/SOURCE/INTERFACE/11/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "54bb11f5ce012078b9227835a2a1dfd84cb25d7742e42a8783c08548290f6c6d"
+    },
+    {
+      "source": "files/src/loop.c.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 12,
+      "sha256": "6f5d7881d047626485173a2985dd9cd250ce13a5591ac8ef3b8fe024ca8da5b3"
+    },
+    {
+      "source": "files/src/main.c.json#/FILE/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "04433deb7a9a61c86da306b8f2299d4b3af25a7d6fea6af527c3027d083ffa28"
+    },
+    {
+      "source": "files/src/main.c.json#/FILE/DOC_REF",
+      "operation": "remove",
+      "item_count": 3,
+      "sha256": "1ce05e52b884e656e1095b5e64bbebb52ad1d74e6c22f0f6f5b4ab95a5b00433"
+    },
+    {
+      "source": "files/src/main.c.json#/SOURCE/INTERFACE/0/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "ce7946b921a25b97d2466f6b479535f039272a3862bdcbb636ef959ec3995a82"
+    },
+    {
+      "source": "files/src/main.c.json#/SOURCE/INTERFACE/1/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "8b6b29fce1bf5bfa16de7a1ba810784a72ebcdd6a85781d984617b3542bcac07"
+    },
+    {
+      "source": "files/src/main.c.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 6,
+      "sha256": "a8d0ae062b4100c242987ab608d30eb6ddb743c6545317c58bb8ca08ab8ce94e"
+    },
+    {
+      "source": "files/src/net.c.json#/FILE/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "5fc334d160aa1041b8ea063f65d1207ce2aaeb6bb587a00655d1dc984c07cb69"
+    },
+    {
+      "source": "files/src/net.c.json#/FILE/DOC_REF",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "dbded89ee5bb9cf695177fb4ed868efd13e5c50b17e8efba1e5411b01e838824"
+    },
+    {
+      "source": "files/src/net.c.json#/SOURCE/INTERFACE/0/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "17302a2582d083a4bac02ef43b462fe6081ef9c49dc63d826e9987291df0bebc"
+    },
+    {
+      "source": "files/src/net.c.json#/SOURCE/INTERFACE/1/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "07651ba3b5a241cadc4705fe5eaf785b5f67785f6f8b751be3a10c283ba0a3e4"
+    },
+    {
+      "source": "files/src/net.c.json#/SOURCE/INTERFACE/2/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "514da953bfba6434ff23558e51f12fbc96b9fb4621d41ea74a6b75ace3455640"
+    },
+    {
+      "source": "files/src/net.c.json#/SOURCE/INTERFACE/3/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "7f344658657259b1758b10adf99cdb207f765981701568ce0e643b6855b3ddb4"
+    },
+    {
+      "source": "files/src/net.c.json#/SOURCE/INTERFACE/4/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "3d1a3c09b19c9b60832a27d8d52d1ddff9841c193bb9dc9f1dfd02d8b92fd204"
+    },
+    {
+      "source": "files/src/net.c.json#/SOURCE/INTERFACE/5/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "d1de0c76baf4455ec7e78b421b5e711dc8716e3398e886263a33cee30d82d75f"
+    },
+    {
+      "source": "files/src/net.c.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 6,
+      "sha256": "0027d843fe327516075badbcc9d503a12ce038c5e2f1709bc75f36daccde7a53"
+    },
+    {
+      "source": "files/src/session.c.json#/FILE/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "7fcc6289217b3569e82eb5e767473fbfa4f8627d1c369b43174379ed3d9c3af3"
+    },
+    {
+      "source": "files/src/session.c.json#/FILE/DOC_REF",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "e6ad09d38a690e8e36ddc05609d73b2fce1446e7a5910f792c1b2aecb5295263"
+    },
+    {
+      "source": "files/src/session.c.json#/SOURCE/INTERFACE/0/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "e7f491dbcac4cd4fdb3aebf68f7c4f6dc90f955c395dedf35f0676911d1b7aec"
+    },
+    {
+      "source": "files/src/session.c.json#/SOURCE/INTERFACE/1/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "a944049f6c71365b636a633db1f96fb7339d7da928ee44d7d1807c0df0c65b76"
+    },
+    {
+      "source": "files/src/session.c.json#/SOURCE/INTERFACE/2/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "47ed64acd7d8bedd7cc068b907678e429fcf6169a3106a4a54bf3f4c97479f56"
+    },
+    {
+      "source": "files/src/session.c.json#/SOURCE/INTERFACE/3/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "cbf8b168e34c640895c79030e2cc0b3aa82835b2badece14303ab8846e2d783c"
+    },
+    {
+      "source": "files/src/session.c.json#/SOURCE/INTERFACE/4/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "9e2928b7e4799d6911f8aed8b629110be06e1f85e9b6bd3d6fa2fad61dc31d47"
+    },
+    {
+      "source": "files/src/session.c.json#/SOURCE/INTERFACE/5/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "dc7a58fcd45ee5ad2639a9ad5d1846e4a309a957c4524c896cf1ea0a3555f17b"
+    },
+    {
+      "source": "files/src/session.c.json#/SOURCE/INTERFACE/6/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "61b1889dfb78bfee727ddf6d9cc4107a6cc407d990091a6810927e4c1b56b922"
+    },
+    {
+      "source": "files/src/session.c.json#/SOURCE/INTERFACE/7/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "71959e8e3e65e5333e917e53a0c668a722d41ad84fa1a1ea0b3f413920bedadf"
+    },
+    {
+      "source": "files/src/session.c.json#/SOURCE/INTERFACE/8/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "f14848fbb136079e118713aeebdad1512ab158c10d00d6788a10952a12d1ce4e"
+    },
+    {
+      "source": "files/src/session.c.json#/SOURCE/INTERFACE/9/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "23a17a6c4c2d8f48908494e569f6063f8b24f89d45ad44333edd1f2e77312524"
+    },
+    {
+      "source": "files/src/session.c.json#/SOURCE/INTERFACE/10/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "42d6b304b241168422f5c65f00abf03b7a4a4423712179dbf15ffd643c0593ba"
+    },
+    {
+      "source": "files/src/session.c.json#/SOURCE/INTERFACE/11/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "36a8baac1c4e1e41200a95e74669b118d88543412152bd28edc06ab8715216d5"
+    },
+    {
+      "source": "files/src/session.c.json#/SOURCE/INTERFACE/12/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "65dd80d33367f9f3a5eab8f8b35a34c84acd75d2076548196f0d350393020b9b"
+    },
+    {
+      "source": "files/src/session.c.json#/SOURCE/INTERFACE/13/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "64c9ab299ca2a289d63ff93a4a81dd6fd5aae44d9eaac1529c157d244def7895"
+    },
+    {
+      "source": "files/src/session.c.json#/SOURCE/INTERFACE/14/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "7be0a5b2e9b4340579cbba02e4c7d2bd8d41ab5b15d9b61137beae347a541ec1"
+    },
+    {
+      "source": "files/src/session.c.json#/SOURCE/INTERFACE/15/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "a93a1aed802293674aed6ce8d27e620800ae84639b744eccd47b002272ac3bbc"
+    },
+    {
+      "source": "files/src/session.c.json#/SOURCE/INTERFACE/16/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "363cd1cdf78e932021380bca2fa6d5a9e4fe4765d3e34a1c35e163a7f1ec435e"
+    },
+    {
+      "source": "files/src/session.c.json#/SOURCE/INTERFACE/17/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "e203e8c59212ec168df001a37d9cf9d413e5aa4a7891dedc48eef8c8efd8aaed"
+    },
+    {
+      "source": "files/src/session.c.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 7,
+      "sha256": "449dce7d2d4f842ba9381d04b6612e3ac0e315166886bc393213f89ea5cefa3a"
+    },
+    {
+      "source": "files/src/topic.c.json#/FILE/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "1aba26afbe7dcdce2d4388bba61566042c1cb5193bb345759d4a5edfb6115d3e"
+    },
+    {
+      "source": "files/src/topic.c.json#/FILE/DOC_REF",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "73722737c40e9e6e6d146569a71e129f7375b9500d3292883762417154b75688"
+    },
+    {
+      "source": "files/src/topic.c.json#/SOURCE/INTERFACE/0/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "4b76bcb48fef9806595598f81864e853f0518fa084947a7349a5fdb43a69ba82"
+    },
+    {
+      "source": "files/src/topic.c.json#/SOURCE/INTERFACE/1/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "d212a7492bb9487c8109b18d0e352a5794aa52c4e842d157113f7163dc15fd6d"
+    },
+    {
+      "source": "files/src/topic.c.json#/SOURCE/INTERFACE/2/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "fb69e35eb833e3be01fd9a0d3d16b35ccbbe5b314252054f961ab9bba52e2afb"
+    },
+    {
+      "source": "files/src/topic.c.json#/SOURCE/INTERFACE/3/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "377c60077936606766bc7b115dc1e3a6a0b672cd26a6f5958ff0713d77150aaf"
+    },
+    {
+      "source": "files/src/topic.c.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 7,
+      "sha256": "77939fe8eee533cd4d27b0e05f863dfad591ca9a261ea8767605afb94b0cb8d0"
+    },
+    {
+      "source": "files/src/wire.c.json#/FILE/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "3ba4bb3cae0e88711dec9ff3223ff137a511d0508cb81f418cab5609b163a708"
+    },
+    {
+      "source": "files/src/wire.c.json#/FILE/DOC_REF",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "d0b73173fc8feab112bc36b0f41dd093b07239e80bedf3ac9b14c27022d807f8"
+    },
+    {
+      "source": "files/src/wire.c.json#/SOURCE/INTERFACE/0/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "0f2ea7292308bb36cbd83ef9b667ca7c70db932345a11fa2784a96587ab8a503"
+    },
+    {
+      "source": "files/src/wire.c.json#/SOURCE/INTERFACE/1/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "5b69cf5d4cc630b214cc43d14b76d65ec0bef0eeffeb05ba0cff87ad24d9ac61"
+    },
+    {
+      "source": "files/src/wire.c.json#/SOURCE/INTERFACE/2/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "20b145e61843fe70be0a400c109f02c1f69d979056477382d1286bce1bba98a7"
+    },
+    {
+      "source": "files/src/wire.c.json#/SOURCE/INTERFACE/3/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "d761001adb1409e81b6a47522ce5e3bd881bc0cf2ed45be74d95ea627e986ca2"
+    },
+    {
+      "source": "files/src/wire.c.json#/SOURCE/INTERFACE/4/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "1ca00b39642073bf1b0e24e8f5b83d011607330b6ff2b205b949e6f6dae278a9"
+    },
+    {
+      "source": "files/src/wire.c.json#/SOURCE/INTERFACE/5/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "1125c4c84f612ed80f3d51f0a0eb3f60ee531eba4396dde195941ad7e2b5c61e"
+    },
+    {
+      "source": "files/src/wire.c.json#/SOURCE/INTERFACE/6/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "030197c42ccf859a6fd832d13e820089f7cefdad710585c81e8affb8f5873e8f"
+    },
+    {
+      "source": "files/src/wire.c.json#/SOURCE/INTERFACE/7/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "d0512628e475e0dec60bd4847efa2b1a170d1b942710525ecf25ba37e0085c6f"
+    },
+    {
+      "source": "files/src/wire.c.json#/SOURCE/INTERFACE/8/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "de92423c43c290b4047d5ca4fc01bf2e792060307b24171bd40548850271c935"
+    },
+    {
+      "source": "files/src/wire.c.json#/SOURCE/INTERFACE/9/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "4699d50015fc507159f13fdd9e8fda4e87611004f2bdcaddd2b8393371ce4840"
+    },
+    {
+      "source": "files/src/wire.c.json#/SOURCE/INTERFACE/10/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "42fad3ce3d0912acdbe51abd5141cc46f04d955c150fbf5b0cb34e14a15502ee"
+    },
+    {
+      "source": "files/src/wire.c.json#/SOURCE/INTERFACE/11/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "b626bc413ad8f164169459c511f150b190f61befe55b474dfbc206978ea79e5d"
+    },
+    {
+      "source": "files/src/wire.c.json#/SOURCE/INTERFACE/12/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "97730c377905eb20cebd5647607c27120c2f59baf08ff19e5ad85ac0e847e535"
+    },
+    {
+      "source": "files/src/wire.c.json#/SOURCE/INTERFACE/13/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "0a0c897bc84fa9f2e1c31c267ad263f30bf20dd186cca4ba1020c05e1b769d21"
+    },
+    {
+      "source": "files/src/wire.c.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 6,
+      "sha256": "258192e5742276317c95bda066d21a32e38e4bb3b1f1cd9c5ea9b06823abb5de"
+    },
+    {
+      "source": "files/src/wire.c.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 14,
+      "sha256": "3bac25c9ee8a3c18736b78afd15842422df92364bf722022dcafea1f5a95a0a9"
+    },
+    {
+      "source": "functions/src_broker.c_add_session.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "7677f83ac04869a2431f8536569bc8f19019c6865fb46f0c69f746644a460302"
+    },
+    {
+      "source": "functions/src_broker.c_add_session.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "88ff39e414ef4c5fb91625b8507f5915879d1aefcd21a887585bc09b099549af"
+    },
+    {
+      "source": "functions/src_broker.c_add_session.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 5,
+      "sha256": "2235a48353617fc921a639256febf956820d482479140ea36d31456b745af240"
+    },
+    {
+      "source": "functions/src_broker.c_broker_accept.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "68fc38f8d0c4fe13b3fac2899901c0ed10ad6c6abb8c1c71e9bfe224fb20db1a"
+    },
+    {
+      "source": "functions/src_broker.c_broker_accept.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 3,
+      "sha256": "b873fbf7d523ebceecd47ba3cf53354e3bf20b3351bfb06bcccb0195085d38c2"
+    },
+    {
+      "source": "functions/src_broker.c_broker_create.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "53ff9e12676ece1327576cb01cd4adbb3c3ef39382a23db301d40ebaac31bbfa"
+    },
+    {
+      "source": "functions/src_broker.c_broker_create.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "d1fc97c816b0419e9c625588d565efd116c915de068f44d67ccbe7075c94abc6"
+    },
+    {
+      "source": "functions/src_broker.c_broker_create.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 3,
+      "sha256": "b4983c1e8cd0ff6b56eb1f17f6b8674b1175f1a257c6e1b435524d948b887e96"
+    },
+    {
+      "source": "functions/src_broker.c_broker_destroy.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "a75b297969a90d1b7b055d04e62d8a44316fb163a6f97831184bc27ebdeab95b"
+    },
+    {
+      "source": "functions/src_broker.c_broker_destroy.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "e6da6ff471e419cc94403404fff6161b3a2d1d8d9f67b8e832c1874783864846"
+    },
+    {
+      "source": "functions/src_broker.c_broker_destroy.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 3,
+      "sha256": "1019ebabf0cf84b8785b06a8fb80cebce86120c9dcd6730cf97c437508b0ea1b"
+    },
+    {
+      "source": "functions/src_broker.c_broker_process_input.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "1440c93a840811871e61fa64f05bf3736895d77169da0c7a6343249b1ee9c47a"
+    },
+    {
+      "source": "functions/src_broker.c_broker_process_input.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 9,
+      "sha256": "9d670cb0b4510457c405e2827beced8c85f52adfb108a5f3ff6951600fd5be5e"
+    },
+    {
+      "source": "functions/src_broker.c_broker_process_input.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 8,
+      "sha256": "84584f95e4638090e9241a1ecb6757bf41c9302ccc0e26570691424c83bcc556"
+    },
+    {
+      "source": "functions/src_broker.c_broker_reap.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "110e7fd2fc9afde48ecee58a2404d8707d95bba9284793fb6b65ad12a2604fcc"
+    },
+    {
+      "source": "functions/src_broker.c_broker_reap.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 4,
+      "sha256": "6265a2b3eaff53a6b4b2322e33f49400712ec72b561a9a58145570ff39135b9b"
+    },
+    {
+      "source": "functions/src_broker.c_broker_reap.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 5,
+      "sha256": "d3f00fcc9ae39411b7afc7cf316d0d3f6496138cae53f41dc4c5421874452cdd"
+    },
+    {
+      "source": "functions/src_broker.c_broker_session_at.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "7506ff1e3d39e23665f309e17c56bdafd3f457489a748110b01757273465492c"
+    },
+    {
+      "source": "functions/src_broker.c_broker_session_at.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 3,
+      "sha256": "0733cf29e16749f0118371ca80054471e293eb893afaff3edbd9135fd7d8091d"
+    },
+    {
+      "source": "functions/src_broker.c_broker_session_count.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "f2ed6e7a047e1aa28d2afb43da89bd6485268c3b5140ca38de7cfea092ab9ea2"
+    },
+    {
+      "source": "functions/src_broker.c_broker_session_count.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 3,
+      "sha256": "af8a1c1cdd41c35b7c5c1ba8749e6541dee4adde6a39227471c5f31018b46d83"
+    },
+    {
+      "source": "functions/src_broker.c_broker_session_eof.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "3c7dcfb755a3cd4474d1cdcb8848ded8f1745657b42b92772ce0bb0c646b62d0"
+    },
+    {
+      "source": "functions/src_broker.c_broker_session_eof.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 4,
+      "sha256": "d23676cc086d3d6dbbf46a71fa164f4c5070367340a8a27e97b7c7526fcd80f7"
+    },
+    {
+      "source": "functions/src_broker.c_broker_session_eof.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 6,
+      "sha256": "1ce2bab8e72f37f21b4f8a3825e1722f2b5c66ab1b9988b818f25287391802b5"
+    },
+    {
+      "source": "functions/src_broker.c_handle_connect.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "58c84825dd023e60466afe044009aeb10fb2eecc02074aa8f47b4cc8731afc7a"
+    },
+    {
+      "source": "functions/src_broker.c_handle_connect.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 8,
+      "sha256": "149f4c73df549ff0954a2b0ff81cc9d1b3ebbadf7e55aa5d37c670ed8af74110"
+    },
+    {
+      "source": "functions/src_broker.c_handle_connect.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 6,
+      "sha256": "407e2058acb1e97d6fbecb919a8c9db43553b47a31a0a60277873396ec18ef3d"
+    },
+    {
+      "source": "functions/src_broker.c_handle_disconnect.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "59c80fb1bd3350bacacf36650675d21fb0f0f9fd3ae7a14a6596654326a322a8"
+    },
+    {
+      "source": "functions/src_broker.c_handle_disconnect.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "c474ddb9ca01a31f27cc1012ab5fc6b5e3de8c56d6d115fa772555f70ed8df1a"
+    },
+    {
+      "source": "functions/src_broker.c_handle_disconnect.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 3,
+      "sha256": "34451bfe3d0434bb48b90070acbf88f2253e571a443ca1672a5dad15ab707463"
+    },
+    {
+      "source": "functions/src_broker.c_handle_pingreq.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "e32396782ffeaf3c0712b9485fb533d8a98ed4073638b432b058f56a943f4056"
+    },
+    {
+      "source": "functions/src_broker.c_handle_pingreq.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 3,
+      "sha256": "7496171dc453eac705df3546fec24e40255d728b5807683ee1a3b87e3fcfdd06"
+    },
+    {
+      "source": "functions/src_broker.c_handle_pingreq.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 3,
+      "sha256": "990427ccf304b7ebdffce18dd474af40467af90fbc24b03a669a1be8f5620837"
+    },
+    {
+      "source": "functions/src_broker.c_handle_publish.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "f39de9486c0cfa10b06730fdc3fe4b64e1aa8dbe95a3a3cc517f952441b09a6d"
+    },
+    {
+      "source": "functions/src_broker.c_handle_publish.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "0fcfd8096d280fd040880fb1f4c5262c94c4d670383b0157943adbcd09f0fd7f"
+    },
+    {
+      "source": "functions/src_broker.c_handle_publish.json#/WIRE_MAPPING",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "22c8d1aa11e4324c77b22a9bfa64d9512da9220d3c39d251898847225b99790e"
+    },
+    {
+      "source": "functions/src_broker.c_handle_publish.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 5,
+      "sha256": "7f03f06e42cf5483231f43f41b5941b681389a3a62a607ac59407eba0f5f978c"
+    },
+    {
+      "source": "functions/src_broker.c_handle_subscribe.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "4d1d58001836ca562fccd20f4120e870b5c433aefe5e0a10fab87477fd7e9b34"
+    },
+    {
+      "source": "functions/src_broker.c_handle_subscribe.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 5,
+      "sha256": "41a0a1ab8a31c3adcb85f739a7fe5558541b50fcc4d2014f81a0825412fc752f"
+    },
+    {
+      "source": "functions/src_broker.c_handle_subscribe.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 4,
+      "sha256": "167fd4dce684c548f181ac8e44a86733f9c15963e3b59f75f0ed7397e8a9b4c3"
+    },
+    {
+      "source": "functions/src_broker.c_remove_session_at.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "9cc67f54ed3a7e81eb228fb464b6d99bdcf9c8726310858001955abbf6c2505d"
+    },
+    {
+      "source": "functions/src_broker.c_remove_session_at.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "e72e5bc1492a5c6b89be68f0276c7dcae48920db3676bc1530014dfb21da3a72"
+    },
+    {
+      "source": "functions/src_broker.c_remove_session_at.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 3,
+      "sha256": "6e92acfd241aa729f919f074dfa0d6d02317836d262da9d19f75bc1c8e88da39"
+    },
+    {
+      "source": "functions/src_broker.c_route_publish.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "b95220a8fa49c535e8a1fb2443c7d47410b9268eed6ec97daa1e4bb28c54e4f6"
+    },
+    {
+      "source": "functions/src_broker.c_route_publish.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 6,
+      "sha256": "ff69e8cd53a954e93c7fc8deb9c7c504ee8b96b3d6a49f078162fd18ef79eb50"
+    },
+    {
+      "source": "functions/src_broker.c_route_publish.json#/WIRE_MAPPING",
+      "operation": "remove",
+      "item_count": 4,
+      "sha256": "3a2547942ea4111fa74df21c319dcd01c43822dcd3a7b057633acbc9c2abb3df"
+    },
+    {
+      "source": "functions/src_broker.c_route_publish.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 6,
+      "sha256": "c780be70201ddfd8b185812ee9757d10ea78a498d2967ebe263f308e6edb6028"
+    },
+    {
+      "source": "functions/src_buffer.c_buffer_append.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "195136184210c2a146f9d6359aaca74f0ce8908941e46b4274bf91619f027a8d"
+    },
+    {
+      "source": "functions/src_buffer.c_buffer_append.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "b4f8cb10f5883004c34c4cf7d4c782ddf33062bdaaef436dd22d3dc941dbc12c"
+    },
+    {
+      "source": "functions/src_buffer.c_buffer_append.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 3,
+      "sha256": "1694e8ea00334f4b68cf1f4f085af27cb8f5c6627987cdd3b7bd104380a03b28"
+    },
+    {
+      "source": "functions/src_buffer.c_buffer_commit.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "9d329f20cb45ea19038e31c79625a9745acb9f36c5efe33aec15a8d3c2a6ad4f"
+    },
+    {
+      "source": "functions/src_buffer.c_buffer_commit.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "d12e9f761d5656c1c0ce7ae293fe2e1c9881cac0de8d62100ec39ba99a98c154"
+    },
+    {
+      "source": "functions/src_buffer.c_buffer_consume.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "09e317881212b730e60150f213036bc1ae64c45e9338392ed309ce50d40f5d5a"
+    },
+    {
+      "source": "functions/src_buffer.c_buffer_consume.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "1f78fcc028dca8b9cf9c0c84c43689e5c06755ae4cd8d085285af62438b0003b"
+    },
+    {
+      "source": "functions/src_buffer.c_buffer_free.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "50626d13f40e5539e3bac0038e78c53861012999d6dd700ae5c17a2ee05fa71a"
+    },
+    {
+      "source": "functions/src_buffer.c_buffer_free.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "1927d2938defc1e4540738505d500d34c6a8a7642d7cd352d8eb0b7430f0f62b"
+    },
+    {
+      "source": "functions/src_buffer.c_buffer_free.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "969754e4fe7b926de3057ed1c3c8338cf49ff82ac10bd5ceac5ae91760736e1d"
+    },
+    {
+      "source": "functions/src_buffer.c_buffer_init.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "eed83740356ca525649780ec360584e92b062c26a9ff683ea491b2b021c1a751"
+    },
+    {
+      "source": "functions/src_buffer.c_buffer_init.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "1d326f3b3ffb3a57bb0bcb7ed1092a6c832220354722b9b80fc6c1a9ee22ebbb"
+    },
+    {
+      "source": "functions/src_buffer.c_buffer_reserve.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "d8a6f8a13d8eb3f7d04c4a068839c7816d7f81ebf18f7be710480fe0ae42d343"
+    },
+    {
+      "source": "functions/src_buffer.c_buffer_reserve.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 3,
+      "sha256": "1728cdcf753d5c06aeeac890d3658d38ae98b5a502c07f485fdd02bc49b71023"
+    },
+    {
+      "source": "functions/src_buffer.c_buffer_tail.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "2d6276be2946d523b4a8d41f8f4443d8bd5cbb9b0351866c20b888afb7d59759"
+    },
+    {
+      "source": "functions/src_buffer.c_buffer_tail.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "3268673391456ab32662a28f352427f3e46c82cccbe60d5a16e4b026c80e86db"
+    },
+    {
+      "source": "functions/src_loop.c_accept_ready.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "e4b6dd9f8e52bb9b63ea0bb895e310893323ba80103adc41b09fc4737c429179"
+    },
+    {
+      "source": "functions/src_loop.c_accept_ready.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 3,
+      "sha256": "f6b4b19db4939321060306596896c3cf751243a472e15b51aca8809c6b267080"
+    },
+    {
+      "source": "functions/src_loop.c_accept_ready.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 4,
+      "sha256": "08a9d3bf35102170bf27606e212411e2344e86c7f6a87779d942e00b420eedeb"
+    },
+    {
+      "source": "functions/src_loop.c_dispatch_event.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "19a5eba3c22303728de9a3782a2827e94ac8ff8834dcad84ba5244e5486f5ae8"
+    },
+    {
+      "source": "functions/src_loop.c_dispatch_event.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "c942d09bc379a8e0f29f56fc2efffd696084b26a45061572baadd20a7ec74cc0"
+    },
+    {
+      "source": "functions/src_loop.c_dispatch_event.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 5,
+      "sha256": "47f83d779502953dbc8f87cb1a36c725517aa35b2082f0a5d58ecb3f53ea3ed6"
+    },
+    {
+      "source": "functions/src_loop.c_is_registered.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "ea2a3465c8e5c0ca60c7531fa2865f5675318c194b6f150329549c8fbd3333b8"
+    },
+    {
+      "source": "functions/src_loop.c_is_registered.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "5acfe3a2b142f00b05d19cc10bd2d88cc13cef41af58bce063fb910e896cb65e"
+    },
+    {
+      "source": "functions/src_loop.c_is_registered.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 3,
+      "sha256": "b354048a2c0ff6bd573b5355a549b99a48b7ceb27b33536e7f048ef951854e97"
+    },
+    {
+      "source": "functions/src_loop.c_loop_add_listener.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "5d0c3d6b5918e413c1d30f85443b952c4bdeecf7b0faa9cfce9b47f2471be7dc"
+    },
+    {
+      "source": "functions/src_loop.c_loop_add_listener.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "6043b69c46485bab9535fa5eb92949fe9cbf58d0a9c6b89400cb8e9c47d58999"
+    },
+    {
+      "source": "functions/src_loop.c_loop_add_listener.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 3,
+      "sha256": "d5ce4b020efa5c2a4df6db58d0c693be89c85baf2e315275318d932a4e42363b"
+    },
+    {
+      "source": "functions/src_loop.c_loop_create.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "d22b1e5dfa5f4e70718109df66ab621704c3b99b6a573874d87fd54aa05cbc65"
+    },
+    {
+      "source": "functions/src_loop.c_loop_create.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "382df7e42565b4fd22bea827c6f166fed7f8d8b3aee2f99cf166240ff2578e4f"
+    },
+    {
+      "source": "functions/src_loop.c_loop_create.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 3,
+      "sha256": "290f715b325748c1c0c3e960dc05388c90299cdad87e83bb97fc91d65bd23df8"
+    },
+    {
+      "source": "functions/src_loop.c_loop_destroy.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "54bb11f5ce012078b9227835a2a1dfd84cb25d7742e42a8783c08548290f6c6d"
+    },
+    {
+      "source": "functions/src_loop.c_loop_destroy.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "16d184a9f73040abd3b6afa993d35f9ff84dc45bb9238e162dd5a32d34dd82c6"
+    },
+    {
+      "source": "functions/src_loop.c_loop_destroy.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "31c7da168a4f5ceeeac638b082fb636877c55baa77f66f05473d8464a6da586e"
+    },
+    {
+      "source": "functions/src_loop.c_loop_run.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "6c58c84912b99a720e32729c0ebad5da8708a31b3b42ea360fdc0ed0d579861f"
+    },
+    {
+      "source": "functions/src_loop.c_loop_run.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "ad3048c131002149ef0ac73d64af470a9dc6470c9e8e983e8c685b1249dc0233"
+    },
+    {
+      "source": "functions/src_loop.c_loop_run.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 4,
+      "sha256": "7ab4c4abcd251a787e4c95a8214805cbefa18e61c69c8c19a586d4f7e6f5c2bd"
+    },
+    {
+      "source": "functions/src_loop.c_loop_set_stop_flag.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "cbf6df1a9eddf69f115788e7cd84155e37496ad96fad7c889c0f65a1effd8c0a"
+    },
+    {
+      "source": "functions/src_loop.c_loop_set_stop_flag.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "source": "functions/src_loop.c_loop_set_stop_flag.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "ca3bedcc68f76260c68deb5bb07d9504d8b4332c6cb6e33be1cf84d8ecd56935"
+    },
+    {
+      "source": "functions/src_loop.c_loop_stop.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "1f089888c19d0294ea36e39e20f8c1574ee37c12e4ab5efcfb35294b4d3d5fe7"
+    },
+    {
+      "source": "functions/src_loop.c_loop_stop.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "source": "functions/src_loop.c_loop_stop.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "0c00c52c21e836acdeab4c9468392df638aedad092a3c6c8deb57d400414dd1f"
+    },
+    {
+      "source": "functions/src_loop.c_mask_sync.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "826baff910ea49794c7391964937e6d7127e05a874f01970ffa373af9fec9dfc"
+    },
+    {
+      "source": "functions/src_loop.c_mask_sync.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 7,
+      "sha256": "c9cb5d13edd768db3aa74777d9c3f25ec94640edcf204d89133915e91309c078"
+    },
+    {
+      "source": "functions/src_loop.c_mask_sync.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 5,
+      "sha256": "dd24443ca959237959e7f248d71dbc8a9fa46264c0a705d105792efc9b804e7e"
+    },
+    {
+      "source": "functions/src_loop.c_pump_read.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "a3b4a641f9c63256f01810216965dbb170a7ea4d976ef6d424e40f18bc212011"
+    },
+    {
+      "source": "functions/src_loop.c_pump_read.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 7,
+      "sha256": "2f203620d12f203f7ac20ac254d7f7cc08949ae710c8646c0ff4205b48796ba1"
+    },
+    {
+      "source": "functions/src_loop.c_pump_read.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 6,
+      "sha256": "64abc6317849dc7203975f82b9f2ebee561177113e30879f9a279ac86c9af5d8"
+    },
+    {
+      "source": "functions/src_loop.c_pump_write.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "58b26e940c9b9d8d0a5a50ebe2e0449a5de8ff47935d685bae802155438b0a94"
+    },
+    {
+      "source": "functions/src_loop.c_pump_write.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 5,
+      "sha256": "dde07399822afae3ccf0203f65eb3fe14b59c9ceff6a42dfdd3af673a6b7d1e6"
+    },
+    {
+      "source": "functions/src_loop.c_pump_write.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 5,
+      "sha256": "351c49809dd7eefc97992ab4fc203eb717f5f152470aa3f6a73074b0f6541262"
+    },
+    {
+      "source": "functions/src_main.c_main.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "8b6b29fce1bf5bfa16de7a1ba810784a72ebcdd6a85781d984617b3542bcac07"
+    },
+    {
+      "source": "functions/src_main.c_main.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 10,
+      "sha256": "afbc1eb31b9fcd2eefdbc3346b700e5fa60d26c7d0d0c0d2e80550f6d4c0365d"
+    },
+    {
+      "source": "functions/src_main.c_main.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 4,
+      "sha256": "e51d516f6f52a595541bb80a18199c3042b1d840fab70d38b1bde149fe20cfc9"
+    },
+    {
+      "source": "functions/src_main.c_on_signal.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "ce7946b921a25b97d2466f6b479535f039272a3862bdcbb636ef959ec3995a82"
+    },
+    {
+      "source": "functions/src_main.c_on_signal.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "source": "functions/src_main.c_on_signal.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 3,
+      "sha256": "3f8cd8e793d8e813cbad5cb9d90c41d6e6db76382fd76f364b14ca4cbb6721fa"
+    },
+    {
+      "source": "functions/src_net.c_net_accept.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "514da953bfba6434ff23558e51f12fbc96b9fb4621d41ea74a6b75ace3455640"
+    },
+    {
+      "source": "functions/src_net.c_net_accept.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "915481bfdc6d6d85bc5c94ff75b7223d54ba98ae55a3ca76dbf99062bc192cb1"
+    },
+    {
+      "source": "functions/src_net.c_net_accept.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 4,
+      "sha256": "fdb4a5588421be7db7f5788aaf51e48286d3b3dec9ba7f2a4912a3ddef547fd5"
+    },
+    {
+      "source": "functions/src_net.c_net_close_fd.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "d1de0c76baf4455ec7e78b421b5e711dc8716e3398e886263a33cee30d82d75f"
+    },
+    {
+      "source": "functions/src_net.c_net_close_fd.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "73a4ed522699338c2c3ca87ba36606f17964cb98ac3fea750d59a088bef13eb0"
+    },
+    {
+      "source": "functions/src_net.c_net_close_fd.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 4,
+      "sha256": "ff4e2132ab7860887bd2cc1dcd9a731e195261fb3c93c913f274b92b89f4898e"
+    },
+    {
+      "source": "functions/src_net.c_net_listen.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "07651ba3b5a241cadc4705fe5eaf785b5f67785f6f8b751be3a10c283ba0a3e4"
+    },
+    {
+      "source": "functions/src_net.c_net_listen.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 4,
+      "sha256": "52b79adb688c25729a82c45db0fcc575a688437e018d088a8b6cf41502af61f2"
+    },
+    {
+      "source": "functions/src_net.c_net_listen.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 4,
+      "sha256": "a67b0c597ad47854f9d56643b728ad29ad1c94eeb6500bc47edd71a31bcdbed1"
+    },
+    {
+      "source": "functions/src_net.c_net_parse_port.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "17302a2582d083a4bac02ef43b462fe6081ef9c49dc63d826e9987291df0bebc"
+    },
+    {
+      "source": "functions/src_net.c_net_parse_port.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "48b35ea195e3bb00c803cbad071c9a3fc1bea91cc90a8b6c4152d98fc862b740"
+    },
+    {
+      "source": "functions/src_net.c_net_read_some.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "7f344658657259b1758b10adf99cdb207f765981701568ce0e643b6855b3ddb4"
+    },
+    {
+      "source": "functions/src_net.c_net_read_some.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "23fc7c58528abe980cedcdd288e801a643f15fa5eede96c1ed68aae78f4dbb97"
+    },
+    {
+      "source": "functions/src_net.c_net_read_some.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 4,
+      "sha256": "334d56afbed1c041d37b0c10f546927de2887fab8620656a70384a7aec77734f"
+    },
+    {
+      "source": "functions/src_net.c_net_write_some.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "3d1a3c09b19c9b60832a27d8d52d1ddff9841c193bb9dc9f1dfd02d8b92fd204"
+    },
+    {
+      "source": "functions/src_net.c_net_write_some.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "d069398ca3ba163f009f1b6087f3114260b3553f0c0df345e3c700d9ffacdd4a"
+    },
+    {
+      "source": "functions/src_net.c_net_write_some.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 4,
+      "sha256": "e492608e49c7436fe214f56adaf767cf90950d0274170e4ba21b5ea171651c91"
+    },
+    {
+      "source": "functions/src_session.c_free_subscriptions.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "e7f491dbcac4cd4fdb3aebf68f7c4f6dc90f955c395dedf35f0676911d1b7aec"
+    },
+    {
+      "source": "functions/src_session.c_free_subscriptions.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "source": "functions/src_session.c_free_subscriptions.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "5561377bcc78e217b1c56d663643926032bdf9e602401c5ab4127167cfb1853c"
+    },
+    {
+      "source": "functions/src_session.c_release_fd.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "a944049f6c71365b636a633db1f96fb7339d7da928ee44d7d1807c0df0c65b76"
+    },
+    {
+      "source": "functions/src_session.c_release_fd.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "a43561f5c0b0a45e392476bcae44b354d7e480160ca27f2bbeeb66aa5c9ddb18"
+    },
+    {
+      "source": "functions/src_session.c_release_fd.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "f56e19dfb148e96a605c292458ddef9df4b71cec6ca2f56f309b1f4915a5f63d"
+    },
+    {
+      "source": "functions/src_session.c_session_add_subscription.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "7be0a5b2e9b4340579cbba02e4c7d2bd8d41ab5b15d9b61137beae347a541ec1"
+    },
+    {
+      "source": "functions/src_session.c_session_add_subscription.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "source": "functions/src_session.c_session_add_subscription.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 4,
+      "sha256": "1c797596a17eb70bbc947b3c666276a322706464cd7010d7f58c74dfc083c714"
+    },
+    {
+      "source": "functions/src_session.c_session_client_id.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "64c9ab299ca2a289d63ff93a4a81dd6fd5aae44d9eaac1529c157d244def7895"
+    },
+    {
+      "source": "functions/src_session.c_session_client_id.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "source": "functions/src_session.c_session_client_id.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "56a5cd42a3a961965d30c3055dd478c7039549b8a04e3c69733433ff5ee2beba"
+    },
+    {
+      "source": "functions/src_session.c_session_close_after_flush.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "f14848fbb136079e118713aeebdad1512ab158c10d00d6788a10952a12d1ce4e"
+    },
+    {
+      "source": "functions/src_session.c_session_close_after_flush.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "source": "functions/src_session.c_session_close_after_flush.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 3,
+      "sha256": "fdc40e4163c627b2bccac9c9342290d94df95f3b24f0a2d7e36769679fe74b5e"
+    },
+    {
+      "source": "functions/src_session.c_session_close_immediately.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "71959e8e3e65e5333e917e53a0c668a722d41ad84fa1a1ea0b3f413920bedadf"
+    },
+    {
+      "source": "functions/src_session.c_session_close_immediately.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "69364c78f9f1a8b14aa96ffc511a629a091952f3f5322dd92731af6a1394e132"
+    },
+    {
+      "source": "functions/src_session.c_session_close_immediately.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 3,
+      "sha256": "99da2b84d2b931daed7355dfd3b4316e7f45f2df49a39e2c91a745b43a6b5ce8"
+    },
+    {
+      "source": "functions/src_session.c_session_create.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "47ed64acd7d8bedd7cc068b907678e429fcf6169a3106a4a54bf3f4c97479f56"
+    },
+    {
+      "source": "functions/src_session.c_session_create.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "09baef12877f898f557b63fa0674e9f37f3d9a10feb3d3fac3dc52c5bbbd46b5"
+    },
+    {
+      "source": "functions/src_session.c_session_create.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 3,
+      "sha256": "27877d8809c267ca7a35662c6351daae7e4ddeb5e947d1b4ef714452d2b51d0b"
+    },
+    {
+      "source": "functions/src_session.c_session_destroy.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "cbf8b168e34c640895c79030e2cc0b3aa82835b2badece14303ab8846e2d783c"
+    },
+    {
+      "source": "functions/src_session.c_session_destroy.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 3,
+      "sha256": "6b67a7ba4902ec966299f85e329e4c7aaf9e7a180579b07ab01a915e3a9f836f"
+    },
+    {
+      "source": "functions/src_session.c_session_destroy.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 3,
+      "sha256": "8754d736ee28a9f7074c25f595cea6b6195dd5e3addb1c8cbcfd648d59e95450"
+    },
+    {
+      "source": "functions/src_session.c_session_enqueue.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "36a8baac1c4e1e41200a95e74669b118d88543412152bd28edc06ab8715216d5"
+    },
+    {
+      "source": "functions/src_session.c_session_enqueue.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "3b34eb82e33a7b0f6b0e664866b3b1857a84686c84841788523ce4baf33408b7"
+    },
+    {
+      "source": "functions/src_session.c_session_enqueue.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 4,
+      "sha256": "106c5b5ca7945291dcd7c9dfc686785d348932c5196335c3546bfbb9609f68cb"
+    },
+    {
+      "source": "functions/src_session.c_session_fd.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "9e2928b7e4799d6911f8aed8b629110be06e1f85e9b6bd3d6fa2fad61dc31d47"
+    },
+    {
+      "source": "functions/src_session.c_session_fd.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "source": "functions/src_session.c_session_fd.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "29f53c19cfaa6e513277c0209076f2d1ba8b72d4093272e0d8de369018ef6db8"
+    },
+    {
+      "source": "functions/src_session.c_session_input.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "23a17a6c4c2d8f48908494e569f6063f8b24f89d45ad44333edd1f2e77312524"
+    },
+    {
+      "source": "functions/src_session.c_session_input.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "source": "functions/src_session.c_session_input.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "54383d15987b7bd986bcb89521c7d97a87da23dfb6c8257a064a09bf8b97b688"
+    },
+    {
+      "source": "functions/src_session.c_session_mark_ready.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "61b1889dfb78bfee727ddf6d9cc4107a6cc407d990091a6810927e4c1b56b922"
+    },
+    {
+      "source": "functions/src_session.c_session_mark_ready.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "source": "functions/src_session.c_session_mark_ready.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "9c4a9fa8fda503e7d1fd6d45ec0ffdc2596dc829be0b53750c6025a8f44c1ae3"
+    },
+    {
+      "source": "functions/src_session.c_session_matches_topic.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "e203e8c59212ec168df001a37d9cf9d413e5aa4a7891dedc48eef8c8efd8aaed"
+    },
+    {
+      "source": "functions/src_session.c_session_matches_topic.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "ce98aea126846d670ee19e9a50101e2d066d47e4b244d4a04fd540cbfba32449"
+    },
+    {
+      "source": "functions/src_session.c_session_matches_topic.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 4,
+      "sha256": "34be58b58e3c798bf11b26644b4ea6993e0eb224f2ec2b115e3bb6ede1cae5a3"
+    },
+    {
+      "source": "functions/src_session.c_session_output.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "42d6b304b241168422f5c65f00abf03b7a4a4423712179dbf15ffd643c0593ba"
+    },
+    {
+      "source": "functions/src_session.c_session_output.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "source": "functions/src_session.c_session_output.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "81607290a78fa0420b06d3f18cba8d85b96fbbf399e4207c05b6a62cf09ee343"
+    },
+    {
+      "source": "functions/src_session.c_session_set_client_id.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "65dd80d33367f9f3a5eab8f8b35a34c84acd75d2076548196f0d350393020b9b"
+    },
+    {
+      "source": "functions/src_session.c_session_set_client_id.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "source": "functions/src_session.c_session_set_client_id.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 3,
+      "sha256": "08e7b34ac2af8469a505d19f2ec5eb577490127af36edaab8cfdb4391f560484"
+    },
+    {
+      "source": "functions/src_session.c_session_state.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "dc7a58fcd45ee5ad2639a9ad5d1846e4a309a957c4524c896cf1ea0a3555f17b"
+    },
+    {
+      "source": "functions/src_session.c_session_state.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "source": "functions/src_session.c_session_state.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "79eba095cc524b73211869b785afc08021704645acd683df56cc3bc57063f7ef"
+    },
+    {
+      "source": "functions/src_session.c_session_subscription_at.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "363cd1cdf78e932021380bca2fa6d5a9e4fe4765d3e34a1c35e163a7f1ec435e"
+    },
+    {
+      "source": "functions/src_session.c_session_subscription_at.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "source": "functions/src_session.c_session_subscription_at.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "ea0a35266e0137fe598b7dc004c08fd17ab14a1541075a5ea4143e997e9c4024"
+    },
+    {
+      "source": "functions/src_session.c_session_subscription_count.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "a93a1aed802293674aed6ce8d27e620800ae84639b744eccd47b002272ac3bbc"
+    },
+    {
+      "source": "functions/src_session.c_session_subscription_count.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "source": "functions/src_session.c_session_subscription_count.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "7053c91cf2f902c6f387f570fc1fca89b2b36ba51ab6d9300ab87b7f318a87f1"
+    },
+    {
+      "source": "functions/src_topic.c_topic_filter_matches.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "377c60077936606766bc7b115dc1e3a6a0b672cd26a6f5958ff0713d77150aaf"
+    },
+    {
+      "source": "functions/src_topic.c_topic_filter_matches.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 3,
+      "sha256": "4cfebaba00cb673477b3bb02f7cd76983fed82f29e617749034b14d7d9def2e8"
+    },
+    {
+      "source": "functions/src_topic.c_topic_filter_validate.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "fb69e35eb833e3be01fd9a0d3d16b35ccbbe5b314252054f961ab9bba52e2afb"
+    },
+    {
+      "source": "functions/src_topic.c_topic_filter_validate.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "66fb8b494ca1b990765b6978a5d244e45862ec76805a87e0d89e74c660abe745"
+    },
+    {
+      "source": "functions/src_topic.c_topic_filter_validate.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "69660ce4abac8ab15412ecb11d87067214857b7319580851fd8b6760c0823de4"
+    },
+    {
+      "source": "functions/src_topic.c_topic_name_validate.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "d212a7492bb9487c8109b18d0e352a5794aa52c4e842d157113f7163dc15fd6d"
+    },
+    {
+      "source": "functions/src_topic.c_topic_name_validate.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "b54fc2b17072060f13d7e8921f616265e4472005e6d00677be236ae85b405b83"
+    },
+    {
+      "source": "functions/src_topic.c_topic_name_validate.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 3,
+      "sha256": "2aa1bcab4f68548f1bb53f9d72696563ac9db381ce3f90b59a1935cbadeb7a2f"
+    },
+    {
+      "source": "functions/src_topic.c_topic_utf8_validate.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "4b76bcb48fef9806595598f81864e853f0518fa084947a7349a5fdb43a69ba82"
+    },
+    {
+      "source": "functions/src_topic.c_topic_utf8_validate.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 4,
+      "sha256": "c4d3bf0a3a48d3a38f5956707fa8bc706d1c0b08b596de1e55bf95b16c20defd"
+    },
+    {
+      "source": "functions/src_wire.c_wire_declared_body_len.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "20b145e61843fe70be0a400c109f02c1f69d979056477382d1286bce1bba98a7"
+    },
+    {
+      "source": "functions/src_wire.c_wire_declared_body_len.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "effb4fd76629e650e3816e49a7130228d7156032c3e6b1bc2ee6f501281c0e51"
+    },
+    {
+      "source": "functions/src_wire.c_wire_decode_connect.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "1125c4c84f612ed80f3d51f0a0eb3f60ee531eba4396dde195941ad7e2b5c61e"
+    },
+    {
+      "source": "functions/src_wire.c_wire_decode_connect.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 3,
+      "sha256": "793bd0a751e0a5c2c4df87acf3cb8777930f596024b1230cfeab63fab0708ec9"
+    },
+    {
+      "source": "functions/src_wire.c_wire_decode_connect.json#/WIRE_MAPPING",
+      "operation": "remove",
+      "item_count": 9,
+      "sha256": "572b23ee53eb66445238aba38410e3807f3ab3b225f666b8524add039b60e8ad"
+    },
+    {
+      "source": "functions/src_wire.c_wire_decode_connect.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 4,
+      "sha256": "1aed893e73dd3bc89d15f78d1f9623d85e73d788d0c8b4a7092f37899730568c"
+    },
+    {
+      "source": "functions/src_wire.c_wire_decode_empty.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "4699d50015fc507159f13fdd9e8fda4e87611004f2bdcaddd2b8393371ce4840"
+    },
+    {
+      "source": "functions/src_wire.c_wire_decode_empty.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "8eeed6b4a1b6e1f503d20a6af46fc283ccbc1c845260186bff8ae576994867c6"
+    },
+    {
+      "source": "functions/src_wire.c_wire_decode_empty.json#/WIRE_MAPPING",
+      "operation": "remove",
+      "item_count": 4,
+      "sha256": "4ebf4528989f6e5c51446e07ab31b54d34e8e3e84b9a0a86494b9742bd0d1585"
+    },
+    {
+      "source": "functions/src_wire.c_wire_decode_empty.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 4,
+      "sha256": "750e32a014db308ee4abb0e98e711b7e8c69eda79409a4e154203557b6c56516"
+    },
+    {
+      "source": "functions/src_wire.c_wire_decode_header.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "1ca00b39642073bf1b0e24e8f5b83d011607330b6ff2b205b949e6f6dae278a9"
+    },
+    {
+      "source": "functions/src_wire.c_wire_decode_header.json#/WIRE_MAPPING",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "89f619555330ef4146d569c398ca257aa2ff205d7c278f764b51aed9bce678be"
+    },
+    {
+      "source": "functions/src_wire.c_wire_decode_header.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 3,
+      "sha256": "1aa7dfc48f9cfd580a8c3bb326a9c9c77a1c496e8d8d9efa6af9a845332f54ed"
+    },
+    {
+      "source": "functions/src_wire.c_wire_decode_publish.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "de92423c43c290b4047d5ca4fc01bf2e792060307b24171bd40548850271c935"
+    },
+    {
+      "source": "functions/src_wire.c_wire_decode_publish.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 3,
+      "sha256": "b26055697a17e671400851bd578eb7c2ed94861ea30372080086997797089bdc"
+    },
+    {
+      "source": "functions/src_wire.c_wire_decode_publish.json#/WIRE_MAPPING",
+      "operation": "remove",
+      "item_count": 6,
+      "sha256": "ce4cc1dc5f112c17512606a2d4b2457dfdfc43c69ee3a00e3bbc028ed6c39244"
+    },
+    {
+      "source": "functions/src_wire.c_wire_decode_publish.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 5,
+      "sha256": "da53aafb39addad35b7bd4f1647dda1805db23e9397ca91f8fc56f931dd1eacb"
+    },
+    {
+      "source": "functions/src_wire.c_wire_decode_string.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "5b69cf5d4cc630b214cc43d14b76d65ec0bef0eeffeb05ba0cff87ad24d9ac61"
+    },
+    {
+      "source": "functions/src_wire.c_wire_decode_string.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "684d09ec40686df0f888ae032909de0c5179aba8f8b70f9310c9163c69644670"
+    },
+    {
+      "source": "functions/src_wire.c_wire_decode_string.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 5,
+      "sha256": "2f07dd00e124afc6e3d9b24d588d5cdd51b915e1d4929a798d0b0467425d200f"
+    },
+    {
+      "source": "functions/src_wire.c_wire_decode_subscribe.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "030197c42ccf859a6fd832d13e820089f7cefdad710585c81e8affb8f5873e8f"
+    },
+    {
+      "source": "functions/src_wire.c_wire_decode_subscribe.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 3,
+      "sha256": "5fed441747877d93691100c182e6589afe68bfd2030803ffb03bdde469f1ab69"
+    },
+    {
+      "source": "functions/src_wire.c_wire_decode_subscribe.json#/WIRE_MAPPING",
+      "operation": "remove",
+      "item_count": 4,
+      "sha256": "b10bc13ae4843fbd7ae1a4cb4c45751022392ed9620469ad196a29df763b5315"
+    },
+    {
+      "source": "functions/src_wire.c_wire_decode_subscribe.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 4,
+      "sha256": "06677a1f228ff01afab767f736718db49a2c763c4e56363fbe929ca384de8c19"
+    },
+    {
+      "source": "functions/src_wire.c_wire_encode_connack.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "42fad3ce3d0912acdbe51abd5141cc46f04d955c150fbf5b0cb34e14a15502ee"
+    },
+    {
+      "source": "functions/src_wire.c_wire_encode_connack.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "785200666f4bf70295c03d256a448488ffb90972466ed9f2e043f87f8d4acab9"
+    },
+    {
+      "source": "functions/src_wire.c_wire_encode_connack.json#/WIRE_MAPPING",
+      "operation": "remove",
+      "item_count": 4,
+      "sha256": "c27943d20e9adf361155607351c1cf6ba625e02259987e038160287aafdaed46"
+    },
+    {
+      "source": "functions/src_wire.c_wire_encode_connack.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 5,
+      "sha256": "0d9b5aa1a14f6908831881df63bae472582d1872e2b44ba67fe51d9b7dacc737"
+    },
+    {
+      "source": "functions/src_wire.c_wire_encode_pingresp.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "0a0c897bc84fa9f2e1c31c267ad263f30bf20dd186cca4ba1020c05e1b769d21"
+    },
+    {
+      "source": "functions/src_wire.c_wire_encode_pingresp.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "82bcf1801af2f9ba503356b468140a08d59d5bafa47a6bf0ccae47399f4b82e6"
+    },
+    {
+      "source": "functions/src_wire.c_wire_encode_pingresp.json#/WIRE_MAPPING",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "9c4322a8ca49e5c7730e560472e3042d73e595f904b2087091cd8ff38ae644c7"
+    },
+    {
+      "source": "functions/src_wire.c_wire_encode_pingresp.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 4,
+      "sha256": "a66e319117f44be7afa03db69e768dd39558268b6434247ebaf4635205cb6389"
+    },
+    {
+      "source": "functions/src_wire.c_wire_encode_publish.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "97730c377905eb20cebd5647607c27120c2f59baf08ff19e5ad85ac0e847e535"
+    },
+    {
+      "source": "functions/src_wire.c_wire_encode_publish.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 4,
+      "sha256": "c438fcabfa4d03b59af2266e79c77207312f0e4b29a5d96f15a3f1213b6ce47b"
+    },
+    {
+      "source": "functions/src_wire.c_wire_encode_publish.json#/WIRE_MAPPING",
+      "operation": "remove",
+      "item_count": 5,
+      "sha256": "cd5ec093771ebd2d9e8eb7511d0b463d885b0a5664a9d02ff1d9e76ab104045c"
+    },
+    {
+      "source": "functions/src_wire.c_wire_encode_publish.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 5,
+      "sha256": "94daee24d3841c7b85a07ffcc18d75592cfd0c052d2bc630e2b7f8f5c47a13fe"
+    },
+    {
+      "source": "functions/src_wire.c_wire_encode_suback.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "b626bc413ad8f164169459c511f150b190f61befe55b474dfbc206978ea79e5d"
+    },
+    {
+      "source": "functions/src_wire.c_wire_encode_suback.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 3,
+      "sha256": "d8901342ed03e96ac6f7c2528602e836b84ca5399e788a6a7f34e40bbc706edb"
+    },
+    {
+      "source": "functions/src_wire.c_wire_encode_suback.json#/WIRE_MAPPING",
+      "operation": "remove",
+      "item_count": 4,
+      "sha256": "4e8d70b0d9925af4a26ad1c562f8d648c439e355089824c7fa38baaf27755fe0"
+    },
+    {
+      "source": "functions/src_wire.c_wire_encode_suback.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 4,
+      "sha256": "c7db10ee6ad54dafbf597a5b00e2cfe9d9129ae26b5fabdb52ef274f9aa8f2a7"
+    },
+    {
+      "source": "functions/src_wire.c_wire_read_u16.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "0f2ea7292308bb36cbd83ef9b667ca7c70db932345a11fa2784a96587ab8a503"
+    },
+    {
+      "source": "functions/src_wire.c_wire_read_u16.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "966723a9c0af1df44c578212f7427d1062037082712756f4859b2d229eaf8e15"
+    },
+    {
+      "source": "functions/src_wire.c_wire_subscribe_next.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "d0512628e475e0dec60bd4847efa2b1a170d1b942710525ecf25ba37e0085c6f"
+    },
+    {
+      "source": "functions/src_wire.c_wire_subscribe_next.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "e61c70ec8536615c25eed205713ea32faf19ad5078deeb3e0e7e1a9cbe59f2ec"
+    },
+    {
+      "source": "functions/src_wire.c_wire_subscribe_next.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "7561cb4589ab49752be2aafc0ee586ba214aa842a98b1ad5688d9aade453c9f5"
+    },
+    {
+      "source": "functions/src_wire.c_wire_write_remaining_length.json#/TRACE_ID",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "d761001adb1409e81b6a47522ce5e3bd881bc0cf2ed45be74d95ea627e986ca2"
+    },
+    {
+      "source": "functions/src_wire.c_wire_write_remaining_length.json#/CALL_CONTRACTS",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "2b5c99392797108f6350828f4d4b336a89366433e08b3442dc89a8d49627a21e"
+    },
+    {
+      "source": "functions/src_wire.c_wire_write_remaining_length.json#/WIRE_MAPPING",
+      "operation": "remove",
+      "item_count": 1,
+      "sha256": "7b19c5d4e01b96c52aaf47b1c4313b0dc31d059b237ba6cbf3ace19e898e697a"
+    },
+    {
+      "source": "functions/src_wire.c_wire_write_remaining_length.json#/TEST_VECTORS",
+      "operation": "remove",
+      "item_count": 2,
+      "sha256": "088f66b031877122862127731d242b572a12ad44421c8e4a1e03385a6472ac3e"
+    },
+    {
+      "source": "traceability.json",
+      "operation": "remove_artifact"
+    }
+  ],
+  "condition": "generic",
+  "hashes": {
+    "SUMMARY.md": "ef8b6770351333acd42d8ebe27ebdabf4d3a4a74a630b9ae75f12ffae5c7e56e",
+    "abi/src/broker.h": "de6ba26cc20be683faa1c0aed67ee03757cdd397d6d7a7d175ee7f9a5953ff50",
+    "abi/src/buffer.h": "f24f107e757c16a152146b9a705c5dc896810763759540c45dd60cf33d641896",
+    "abi/src/loop.h": "1f84b478f4d1105ac3d219f4021e8de20ec415c4b1eeaca34c9f480c08415353",
+    "abi/src/net.h": "73aa174fa89588e9795ec0948566ff713d45d2d82adb08a70ead8a12cd1a35d2",
+    "abi/src/session.h": "f29466b9f0fd8ed18347673398b3ad75bf868e977948a1bd48d7dca33cc44eaf",
+    "abi/src/topic.h": "81b66962c1637d15897de5994a4ce50dbdab074beaf91fffa5d7ea9ce28252fc",
+    "abi/src/wire.h": "c2f9d2dfdd3fb20d921ea3d2554edadd1e43a61c6cfccf4bfb96acd8c5d41697",
+    "files/src/broker.c.spec": "d29730941fab5d0b90dbf794348c3208bcfe9988949907b6be86335de57e4474",
+    "files/src/buffer.c.spec": "5390732e6fff5d7b0ceba133a4b6bdb9d8d53ae7e180cefac19aa645b311b7d6",
+    "files/src/loop.c.spec": "49591fc5d4a89ffa6a4daa74436f550f7bea3e01d3e1a93c683ebe9d288e12e8",
+    "files/src/main.c.spec": "c920a468912c752e3083a7cf8c3cd4dc83a87b13777ce23ee6d3b549974ea5e3",
+    "files/src/net.c.spec": "631b9335758de44b66a545a09b4b623cc180f2a86585be9da7801ae0e3d6c6b9",
+    "files/src/session.c.spec": "50d403c81b47e206c14b684a4e79280195175848d3ab8a14915217960dc5bb08",
+    "files/src/topic.c.spec": "ba3bb88c2709f2fb44da5f935756bad173e71ec590e9d69936d43c7ab5d0922d",
+    "files/src/wire.c.spec": "bdb6d4489367ecb11b47c4bd41a03340e37b5a78ffa8562c9e298f38c29ea9b3",
+    "functions/src_broker.c_add_session.spec": "9eab60e564de5624b196b7a232224f332da2b1629b26d00a54bce9424a7e86da",
+    "functions/src_broker.c_broker_accept.spec": "52d5f3d57e933cc573a773bd205bb2d98719a811ce9e3b36e67c49241b1fa7e4",
+    "functions/src_broker.c_broker_create.spec": "9323f4660de1862b64d6ff0273a30b8d917b530904c0860cce0d511755d29f43",
+    "functions/src_broker.c_broker_destroy.spec": "1c0c27df59db0b008dd37cefda70798dd794ecab71f866896c36d3390a13e36c",
+    "functions/src_broker.c_broker_process_input.spec": "8e59df5064aaaa5baec94f6eb016a5941d458695afb8970de5d182af35d1e678",
+    "functions/src_broker.c_broker_reap.spec": "39dd71cf0d480572a1cea4748722b01049aca7760c3f95ed8fa07725b358c873",
+    "functions/src_broker.c_broker_session_at.spec": "b95f634184d42d87c80ee3acd2beb9fbc32776d4532e86df32b121d9a0002f31",
+    "functions/src_broker.c_broker_session_count.spec": "27a934b70078e16b2621b5c9468bf362e29a8df63da5203c5cd844cc1c90337d",
+    "functions/src_broker.c_broker_session_eof.spec": "01ce7119dfeab7dad01b0facab5083e2b7b03a4f2c9af7d336eee840584269ee",
+    "functions/src_broker.c_handle_connect.spec": "89776abbd0159e0f00b90bb374d5bd8fa9b761a064ba62275b7a394c9ece01b1",
+    "functions/src_broker.c_handle_disconnect.spec": "df35866d21f2842fbc91b9e41b097220e6282379aed0f3fab9307c1e3a3f0b9d",
+    "functions/src_broker.c_handle_pingreq.spec": "bcbb9d301d56f0fa93c60832ad5c86c836076a3ee98942fdaf6a348cb4918b08",
+    "functions/src_broker.c_handle_publish.spec": "fa6c5ea4c7afff691c2a20dd0fd1d949ce1ce29089e917b8281524540938d52d",
+    "functions/src_broker.c_handle_subscribe.spec": "f23a72afc232052ac6d5b3bc54b1c8506ddcdad72e4a87b26dadd11b3702c262",
+    "functions/src_broker.c_remove_session_at.spec": "c3908af5b506ac915372285e9725589bdcba94a96b05c7a761713d3218af4bed",
+    "functions/src_broker.c_route_publish.spec": "30a4d23b89782c271d9e9becacb973e3a033805de8fa8a651aa60c35a6b39e74",
+    "functions/src_buffer.c_buffer_append.spec": "c75c8d9f89efff73920fd97fdd8a6620c74bf073dc198cfa00f14cf43daf1c3b",
+    "functions/src_buffer.c_buffer_commit.spec": "c89e32bf600d7ebd3f1fc3fb2fb7ec18f66664c35aeee3d33157693d6c9d3a7b",
+    "functions/src_buffer.c_buffer_consume.spec": "5bd3f7993128075510492c2989c8a11e72ce2840ed8d97fb8007500a710b7135",
+    "functions/src_buffer.c_buffer_free.spec": "71f7f75993450479e6f7ffba925926b2fea75c278c4a3f5fd85a09f8bdcee923",
+    "functions/src_buffer.c_buffer_init.spec": "792f51d7e367abe04d7f8c58adb561ae8aeb6f7a9365790f8add5628e8bde24c",
+    "functions/src_buffer.c_buffer_reserve.spec": "8efb10d354d43d95dbe54e2dfce657fd75310b3109b88d3135d7aba1fd06c11e",
+    "functions/src_buffer.c_buffer_tail.spec": "d3b78ef3200a175482ce0469c5101a64016c40191da543bbd98e046f75bca201",
+    "functions/src_loop.c_accept_ready.spec": "0fc98f35e4f6c78f0a3782c8ba2d0d2a08af38b7878465db205fbec8d3b9e574",
+    "functions/src_loop.c_dispatch_event.spec": "b8f5108e879f1061209964d9636ca194bf840172ac3738982bb1d9af9bf75215",
+    "functions/src_loop.c_is_registered.spec": "bff5b14365a70f13685b8ff10bfd3c626cc713e011d6a3eca765427ea1b247da",
+    "functions/src_loop.c_loop_add_listener.spec": "4e47256f393cb96107e336d4b99b46340f522a754834e694c9b2a30b0aeec860",
+    "functions/src_loop.c_loop_create.spec": "44b5eb434866a6959970b2d9d8155ed4041e8ee434079ee3f373dd267fe8f96c",
+    "functions/src_loop.c_loop_destroy.spec": "6c2161fed333669fc75ca008a7f2cbd72cf646a4362ca6430cce6fdc880a0779",
+    "functions/src_loop.c_loop_run.spec": "acdc4b80c9a0c28f9c4f850eb171db1913efa9b4a469b444415937409def6925",
+    "functions/src_loop.c_loop_set_stop_flag.spec": "f906e95f886158f192a93a3d86ed201c469940f1ee65d992c994b839edb79f69",
+    "functions/src_loop.c_loop_stop.spec": "24a8e5323ce61bacf96b60406e138aa9ffc85019598bd21cfd04c20fc4cb2095",
+    "functions/src_loop.c_mask_sync.spec": "7fde9ed4b7a38db5866a9486f6cd3e320626a7b223da4eec7bc2e7f2fdfa0208",
+    "functions/src_loop.c_pump_read.spec": "43f11fd5fbc17bf805099a4e93ad4082ead5b9e45200c968052216209f202693",
+    "functions/src_loop.c_pump_write.spec": "2658d0a955a336697234b36f3cf959bff2c40f4ff2835e183f7fd9a6f03aa1e3",
+    "functions/src_main.c_main.spec": "eea3cfa759189065ed91de8c9be7b4cf7d1e39004ab0f4e373313ed7f825c0b6",
+    "functions/src_main.c_on_signal.spec": "458a2c92e1c4ac2ea1eb30d8a221f48c603667d5cd857837d6e25aeab2038942",
+    "functions/src_net.c_net_accept.spec": "2ddac26e14cd938d419e9d4095272446a031c69dc73e256f3e60655044e19626",
+    "functions/src_net.c_net_close_fd.spec": "bfbb8fbc29fef30db3196002d1ee95786a5fbd3a4b4439919b2fe44871725e29",
+    "functions/src_net.c_net_listen.spec": "2f88b24d94f4c750b14e8231f25b464de99d3a04e57668e4eae2d54b240bfd10",
+    "functions/src_net.c_net_parse_port.spec": "2e6e0d5075408bb4127df53805d57e0122ec7277f0206976b8095af8bb25beb4",
+    "functions/src_net.c_net_read_some.spec": "fbe02edd27d4deba8116b5a29dadefd257a740ff87319eb6c96c5dc2e2f8c212",
+    "functions/src_net.c_net_write_some.spec": "b74464c99894b40add16930c2ba1ccc202a73b9fecda99cce879e768b511d0e1",
+    "functions/src_session.c_free_subscriptions.spec": "d8f3dc24f372c005782e53267711bcd208295ae4749db4962105669a104f76ca",
+    "functions/src_session.c_release_fd.spec": "770ad54a47080aa30b3ec705559c9d88df96efe7e7cd0d6607789d72b940fea1",
+    "functions/src_session.c_session_add_subscription.spec": "66ee0d938176bcf91d34a75579309ce14e62c4dbe0448a17bae96cbdaf47f588",
+    "functions/src_session.c_session_client_id.spec": "36239621ab0e4c2c2a78303963e6117f5ebf165cc5a0b1c5bf10bb42468e24f6",
+    "functions/src_session.c_session_close_after_flush.spec": "cdffa17fcd515ab05bc53fc76aef82e92e19df2788dc865f44f786acaa728a30",
+    "functions/src_session.c_session_close_immediately.spec": "fc360d902ef5dac07a8f88bb3fb31976937ecc1a0605595942c9538197d027fd",
+    "functions/src_session.c_session_create.spec": "1f976957ee5483bb4d0e18df7cafe66c067373de1d86130316f888f17af2faa3",
+    "functions/src_session.c_session_destroy.spec": "df3b49399b7cf20a094878ce9ff8700a9f86111b30bad805844b844c2499b94b",
+    "functions/src_session.c_session_enqueue.spec": "9a85bb8fe6b4079f622fcea141b0b66c5e786bc2ec102e29b33c430c0e6b14df",
+    "functions/src_session.c_session_fd.spec": "bd423fbc25d7e7a919f0ef382360cef6c2d2006e4c399b4a4c8e6c10e6fb337a",
+    "functions/src_session.c_session_input.spec": "9f394850fe603f754dfcafbfc846c96abf4753b8b19d2717d2c23cbba4cbede3",
+    "functions/src_session.c_session_mark_ready.spec": "12ff845f2093a11a29e3a795be3bdcf3ac1e98f2a2319414655d0e22e57233c1",
+    "functions/src_session.c_session_matches_topic.spec": "bfba8276cb6f4d7fb34e9e0b7f72261c0cc1a3801a0f77729a8039ce75a7bc3b",
+    "functions/src_session.c_session_output.spec": "8c00d64cd8f0c5374bd82df8712fe7c43f3d42f1500eb24f2c116e4ea57a9439",
+    "functions/src_session.c_session_set_client_id.spec": "815dba939fedbce457ef674a1cf23e1fca6e134a5d0d96fe5c0c6a38942470eb",
+    "functions/src_session.c_session_state.spec": "fbf212625af033d7188e1206407dc2e8c42138802a6e4cc66a1b07e92972cb69",
+    "functions/src_session.c_session_subscription_at.spec": "cb129598f9a7ad2c276f63f18c342f13c5582c7ac47a0ce3af365d96d94abadb",
+    "functions/src_session.c_session_subscription_count.spec": "35f7df1b1b5fabbdec2ab1785ce120f55948b8e5dbeb9c88dfc07b862dd100ca",
+    "functions/src_topic.c_topic_filter_matches.spec": "76b372b67697fc23d600099083b120fba4e972af3c85413f4dfd44a19e173980",
+    "functions/src_topic.c_topic_filter_validate.spec": "be64aa2ca07ae45009fb25773c8f9e948ce5d20b1b5b24d033fbf25e6c74fccd",
+    "functions/src_topic.c_topic_name_validate.spec": "fb61b8d17beae158674f377f7326e6f69b35183e8c71e8c99b4091d7069746c8",
+    "functions/src_topic.c_topic_utf8_validate.spec": "1c0415af1cb14a2d89b898795ed98202bdca9cef595f1f3a497d11ded56528b6",
+    "functions/src_wire.c_wire_declared_body_len.spec": "07df91d4bb50e8b56b38ebfdd522189d5d0c8286eea4a734bf80ddb6bc1825bb",
+    "functions/src_wire.c_wire_decode_connect.spec": "44091e5912663cc75eb8e04c63cc243e0a5d88521f5556ff50466dc3b4d70fb5",
+    "functions/src_wire.c_wire_decode_empty.spec": "3f58e6cd80d813ba4ad47d729b59f2cf3281597532a0ef10c391a114cae252bd",
+    "functions/src_wire.c_wire_decode_header.spec": "61df5a8bbb08a7cc245d53c474ea01d71db140f49cdc58e63118c34b1b9e3ced",
+    "functions/src_wire.c_wire_decode_publish.spec": "27b953af113abbfa986834d8f23217fe4c837d3aecd62988764751e893ba60ff",
+    "functions/src_wire.c_wire_decode_string.spec": "8a42d1e7b10c1cd4d0dc38e2f7e0a90f2f8356a0ced2e660b205ab44d9487ac5",
+    "functions/src_wire.c_wire_decode_subscribe.spec": "2d40e30e6a429bf7dbcae72ac82b4232d9f331613173c1bf2ac37a358a208cdf",
+    "functions/src_wire.c_wire_encode_connack.spec": "362baea27a4d68c0a29fb46f55513b4b94f4f1fd7f5d4de91869760a0a682261",
+    "functions/src_wire.c_wire_encode_pingresp.spec": "da5d0cf9c83ff28b7f190d24c7444683d41919d3dc4216287b07cdcfb6951da8",
+    "functions/src_wire.c_wire_encode_publish.spec": "b3c454d4856004b6d92245d03f6ff0b4a1e7c550ba333b6ccd6ead82a968ae49",
+    "functions/src_wire.c_wire_encode_suback.spec": "93b3404352ad1eae6fb8f4fa2fb66b74c97c34089e0d875a727bfae359f98e7b",
+    "functions/src_wire.c_wire_read_u16.spec": "b7baafd11e7eb43bcd3a30dc9ed0d8740ac0f024154e7d5f4319e535467f64f1",
+    "functions/src_wire.c_wire_subscribe_next.spec": "63566b09dabf97bf03beb4913e36e25945f1cb2089ad75b8e29d07c78ecc3c02",
+    "functions/src_wire.c_wire_write_remaining_length.spec": "7bd536b3fe37711095aa8659f774e5fa5b2910c8bf4f17680546b6622bf793ae",
+    "project.spec": "a9f7ed4eb908d20d22325cc732c9956a8dc0e05a0f22365111c47f35ffd5616b",
+    "scope.md": "b73e1f81b76382743570c491c451f118f1e0c88a6e65a359f8f5601869e4f969"
+  },
+  "planned_sources": [
+    "src/broker.c",
+    "src/buffer.c",
+    "src/loop.c",
+    "src/main.c",
+    "src/net.c",
+    "src/session.c",
+    "src/topic.c",
+    "src/wire.c"
+  ],
+  "headers": [
+    {
+      "path": "src/broker.h",
+      "artifact": "abi/src/broker.h"
+    },
+    {
+      "path": "src/buffer.h",
+      "artifact": "abi/src/buffer.h"
+    },
+    {
+      "path": "src/loop.h",
+      "artifact": "abi/src/loop.h"
+    },
+    {
+      "path": "src/net.h",
+      "artifact": "abi/src/net.h"
+    },
+    {
+      "path": "src/session.h",
+      "artifact": "abi/src/session.h"
+    },
+    {
+      "path": "src/topic.h",
+      "artifact": "abi/src/topic.h"
+    },
+    {
+      "path": "src/wire.h",
+      "artifact": "abi/src/wire.h"
+    }
+  ],
+  "bytes": 373975
+}

@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "protocol": "MQTT",
+  "version": "3.1.1",
+  "role": "Server (broker) accepting multiple concurrent client network connections",
+  "language": "C99",
+  "runtime": "Linux (POSIX sockets, GCC, GNU make); TCP transport",
+  "requirements": [
+    {"id": "R01", "description": "Linux C99 TCP broker, independent multi-file project, concurrent clients, ./mqtt_broker <port>, clean make build and accurate README.", "source": {"file": "REQUIREMENTS.md", "line_start": 3, "line_end": 3}},
+    {"id": "R02", "description": "Accept anonymous CONNECT with nonempty ASCII client ID, Clean Session=1 and no Will; return the exact successful CONNACK. CONNECT must be first; duplicate CONNECT closes that client.", "source": {"file": "REQUIREMENTS.md", "line_start": 4, "line_end": 4}},
+    {"id": "R03", "description": "Accept SUBSCRIBE with one or more filters and requested QoS 0; echo its nonzero Packet Identifier in SUBACK, with one ordered QoS 0 result per filter.", "source": {"file": "REQUIREMENTS.md", "line_start": 5, "line_end": 5}},
+    {"id": "R04", "description": "Route QoS 0 PUBLISH from a connected client to matching connected subscribers, preserving topic and payload and correct wire framing.", "source": {"file": "REQUIREMENTS.md", "line_start": 6, "line_end": 6}},
+    {"id": "R05", "description": "Match case-sensitive exact filters and MQTT + and # wildcards, including empty levels and # matching zero levels; respect topic level boundaries.", "source": {"file": "REQUIREMENTS.md", "line_start": 7, "line_end": 7}},
+    {"id": "R06", "description": "Preserve arbitrary binary payloads, including NUL bytes and empty payloads; do not treat payload as a C string.", "source": {"file": "REQUIREMENTS.md", "line_start": 8, "line_end": 8}},
+    {"id": "R07", "description": "Handle partial TCP frames and multiple coalesced frames in order. Decode outcomes distinguish incomplete, complete and invalid input and account for bytes consumed.", "source": {"file": "REQUIREMENTS.md", "line_start": 9, "line_end": 9}},
+    {"id": "R08", "description": "Process all complete frames already received before handling TCP EOF, including a final PUBLISH immediately followed by shutdown of the sender's write side.", "source": {"file": "REQUIREMENTS.md", "line_start": 10, "line_end": 10}},
+    {"id": "R09", "description": "Respond to a valid PINGREQ with exact PINGRESP; subsequent business traffic continues. Keepalive timeout scheduling is excluded.", "source": {"file": "REQUIREMENTS.md", "line_start": 11, "line_end": 11}},
+    {"id": "R10", "description": "Handle DISCONNECT and TCP disconnect by removing subscriptions and freeing connection state without affecting other clients; new connections never inherit stale subscriptions.", "source": {"file": "REQUIREMENTS.md", "line_start": 12, "line_end": 12}},
+    {"id": "R11", "description": "Validate lengths, required fixed-header flags, packet-specific fields and connection state for in-scope packets. Malformed input closes only the offending connection; the broker remains available.", "source": {"file": "REQUIREMENTS.md", "line_start": 13, "line_end": 13}},
+    {"id": "R12", "description": "Specify and implement ownership of input slices, copied subscriptions, output buffers and connection objects; free all resources on normal SIGINT/SIGTERM termination; no ASan, UBSan or leak diagnostics.", "source": {"file": "REQUIREMENTS.md", "line_start": 14, "line_end": 14}}
+  ],
+  "required_capabilities": [
+    "TCP listener accepting concurrent client connections on a port given on the command line",
+    "MQTT 3.1.1 fixed-header parsing with variable-length Remaining Length decoding and stream framing that handles partial and coalesced frames",
+    "CONNECT handling: anonymous connection, nonempty ASCII client ID, Clean Session=1, no Will, exact successful CONNACK, CONNECT-first enforcement, duplicate CONNECT closes that client",
+    "SUBSCRIBE handling with one or more Topic Filters and requested QoS 0, producing one ordered QoS 0 SUBACK return code per filter with the echoed Packet Identifier",
+    "Topic Filter matching: case-sensitive exact levels, single-level '+' and multi-level '#' wildcards, empty levels and '/' level boundaries",
+    "QoS 0 PUBLISH routing to all connected subscribers with matching subscriptions, preserving topic and binary payload bytes and re-framing correctly",
+    "PINGREQ/PINGRESP exchange",
+    "DISCONNECT and TCP-disconnect cleanup: removing that connection's subscriptions and state without affecting other clients",
+    "Input validation for lengths, fixed-header flags, packet-specific fields and connection state; malformed input closes only the offending connection while the broker stays available",
+    "Deterministic resource ownership and release of input slices, subscriptions, output buffers and connection objects, including shutdown on SIGINT/SIGTERM"
+  ],
+  "excluded_features": [
+    "QoS 1 and QoS 2 delivery (PUBACK, PUBREC, PUBREL, PUBCOMP flows)",
+    "Retained messages",
+    "Will messages",
+    "Persistent sessions / CleanSession=0 session resumption",
+    "UNSUBSCRIBE / UNSUBACK",
+    "Authentication (User Name / Password)",
+    "TLS transport",
+    "Idle keepalive timeout scheduling",
+    "Complete MQTT compliance (only the subset required by REQUIREMENTS.md)"
+  ],
+  "runtime_contract": {
+    "binary_name": "./mqtt_broker",
+    "argv_contract": "./mqtt_broker <port>"
+  },
+  "engineering_defaults": [
+    {"decision": "Startup contract is the project-relative executable ./mqtt_broker invoked as ./mqtt_broker <port>, where <port> is the TCP listening port passed as the first positional argument.", "source": "TASK.md line 8"},
+    {"decision": "Build with GCC and make; multi-file C99 project layout and file names are chosen by the implementer.", "source": "TASK.md lines 3 and 8"},
+    {"decision": "Acceptance clients always use Clean Session=1, no Will, no authentication, QoS 0 and RETAIN=0, so only that combination must be accepted successfully.", "source": "REQUIREMENTS.md lines 16-17"},
+    {"decision": "PING exchange is implemented and idle keepalive timeout scheduling is not implemented.", "source": "REQUIREMENTS.md line 19"},
+    {"decision": "CONNECT is treated as anonymous; no user name or password validation is performed because authentication is excluded.", "source": "REQUIREMENTS.md line 18"},
+    {"decision": "Resources are released on normal SIGINT/SIGTERM termination; no sanitizer or leak-diagnostic tooling is required.", "source": "REQUIREMENTS.md line 14"},
+    {"decision": "A client connection that commits a malformed in-scope packet is closed individually while the listener and all other connections remain operational.", "source": "REQUIREMENTS.md line 13"}
+  ]
+}
