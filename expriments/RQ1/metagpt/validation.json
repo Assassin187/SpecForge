@@ -1,0 +1,24 @@
+{
+  "passed": true,
+  "real_llm_requests": 0,
+  "python": "3.11.16 (main, Aug 27 2026, 14:44:21) [GCC 14.3.0]",
+  "upstream_commit": "df9bc1858f7d396a7eef5d9718cab7587b63fd62",
+  "specforge_model": {
+    "model": "deepseek-flash",
+    "base_url": "https://api.deepseek.com",
+    "key_env": "DS_API",
+    "reasoning_effort": "high",
+    "max_tokens": 65536,
+    "thinking": "enabled",
+    "stream": false
+  },
+  "roles_and_actions_checked": [
+    "ProductManager",
+    "Architect",
+    "ProjectManager",
+    "Engineer",
+    "QaEngineer"
+  ],
+  "credentials_source": "DS_API",
+  "mermaid_engine": "none"
+}

@@ -1,0 +1,5 @@
+# run.py supplies ModelConfig and DS_API in memory before creating any LLM.
+# This bootstrap configuration contains no credential.
+llm: {}
+mermaid:
+  engine: none

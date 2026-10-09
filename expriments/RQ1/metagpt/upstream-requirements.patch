@@ -1,0 +1,13 @@
+diff --git a/requirements.txt b/requirements.txt
+index 51b3d78..0f3d544 100644
+--- a/requirements.txt
++++ b/requirements.txt
+@@ -9,7 +9,7 @@ fire==0.4.0
+ typer==0.9.0
+ # godot==0.1.1
+ # google_api_python_client==2.93.0  # Used by search_engine.py
+-lancedb==0.4.0
++lancedb==0.14.0
+ loguru==0.6.0
+ meilisearch==0.21.0
+ numpy~=1.26.4

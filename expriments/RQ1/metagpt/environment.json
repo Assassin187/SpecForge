@@ -1,0 +1,28 @@
+{
+  "configured_date": "2026-10-08",
+  "python": "3.11.16 (main, Aug 27 2026, 14:44:21) [GCC 14.3.0]",
+  "python_executable": "/home/ljf/SpecForge/expriments/RQ1/metagpt/.venv/bin/python",
+  "virtualenv_inherits_system_packages": false,
+  "upstream_url": "https://github.com/FoundationAgents/MetaGPT",
+  "upstream_tag": "v0.8.2",
+  "upstream_commit": "df9bc1858f7d396a7eef5d9718cab7587b63fd62",
+  "upstream_modified_files": [
+    "requirements.txt"
+  ],
+  "package_metadata_version": "0.8.1",
+  "specforge_commit": "c1ff3fcefc10b0a5b52d545181235f7fee3127f1",
+  "specforge_model_source": "specforge/llm.py",
+  "specforge_model_source_sha256": "54374bab93946d39d861e560222ab6ded6a7295295ff326b61cd66c38ead9aad",
+  "requirements_lock_sha256": "7e390561d29784bf458bcb1aad09e55a17c4020ea73bbaeebc7ec1e732dff57a",
+  "upstream_patch_sha256": "9e97212a124e53162aabac482ab90ec1b51dc5a96609cfc458a04627c1fdd62e",
+  "dependency_check": "python -m pip check: passed",
+  "cli_help_check": "passed",
+  "offline_native_writecode_sdk_and_cost_check": "passed; MockTransport, zero real LLM requests",
+  "real_smoke_report": "/home/ljf/SpecForge/expriments/RQ1/metagpt/smoke/20261008T032112920739Z/report.json",
+  "real_llm_requests": 1,
+  "real_smoke_total_tokens": 127,
+  "real_smoke_estimated_usd_upper_bound": 8.85e-05,
+  "native_c99_compile_and_behavior_check": "passed; 3 cases",
+  "launcher_sha256": "2c1ebd4500f6ba17c46037fb22ba34b9c67588c30c0e54a0b3a555f584092b0d",
+  "offline_smoke_action_sdk_check": "passed; MockTransport, 1024 token cap, zero SDK retries, zero real LLM requests"
+}

@@ -1,0 +1,8 @@
+.venv/
+MetaGPT/
+metagpt/
+logs/
+workspace/
+tmp/
+smoke/
+__pycache__/
