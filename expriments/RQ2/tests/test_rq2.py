@@ -579,60 +579,65 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(set(summary["conditions"]), set(state["conditions"]))
         self.assertEqual({c["baseline"] for c in summary["contrasts"]}, {"direct", "generic"})
 
-    def test_coap_dgf_source_cost_inputs_and_initial_final_evaluations(self):
-        pilot = Path(self.temp.name) / "coap_dgf"
-        with patch.object(rq2, "preflight", return_value={"openai": "1.97.0", "jsonschema": "4.24.0"}):
-            state = rq2.prepare_experiment(pilot, protocol="coap", repetitions=1,
-                                           conditions=("direct", "generic", "full"))
-        profile = rq2.PROTOCOLS["coap"]
-        self.assertEqual(state["protocol"], "coap")
-        self.assertEqual(state["source"], str(profile["source_run"] / "specs/r001"))
-        self.assertEqual(state["runtime_contract"], profile["contract"])
-        self.assertEqual(state["expected_scenarios"], list(rq2.COAP_TEST_IDS))
-        self.assertEqual(len(state["expected_scenarios"]), 10)
-        self.assertEqual(len(state["trials"]), 3)
-        self.assertEqual(digest(pilot / "control/evaluator/coap_check.py"),
-                         digest(rq2.ROOT / "evaluation/coap_check.py"))
-        self.assertFalse((pilot / "control/evaluator/mqtt_check.py").exists())
-        original = profile["source_run"] / "inputs"
-        direct = pilot / "views/direct/inputs"
-        self.assertEqual((direct / "TASK.md").read_text(),
-                         (original / "TASK.md").read_text().replace(rq2.PLANNING_SENTENCE, "", 1))
-        for name in ("REQUIREMENTS.md", "protocol.txt"):
-            self.assertEqual(digest(direct / name), digest(original / name))
-        history = read_json(pilot / "control/historical_cost.json")
-        self.assertEqual([j["name"] for j in history["jobs"]], list(rq2.HISTORY_JOBS[:4]))
-        self.assertEqual(history["excluded_jobs"], ["05_code"])
-        self.assertEqual(history["coding_feedback"]["total_tokens"], 0)
-        self.assertEqual(history["spec_repair_and_review"]["total_tokens"], 0)
-        self.assertEqual(history["source_formation"]["total_tokens"],
-                         sum(j["usage"]["input_tokens"] + j["usage"]["output_tokens"] for j in history["jobs"]))
-        with patch.dict(os.environ, {"DS_API": "fixture-not-a-key"}), patch.object(rq2, "_run_trial", side_effect=self.mock_generation):
-            state = rq2.generate_experiment(pilot, workers=3)
-        with patch.object(rq2, "evaluate_project", side_effect=lambda *args: successful_evaluation(rq2.COAP_TEST_IDS)) as evaluator:
-            state = rq2.evaluate_experiment(pilot)
-        self.assertEqual(evaluator.call_count, 6)
-        for call in evaluator.call_args_list:
-            self.assertEqual(call.args[2], pilot / "control/evaluator/coap_check.py")
-        self.assertTrue(all(t["initial_evaluation"]["passed"] and t["evaluation"]["passed"] for t in state["trials"]))
-        summarize_experiment(pilot, state)
-        summary = read_json(pilot / "summary/results.json")
-        self.assertEqual(summary["protocol"], "coap")
-        with (pilot / "summary/scenarios.csv").open() as handle:
-            rows = list(csv.DictReader(handle))
-        self.assertEqual(len(rows), 3 * 2 * 2 * 10)
-        self.assertEqual({r["scenario"] for r in rows}, set(rq2.COAP_TEST_IDS))
-        report = (pilot / "summary/REPORT.md").read_text()
-        for phrase in ("CoAP RQ2", "out of 10", "10/10 (passed)", "Historical r001 formation", "without historical coding feedback"):
-            self.assertIn(phrase, report)
-        for phrase in ("MQTT", "16/16", "r002"):
-            self.assertNotIn(phrase, report)
+    def test_unrevised_protocol_dgf_source_cost_inputs_and_initial_final_evaluations(self):
+        for protocol, label, scenario_count in (("coap", "CoAP", 10), ("smtp", "SMTP", 13)):
+            with self.subTest(protocol=protocol):
+                pilot = Path(self.temp.name) / f"{protocol}_dgf"
+                with patch.object(rq2, "preflight", return_value={"openai": "1.97.0", "jsonschema": "4.24.0"}):
+                    state = rq2.prepare_experiment(pilot, protocol=protocol, repetitions=1,
+                                                   conditions=("direct", "generic", "full"))
+                profile = rq2.PROTOCOLS[protocol]
+                self.assertEqual(state["protocol"], protocol)
+                self.assertEqual(state["source"], str(profile["source_run"] / "specs/r001"))
+                self.assertEqual(state["runtime_contract"], profile["contract"])
+                self.assertEqual(read_json(pilot / "control/runtime/bundle.json")["runtime_contract"], profile["contract"])
+                self.assertEqual(state["expected_scenarios"], list(profile["test_ids"]))
+                self.assertEqual(len(state["expected_scenarios"]), scenario_count)
+                self.assertEqual(len(state["trials"]), 3)
+                self.assertEqual(digest(pilot / "control/evaluator" / profile["evaluator"]),
+                                 digest(rq2.ROOT / "evaluation" / profile["evaluator"]))
+                self.assertFalse((pilot / "control/evaluator/mqtt_check.py").exists())
+                original = profile["source_run"] / "inputs"
+                direct = pilot / "views/direct/inputs"
+                self.assertEqual((direct / "TASK.md").read_text(),
+                                 (original / "TASK.md").read_text().replace(rq2.PLANNING_SENTENCE, "", 1))
+                for name in ("REQUIREMENTS.md", "protocol.txt"):
+                    self.assertEqual(digest(direct / name), digest(original / name))
+                history = read_json(pilot / "control/historical_cost.json")
+                self.assertEqual([j["name"] for j in history["jobs"]], list(rq2.HISTORY_JOBS[:4]))
+                self.assertEqual(history["excluded_jobs"], ["05_code"])
+                self.assertEqual(history["coding_feedback"]["total_tokens"], 0)
+                self.assertEqual(history["spec_repair_and_review"]["total_tokens"], 0)
+                self.assertEqual(history["source_formation"]["total_tokens"],
+                                 sum(j["usage"]["input_tokens"] + j["usage"]["output_tokens"] for j in history["jobs"]))
+                with patch.dict(os.environ, {"DS_API": "fixture-not-a-key"}), patch.object(rq2, "_run_trial", side_effect=self.mock_generation):
+                    state = rq2.generate_experiment(pilot, workers=3)
+                with patch.object(rq2, "evaluate_project", side_effect=lambda *args: successful_evaluation(profile["test_ids"])) as evaluator:
+                    state = rq2.evaluate_experiment(pilot)
+                self.assertEqual(evaluator.call_count, 6)
+                for call in evaluator.call_args_list:
+                    self.assertEqual(call.args[2], pilot / "control/evaluator" / profile["evaluator"])
+                self.assertTrue(all(t["initial_evaluation"]["passed"] and t["evaluation"]["passed"] for t in state["trials"]))
+                summarize_experiment(pilot, state)
+                summary = read_json(pilot / "summary/results.json")
+                self.assertEqual(summary["protocol"], protocol)
+                with (pilot / "summary/scenarios.csv").open() as handle:
+                    rows = list(csv.DictReader(handle))
+                self.assertEqual(len(rows), 3 * 2 * 2 * scenario_count)
+                self.assertEqual({r["scenario"] for r in rows}, set(profile["test_ids"]))
+                report = (pilot / "summary/REPORT.md").read_text()
+                for phrase in (f"{label} RQ2", f"out of {scenario_count}", f"{scenario_count}/{scenario_count} (passed)", "Historical r001 formation", "without historical coding feedback"):
+                    self.assertIn(phrase, report)
+                for phrase in ("MQTT", "16/16", "r002"):
+                    self.assertNotIn(phrase, report)
 
-    def test_coap_evaluation_rejects_mqtt_scenarios(self):
-        report = rq2.normalize_evaluation(successful_evaluation(), list(rq2.COAP_TEST_IDS))
-        self.assertFalse(report["passed"])
-        self.assertTrue(all(not p["complete"] for p in report["phases"].values()))
-        self.assertTrue(all(s["status"] == "not_executed" for p in report["phases"].values() for s in p["scenarios"]))
+    def test_other_protocol_evaluations_reject_mqtt_scenarios(self):
+        for protocol in ("coap", "smtp"):
+            with self.subTest(protocol=protocol):
+                report = rq2.normalize_evaluation(successful_evaluation(), list(rq2.PROTOCOLS[protocol]["test_ids"]))
+                self.assertFalse(report["passed"])
+                self.assertTrue(all(not p["complete"] for p in report["phases"].values()))
+                self.assertTrue(all(s["status"] == "not_executed" for p in report["phases"].values() for s in p["scenarios"]))
 
     def test_initial_runtime_blocks_execution_and_source_overwrite(self):
         project = Path(self.temp.name) / "work"

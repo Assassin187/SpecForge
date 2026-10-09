@@ -14,7 +14,7 @@ from pathlib import Path
 
 from .agent import run_agent
 from .documents import ROOT, check_facts, digest, hashes, prepare, read_json, save_json
-from .llm import LLM, ModelConfig, total_usage
+from .llm import LLM, MODEL_CONFIGS, ModelConfig, total_usage
 from .specs import delivery_checks, project_path, publish, scaffold, validate
 from .tools import ToolRuntime, bounded_output
 
@@ -52,7 +52,9 @@ def project_hashes(project: Path) -> dict:
     return selected
 
 
-def verify_project(project: Path, reports: Path, logs: Path, *, bundle: Path | None = None) -> dict:
+def verify_project(project: Path, reports: Path, logs: Path, *, bundle: Path | None = None,
+                   consistency: dict | None = None, runtime_contract: dict | None = None,
+                   readonly_headers: list[Path] | None = None) -> dict:
     """Generic development gate; no independent protocol evaluator is visible."""
     project = project.resolve()
     reports.mkdir(parents=True, exist_ok=True)
@@ -60,14 +62,17 @@ def verify_project(project: Path, reports: Path, logs: Path, *, bundle: Path | N
     destination = reports / f"verify_{stamp:03d}"
     destination.mkdir()
     signature = project_hashes(project)
-    consistency = delivery_checks(project, bundle)
-    errors = consistency["errors"]
-    readonly = []
-    binary = None
+    supplied_consistency = consistency is not None
+    consistency = delivery_checks(project, bundle) if consistency is None else consistency
+    errors = list(consistency["errors"]) if supplied_consistency else consistency["errors"]
+    readonly = list(readonly_headers or [])
+    binary = runtime_contract["binary_name"] if runtime_contract else None
     if bundle:
         manifest = read_json(bundle / "bundle.json")
         readonly = [project / h["path"] for h in manifest["headers"]]
         binary = manifest["runtime_contract"]["binary_name"]
+    if not bundle and binary and not project_path(binary):
+        raise ValueError("Runtime binary must be a concrete project-relative path")
     report = {"passed": False, "project_hashes": signature, "kind": "development",
               "consistency": consistency, "errors": errors, "builds": {}, "phases": {}, "created_at": now()}
     # Delivery consistency remains mandatory, but must not hide build/test
@@ -132,9 +137,10 @@ class Pipeline:
         save_json(self.run / "run.json", self.state)
 
     @classmethod
-    def new(cls, run: Path, *, spec_only: bool = False, llm: LLM | None = None):
+    def new(cls, run: Path, *, spec_only: bool = False, model: str = "deepseek-flash", llm: LLM | None = None):
         if run.exists():
             raise ValueError("Output must be a new run directory")
+        config = llm.config if llm is not None else MODEL_CONFIGS[model]
         run.mkdir(parents=True)
         for name in ("inputs", "documents", "facts", "design_work", "specs", "project", "snapshots", "reports", "logs"):
             (run / name).mkdir()
@@ -144,7 +150,7 @@ class Pipeline:
             flag = "-v" if name == "pdftotext" else "--version"
             output = subprocess.run([name, flag], capture_output=True, text=True, timeout=10)
             versions[name] = {"path": shutil.which(name), "version": (output.stdout + output.stderr).splitlines()[0]}
-        state = {"schema_version": 2, "created_at": now(), "model": ModelConfig().record(), "versions": versions,
+        state = {"schema_version": 2, "created_at": now(), "model": config.record(), "versions": versions,
                  "framework_hashes": framework_hashes(), "stages": {s: {"status": "pending"} for s in STAGES},
                  "current_stage": "prepare", "spec_revision": 1, "implementation_repairs": 0, "spec_repairs": 0,
                  "fresh": not spec_only, "spec_only": spec_only, "resumed": False, "manual_edits": False,
@@ -155,7 +161,7 @@ class Pipeline:
 
     def model(self):
         if self.llm is None:
-            self.llm = LLM()
+            self.llm = LLM(ModelConfig.from_record(self.state["model"]))
         return self.llm
 
     def stage(self, name: str, operation):

@@ -3,10 +3,11 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from specforge.agent import run_agent
 from specforge.documents import ROOT, read_json
-from specforge.llm import LLM, total_usage
+from specforge.llm import LLM, MODEL_CONFIGS, ModelConfig, total_usage
 from specforge.tools import ToolRuntime
 
 
@@ -56,6 +57,52 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(report["usage"]["output_tokens"], 50)
         self.assertEqual(report["usage"]["reasoning_tokens"], 10)
         self.assertEqual(report["usage"]["cache_hit_tokens"], 160)
+
+    def test_default_deepseek_request_and_frozen_record(self):
+        client = FakeClient([response(finish="stop")])
+        model = LLM(client=client)
+        model.complete([{"role": "user", "content": "test"}], [])
+        self.assertEqual(client.requests[0]["model"], "deepseek-flash")
+        self.assertEqual(client.requests[0]["reasoning_effort"], "high")
+        self.assertEqual(client.requests[0]["max_tokens"], 65536)
+        self.assertFalse(client.requests[0]["stream"])
+        self.assertEqual(client.requests[0]["extra_body"], {"thinking": {"type": "enabled"}})
+        self.assertEqual(model.config.record(), {"model": "deepseek-flash", "base_url": "https://api.deepseek.com",
+                                               "key_env": "DS_API", "reasoning_effort": "high", "max_tokens": 65536,
+                                               "thinking": "enabled", "stream": False})
+
+    def test_qwen_native_tools_reasoning_and_cached_usage(self):
+        replies = [response([call("write_file", {"path": "/work/qwen.txt", "content": "ok"})]),
+                   response([call("check", {})])]
+        for reply in replies:
+            usage = reply["usage"]
+            usage.pop("prompt_cache_hit_tokens")
+            usage.pop("prompt_cache_miss_tokens")
+            usage["prompt_tokens_details"] = {"cached_tokens": 80}
+        client = FakeClient(replies)
+        self.runtime.check_callback = lambda: {"passed": (self.runtime.work / "qwen.txt").is_file()}
+        config = MODEL_CONFIGS["qwen3.8-flash"]
+        logs = self.root / "qwen_api"
+        report = run_agent(LLM(config, client=client), self.runtime, "role", "task", 4, logs)
+        self.assertTrue(report["passed"])
+        self.assertEqual((self.runtime.work / "qwen.txt").read_text(), "ok")
+        self.assertEqual(client.requests[0]["model"], "qwen3.8-flash")
+        self.assertEqual(client.requests[0]["extra_body"], {"enable_thinking": True})
+        self.assertEqual(client.requests[1]["messages"][2]["reasoning_content"], "thought")
+        self.assertEqual(report["usage"]["cache_hit_tokens"], 160)
+        self.assertEqual(report["usage"]["cache_miss_tokens"], 40)
+        self.assertEqual(report["usage"]["reasoning_tokens"], 10)
+        self.assertEqual(read_json(logs / "request_001.json")["model_config"], config.record())
+        self.assertEqual(ModelConfig.from_record(config.record()), config)
+
+    def test_qwen_client_uses_ali_key_and_endpoint(self):
+        with patch.dict("os.environ", {"ALI_API": "fixture-key"}, clear=True), patch("specforge.llm.OpenAI") as client:
+            model = LLM(MODEL_CONFIGS["qwen3.8-flash"])
+        client.assert_called_once_with(api_key="fixture-key", base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+                                       timeout=240, max_retries=2)
+        self.assertIs(model.client, client.return_value)
+        with patch.dict("os.environ", {}, clear=True), self.assertRaisesRegex(RuntimeError, "Set ALI_API"):
+            LLM(MODEL_CONFIGS["qwen3.8-flash"])
 
     def test_invalid_model_response_reports_api_error_without_passing_gate(self):
         for index, choices in enumerate((None, [], [None], [{"message": None, "finish_reason": "stop"}])):

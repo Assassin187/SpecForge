@@ -1,9 +1,9 @@
 # SpecForge
 
 将应用层协议的任务、需求和原始规范生成为 Linux C99 项目。`www` 的维护基线为
-本次整理后的版本，核心生成机制冻结于
-`b8a9130d23cd57c975f2f435bb1b1c2304cfee15`；框架、提示词、Schema、模型配置、
-四协议输入和验收器保持该稳定提交的原始内容。版本证据及历史限制见 [BASELINE.md](BASELINE.md)。
+本次整理后的版本，核心生成机制以
+`b8a9130d23cd57c975f2f435bb1b1c2304cfee15` 为基线，当前增加模型选择入口。
+历史实验的原始配置和记录保持不变。版本证据及历史限制见 [BASELINE.md](BASELINE.md)。
 
 论文实验数据统一为三轮四协议，共 12 次生成尝试，见
 [三轮四协议实验数据](runs/paper/README.md)。
@@ -58,8 +58,28 @@ python -m unittest discover -s tests -v
 ```
 
 密钥通过环境变量提供，不写入实验记录，不挂载到 Agent 命令视图。
-模型配置为 `deepseek-flash`、`reasoning_effort=high`、thinking enabled、非流式，
-`max_tokens=65536`。总 Token 为输入加输出；推理已包含在输出，缓存命中已包含在输入。
+默认模型为 `deepseek-flash`，使用 `DS_API`；可通过 `run` 或 `code` 的
+`--model qwen3.8-flash` 选择 Qwen3.8-Flash，使用 `ALI_API` 和阿里云百炼北京地域的
+OpenAI 兼容接口 `https://dashscope.aliyuncs.com/compatible-mode/v1`。
+两者均使用 `reasoning_effort=high`、开启思考、非流式和 `max_tokens=65536`；
+Qwen 的 `high` 由服务端映射为 `xhigh`。
+总 Token 为输入加输出；推理已包含在输出，缓存命中已包含在输入。
+
+例如，已设置 `ALI_API` 后可运行：
+
+```sh
+python -m specforge run \
+  --task cases/mqtt_min/TASK.md \
+  --requirements cases/mqtt_min/REQUIREMENTS.md \
+  --protocol cases/mqtt_min/spec/mqtt-v3.1.1-os.pdf \
+  --out runs/my_mqtt_qwen \
+  --model qwen3.8-flash
+```
+
+选择的配置保存在 `run.json` 和模型请求日志中；`resume` 自动沿用该配置。
+后续 API 兼容模型可在 `specforge/llm.py` 的 `MODEL_CONFIGS` 中增加配置，指定模型名、
+接口地址、密钥环境变量及 `extra_body`。GPT 系列尚未注册。
+Qwen 参数说明见[阿里云官方文档](https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-chat-completions)。
 
 MQTT 的互通验收还需要 `mosquitto_pub` / `mosquitto_sub`，CoAP 需要
 `coap-client-notls`。这些工具不是基础生成入口的必要依赖；未执行或跳过的验收不能记为通过。

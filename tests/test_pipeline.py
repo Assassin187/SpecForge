@@ -8,6 +8,8 @@ from specforge.documents import ROOT, read_json, save_json
 from specforge.pipeline import Pipeline, verify_project
 from specforge.specs import publish, scaffold
 from specforge.evaluation import evaluate_run
+from specforge.__main__ import main
+from specforge.llm import LLM, MODEL_CONFIGS
 
 
 class PipelineTests(unittest.TestCase):
@@ -18,6 +20,43 @@ class PipelineTests(unittest.TestCase):
 
     def tearDown(self):
         self.temp.cleanup()
+
+    def test_selected_model_is_frozen_and_restored_for_resume(self):
+        config = MODEL_CONFIGS["qwen3.8-flash"]
+        pipeline = Pipeline.new(Path(self.temp.name) / "qwen", model="qwen3.8-flash")
+        self.assertEqual(read_json(pipeline.run / "run.json")["model"], config.record())
+        reopened = Pipeline(pipeline.run)
+        with patch("specforge.pipeline.LLM") as client, patch.object(reopened, "execute", side_effect=reopened.model):
+            self.assertTrue(reopened.resume())
+        client.assert_called_once_with(config)
+        self.assertTrue(reopened.state["resumed"])
+
+    def test_injected_model_records_actual_configuration(self):
+        model = LLM(MODEL_CONFIGS["qwen3.8-flash"], client=object())
+        pipeline = Pipeline.new(Path(self.temp.name) / "injected", llm=model)
+        self.assertEqual(pipeline.state["model"], model.config.record())
+        self.assertIs(pipeline.model(), model)
+
+    def test_run_cli_selects_qwen_without_initializing_client_during_prepare(self):
+        case = ROOT / "cases/coap_min"
+        destination = Path(self.temp.name) / "cli_qwen"
+        argv = ["specforge", "run", "--task", str(case / "TASK.md"),
+                "--requirements", str(case / "REQUIREMENTS.md"), "--protocol", str(case / "spec/rfc7252.txt"),
+                "--out", str(destination), "--model", "qwen3.8-flash", "--until", "prepare"]
+        with patch("sys.argv", argv), patch("specforge.llm.OpenAI") as client:
+            self.assertEqual(main(), 0)
+        client.assert_not_called()
+        self.assertEqual(read_json(destination / "run.json")["model"], MODEL_CONFIGS["qwen3.8-flash"].record())
+
+    def test_code_cli_selects_qwen(self):
+        destination = Path(self.temp.name) / "code_qwen"
+        argv = ["specforge", "code", "--specs", str(ROOT / "assets/mqtt_reference/bundle"),
+                "--out", str(destination), "--model", "qwen3.8-flash"]
+        with patch("sys.argv", argv), patch.object(Pipeline, "execute", return_value=True):
+            self.assertEqual(main(), 0)
+        state = read_json(destination / "run.json")
+        self.assertTrue(state["spec_only"])
+        self.assertEqual(state["model"], MODEL_CONFIGS["qwen3.8-flash"].record())
 
     def test_stage_gates_and_resume_hashes(self):
         case = ROOT / "cases/mqtt_min"

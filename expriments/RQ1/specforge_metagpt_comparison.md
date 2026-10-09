@@ -1,6 +1,6 @@
 # SpecForge 与 MetaGPT 三轮四协议对比：论文图表原始数据
 
-取数日期：2026-10-09（UTC+8）。两套系统各包含三轮 MQTT、CoAP、HTTP/1.1、SMTP，共 12 次实验；每协议每系统 n=3。以下均为留存记录的描述性统计，包含失败和未进入后续阶段的尝试。SpecForge 取完整生成流程；MetaGPT 取原始生成加全部原生反馈续跑后的最终交付。
+取数日期：2026-10-09（UTC+8）。两套系统各包含三轮 MQTT、CoAP、HTTP/1.1、SMTP，共 12 次实验；每协议每系统 n=3。以下均为留存记录的描述性统计。正确性、用量及耗时包含失败和未进入后续阶段的尝试；代码行数均值只以已产生最终 C 实现的尝试为分母，已产生源码但构建或验收失败的项目仍纳入。SpecForge 取完整生成流程；MetaGPT 取原始生成加全部原生反馈续跑后的最终交付。
 
 ## 1. 来源与统计口径
 
@@ -9,6 +9,7 @@
 | SpecForge 索引 | [summary.json](/home/ljf/SpecForge/runs/paper/summary.json)、[runs.csv](/home/ljf/SpecForge/runs/paper/runs.csv) |
 | MetaGPT 索引 | [complete_experiments.json](/home/ljf/SpecForge/expriments/RQ1/metagpt/paper_data/three_rounds_20261009/complete_experiments.json)、[complete_experiments.csv](/home/ljf/SpecForge/expriments/RQ1/metagpt/paper_data/three_rounds_20261009/complete_experiments.csv) |
 | 实验范围 | [SpecForge 数据说明](/home/ljf/SpecForge/runs/paper/README.md)、[MetaGPT 数据说明](/home/ljf/SpecForge/expriments/RQ1/metagpt/paper_data/three_rounds_20261009/README.md) |
+| 行为范围与场景分类 | [四协议行为范围及完整场景清单](protocol_behavior_scenarios.md)，逐项列出普通、异常与边界断言及关联需求 |
 | 模型 | deepseek-flash；thinking enabled；reasoning_effort=high；非流式；单响应输出上限 65536 Token |
 | 输入及验收器核对 | 12 组配对的 TASK、REQUIREMENTS、协议原文逐文件 SHA-256 与模型配置一致；11 个已执行的 SpecForge 验收器哈希与对应 MetaGPT 记录一致；第二轮 SpecForge CoAP 未执行独立验收 |
 | MetaGPT 版本与路径 | v0.8.2 上游；原始软件公司 SOP 生成，再执行留存的 C99 原生 QA/修复适配。前两轮反馈后补，第三轮生成后自动进入反馈；反馈累计值包含留存的适配/路由修正续跑 |
@@ -17,9 +18,12 @@
 | ASan/UBSan 参考通过 | SpecForge 使用原生 sanitize；MetaGPT 使用外部追加编译/链接参数的原源码副本。该指标作为插桩参考单列，不能代替 MetaGPT 的严格交付结果 |
 | 计划场景数 | 每轮每模式 MQTT=16、CoAP=10、HTTP/1.1=13、SMTP=13；三轮每模式共156项 |
 | 主要场景通过率 | 已通过的场景数 / 全部计划场景数；未执行保留在计划分母。另报有结果场景的通过率，防止只统计可运行项目 |
+| 异常与边界场景通过率 | 普通独立验收中通过的 A／B／A+B 场景数 / 全部尝试计划的该类场景数；分类与 ID 固定见场景清单，每轮 MQTT=11、CoAP=7、HTTP/1.1=11、SMTP=11，三轮每系统共120项。混合场景含明确异常／边界断言即纳入；每场景只计一次，未执行仍在分母 |
 | NA | 未执行、不适用或无记录，不代表零项通过。逐次表保留 NA；总体计划分母仍包含这些尝试 |
 | Token 与响应 | 输入+输出；缓存命中包含于输入，推理包含于输出，均不重复累加。响应计已返回用量的模型响应，不等于工具调用数或所有网络尝试 |
-| 活动时间 | SpecForge=generation_wall_seconds（完整流程，含内部修复）；MetaGPT=generation_active_seconds+feedback_active_seconds。均不含独立验收；每项目时间之和不是并行墙钟 |
+| 生成耗时（项目活动时间） | SpecForge=generation_wall_seconds（完整流程，含内部修复）；MetaGPT=generation_active_seconds+feedback_active_seconds。均不含独立验收或人工等待；生成平均耗时=全部尝试的项目活动秒数之和 / 尝试数 / 60，以分钟报告；每项目时间之和不是并行墙钟 |
+| C代码行数 | 最终项目服务实现的 .c 与 .h 文件之和，使用 cloc 2.08 的 code（SLOC）列，排除空行、注释、tests/、构建产物及历史快照；按文件逐一计数，不去重同内容文件。SpecForge 取 `runs/paper/<run>/project`；MetaGPT 取 experiment.json 的 final_project（原生反馈后） |
+| 平均代码行数分母 | 已产生最终 .c 实现的项目数，包含已生成但构建／验收失败的源码。SF-R02-CoAP 未编码、project 为空，代码行数记 NA；总体 SpecForge n_code=11、MetaGPT n_code=12，CoAP 分别为2和3，其余协议均为3。其耗时及计划场景仍纳入各自全部尝试分母 |
 | 成本 | 统一按留存峰时单价估算已知响应；不是历史账单。MetaGPT 两次历史中断请求用量未知，因此其用量和成本并非完整实耗 |
 
 MetaGPT 中断前缀和反馈 before_continuation_* 已包含在最终 run.json 累计值，本表不重复累加；前两轮适配调试/路由续跑开销保留。excluded_runs 不纳入正式 12 次实验。轮次编号表示重复实验，不表示两系统同时启动或随机配对；下文标准差使用样本标准差（ddof=1）。
@@ -34,6 +38,7 @@ MetaGPT 中断前缀和反馈 before_continuation_* 已包含在最终 run.json 
 | 严格双模式完整通过 | 7/12 (58.33%) | 0/12 (0.00%) |
 | 普通 + ASan/UBSan 参考完整通过 | 7/12 (58.33%) | 3/12 (25.00%) |
 | 普通：通过 / 计划场景 | 138/156 (88.46%) | 83/156 (53.21%) |
+| 异常与边界：通过 / 计划场景 | 105/120 (87.50%) | 61/120 (50.83%) |
 | 普通：有结果的场景数 | 146 | 143 |
 | 普通：通过 / 有结果场景 | 138/146 (94.52%) | 83/143 (58.04%) |
 | 普通：未有结果的计划场景 | 10 | 13 |
@@ -51,47 +56,58 @@ MetaGPT 中断前缀和反馈 before_continuation_* 已包含在最终 run.json 
 | 输入 Token 缓存命中率 | 86.91% | 74.26% |
 | 每项目已知总 Token 均值 | 16525851.25 | 4997495.33 |
 | 项目活动时间合计（秒） | 35036.868 | 39708.864 |
-| 每项目活动时间均值（分钟） | 48.662 | 55.151 |
+| 生成平均耗时（分钟，含内部修复） | 48.662 | 55.151 |
+| 有C实现的项目数（代码均值分母） | 11 | 12 |
+| C代码行数合计（C/H，SLOC） | 21745 | 25240 |
+| 平均C代码行数（C/H，SLOC） | 1976.82 | 2103.33 |
 | 统一峰时缓存计价估算（USD，已知响应） | 17.931602 | 16.473734 |
 
 严格双模式完整通过为 SpecForge 7/12、MetaGPT 0/12。MetaGPT 唯一产生原生 sanitize 场景结果的第一轮 HTTP/1.1 为0/13，同时报告缺少有效 ASan/UBSan 插桩；其余11条无原生 sanitize 场景结果。因此不可将外部插桩的3/12改记为严格交付通过。普通模式的“有结果”包含验收器实际记录的失败项；缺少规定运行文件导致的0/16或0/13也保留为实际失败记录，不表示服务器成功运行。
 
+异常与边界指标在相同普通验收结果上使用固定子集，每轮40类、三轮120项。分类是对留存套件的事后描述性拆分；它反映异常／边界行为的交付结果，也包含构建或启动受阻的影响，不能单独归因于某一生成模块。正式清单补入了初步32类分组遗漏的8类显式异常／边界场景，采用120项分母，不沿用初步讨论中的96项。
+
 ## 3. 按协议汇总：正确性
 
-| 协议 | 系统 | n | 最终普通构建 | 完整普通通过 | 严格双模式通过 | 普通 + 插桩参考通过 | 普通：通过/计划 | 普通：有结果项数 | 插桩参考：通过/计划 | 插桩参考：有结果项数 |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| MQTT | SpecForge | 3 | 3/3 (100.00%) | 3/3 (100.00%) | 3/3 (100.00%) | 3/3 (100.00%) | 48/48 (100.00%) | 48 | 48/48 (100.00%) | 48 |
-| MQTT | MetaGPT | 3 | 3/3 (100.00%) | 2/3 (66.67%) | 0/3 (0.00%) | 2/3 (66.67%) | 32/48 (66.67%) | 48 | 32/48 (66.67%) | 32 |
-| CoAP | SpecForge | 3 | 2/3 (66.67%) | 2/3 (66.67%) | 2/3 (66.67%) | 2/3 (66.67%) | 20/30 (66.67%) | 20 | 20/30 (66.67%) | 20 |
-| CoAP | MetaGPT | 3 | 3/3 (100.00%) | 1/3 (33.33%) | 0/3 (0.00%) | 1/3 (33.33%) | 25/30 (83.33%) | 30 | 25/30 (83.33%) | 30 |
-| HTTP/1.1 | SpecForge | 3 | 3/3 (100.00%) | 2/3 (66.67%) | 2/3 (66.67%) | 2/3 (66.67%) | 35/39 (89.74%) | 39 | 35/39 (89.74%) | 39 |
-| HTTP/1.1 | MetaGPT | 3 | 2/3 (66.67%) | 0/3 (0.00%) | 0/3 (0.00%) | 0/3 (0.00%) | 0/39 (0.00%) | 26 | 0/39 (0.00%) | 0 |
-| SMTP | SpecForge | 3 | 3/3 (100.00%) | 0/3 (0.00%) | 0/3 (0.00%) | 0/3 (0.00%) | 35/39 (89.74%) | 39 | 35/39 (89.74%) | 39 |
-| SMTP | MetaGPT | 3 | 3/3 (100.00%) | 0/3 (0.00%) | 0/3 (0.00%) | 0/3 (0.00%) | 26/39 (66.67%) | 39 | 26/39 (66.67%) | 39 |
+完整任务通过率 = 一次试验中完整通过全部预设协议行为场景的试验数 / 该协议的全部生成试验数。按普通独立验收判定，MQTT 16项、CoAP 10项、HTTP/1.1 13项、SMTP 13项均须全部执行且通过；任一场景失败或未执行，该次试验不计为完整任务通过，分母仍包含全部3次试验。
 
-## 4. 按协议汇总：资源与耗时
+“一次生成”沿用本表的试验单位，以包含框架内部修复及MetaGPT原生反馈后的最终交付为准；完整任务通过率对应此前的“完整普通通过”。原生sanitize和ASan/UBSan参考指标继续单列。
 
-| 协议 | 系统 | 总 Token（已知） | 总 Token 均值 | 总 Token 样本标准差 | 响应数合计 | 活动时间均值（秒） | 活动时间样本标准差（秒） | 估算USD合计 |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| MQTT | SpecForge | 44062687 | 14687562.33 | 1323870.61 | 1129 | 2836.822 | 345.445 | 4.420335 |
-| MQTT | MetaGPT | 13738667 | 4579555.67 | 2920861.76 | 205 | 2823.709 | 976.160 | 3.693140 |
-| CoAP | SpecForge | 47325348 | 15775116.00 | 4095570.82 | 1185 | 2657.762 | 268.615 | 4.171909 |
-| CoAP | MetaGPT | 10280728 | 3426909.33 | 961105.81 | 199 | 2422.865 | 518.053 | 3.019243 |
-| HTTP/1.1 | SpecForge | 55430275 | 18476758.33 | 1699110.70 | 1396 | 3080.111 | 138.282 | 4.776113 |
-| HTTP/1.1 | MetaGPT | 22189814 | 7396604.67 | 3259701.32 | 285 | 4374.794 | 1618.372 | 5.483805 |
-| SMTP | SpecForge | 51491905 | 17163968.33 | 3824108.03 | 1329 | 3104.260 | 452.208 | 4.563245 |
-| SMTP | MetaGPT | 13760735 | 4586911.67 | 738450.79 | 222 | 3614.920 | 139.099 | 4.277547 |
+| 协议 | 系统 | n | 最终普通构建 | 完整任务通过次数 | 完整任务通过率 | 严格双模式通过 | 普通 + 插桩参考通过 | 普通：通过/计划 | 异常与边界：通过/计划 | 普通：有结果项数 | 插桩参考：通过/计划 | 插桩参考：有结果项数 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| MQTT | SpecForge | 3 | 3/3 (100.00%) | 3/3 | 100.00% | 3/3 (100.00%) | 3/3 (100.00%) | 48/48 (100.00%) | 33/33 (100.00%) | 48 | 48/48 (100.00%) | 48 |
+| MQTT | MetaGPT | 3 | 3/3 (100.00%) | 2/3 | 66.67% | 0/3 (0.00%) | 2/3 (66.67%) | 32/48 (66.67%) | 22/33 (66.67%) | 48 | 32/48 (66.67%) | 32 |
+| CoAP | SpecForge | 3 | 2/3 (66.67%) | 2/3 | 66.67% | 2/3 (66.67%) | 2/3 (66.67%) | 20/30 (66.67%) | 14/21 (66.67%) | 20 | 20/30 (66.67%) | 20 |
+| CoAP | MetaGPT | 3 | 3/3 (100.00%) | 1/3 | 33.33% | 0/3 (0.00%) | 1/3 (33.33%) | 25/30 (83.33%) | 17/21 (80.95%) | 30 | 25/30 (83.33%) | 30 |
+| HTTP/1.1 | SpecForge | 3 | 3/3 (100.00%) | 2/3 | 66.67% | 2/3 (66.67%) | 2/3 (66.67%) | 35/39 (89.74%) | 29/33 (87.88%) | 39 | 35/39 (89.74%) | 39 |
+| HTTP/1.1 | MetaGPT | 3 | 2/3 (66.67%) | 0/3 | 0.00% | 0/3 (0.00%) | 0/3 (0.00%) | 0/39 (0.00%) | 0/33 (0.00%) | 26 | 0/39 (0.00%) | 0 |
+| SMTP | SpecForge | 3 | 3/3 (100.00%) | 0/3 | 0.00% | 0/3 (0.00%) | 0/3 (0.00%) | 35/39 (89.74%) | 29/33 (87.88%) | 39 | 35/39 (89.74%) | 39 |
+| SMTP | MetaGPT | 3 | 3/3 (100.00%) | 0/3 | 0.00% | 0/3 (0.00%) | 0/3 (0.00%) | 26/39 (66.67%) | 22/33 (66.67%) | 39 | 26/39 (66.67%) | 39 |
+
+## 4. 按协议汇总：资源、生成耗时与代码规模
+
+生成平均耗时以每协议全部3次尝试为分母，包含框架内部修复和失败尝试，不包含独立验收。代码均值与样本标准差以该协议有最终C实现的 n_code 为分母；包含有源码的失败项目。代码量只描述交付规模，不直接代表实现质量。
+
+| 协议 | 系统 | 总 Token（已知） | 总 Token 均值 | 总 Token 样本标准差 | 响应数合计 | 生成耗时均值（秒） | 生成耗时样本标准差（秒） | 生成平均耗时（分钟） | n_code | 平均C代码行数（C/H，SLOC） | 代码行数样本标准差 | 估算USD合计 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| MQTT | SpecForge | 44062687 | 14687562.33 | 1323870.61 | 1129 | 2836.822 | 345.445 | 47.280 | 3 | 2054.33 | 229.99 | 4.420335 |
+| MQTT | MetaGPT | 13738667 | 4579555.67 | 2920861.76 | 205 | 2823.709 | 976.160 | 47.062 | 3 | 1843.67 | 280.59 | 3.693140 |
+| CoAP | SpecForge | 47325348 | 15775116.00 | 4095570.82 | 1185 | 2657.762 | 268.615 | 44.296 | 2 | 1457.50 | 133.64 | 4.171909 |
+| CoAP | MetaGPT | 10280728 | 3426909.33 | 961105.81 | 199 | 2422.865 | 518.053 | 40.381 | 3 | 1584.33 | 254.45 | 3.019243 |
+| HTTP/1.1 | SpecForge | 55430275 | 18476758.33 | 1699110.70 | 1396 | 3080.111 | 138.282 | 51.335 | 3 | 2375.67 | 238.19 | 4.776113 |
+| HTTP/1.1 | MetaGPT | 22189814 | 7396604.67 | 3259701.32 | 285 | 4374.794 | 1618.372 | 72.913 | 3 | 2578.33 | 481.86 | 5.483805 |
+| SMTP | SpecForge | 51491905 | 17163968.33 | 3824108.03 | 1329 | 3104.260 | 452.208 | 51.738 | 3 | 1846.67 | 109.44 | 4.563245 |
+| SMTP | MetaGPT | 13760735 | 4586911.67 | 738450.79 | 222 | 3614.920 | 139.099 | 60.249 | 3 | 2407.00 | 97.02 | 4.277547 |
 
 ## 5. 按轮次汇总
 
-| 轮次 | 系统 | n | 完整普通通过 | 严格双模式通过 | 普通 + 插桩参考通过 | 普通：通过/计划 | 总 Token（已知） | 响应数 | 项目活动时间合计（秒） | 估算USD |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | SpecForge | 4 | 2/4 (50.00%) | 2/4 (50.00%) | 2/4 (50.00%) | 47/52 (90.38%) | 73357728 | 1862 | 11774.858 | 6.201814 |
-| 1 | MetaGPT | 4 | 1/4 (25.00%) | 0/4 (0.00%) | 1/4 (25.00%) | 31/52 (59.62%) | 23459463 | 315 | 14903.615 | 6.185991 |
-| 2 | SpecForge | 4 | 2/4 (50.00%) | 2/4 (50.00%) | 2/4 (50.00%) | 40/52 (76.92%) | 58461794 | 1499 | 10940.420 | 5.717199 |
-| 2 | MetaGPT | 4 | 1/4 (25.00%) | 0/4 (0.00%) | 1/4 (25.00%) | 30/52 (57.69%) | 20700241 | 324 | 12916.972 | 5.518179 |
-| 3 | SpecForge | 4 | 3/4 (75.00%) | 3/4 (75.00%) | 3/4 (75.00%) | 51/52 (98.08%) | 66490693 | 1678 | 12321.590 | 6.012589 |
-| 3 | MetaGPT | 4 | 1/4 (25.00%) | 0/4 (0.00%) | 1/4 (25.00%) | 22/52 (42.31%) | 15810240 | 272 | 11888.277 | 4.769564 |
+| 轮次 | 系统 | n | 完整普通通过 | 严格双模式通过 | 普通 + 插桩参考通过 | 普通：通过/计划 | 异常与边界：通过/计划 | 总 Token（已知） | 响应数 | 项目活动时间合计（秒） | 估算USD |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | SpecForge | 4 | 2/4 (50.00%) | 2/4 (50.00%) | 2/4 (50.00%) | 47/52 (90.38%) | 35/40 (87.50%) | 73357728 | 1862 | 11774.858 | 6.201814 |
+| 1 | MetaGPT | 4 | 1/4 (25.00%) | 0/4 (0.00%) | 1/4 (25.00%) | 31/52 (59.62%) | 22/40 (55.00%) | 23459463 | 315 | 14903.615 | 6.185991 |
+| 2 | SpecForge | 4 | 2/4 (50.00%) | 2/4 (50.00%) | 2/4 (50.00%) | 40/52 (76.92%) | 31/40 (77.50%) | 58461794 | 1499 | 10940.420 | 5.717199 |
+| 2 | MetaGPT | 4 | 1/4 (25.00%) | 0/4 (0.00%) | 1/4 (25.00%) | 30/52 (57.69%) | 22/40 (55.00%) | 20700241 | 324 | 12916.972 | 5.518179 |
+| 3 | SpecForge | 4 | 3/4 (75.00%) | 3/4 (75.00%) | 3/4 (75.00%) | 51/52 (98.08%) | 39/40 (97.50%) | 66490693 | 1678 | 12321.590 | 6.012589 |
+| 3 | MetaGPT | 4 | 1/4 (25.00%) | 0/4 (0.00%) | 1/4 (25.00%) | 22/52 (42.31%) | 17/40 (42.50%) | 15810240 | 272 | 11888.277 | 4.769564 |
 
 ## 6. 逐次原始结果（可用于作图）
 
@@ -197,6 +213,43 @@ SpecForge 的 generation_active_seconds 对应索引 generation_wall_seconds，�
 
 并行墙钟不与项目活动秒数混合：SpecForge 三轮原记录墙钟之和9990.407秒；MetaGPT 留存的前两轮反馈批次墙钟1420.480秒，第三轮生成+反馈批次墙钟4370.256秒。两组范围不同，本表不据此给出整体墙钟加速比。MetaGPT 独立测量113.801秒包含初次外部测量开销；SpecForge protocol_wall_seconds-generation_wall_seconds 还含外层编排，因此不作为同口径独立验收时长。
 
+### 8.1 逐次异常与边界场景及最终代码规模
+
+场景列统一使用固定计划分母；“有结果项数”区分实测失败与未执行。SF-R02-CoAP 为0/7、0项有结果，未进入实现；MG-R02-HTTP/1.1 为0/11、0项有结果，已有实现但最终构建失败。前者代码行数为NA，后者仍按最终源码计数。记录ID链接到实际计数的最终项目目录。
+
+| 记录ID / 最终项目 | 异常与边界：通过/计划 | 有结果项数 | C源文件数 | 头文件数 | .c SLOC | .h SLOC | C/H SLOC |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| [SF-R01-MQTT](/home/ljf/SpecForge/runs/paper/round_01/mqtt_01/project) | 11/11 | 11 | 7 | 7 | 1763 | 178 | 1941 |
+| [MG-R01-MQTT](/home/ljf/SpecForge/expriments/RQ1/metagpt/paper_data/three_rounds_20261009/round_01/mqtt/feedback/project) | 11/11 | 11 | 7 | 7 | 1637 | 215 | 1852 |
+| [SF-R01-CoAP](/home/ljf/SpecForge/runs/paper/round_01/coap_01/project) | 7/7 | 7 | 6 | 5 | 1170 | 193 | 1363 |
+| [MG-R01-CoAP](/home/ljf/SpecForge/expriments/RQ1/metagpt/paper_data/three_rounds_20261009/round_01/coap/feedback/project) | 4/7 | 7 | 7 | 6 | 1313 | 240 | 1553 |
+| [SF-R01-HTTP/1.1](/home/ljf/SpecForge/runs/paper/round_01/http11_01/project) | 7/11 | 11 | 8 | 7 | 2120 | 178 | 2298 |
+| [MG-R01-HTTP/1.1](/home/ljf/SpecForge/expriments/RQ1/metagpt/paper_data/three_rounds_20261009/round_01/http11/feedback/project) | 0/11 | 11 | 13 | 14 | 1944 | 395 | 2339 |
+| [SF-R01-SMTP](/home/ljf/SpecForge/runs/paper/round_01/smtp_01/project) | 10/11 | 11 | 9 | 8 | 1660 | 163 | 1823 |
+| [MG-R01-SMTP](/home/ljf/SpecForge/expriments/RQ1/metagpt/paper_data/three_rounds_20261009/round_01/smtp/feedback/project) | 7/11 | 11 | 10 | 10 | 2241 | 220 | 2461 |
+| [SF-R02-MQTT](/home/ljf/SpecForge/runs/paper/round_02/mqtt_01/project) | 11/11 | 11 | 7 | 6 | 1707 | 196 | 1903 |
+| [MG-R02-MQTT](/home/ljf/SpecForge/expriments/RQ1/metagpt/paper_data/three_rounds_20261009/round_02/mqtt/feedback/project) | 11/11 | 11 | 8 | 8 | 1788 | 332 | 2120 |
+| [SF-R02-CoAP](/home/ljf/SpecForge/runs/paper/round_02/coap_01/project) | 0/7 | 0 | 0 | 0 | NA | NA | NA |
+| [MG-R02-CoAP](/home/ljf/SpecForge/expriments/RQ1/metagpt/paper_data/three_rounds_20261009/round_02/coap/feedback/project) | 6/7 | 7 | 9 | 8 | 1557 | 296 | 1853 |
+| [SF-R02-HTTP/1.1](/home/ljf/SpecForge/runs/paper/round_02/http11_01/project) | 11/11 | 11 | 10 | 9 | 2437 | 206 | 2643 |
+| [MG-R02-HTTP/1.1](/home/ljf/SpecForge/expriments/RQ1/metagpt/paper_data/three_rounds_20261009/round_02/http11/feedback/project) | 0/11 | 0 | 9 | 9 | 1967 | 296 | 2263 |
+| [SF-R02-SMTP](/home/ljf/SpecForge/runs/paper/round_02/smtp_01/project) | 9/11 | 11 | 7 | 6 | 1596 | 155 | 1751 |
+| [MG-R02-SMTP](/home/ljf/SpecForge/expriments/RQ1/metagpt/paper_data/three_rounds_20261009/round_02/smtp/feedback/project) | 5/11 | 11 | 8 | 8 | 2172 | 293 | 2465 |
+| [SF-R03-MQTT](/home/ljf/SpecForge/runs/paper/round_03/mqtt_01/project) | 11/11 | 11 | 8 | 7 | 2119 | 200 | 2319 |
+| [MG-R03-MQTT](/home/ljf/SpecForge/expriments/RQ1/metagpt/paper_data/three_rounds_20261009/round_03/mqtt/feedback/project) | 0/11 | 11 | 7 | 6 | 1343 | 216 | 1559 |
+| [SF-R03-CoAP](/home/ljf/SpecForge/runs/paper/round_03/coap_01/project) | 7/7 | 7 | 7 | 6 | 1334 | 218 | 1552 |
+| [MG-R03-CoAP](/home/ljf/SpecForge/expriments/RQ1/metagpt/paper_data/three_rounds_20261009/round_03/coap/feedback/project) | 7/7 | 7 | 6 | 6 | 1066 | 281 | 1347 |
+| [SF-R03-HTTP/1.1](/home/ljf/SpecForge/runs/paper/round_03/http11_01/project) | 11/11 | 11 | 9 | 8 | 1979 | 207 | 2186 |
+| [MG-R03-HTTP/1.1](/home/ljf/SpecForge/expriments/RQ1/metagpt/paper_data/three_rounds_20261009/round_03/http11/feedback/project) | 0/11 | 11 | 11 | 11 | 2823 | 310 | 3133 |
+| [SF-R03-SMTP](/home/ljf/SpecForge/runs/paper/round_03/smtp_01/project) | 10/11 | 11 | 8 | 8 | 1796 | 170 | 1966 |
+| [MG-R03-SMTP](/home/ljf/SpecForge/expriments/RQ1/metagpt/paper_data/three_rounds_20261009/round_03/smtp/feedback/project) | 10/11 | 11 | 8 | 8 | 1973 | 322 | 2295 |
+
+代码计数工具为 [cloc v2.08](https://github.com/AlDanial/cloc/tree/v2.08)，脚本SHA-256：`0a551a86c7785880bcaa0fdfe6107c064abfbebc7cc26b7eaeac423fe2c0d49e`。对最终项目中全部非tests/的.c/.h文件使用 --skip-uniqueness，取 code 列并相加；下列命令可复算本表规模（不会编译、运行项目或调用模型）：
+
+```bash
+perl /path/to/cloc-2.08.pl --include-ext=c,h --exclude-dir=tests --skip-uniqueness --by-file --json <最终项目目录>
+```
+
 ## 9. 解释结果时必须保留的限制
 
 - SpecForge 第二轮CoAP在语义审查响应上限处停止，未编码、构建或独立验收；10个计划场景保留在每模式分母。
@@ -204,11 +257,12 @@ SpecForge 的 generation_active_seconds 对应索引 generation_wall_seconds，�
 - MetaGPT 第一轮HTTP原始生成因investment=3.0预算结束，NoMoneyException已被原生包装捕获；generate_repo返回、文件写出和审查完成不代表无异常完成。最终行包含该原始停止及后续反馈。
 - MetaGPT 第一轮HTTP和SMTP各有一次历史中断请求用量未知。59,969,944是已知Token合计，不是完整消耗；其成本比较同样仅限已知响应。
 - MetaGPT CoAP两次QA初始化失败（0项运行），第三轮HTTP QA未报告数量；原生QA与独立协议验收保持分开。所有已返回用量、适配调试和续跑开销保留。
+- 异常与边界分类为已有套件的事后描述性拆分，逐项清单与依据见协议场景文件。总体SpecForge为105/120 (87.50%)、MetaGPT为61/120 (50.83%)；CoAP子集分别为14/21 (66.67%)和17/21 (80.95%)，不声称所有协议均更优。
 - 每协议仅3次观察，两系统轮次不同时。均值/标准差用于描述及误差条原始数据，不构成统计显著性或同时环境下的因果结论。
 
 ## 10. 核对记录与源索引指纹
 
-本表只读取留存数据，未调用模型、重跑构建/验收或修改交付。核对了两个CSV和JSON的12条对应记录、24条原始用量/响应数及SpecForge全部5039对请求/响应的用量合计、逐次评测分数、MetaGPT生成→反馈→最终评测关联、12组输入实际字节哈希与模型配置、11份已执行SpecForge评测的验收器哈希，以及合计与留存汇总的一致性。MetaGPT完整归档的既有审计见 [ARCHIVE_VALIDATION.json](/home/ljf/SpecForge/expriments/RQ1/metagpt/paper_data/three_rounds_20261009/ARCHIVE_VALIDATION.json)；此次未重新执行完整18730文件归档校验。
+本表只读取留存数据，未调用模型、重跑构建/验收或修改交付。核对了两个CSV和JSON的12条对应记录、24条原始用量/响应数及SpecForge全部5039对请求/响应的用量合计、逐次评测分数、MetaGPT生成→反馈→最终评测关联、12组输入实际字节哈希与模型配置、11份已执行SpecForge评测的验收器哈希，以及合计与留存汇总的一致性。MetaGPT完整归档的既有审计见 [ARCHIVE_VALIDATION.json](/home/ljf/SpecForge/expriments/RQ1/metagpt/paper_data/three_rounds_20261009/ARCHIVE_VALIDATION.json)；此次未重新执行完整18730文件归档校验。补充指标逐条读取普通独立验收场景；核对当前四份验收器指纹与留存报告一致，按新场景清单聚合计划分母；使用cloc 2.08读取最终C/H实现，逐文件SHA-256与各次交付／反馈后报告的源码指纹一致。新增代码计数未编译或执行项目。
 
 | 源索引 | SHA-256 |
 | --- | --- |
@@ -216,3 +270,4 @@ SpecForge 的 generation_active_seconds 对应索引 generation_wall_seconds，�
 | [runs/paper/runs.csv](/home/ljf/SpecForge/runs/paper/runs.csv) | f84ba79425c5eb7de314a103b85cccad6fec49f9b90e05e204f6581b52d58ac1 |
 | [expriments/RQ1/metagpt/paper_data/three_rounds_20261009/complete_experiments.json](/home/ljf/SpecForge/expriments/RQ1/metagpt/paper_data/three_rounds_20261009/complete_experiments.json) | e625069a97ec09159f70e9717508a3c4f893d3ae9d352c62520543efa0ddb11c |
 | [expriments/RQ1/metagpt/paper_data/three_rounds_20261009/complete_experiments.csv](/home/ljf/SpecForge/expriments/RQ1/metagpt/paper_data/three_rounds_20261009/complete_experiments.csv) | d3c0b1de22f094cbc961c949a0a97e6770ad933ed2a5e6ed11755b838c03c492 |
+| [protocol_behavior_scenarios.md](protocol_behavior_scenarios.md) | 67ac4c00584fe0a587755a34c3ed32b96373bfe7fda94c190f10af7ffc38474f |

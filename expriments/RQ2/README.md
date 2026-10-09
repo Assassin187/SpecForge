@@ -1,4 +1,4 @@
-# MQTT/CoAP RQ2: intermediate Spec utility
+# MQTT/CoAP/SMTP RQ2: intermediate Spec utility
 
 This suite prepares and runs 15 independent generations: three repetitions of
 Direct, Generic, Full, Full−Vectors and Full−Contracts. Its default uses MQTT and the
@@ -12,6 +12,11 @@ coding-feedback revision. Its historical formation cost includes Facts, Design,
 Specs and initial review; the subsequent implementation is excluded. MQTT and
 CoAP have different frozen specification histories and acceptance scenarios;
 comparisons are made within each protocol.
+
+`prepare --protocol smtp` uses the third-round SMTP publication at
+`runs/paper/round_03/smtp_01/specs/r001`. It also passed specification review
+without coding-feedback revision; historical cost includes formation and initial
+review, excluding the subsequent implementation.
 
 Materialized copies of the selected SpecForge publication and its corresponding
 specfs-format Generic specifications are stored together under `specs/`.
@@ -29,6 +34,9 @@ Use the Python environment containing the repository's fixed dependencies,
 openai 1.97.0 and jsonschema 4.24.0. GCC, Make and bubblewrap are required.
 MQTT also requires pdftotext, mosquitto_pub and mosquitto_sub; CoAP requires
 coap-client-notls for its independent interoperability scenario.
+SMTP uses the Python standard library for independent acceptance and needs no
+external protocol client. Its permission-based storage-failure scenario runs
+as the normal non-root sandbox user.
 
     cd /home/ljf/SpecForge
     python3 -B expriments/RQ2/run.py --help
@@ -78,6 +86,17 @@ Generic conversion and three parallel workers:
 CoAP uses `./coap_server <port>` and the existing 10-scenario CoAP evaluator.
 Both initial and final snapshots are evaluated in normal and sanitizer modes.
 
+SMTP uses the same D/G/F pilot workflow:
+
+    python3 -B expriments/RQ2/run.py prepare --out expriments/RQ2/runs/smtp_dgf_001 --protocol smtp --repetitions 1 --conditions direct generic full
+    python3 -B expriments/RQ2/run.py generate --run expriments/RQ2/runs/smtp_dgf_001 --workers 3
+    python3 -B expriments/RQ2/run.py evaluate --run expriments/RQ2/runs/smtp_dgf_001
+    python3 -B expriments/RQ2/run.py summarize --run expriments/RQ2/runs/smtp_dgf_001
+
+Its startup contract is `./smtp_server <port> <mail-dir>` with an existing
+writable mail directory. The frozen SMTP evaluator contains 13 required
+scenarios, applied to initial and final projects in both modes.
+
 All inputs, suite sources and evaluator bytes are frozen at preparation.
 Changing them requires a new experiment directory. Reinvoking generate after
 an interruption runs only pending trials; interrupted and failed trials are
@@ -89,7 +108,7 @@ preserve human annotation fields.
 ## Conditions and isolation
 
 - Direct receives the original TASK, REQUIREMENTS and protocol document,
-  with frozen pdftotext extraction for MQTT or RFC text chunks for CoAP.
+  with frozen pdftotext extraction for MQTT or RFC text chunks for CoAP/SMTP.
   Only the TASK sentence requiring public types, interfaces,
   ownership and processing paths to be planned before implementation is removed.
   The private-helper sentence and all functional requirements remain.
@@ -141,7 +160,7 @@ Do not combine their first-generation measurements as if the policies matched.
 
 After all generation ends, both the frozen initial project and final delivered
 project are independently evaluated once in normal and sanitizer mode on all
-16 frozen MQTT scenarios or 10 frozen CoAP scenarios. The same evaluator bytes and startup metadata apply
+16 frozen MQTT, 10 frozen CoAP or 13 frozen SMTP scenarios. The same evaluator bytes and startup metadata apply
 to both. Initial results are never mounted in Coder's view and cannot trigger
 repairs. Failed generation is still
 evaluated when its saved project can build. Missing, duplicated, skipped or
@@ -208,7 +227,7 @@ contributions of explicit fields, not removal of all duplicated protocol
 semantics. Root causes require human inspection of saved evidence.
 
 Each experiment is limited to one frozen Spec and the selected one or three
-generations per condition. MQTT uses a previously repaired Spec; CoAP uses an
+generations per condition. MQTT uses a previously repaired Spec; CoAP/SMTP use an
 unrepaired reviewed Spec. These experiments do not establish upstream Spec
 generation stability, pure representation superiority, performance or broad
 cross-protocol generalization. Scenarios are not independent experimental samples.

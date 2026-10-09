@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""MQTT/CoAP RQ2 controller. Preparation and reporting never call a model."""
+"""MQTT/CoAP/SMTP RQ2 controller. Preparation and reporting never call a model."""
 
 from __future__ import annotations
 
@@ -28,6 +28,7 @@ import jsonschema
 
 from evaluation.mqtt_check import TEST_IDS
 from evaluation.coap_check import TEST_IDS as COAP_TEST_IDS
+from evaluation.smtp_check import TEST_IDS as SMTP_TEST_IDS
 from specforge.agent import run_agent
 from specforge.documents import digest, hashes, prepare, read_json, save_json
 from specforge.evaluation import evaluate_project
@@ -54,7 +55,11 @@ PROTOCOLS = {
     "coap": {"source_run": ROOT / "runs/paper/round_03/coap_01", "revision": 1,
              "manifest_sha256": "3efcb47897796ee2d421f500e1d7b490acff68a6ccff971c956c76908a38d41d",
              "contract": {"binary_name": "coap_server", "argv_contract": "./coap_server <port>"},
-             "test_ids": COAP_TEST_IDS, "evaluator": "coap_check.py", "protocol_input": "protocol.txt"}}
+             "test_ids": COAP_TEST_IDS, "evaluator": "coap_check.py", "protocol_input": "protocol.txt"},
+    "smtp": {"source_run": ROOT / "runs/paper/round_03/smtp_01", "revision": 1,
+             "manifest_sha256": "27b577c132d5080e9df410a1c5652049777ebd68addbd251c786ff431ab8f927",
+             "contract": {"binary_name": "smtp_server", "argv_contract": "./smtp_server <port> <mail-dir>"},
+             "test_ids": SMTP_TEST_IDS, "evaluator": "smtp_check.py", "protocol_input": "protocol.txt"}}
 
 DELIVERY_SCHEMA = {
     "type": "object", "additionalProperties": False,
@@ -81,6 +86,7 @@ def runtime_hashes() -> dict:
         result[path.relative_to(ROOT).as_posix()] = digest(path)
     result["evaluation/mqtt_check.py"] = digest(ROOT / "evaluation/mqtt_check.py")
     result["evaluation/coap_check.py"] = digest(ROOT / "evaluation/coap_check.py")
+    result["evaluation/smtp_check.py"] = digest(ROOT / "evaluation/smtp_check.py")
     return result
 
 
@@ -124,8 +130,8 @@ def preflight(protocol: str = "mqtt") -> dict:
     versions = {"python": sys.version, "python_executable": sys.executable}
     for name in ("openai", "jsonschema"):
         versions[name] = importlib.metadata.version(name)
-    clients = ("coap-client-notls",) if protocol == "coap" else ("mosquitto_pub", "mosquitto_sub")
-    documents = () if protocol == "coap" else ("pdftotext",)
+    clients = {"mqtt": ("mosquitto_pub", "mosquitto_sub"), "coap": ("coap-client-notls",), "smtp": ()}[protocol]
+    documents = ("pdftotext",) if PROTOCOLS[protocol]["protocol_input"].endswith(".pdf") else ()
     for name in ("gcc", "make", "bwrap", *documents, *clients):
         path = shutil.which(name)
         if path is None:
@@ -158,7 +164,7 @@ def prepare_experiment(out: Path, *, repetitions: int = REPETITIONS,
     if out.exists():
         raise ValueError("Use a new experiment directory")
     if protocol not in PROTOCOLS:
-        raise ValueError("Select MQTT or CoAP")
+        raise ValueError("Select MQTT, CoAP or SMTP")
     profile = PROTOCOLS[protocol]
     source_run = profile["source_run"]
     source = source_run / "specs" / f"r{profile['revision']:03d}"

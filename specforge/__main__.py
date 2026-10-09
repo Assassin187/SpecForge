@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .documents import read_json
 from .evaluation import evaluate_run
+from .llm import MODEL_CONFIGS
 from .pipeline import Pipeline, STAGES, verify_project
 from .specs import validate
 
@@ -18,6 +19,7 @@ def main() -> int:
     for name in ("task", "requirements", "protocol", "out"):
         run.add_argument("--" + name, type=Path, required=True)
     run.add_argument("--until", choices=STAGES, default="verify")
+    run.add_argument("--model", choices=MODEL_CONFIGS, default="deepseek-flash")
     resume = commands.add_parser("resume")
     resume.add_argument("--run", type=Path, required=True)
     check = commands.add_parser("validate")
@@ -25,6 +27,7 @@ def main() -> int:
     code = commands.add_parser("code")
     code.add_argument("--specs", type=Path, required=True)
     code.add_argument("--out", type=Path, required=True)
+    code.add_argument("--model", choices=MODEL_CONFIGS, default="deepseek-flash")
     verify = commands.add_parser("verify")
     verify.add_argument("--project", type=Path, required=True)
     evaluate = commands.add_parser("evaluate")
@@ -33,7 +36,7 @@ def main() -> int:
     args = parser.parse_args()
     try:
         if args.command == "run":
-            p = Pipeline.new(args.out)
+            p = Pipeline.new(args.out, model=args.model)
             return 0 if p.freeze_inputs(args.task, args.requirements, args.protocol) and p.execute(args.until) else 1
         if args.command == "resume":
             return 0 if Pipeline(args.run).resume() else 1
@@ -47,7 +50,7 @@ def main() -> int:
             if not report["passed"]:
                 print(json.dumps(report["errors"], ensure_ascii=False))
                 return 1
-            p = Pipeline.new(args.out, spec_only=True)
+            p = Pipeline.new(args.out, spec_only=True, model=args.model)
             shutil.copytree(args.specs, p.bundle())
             for stage in STAGES[:4]:
                 p.state["stages"][stage] = {"status": "passed", "source": "spec_only"}

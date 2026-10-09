@@ -1,11 +1,11 @@
-"""Thin DeepSeek Chat Completions adapter; no second orchestration layer."""
+"""Shared Chat Completions adapter with selectable model profiles."""
 
 from __future__ import annotations
 
 import json
 import os
 import time
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, field, fields
 
 from openai import OpenAI
 
@@ -17,9 +17,27 @@ class ModelConfig:
     key_env: str = "DS_API"
     reasoning_effort: str = "high"
     max_tokens: int = 65536
+    extra_body: dict = field(default_factory=lambda: {"thinking": {"type": "enabled"}})
 
     def record(self) -> dict:
-        return {**self.__dict__, "thinking": "enabled", "stream": False}
+        record = asdict(self)
+        # Existing experiment consumers compare the frozen DeepSeek record.
+        if self.extra_body == {"thinking": {"type": "enabled"}}:
+            record.pop("extra_body")
+        return {**record, "thinking": "enabled", "stream": False}
+
+    @classmethod
+    def from_record(cls, record: dict) -> ModelConfig:
+        return cls(**{item.name: record[item.name] for item in fields(cls) if item.name in record})
+
+
+# Add future API-compatible models here with their endpoint, key and request body.
+MODEL_CONFIGS = {
+    "deepseek-flash": ModelConfig(),
+    "qwen3.8-flash": ModelConfig(model="qwen3.8-flash",
+                                 base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+                                 key_env="ALI_API", extra_body={"enable_thinking": True}),
+}
 
 
 class LLM:
@@ -39,7 +57,7 @@ class LLM:
             response = self.client.chat.completions.create(
                 model=self.config.model, messages=messages, tools=tools, stream=False,
                 max_tokens=self.config.max_tokens, reasoning_effort=self.config.reasoning_effort,
-                extra_body={"thinking": {"type": "enabled"}},
+                extra_body=self.config.extra_body,
             )
             raw = response.model_dump()
             choices = raw.get("choices")
@@ -68,11 +86,18 @@ class LLM:
             assistant["reasoning_content"] = message["reasoning_content"]
         usage = raw.get("usage") or {}
         details = usage.get("completion_tokens_details") or {}
+        prompt_details = usage.get("prompt_tokens_details") or {}
+        cache_hit = usage.get("prompt_cache_hit_tokens")
+        if cache_hit is None:
+            cache_hit = prompt_details.get("cached_tokens")
+        cache_miss = usage.get("prompt_cache_miss_tokens")
+        if cache_miss is None and cache_hit is not None and usage.get("prompt_tokens") is not None:
+            cache_miss = usage["prompt_tokens"] - cache_hit
         return {"message": assistant, "finish_reason": choice["finish_reason"], "response": raw,
                 "queue_errors": queue_errors,
                 "usage": {"input_tokens": usage.get("prompt_tokens"),
-                          "cache_hit_tokens": usage.get("prompt_cache_hit_tokens"),
-                          "cache_miss_tokens": usage.get("prompt_cache_miss_tokens"),
+                          "cache_hit_tokens": cache_hit,
+                          "cache_miss_tokens": cache_miss,
                           "output_tokens": usage.get("completion_tokens"),
                           "reasoning_tokens": details.get("reasoning_tokens"),
                           "requests": 1, "elapsed_seconds": round(time.monotonic() - started, 3)}}

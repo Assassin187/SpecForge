@@ -85,7 +85,7 @@ def summarize_experiment(run: Path, state: dict) -> dict:
     trial_rows, scenario_rows, stage_rows, access_rows, evidence, attribution = [], [], [], [], [], []
     costs = []
     history = read_json(run / "control/historical_cost.json")
-    protocol = "CoAP" if state["protocol"] == "coap" else "MQTT"
+    protocol = {"mqtt": "MQTT", "coap": "CoAP", "smtp": "SMTP"}[state["protocol"]]
     revision = Path(state["source"]).name
     scenario_count = len(state["expected_scenarios"])
     for trial in state["trials"]:

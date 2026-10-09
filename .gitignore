@@ -16,3 +16,6 @@ runs/paper/*
 !runs/paper/summary.json
 !runs/paper/runs.csv
 !runs/paper/stages.csv
+/expriments/**/runs/
+/expriments/**/output/
+/expriments/RQ1/metagpt/paper_data/
