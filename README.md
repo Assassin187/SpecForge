@@ -61,8 +61,11 @@ python -m unittest discover -s tests -v
 默认模型为 `deepseek-flash`，使用 `DS_API`；可通过 `run` 或 `code` 的
 `--model qwen3.8-flash` 选择 Qwen3.8-Flash，使用 `ALI_API` 和阿里云百炼北京地域的
 OpenAI 兼容接口 `https://dashscope.aliyuncs.com/compatible-mode/v1`。
-两者均使用 `reasoning_effort=high`、开启思考、非流式和 `max_tokens=65536`；
-Qwen 的 `high` 由服务端映射为 `xhigh`。
+`--model gpt-6.1-sol` 使用 `DES_CODEX_API` 和私有服务地址
+`http://172.16.0.160:50199/v1`。该服务已验证支持 Chat Completions 工具调用及结果回传，
+GPT 配置不发送 DeepSeek 或 Qwen 的专用思考参数。
+三者均使用 `reasoning_effort=high`、非流式和 `max_tokens=65536`；DeepSeek 和 Qwen
+额外开启思考，Qwen 的 `high` 由服务端映射为 `xhigh`。
 总 Token 为输入加输出；推理已包含在输出，缓存命中已包含在输入。
 
 例如，已设置 `ALI_API` 后可运行：
@@ -76,9 +79,20 @@ python -m specforge run \
   --model qwen3.8-flash
 ```
 
+已设置 `DES_CODEX_API` 后，使用 GPT 生成 MQTT：
+
+```sh
+python -m specforge run \
+  --task cases/mqtt_min/TASK.md \
+  --requirements cases/mqtt_min/REQUIREMENTS.md \
+  --protocol cases/mqtt_min/spec/mqtt-v3.1.1-os.pdf \
+  --out runs/my_mqtt_gpt \
+  --model gpt-6.1-sol
+```
+
 选择的配置保存在 `run.json` 和模型请求日志中；`resume` 自动沿用该配置。
 后续 API 兼容模型可在 `specforge/llm.py` 的 `MODEL_CONFIGS` 中增加配置，指定模型名、
-接口地址、密钥环境变量及 `extra_body`。GPT 系列尚未注册。
+接口地址、密钥环境变量及 `extra_body`。
 Qwen 参数说明见[阿里云官方文档](https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-chat-completions)。
 
 MQTT 的互通验收还需要 `mosquitto_pub` / `mosquitto_sub`，CoAP 需要

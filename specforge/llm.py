@@ -37,6 +37,8 @@ MODEL_CONFIGS = {
     "qwen3.8-flash": ModelConfig(model="qwen3.8-flash",
                                  base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
                                  key_env="ALI_API", extra_body={"enable_thinking": True}),
+    "gpt-6.1-sol": ModelConfig(model="gpt-6.1-sol", base_url="http://172.16.0.160:50199/v1",
+                               key_env="DES_CODEX_API", extra_body={}),
 }
 
 

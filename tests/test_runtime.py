@@ -95,14 +95,46 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(read_json(logs / "request_001.json")["model_config"], config.record())
         self.assertEqual(ModelConfig.from_record(config.record()), config)
 
-    def test_qwen_client_uses_ali_key_and_endpoint(self):
-        with patch.dict("os.environ", {"ALI_API": "fixture-key"}, clear=True), patch("specforge.llm.OpenAI") as client:
-            model = LLM(MODEL_CONFIGS["qwen3.8-flash"])
-        client.assert_called_once_with(api_key="fixture-key", base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
-                                       timeout=240, max_retries=2)
-        self.assertIs(model.client, client.return_value)
-        with patch.dict("os.environ", {}, clear=True), self.assertRaisesRegex(RuntimeError, "Set ALI_API"):
-            LLM(MODEL_CONFIGS["qwen3.8-flash"])
+    def test_gpt_native_tools_without_reasoning_content_and_cached_usage(self):
+        replies = [response([call("write_file", {"path": "/work/gpt.txt", "content": "ok"}),
+                             call("read_file", {"path": "/work/gpt.txt"}, "c2")]),
+                   response([call("check", {}, "c3")])]
+        for reply in replies:
+            reply["choices"][0]["message"].pop("reasoning_content")
+            usage = reply["usage"]
+            usage.pop("prompt_cache_hit_tokens")
+            usage.pop("prompt_cache_miss_tokens")
+            usage["prompt_tokens_details"] = {"cached_tokens": 80}
+        client = FakeClient(replies)
+        config = MODEL_CONFIGS["gpt-6.1-sol"]
+        self.runtime.check_callback = lambda: {"passed": (self.runtime.work / "gpt.txt").is_file()}
+        logs = self.root / "gpt_api"
+        report = run_agent(LLM(config, client=client), self.runtime, "role", "task", 4, logs)
+        self.assertTrue(report["passed"])
+        self.assertEqual((self.runtime.work / "gpt.txt").read_text(), "ok")
+        self.assertEqual(client.requests[0]["model"], "gpt-6.1-sol")
+        self.assertEqual(client.requests[0]["extra_body"], {})
+        self.assertEqual(client.requests[0]["reasoning_effort"], "high")
+        history = client.requests[1]["messages"]
+        self.assertNotIn("reasoning_content", history[2])
+        self.assertEqual([m["tool_call_id"] for m in history if m["role"] == "tool"], ["c1", "c2"])
+        self.assertEqual(report["usage"]["input_tokens"], 200)
+        self.assertEqual(report["usage"]["cache_hit_tokens"], 160)
+        self.assertEqual(report["usage"]["cache_miss_tokens"], 40)
+        self.assertEqual(read_json(logs / "request_001.json")["model_config"], config.record())
+        self.assertEqual(ModelConfig.from_record(config.record()), config)
+
+    def test_selected_client_uses_its_key_and_endpoint(self):
+        for name, key_env, endpoint in (
+                ("qwen3.8-flash", "ALI_API", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+                ("gpt-6.1-sol", "DES_CODEX_API", "http://172.16.0.160:50199/v1")):
+            with self.subTest(model=name):
+                with patch.dict("os.environ", {key_env: "fixture-key"}, clear=True), patch("specforge.llm.OpenAI") as client:
+                    model = LLM(MODEL_CONFIGS[name])
+                client.assert_called_once_with(api_key="fixture-key", base_url=endpoint, timeout=240, max_retries=2)
+                self.assertIs(model.client, client.return_value)
+                with patch.dict("os.environ", {}, clear=True), self.assertRaisesRegex(RuntimeError, f"Set {key_env}"):
+                    LLM(MODEL_CONFIGS[name])
 
     def test_invalid_model_response_reports_api_error_without_passing_gate(self):
         for index, choices in enumerate((None, [], [None], [{"message": None, "finish_reason": "stop"}])):
