@@ -77,5 +77,8 @@ with the exact input references, problem and an existing command log/report as
 evidence. For text inputs use file/section or line references. A coding error
 is not a specification gap. If an algorithm and a vector contradict each other,
 record the precise conflict rather than choosing an interpretation or weakening
-an assertion. The controller records the gap and ends the attempt; no upstream
-specification revision or independent-evaluator feedback is available.
+an assertion. For G/P the controller can revise your own specifications once using approved
+own Facts, then require a fresh review and publication. Continuing implementation
+uses the next counted repair job. A second gap or exhausted repair budget ends
+the attempt. D has no upstream specification revision. Independent-evaluator
+feedback is never available during generation.
