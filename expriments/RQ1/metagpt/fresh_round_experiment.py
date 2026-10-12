@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Third independent four-protocol MetaGPT round: generation followed by native C99 QA."""
+"""Independent four-protocol MetaGPT round: generation followed by native C99 QA."""
 from __future__ import annotations
 
 import argparse
@@ -30,6 +30,7 @@ def now():
 
 def generation_worker(case, batch):
     manifest = json.loads((batch / 'batch.json').read_text())
+    os.environ['METAGPT_MODEL_CONFIG'] = json.dumps(manifest['model'])
     run = Path(manifest['cases'][case]['generation_run'])
     assert not run.exists(), 'Each independent generation starts from an empty directory.'
     # Native imports create tool schemas and logs before the recording entrypoint
@@ -49,7 +50,8 @@ def generation_worker(case, batch):
         body = json.loads(await request.aread())
         expected = manifest['model']
         if not (body['model'] == expected['model'] and body['max_tokens'] == expected['max_tokens']
-                and not body.get('stream', False) and body['thinking'] == {'type': 'enabled'}
+                and not body.get('stream', False)
+                and body.get('thinking') == setup.MODEL.extra_body.get('thinking')
                 and body['reasoning_effort'] == expected['reasoning_effort']):
             raise WireConfigurationMismatch('Shared model settings mismatch; blocked before network.')
 
@@ -81,7 +83,7 @@ def generation_worker(case, batch):
         'generate_repo_returned_normally': state['native_pipeline_completed'],
         'sop_without_caught_framework_error': state['native_sop_finished_without_framework_error'],
     }
-    state['batch'] = {'round': 3, 'manifest': str(batch / 'batch.json'),
+    state['batch'] = {'round': manifest['round'], 'manifest': str(batch / 'batch.json'),
                       'full_workflow_includes_native_feedback': True,
                       'shared_model_setup_loaded_before_native_roles': True,
                       'wire_configuration_checked_before_every_network_call': True,
@@ -91,30 +93,35 @@ def generation_worker(case, batch):
     if checkpoint.exists():
         frozen = run / 'reports/native_checkpoint/team.json'
         frozen.parent.mkdir()
-        assert os.environ['DS_API'].encode() not in checkpoint.read_bytes()
+        assert os.environ[manifest['model']['key_env']].encode() not in checkpoint.read_bytes()
         shutil.copyfile(checkpoint, frozen)
         state['native_generation_stop']['checkpoint'] = str(frozen.relative_to(run))
     save(run / 'run.json', state)
     return code
 
 
-def prepare(batch):
+def prepare(batch, round_number=3, assessment_script=None):
     import feedback_experiment as feedback
     sys.path.insert(0, str(BASE.parents[2]))
     from specforge.llm import ModelConfig
+    model = (ModelConfig.from_record(json.loads(os.environ['METAGPT_MODEL_CONFIG']))
+             if 'METAGPT_MODEL_CONFIG' in os.environ else ModelConfig())
     batch.mkdir(parents=True, exist_ok=False)
     (batch / 'logs').mkdir()
     (batch / 'reports').mkdir()
     identifier = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
-    state = {'round': 3, 'created_at': now(), 'status': 'preparing',
+    state = {'round': round_number, 'created_at': now(), 'status': 'preparing',
              'fresh_independent_runs': True, 'full_native_feedback_enabled': True,
-             'model': ModelConfig().record(), 'limits': feedback.limits(),
+             'model': model.record(), 'limits': feedback.limits(),
              'prior_feedback_batch': str(BASE / 'runs/feedback_20261009T002030Z'),
              'generation_entrypoint_unchanged': True,
-             'phase_order': ['fresh_generation', 'freeze_originals', 'native_qa_feedback', 'freeze_final_outputs',
-                             'independent_assessment_without_feedback'],
+             'phase_order': ['fresh_generation', 'freeze_originals', 'native_qa_feedback', 'freeze_final_outputs']
+                            + (['independent_assessment_without_feedback'] if assessment_script else []),
              'cases': {case: {'generation_run': str(BASE / 'runs' / f'{case}_{identifier}'),
                               'process_log': f'logs/{case}.generation.log'} for case in CASES}}
+    if assessment_script:
+        shutil.copyfile(assessment_script, batch / 'reports/post_feedback_assessment.py')
+        state['independent_assessment_entrypoint'] = 'reports/post_feedback_assessment.py'
     save(batch / 'batch.json', state)
     for name in ('fresh_round_experiment.py', 'feedback_experiment.py', 'mqtt_experiment.py', 'run.py'):
         shutil.copyfile(BASE / name, batch / 'reports' / name)
@@ -131,11 +138,13 @@ def prepare(batch):
         previous = Path(feedback.SOURCES[CASES.index(case)])
         original = json.loads((BASE / 'runs' / previous / 'run.json').read_text())
         assert record['idea']['sha256'] == original['idea']['sha256']
-        assert record['model'] == original['model'] == state['model']
+        assert record['model'] == state['model']
         assert record['usage']['http_attempts'] == 0
         assert not Path(state['cases'][case]['generation_run']).exists()
         return case, {'original_idea_sha256': record['idea']['sha256'], 'input_hashes': record['input_hashes'],
-                      'input_equivalent_to_previous_round': True, 'preflight_llm_requests': 0}
+                      'input_equivalent_to_previous_round': True,
+                      'model_config_equal_to_previous_round': record['model'] == original['model'],
+                      'preflight_llm_requests': 0}
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
         for case, evidence in pool.map(preflight, CASES):
@@ -149,13 +158,17 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--prepare-only', action='store_true')
+    parser.add_argument('--round', type=int, choices=(1, 2, 3), default=3, dest='round_number')
+    parser.add_argument('--assessment-script', type=Path, help='Run the existing assessor only after all feedback workers stop.')
     parser.add_argument('--generation-worker', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--case', choices=CASES, help=argparse.SUPPRESS)
     args = parser.parse_args()
     batch = args.out.resolve()
     if args.generation_worker:
         return generation_worker(args.case, batch)
-    state = json.loads((batch / 'batch.json').read_text()) if batch.exists() else prepare(batch)
+    state = (json.loads((batch / 'batch.json').read_text()) if batch.exists()
+             else prepare(batch, args.round_number, args.assessment_script))
+    os.environ['METAGPT_MODEL_CONFIG'] = json.dumps(state['model'])
     assert state['status'] == 'prepared', 'Only a prepared fresh batch can start; existing runs are never regenerated.'
     if args.prepare_only:
         print(f'Four fresh inputs verified, zero LLM calls: {batch}', flush=True)
@@ -184,14 +197,29 @@ def main():
     save(batch / 'batch.json', state)
     feedback_output = batch / 'feedback'
     command = [str(PYTHON), str(BASE / 'feedback_experiment.py'), '--out', str(feedback_output), '--jobs', '4',
-               '--round', '3', '--sources', *[Path(state['cases'][case]['generation_run']).name for case in CASES]]
+               '--round', str(state['round']), '--sources', *[Path(state['cases'][case]['generation_run']).name for case in CASES]]
     with (batch / 'logs/native_feedback.log').open('w') as log:
         code = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, cwd=BASE).returncode
     state.update(status='feedback_completed' if code == 0 else 'feedback_failed', feedback_process_exit_code=code,
                  feedback_output=str(feedback_output), feedback_finished_at=now(),
                  generation_and_feedback_wall_seconds=round(time.monotonic() - started, 3))
     save(batch / 'batch.json', state)
-    print(f'Third-round generation and native feedback ended: {batch}', flush=True)
+    if code == 0 and state.get('independent_assessment_entrypoint'):
+        state.update(status='independent_assessment', assessment_started_at=now())
+        save(batch / 'batch.json', state)
+        command = [str(PYTHON), str(batch / state['independent_assessment_entrypoint']),
+                   '--feedback', str(feedback_output), '--destination', str(batch / 'assessment')]
+        assessment_env = os.environ.copy()
+        for key_name in {state['model']['key_env'], 'DS_API'}:
+            assessment_env.pop(key_name, None)
+        with (batch / 'logs/independent_assessment.log').open('w') as log:
+            code = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT,
+                                  cwd=BASE, env=assessment_env).returncode
+        state.update(status='completed' if code == 0 else 'assessment_failed',
+                     assessment_process_exit_code=code, assessment_finished_at=now(),
+                     assessment_llm_requests=0, total_wall_seconds=round(time.monotonic() - started, 3))
+        save(batch / 'batch.json', state)
+    print(f"Independent round ended ({state['status']}): {batch}", flush=True)
     return code
 
 

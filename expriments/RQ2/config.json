@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "protocol": "MQTT",
+  "seed": 20261011,
+  "variants": ["V0", "V1", "V2"],
+  "variant_execution": "parallel",
+  "inputs": {
+    "task": "cases/mqtt_min/TASK.md",
+    "requirements": "cases/mqtt_min/REQUIREMENTS.md",
+    "standard": "cases/mqtt_min/spec/mqtt-v3.1.1-os.pdf",
+    "evaluator": "evaluation/mqtt_check.py"
+  },
+  "model": {
+    "model": "gpt-6-luna",
+    "base_url": "http://172.16.0.160:50199/v1",
+    "key_env": "DES_CODEX_API",
+    "reasoning_effort": "max",
+    "max_tokens": 65536,
+    "extra_body": {},
+    "thinking": "enabled",
+    "stream": false
+  },
+  "budgets": {
+    "facts": 40,
+    "design": 100,
+    "specs": 180,
+    "review": 120,
+    "precode": 40,
+    "code": 180,
+    "repair": 40
+  },
+  "precode_rounds": 2,
+  "implementation_repairs": 3,
+  "spec_repairs": 1,
+  "required_scenarios": 16
+}

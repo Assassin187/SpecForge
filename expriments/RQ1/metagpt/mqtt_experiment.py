@@ -10,6 +10,7 @@ import hashlib
 import importlib.metadata
 import importlib.util
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -24,6 +25,17 @@ SPECFORGE = BASE.parents[2]
 sys.path[:0] = [str(BASE / "MetaGPT"), str(SPECFORGE)]
 from specforge.documents import digest, hashes, prepare, read_json, save_json
 from specforge.llm import ModelConfig
+
+MODEL = (ModelConfig.from_record(json.loads(os.environ["METAGPT_MODEL_CONFIG"]))
+         if "METAGPT_MODEL_CONFIG" in os.environ else ModelConfig())
+PRICING = ({"source": "https://developers.openai.com/api/docs/models/gpt-6-luna", "checked_date": "2026-10-12",
+            "peak_usd_per_million": {"input_cache_hit": 0.01, "input_cache_miss": 0.1, "output": 0.5},
+            "billing_note": "Official standard list-price reference only; gateway billing is unknown.",
+            "budget_is_hard_billing_limit": False}
+           if MODEL.model == "gpt-6-luna" else
+           {"source": "https://api-docs.deepseek.com/quick_start/pricing/", "checked_date": "2026-10-08",
+            "peak_usd_per_million": {"input_cache_hit": 0.006, "input_cache_miss": 0.3, "output": 1.2},
+            "budget_is_hard_billing_limit": False})
 
 
 def now():
@@ -42,8 +54,10 @@ def summarize_usage(attempts):
     )
     result["elapsed_seconds"] = round(sum(item.get("elapsed_seconds", 0) for item in attempts), 3)
     if entries and result["input_tokens"] is not None and result["output_tokens"] is not None:
-        result["estimated_usd_upper_bound"] = round(
-            (result["input_tokens"] * 0.3 + result["output_tokens"] * 1.2) / 1_000_000, 9
+        rates = PRICING["peak_usd_per_million"]
+        field = "estimated_usd_reference" if MODEL.model == "gpt-6-luna" else "estimated_usd_upper_bound"
+        result[field] = round(
+            (result["input_tokens"] * rates["input_cache_miss"] + result["output_tokens"] * rates["output"]) / 1_000_000, 9
         )
     return result
 
@@ -80,7 +94,7 @@ def main():
     state = {
         "schema_version": 1, "system": "metagpt", "case": case, "created_at": created,
         "status": "preparing", "fresh": True, "resumed": False, "manual_edits": False,
-        "model": ModelConfig().record(), "native_settings": settings,
+        "model": MODEL.record(), "native_settings": settings,
         "native_pipeline_completed": False, "generation_passed": False,
         "evaluation_started": False, "evaluation": None, "current_stage": "prepare",
         "jobs": [], "role_events": [], "http_requests": [], "stages": {}, "stop_reason": None,
@@ -92,9 +106,7 @@ def main():
             "native_qa_execution": "Official generate_repo default run_tests=False; preserve this setting.",
         },
         "recording_policy": "Passive observation; original action results, exceptions, prompts and scheduling are unchanged.",
-        "pricing": {"source": "https://api-docs.deepseek.com/quick_start/pricing/", "checked_date": "2026-10-08",
-                    "peak_usd_per_million": {"input_cache_hit": 0.006, "input_cache_miss": 0.3, "output": 1.2},
-                    "budget_is_hard_billing_limit": False},
+        "pricing": PRICING,
     }
 
     def persist():
@@ -128,11 +140,10 @@ def main():
     for ref in sorted((SPECFORGE / "runs/paper").glob(f"round_*/{case}_01/run.json")):
         spec_state = read_json(ref)
         assert spec_state["input_hashes"] == prepared["inputs"], str(ref)
-        assert spec_state["model"] == state["model"], str(ref)
         assert all(digest(ref.parent / "documents" / name) == digest(run / "documents" / name) for name in pages), str(ref)
         references[str(ref.relative_to(SPECFORGE))] = {
             "raw_input_hashes_equal": True, "all_document_chunk_hashes_equal": True,
-            "document_chunks": len(pages), "model_config_equal": True,
+            "document_chunks": len(pages), "model_config_equal": spec_state["model"] == state["model"],
         }
     assert references, f"No {case.upper()} SpecForge frozen input evidence found."
     state["input_equivalence"] = references
@@ -167,7 +178,7 @@ def main():
     state["status"] = "prepared"
     persist()
     print(f"INPUTS VERIFIED: {case.upper()} complete protocol; {len(pages)} document chunks; "
-          f"{len(references)} SpecForge runs match; model config matches.", flush=True)
+          f"{len(references)} SpecForge inputs match; model {MODEL.model}, effort {MODEL.reasoning_effort}.", flush=True)
     if args.prepare_only:
         state["stop_reason"] = "prepare_only_zero_llm_requests"
         persist()
@@ -227,9 +238,15 @@ def main():
         raw_usage = body.get("usage")
         if raw_usage is not None:
             details = raw_usage.get("completion_tokens_details") or {}
+            cache_hit = raw_usage.get("prompt_cache_hit_tokens")
+            if cache_hit is None:
+                cache_hit = (raw_usage.get("prompt_tokens_details") or {}).get("cached_tokens")
+            cache_miss = raw_usage.get("prompt_cache_miss_tokens")
+            if cache_miss is None and cache_hit is not None and raw_usage.get("prompt_tokens") is not None:
+                cache_miss = raw_usage["prompt_tokens"] - cache_hit
             record["usage"] = {"input_tokens": raw_usage.get("prompt_tokens"), "output_tokens": raw_usage.get("completion_tokens"),
-                               "reasoning_tokens": details.get("reasoning_tokens"), "cache_hit_tokens": raw_usage.get("prompt_cache_hit_tokens"),
-                               "cache_miss_tokens": raw_usage.get("prompt_cache_miss_tokens"), "raw": raw_usage}
+                               "reasoning_tokens": details.get("reasoning_tokens"), "cache_hit_tokens": cache_hit,
+                               "cache_miss_tokens": cache_miss, "raw": raw_usage}
         record["finish_reasons"] = [choice.get("finish_reason") for choice in body.get("choices", [])]
         save_json(run / f"logs/llm/metadata_{number:04d}.json", record)
         persist()

@@ -153,8 +153,14 @@ async def worker(output, resume=False):
     def persist():
         entries = [r["usage"] for r in state["requests"] if r.get("usage") is not None]
         state["usage"] = {"requests": len(entries), "http_attempts": len(state["requests"])}
-        for key in ("prompt_tokens", "completion_tokens", "prompt_cache_hit_tokens", "prompt_cache_miss_tokens"):
+        for key in ("prompt_tokens", "completion_tokens"):
             state["usage"][key] = sum(u[key] for u in entries) if entries and all(key in u for u in entries) else None
+        cache_hits = [u.get("prompt_cache_hit_tokens", (u.get("prompt_tokens_details") or {}).get("cached_tokens"))
+                      for u in entries]
+        cache_misses = [u.get("prompt_cache_miss_tokens", u["prompt_tokens"] - hit if hit is not None else None)
+                        for u, hit in zip(entries, cache_hits)]
+        for key, values in (("prompt_cache_hit_tokens", cache_hits), ("prompt_cache_miss_tokens", cache_misses)):
+            state["usage"][key] = sum(values) if values and all(v is not None for v in values) else None
         state["usage"]["total_tokens"] = sum(u["total_tokens"] for u in entries) if entries else 0
         state["usage"]["reasoning_tokens"] = sum((u.get("completion_tokens_details") or {}).get(
             "reasoning_tokens", 0) for u in entries)
@@ -180,7 +186,7 @@ async def worker(output, resume=False):
         assert body["model"] == state["model"]["model"]
         assert body["max_tokens"] == state["model"]["max_tokens"]
         assert body["reasoning_effort"] == state["model"]["reasoning_effort"]
-        assert body["thinking"] == {"type": "enabled"} and not body.get("stream", False)
+        assert body.get("thinking") == runner.MODEL.extra_body.get("thinking") and not body.get("stream", False)
         path = f"logs/request_{number:03d}.json"
         save(output / path, body)
         state["requests"].append({"number": number, "job": scope.get(), "repair_round": repair_round,
@@ -333,8 +339,9 @@ def summarize(output):
                "total_project_elapsed_seconds": round(sum(s.get("extra_elapsed_seconds", 0) for s in states), 3),
                "passed_projects": sum(s.get("passed", False) for s in states)}
     save(output / "summary.json", summary)
+    models = ", ".join(sorted({f"{s['model']['model']} / {s['model']['reasoning_effort']}" for s in states}))
     rows = ["# MetaGPT 原生 C99 反馈修复实验", "", f"复用 {len(states)} 个已冻结生成项目；反馈阶段未重新生成项目，未执行或访问独立验收。",
-            "", "最多 3 轮修复，每轮最多 40 次模型响应；初始 QA 上限 180 次。模型与 SpecForge 相同。",
+            "", f"最多 3 轮修复，每轮最多 40 次模型响应；初始 QA 上限 180 次。模型：{models}。",
             "原生每次反馈选择一个文件修复，原生代码审查继续启用；未引入 SpecForge 修复控制器。",
             "构建 120 秒、自测 180 秒上限与 SpecForge 相同；各项目测试使用独立网络命名空间。",
             "", "| 轮次 | 协议 | 修复前构建 | 修复前自测 | 修复后构建 | 修复后自测 | 修复轮数 | 额外秒数 | 模型响应 | Token |",

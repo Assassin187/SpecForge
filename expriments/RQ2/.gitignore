@@ -1,4 +1,3 @@
-archives/
-runs/
+/runs/
 __pycache__/
-*.py[cod]
+/tests/__pycache__/

@@ -17,7 +17,8 @@ ROOT = Path(__file__).resolve().parent
 sys.path[:0] = [str(ROOT / "MetaGPT"), str(ROOT.parents[2])]
 from specforge.llm import ModelConfig
 
-MODEL = ModelConfig()
+MODEL = (ModelConfig.from_record(json.loads(os.environ["METAGPT_MODEL_CONFIG"]))
+         if "METAGPT_MODEL_CONFIG" in os.environ else ModelConfig())
 SMOKE = sys.argv[1:] == ["--smoke"]
 CHECK = sys.argv[1:] == ["--check"]
 OFFLINE = CHECK or sys.argv[1:] == ["--help"]
@@ -45,12 +46,14 @@ config.llm = LLMConfig(
 # Roles and Actions also call Config.default() internally.
 Config.default = classmethod(lambda cls: config)
 
-# MetaGPT prices are USD per 1K tokens. Use the published peak cache-miss
-# rates as a conservative estimate; actual billing can be lower.
-# Source (2026-10-08): https://api-docs.deepseek.com/quick_start/pricing/
+# MetaGPT prices are USD per 1K tokens. GPT gateway billing is unknown;
+# its native budget uses the official standard input/output reference rates.
+# https://developers.openai.com/api/docs/models/gpt-6-luna (2026-10-12)
+# https://api-docs.deepseek.com/quick_start/pricing/ (2026-10-08)
 from metagpt.utils.token_counter import TOKEN_COSTS
 
-TOKEN_COSTS[MODEL.model] = {"prompt": 0.0003, "completion": 0.0012}
+TOKEN_COSTS[MODEL.model] = ({"prompt": 0.0001, "completion": 0.0005}
+                           if MODEL.model == "gpt-6-luna" else {"prompt": 0.0003, "completion": 0.0012})
 
 from metagpt.provider.llm_provider_registry import register_provider
 from metagpt.provider.openai_api import OpenAILLM
@@ -58,13 +61,13 @@ from metagpt.provider.openai_api import OpenAILLM
 
 @register_provider(LLMType.OPENAI)
 class SpecForgeLLM(OpenAILLM):
-    """Supply the DeepSeek parameters absent from MetaGPT v0.8.2."""
+    """Supply the selected model parameters absent from MetaGPT v0.8.2."""
 
     def _cons_kwargs(self, messages, timeout=0, **extra_kwargs):
         kwargs = super()._cons_kwargs(messages, timeout=timeout, **extra_kwargs)
         kwargs.pop("temperature")
         kwargs["extra_body"] = {
-            "thinking": {"type": "enabled"},
+            **MODEL.extra_body,
             "reasoning_effort": MODEL.reasoning_effort,
         }
         return kwargs
@@ -109,7 +112,7 @@ def check():
             assert llm.config.api_key == (key or "sk-offline-check")
             assert kwargs["max_tokens"] == MODEL.max_tokens
             assert kwargs["extra_body"] == {
-                "thinking": {"type": "enabled"}, "reasoning_effort": MODEL.reasoning_effort
+                **MODEL.extra_body, "reasoning_effort": MODEL.reasoning_effort
             }
             assert not llm.config.stream
     assert callable(generate_repo)
@@ -155,7 +158,7 @@ async def smoke():
             "request": {
                 "model": MODEL.model,
                 "base_url": MODEL.base_url,
-                "thinking": "enabled",
+                "extra_body": MODEL.extra_body,
                 "reasoning_effort": MODEL.reasoning_effort,
                 "stream": False,
                 "max_tokens": config.llm.max_token,
@@ -163,11 +166,13 @@ async def smoke():
             },
             "response_model": response["model"],
             "usage": usage,
-            "estimated_usd_upper_bound": round(
-                (usage["prompt_tokens"] * 0.3 + usage["completion_tokens"] * 1.2) / 1_000_000, 9
+            ("estimated_usd_reference" if MODEL.model == "gpt-6-luna" else "estimated_usd_upper_bound"): round(
+                (usage["prompt_tokens"] * TOKEN_COSTS[MODEL.model]["prompt"]
+                 + usage["completion_tokens"] * TOKEN_COSTS[MODEL.model]["completion"]) / 1000, 9
             ),
-            "pricing_source": "https://api-docs.deepseek.com/quick_start/pricing/",
-            "pricing_checked_date": "2026-10-08",
+            "pricing_source": ("https://developers.openai.com/api/docs/models/gpt-6-luna"
+                               if MODEL.model == "gpt-6-luna" else "https://api-docs.deepseek.com/quick_start/pricing/"),
+            "pricing_checked_date": "2026-10-12" if MODEL.model == "gpt-6-luna" else "2026-10-08",
             "output": str(output),
         }
         (output / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")

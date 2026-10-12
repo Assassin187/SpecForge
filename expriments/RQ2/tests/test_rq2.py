@@ -1,643 +1,627 @@
-"""No live model calls: actual Agent/Pipeline/tool loops with scripted completions."""
+"""Controlled fixtures remain in temporary directories, outside real generation."""
 
 import copy
 import json
-import re
+import os
 import shutil
-import stat
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
-SUITE = Path(__file__).resolve().parents[1]
-ROOT = SUITE.parents[1]
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(SUITE))
-
-import run as rq2
-from generic_planner import GenericPipeline, NativePlanning
-from report import aggregate_usage, job_evidence, summarize_experiment, trial_account
-from spec_adapter import (check_delivery, copy_publication, describe_bundle, generic_checks,
-                          publish_generic, sections)
-from specforge.documents import digest, hashes, read_json, save_json
-from specforge.llm import MODEL_CONFIGS
-from specforge.pipeline import Pipeline, verify_project
-from specforge.specs import scaffold, validate
+HERE = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(HERE.parents[1]))
+sys.path.insert(0, str(HERE))
+from specforge import pipeline as native
+from specforge.documents import hashes, read_json, save_json
+from specforge.evaluation import evaluate_project
+from specforge.llm import LLM, ModelConfig
+from specforge.specs import publish, scaffold, validate
 from specforge.tools import ToolRuntime
+import adapter
+import checks
+import report
+import run as runner
+
+CONFIG = read_json(HERE / "config.json")
 
 
-def scope_fixture():
-    rows = []
-    for number, line in enumerate((ROOT / "cases/mqtt_min/REQUIREMENTS.md").read_text().splitlines(), 1):
-        match = re.search(r"\b(R\d+):\s*(.*)", line)
-        if match:
-            rows.append({"id": match[1], "description": match[2],
-                         "source": {"file": "REQUIREMENTS.md", "line_start": number, "line_end": number}})
-    return {"schema_version": 1, "protocol": "MQTT", "version": "3.1.1", "role": "BROKER",
-            "language": "C99", "runtime": "Linux", "requirements": rows,
-            "required_capabilities": [r["description"] for r in rows], "excluded_features": [],
-            "runtime_contract": dict(rq2.CONTRACT), "engineering_defaults": []}
-
-
-def facts_fixture():
-    # Valid location from the raw PDF, not a historical model-produced artifact.
-    return {"schema_version": 1, "facts": [{"id": "F1", "category": "message_format", "entity": "MQTT",
-            "statement": "Synthetic lifecycle-test fact; not a protocol correctness claim.", "values": {},
-            "evidence": [{"chunk_id": "p001", "line_start": 1, "line_end": 1}]}], "open_questions": []}
-
-
-def spec_text(signature="Project outputs", behavior="Synthetic fixture: preserve CONNACK 20 02 00 00; binary NUL, ownership and test example."):
-    return f"[PROMPT]\nFixture responsibility\n[RELY]\nNone\n[GUARANTEE]\n{signature}\n[SPECIFICATION]\n{behavior}\n"
-
-
-def generic_fixture(scope, revised=False, design=False):
-    signature = "int g_value(int flag);" if revised else "int g_value(void);"
-    functions = [{"id": "G_main", "name": "main", "source": "g_main.c", "spec": "functions/main.spec", "signature": "int main(void);"},
-                 {"id": "G_value", "name": "g_value", "source": "g_value.c", "spec": "functions/value.spec",
-                  "signature": signature, "header": "include/g_api.h"}]
-    plan = {"schema_version": 1, "project_spec": "project.spec",
-            "files": [{"path": "g_main.c", "spec": "files/main.spec"}, {"path": "g_value.c", "spec": "files/value.spec"}],
-            "headers": [{"path": "include/g_api.h", "artifact": "abi/include/g_api.h"}], "functions": functions,
-            "requirements": [{"id": r["id"], "spec_refs": ["functions/value.spec#SPECIFICATION"]} for r in scope["requirements"]]}
-    files = {"plan.json": json.dumps(plan), "project.spec": spec_text(), "files/main.spec": spec_text(),
-             "files/value.spec": spec_text(), "abi/include/g_api.h": "#ifndef G_API_H\n#define G_API_H\n" + signature + "\n#endif\n"}
-    if not design:
-        files.update({f["spec"]: spec_text(f["signature"]) for f in functions})
-    return files
-
-
-def review_fixture(scope):
-    return {"requirements": [{"id": r["id"], "spec_refs": ["functions/value.spec#SPECIFICATION"],
-            "semantic_review": "Fixture reviewer independently checked exact signature, byte example and resource/caller path."}
-            for r in scope["requirements"]]}
-
-
-def native_fixture(scope, revised=False, design=False):
-    # Hand-authored tiny native fixture, independent of G and of historical bundles.
-    signature = "int p_result(int flag)" if revised else "int p_result(void)"
+def fixture(directory):
+    scope = {"schema_version": 1, "protocol": "MQTT", "version": "3.1.1", "role": "BROKER", "language": "C99", "runtime": "Linux",
+             "requirements": [{"id": "R1", "description": "controlled fixture", "source": {"file": "REQUIREMENTS.md", "line_start": 1, "line_end": 1}}],
+             "required_capabilities": [], "excluded_features": [], "runtime_contract": {"binary_name": "fixture", "argv_contract": "./fixture"}, "engineering_defaults": []}
+    facts = {"schema_version": 1, "facts": [{"id": "F1", "category": "message_format", "entity": "fixture", "statement": "controlled fact", "values": {},
+                                           "evidence": [{"chunk_id": "p001", "line_start": 1, "line_end": 1}]}], "open_questions": []}
     module = {"KIND": "PROTOCOL_MODULE_SPEC", "PROTOCOL": {"NAME": "MQTT", "SPEC_VERSION": "3.1.1", "ROLES": ["BROKER"]},
-              "MODULES": [{"NAME": "fixture", "ROLE": "native lifecycle test", "DEPENDENCIES": [], "ARTIFACTS": [],
-                           "FILES": ["p_entry.c", "p_result.c", "include/p_api.h"], "DOC_REF": []}],
-              "GENERATION_ORDER": ["fixture"], "CONSISTENCY_RULES": []}
-    entry = {"KIND": "FILE_SPEC", "FILE": {"TRACE_ID": "p_entry", "LANG": "C99", "ROLE": "entry", "DOC_REF": []},
-             "SOURCE": {"PATH": "p_entry.c", "DEPENDENCY": ["include/p_api.h"], "DATA": [], "INTERFACE": [{
-                 "TRACE_ID": "p/main", "SIGNATURE": "int main(void)", "NAME": "main", "KIND": "FUNC", "ROLE": "entry",
-                 "VISIBILITY": "public", "FUNCTION_TYPE": "ENTRYPOINT"}]}}
-    result = {"KIND": "FILE_SPEC", "FILE": {"TRACE_ID": "p_result", "LANG": "C99", "ROLE": "result", "DOC_REF": []},
-              "HEADER": {"PATH": "include/p_api.h", "DEPENDENCY": [], "DATA": [], "INTERFACE": [{
-                  "NAME": "p_result", "SIGNATURE": signature, "KIND": "FUNC", "ROLE": "result",
-                  "FUNCTION_TYPE": "ALGORITHM", "VISIBILITY": "public"}]},
-              "SOURCE": {"PATH": "p_result.c", "DEPENDENCY": ["include/p_api.h"], "DATA": [], "INTERFACE": [{
-                  "TRACE_ID": "p/result", "SIGNATURE": signature, "NAME": "p_result", "KIND": "FUNC", "ROLE": "result",
-                  "VISIBILITY": "public", "FUNCTION_TYPE": "ALGORITHM"}]}}
-    files = {"module_spec.json": json.dumps(module), "files/entry.json": json.dumps(entry), "files/result.json": json.dumps(result),
-             "abi/include/p_api.h": "#ifndef P_API_H\n#define P_API_H\n" + signature + ";\n#endif\n"}
-    if design:
-        return files
-    for name, trace, raw, kind in (("main", "p/main", "int main(void)", "ENTRYPOINT"),
-                                   ("p_result", "p/result", signature, "ALGORITHM")):
-        params = [{"TYPE": "int", "NAME": "flag", "NULLABLE": False, "OWNERSHIP": "BORROWED"}] if revised and name == "p_result" else []
-        function = {"KIND": "FUNCTION_SPEC", "TRACE_ID": trace, "FUNCTION_TYPE": kind, "ROLE": "fixture",
-                    "SIGNATURE": {"RAW": raw, "NAME": name, "RETURN": "int", "PARAMS": params},
-                    "RELY": {"STRUCT": [], "FUNC": [], "VAR": []},
-                    "LOGIC": {"INPUT": "fixture", "ACTION": "Return the fixture result.", "OUTPUT": "int", "INVARIANTS_USED": []},
-                    "WIRE_MAPPING": [{"PACKET": "fixture", "WIRE_FIELD": "value", "STRATEGY": "parse_and_skip"}],
-                    "TEST_VECTORS": [{"NAME": "fixture", "INPUT": {}, "EXPECT": {}, "TRACE_REFS": ["R01"]}]}
-        files["functions/" + name + ".json"] = json.dumps(function)
-    trace = {"schema_version": 1, "requirements": [{"requirement_id": r["id"], "fact_ids": ["F1"],
-             "spec_refs": ["functions/p_result.json#/LOGIC/ACTION"], "test_ids": ["functions/p_result.json#/TEST_VECTORS/0"]}
-             for r in scope["requirements"]], "processing_chain": [{"id": "path", "description": "fixture path",
-             "spec_refs": ["functions/main.json#/LOGIC/ACTION"]}], "engineering_decisions": []}
-    files["traceability.json"] = json.dumps(trace)
-    return files
+              "MODULES": [{"NAME": "engine", "ROLE": "fixture", "DEPENDENCIES": [], "ARTIFACTS": [], "FILES": ["engine.c", "public/engine.h"], "DOC_REF": []}],
+              "GENERATION_ORDER": ["engine"], "CONSISTENCY_RULES": []}
+    interface = {"NAME": "decode", "KIND": "FUNC", "SIGNATURE": "int decode(const packet *p)", "ROLE": "decode", "VISIBILITY": "public", "FUNCTION_TYPE": "ALGORITHM"}
+    file = {"KIND": "FILE_SPEC", "FILE": {"TRACE_ID": "engine", "LANG": "C", "ROLE": "fixture", "DOC_REF": []},
+            "HEADER": {"PATH": "public/engine.h", "DEPENDENCY": [], "INTERFACE": [interface], "DATA": [
+                {"NAME": "packet", "KIND": "TYPE", "VISIBILITY": "PUBLIC", "ROLE": "fixture", "TYPE_SPEC": {"TYPE_KIND": "STRUCT", "FIELDS": [{"NAME": "payload", "TYPE": "unsigned int", "ROLE": "fixture payload"}]}}]},
+            "SOURCE": {"PATH": "engine.c", "DEPENDENCY": ["public/engine.h"], "SYSTEM_DEPENDENCY": [], "DATA": [], "INTERFACE": [
+                {**interface, "TRACE_ID": "engine/decode"}, {"NAME": "main", "TRACE_ID": "engine/main", "KIND": "FUNC", "SIGNATURE": "int main(void)",
+                                                        "ROLE": "entry", "VISIBILITY": "public", "FUNCTION_TYPE": "ENTRYPOINT"}]}}
+    function = {"KIND": "FUNCTION_SPEC", "TRACE_ID": "engine/decode", "FUNCTION_TYPE": "ALGORITHM", "ROLE": "decode", "SIGNATURE": {
+        "NAME": "decode", "RAW": "int decode(const packet *p)", "RETURN": "int", "PARAMS": [{"NAME": "p", "TYPE": "const packet *", "NULLABLE": False, "OWNERSHIP": "BORROWED"}]},
+        "RELY": {"STRUCT": [], "FUNC": [], "VAR": []}, "LOGIC": {"INPUT": "packet", "ACTION": "return payload", "OUTPUT": "int", "INVARIANTS_USED": []},
+        "WIRE_MAPPING": [{"PACKET": "fixture", "WIRE_FIELD": "payload", "STRATEGY": "store_in_field"}],
+        "TEST_VECTORS": [{"NAME": "zero", "INPUT": {"payload": 0}, "EXPECT": {"value": 0}, "LEVEL": "FUNCTION", "TRACE_REFS": ["R1", "engine/decode"]}]}
+    entry = copy.deepcopy(function)
+    entry.update(TRACE_ID="engine/main", FUNCTION_TYPE="ENTRYPOINT", ROLE="entry", SIGNATURE={"NAME": "main", "RAW": "int main(void)", "RETURN": "int", "PARAMS": []})
+    trace = {"schema_version": 1, "requirements": [{"requirement_id": "R1", "fact_ids": ["F1"], "spec_refs": ["functions/decode.json#/LOGIC/ACTION"],
+              "test_ids": ["functions/decode.json#/TEST_VECTORS/0"], "semantic_review": "author review"}],
+             "processing_chain": [{"id": "flow", "description": "fixture flow", "spec_refs": ["functions/main.json#/LOGIC/ACTION"]}], "engineering_decisions": []}
+    for name, value in {"module_spec.json": module, "files/engine.json": file, "functions/decode.json": function, "functions/main.json": entry,
+                        "scope.json": scope, "traceability.json": trace}.items():
+        save_json(directory / name, value)
+    header = directory / "abi/public/engine.h"
+    header.parent.mkdir(parents=True, exist_ok=True)
+    header.write_text("#ifndef ENGINE_H\n#define ENGINE_H\ntypedef struct { unsigned int payload; } packet;\nint decode(const packet *p);\n#endif\n")
+    return facts, scope
 
 
-def code_fixture(condition, scope, revised=False):
-    if condition == "G":
-        source, helper, name, header = "g_main.c", "g_value.c", "g_value", "include/g_api.h"
-    elif condition == "P":
-        source, helper, name, header = "p_entry.c", "p_result.c", "p_result", "include/p_api.h"
-    else:
-        source, helper, name, header = "d_start.c", "d_count.c", "d_count", "include/d_api.h"
-    declaration = f"int {name}(int flag)" if revised else f"int {name}(void)"
-    invocation = f"{name}(0)" if revised else f"{name}()"
-    files = {source: f'#include "{header}"\nint main(void) {{ return {invocation} != 7; }}\n',
-             helper: f'#include "{header}"\n{declaration} {{ ' + ("(void)flag; " if revised else "") + "volatile int base = 6; return base + 1; }\n",
-             "README.md": "Synthetic development fixture, not an MQTT implementation.\n",
-             "test.py": "import subprocess\nassert subprocess.run(['./mqtt_broker']).returncode == 0\n",
-             "Makefile": "CC=gcc\nFLAGS=-std=c99 -Wall -Wextra -Wpedantic -Werror\n"
-                         f"all:\n\t$(CC) $(FLAGS) {source} {helper} -o mqtt_broker\n"
-                         f"sanitize:\n\t$(CC) $(FLAGS) -g -fno-pie -no-pie -fsanitize=address,undefined {source} {helper} -o mqtt_broker\n"
-                         "test:\n\t/usr/bin/python3 -B test.py\nclean:\n\trm -f mqtt_broker\n"}
-    if condition == "D":
-        files[header] = declaration + ";\n"
-    delivery = {"schema_version": 1, "files": [source, helper, header, "Makefile", "README.md", "test.py"],
-                "tests": [{"id": "fixture", "path": "test.py", "requirement_ids": [r["id"] for r in scope["requirements"]]}]}
-    files["delivery.json"] = json.dumps(delivery)
-    return files
+def project_fixture(project, bundle):
+    scaffold(bundle, project)
+    (project / "engine.c").write_text('#include "public/engine.h"\nint decode(const packet *p) { return (int)p->payload; }\nint main(void) { return 0; }\n')
+    (project / "Makefile").write_text("all:\n\t$(CC) -std=c99 engine.c -o fixture\nclean:\n\trm -f fixture\nsanitize:\n\t$(CC) -fsanitize=address,undefined engine.c -o fixture\ntest:\n\t./fixture\n")
+    (project / "README.md").write_text("Controlled fixture only.\n")
+    (project / "test.py").write_text("assert True\n")
+    save_json(project / "delivery.json", {"schema_version": 1, "files": ["engine.c", "public/engine.h", "Makefile", "README.md", "test.py"],
+                                          "tests": [{"id": "test", "path": "test.py", "requirement_ids": ["R1"], "spec_test_refs": ["functions/decode.json#/TEST_VECTORS/0"]}]})
 
 
-def write_fixture(directory, files):
-    for name, text in files.items():
-        target = directory / name
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(text)
+class FakeLLM:
+    config = adapter.EXPERIMENT_MODEL
 
-
-class ScriptedLLM:
-    """Stage-aware fake implementing the real native LLM.complete interface."""
-    config = MODEL_CONFIGS["deepseek-flash"]
-
-    def __init__(self, gap_condition=None, second_gap=False):
-        self.scope = scope_fixture()
-        self.requests = []
-        self.gap_condition = gap_condition
-        self.second_gap = second_gap
-        self.code_calls = {}
-        self.revised = set()
+    def __init__(self, work):
+        self.work, self.messages = work, []
 
     def complete(self, messages, tools):
-        self.requests.append(copy.deepcopy({"messages": messages, "tools": tools}))
-        task, prefix = messages[1]["content"], messages[0]["content"]
-        calls, files = [], {}
-        if "Extract scope and protocol facts" in task:
-            files = {"scope.json": json.dumps(self.scope), "facts.json": json.dumps(facts_fixture())}
-        elif task.startswith("DESIGN:"):
-            files = generic_fixture(self.scope, design=True)
-        elif task.startswith("DESIGN job:"):
-            files = native_fixture(self.scope, design=True)
-        elif task.startswith("BEHAVIOR:"):
-            revised = "SPEC REPAIR:" in task
-            if revised:
-                self.revised.add("G")
-            files = generic_fixture(self.scope, revised=revised)
-            # Author review claim must be deleted before the independent job.
-            files["review.json"] = json.dumps(review_fixture(self.scope))
-            files["WORKLOG.md"] = "Author claims review is complete."
-        elif task.startswith("BEHAVIOR job:"):
-            revised = "SPEC REPAIR:" in task
-            if revised:
-                self.revised.add("P")
-            files = native_fixture(self.scope, revised=revised)
-        elif task.startswith("INDEPENDENT REVIEW:"):
-            self.assert_no_author_claim(messages)
-            files = {"review.json": json.dumps(review_fixture(self.scope))}
-        elif "SEMANTIC REVIEW" in task or "independent semantic" in task.lower():
-            trace = json.loads(native_fixture(self.scope, revised="P" in self.revised)["traceability.json"])
-            for row in trace["requirements"]:
-                row["semantic_review"] = "Fixture independent reviewer replayed this saved behavior path."
-            files = {"traceability.json": json.dumps(trace)}
-        else:
-            condition = "D" if "/inputs/TASK.md" in task else "G" if "SYSSPEC" in task else "P"
-            self.code_calls[condition] = self.code_calls.get(condition, 0) + 1
-            if self.gap_condition == condition and (self.code_calls[condition] == 1 or self.second_gap):
-                files = {"gap.log": "Synthetic observed own-ABI contradiction."}
-                ref = "functions/value.spec#GUARANTEE" if condition == "G" else "functions/p_result.json#/SIGNATURE"
-                calls.append(("report_spec_gap", {"kind": "interface", "spec_refs": [ref],
-                    "problem": "Synthetic gap requesting a revised own ABI", "evidence": "/work/gap.log"}))
-            else:
-                files = code_fixture(condition, self.scope, revised=condition in self.revised)
-        writes = [("write_file", {"path": "/work/" + name, "content": text}) for name, text in files.items()]
-        sequence = writes + (calls or [("check", {})])
-        message = {"role": "assistant", "content": None, "reasoning_content": "scripted test",
-                   "tool_calls": [{"id": f"t{i}", "type": "function", "function": {"name": name, "arguments": json.dumps(args)}}
-                                  for i, (name, args) in enumerate(sequence)]}
-        usage = {"input_tokens": 100, "output_tokens": 25, "cache_hit_tokens": 80, "cache_miss_tokens": 20,
-                 "reasoning_tokens": 5, "requests": 1, "elapsed_seconds": 0.01}
-        return {"message": message, "finish_reason": "tool_calls", "usage": usage, "queue_errors": []}
-
-    @staticmethod
-    def assert_no_author_claim(messages):
-        if "Author claims review is complete" in messages[1]["content"]:
-            raise AssertionError("Independent review inherited author checkpoint")
+        self.messages.append(copy.deepcopy(messages))
+        calls = []
+        if "SEMANTIC REVIEW job" in messages[1]["content"]:
+            trace = read_json(self.work / "traceability.json")
+            assert "semantic_review" not in trace["requirements"][0]
+            trace["requirements"][0]["semantic_review"] = "F1 independently re-derived fixture behavior"
+            calls.append({"id": "write", "type": "function", "function": {"name": "write_file", "arguments": json.dumps({"path": "/work/traceability.json", "content": json.dumps(trace)})}})
+        calls.append({"id": "check", "type": "function", "function": {"name": "check", "arguments": "{}"}})
+        return {"message": {"role": "assistant", "content": None, "tool_calls": calls}, "finish_reason": "tool_calls",
+                "usage": {"input_tokens": 10, "output_tokens": 3, "reasoning_tokens": 2, "cache_hit_tokens": 1, "cache_miss_tokens": 9, "requests": 1, "elapsed_seconds": 0},
+                "response": {"usage": {"prompt_tokens": 10, "completion_tokens": 3, "completion_tokens_details": {"reasoning_tokens": 2}, "prompt_cache_hit_tokens": 1, "prompt_cache_miss_tokens": 9}}}
 
 
-def acceptance_fixture(project, bundle, evaluator, destination):
-    destination.mkdir(parents=True)
-    assert project != destination
-    phases = {mode: {"passed": True, "required_count": len(rq2.TEST_IDS),
-              "scenarios": [{"id": name, "status": "passed"} for name in rq2.TEST_IDS]}
-              for mode in ("normal", "sanitize")}
-    return {"passed": True, "errors": [], "builds": {p: {"exit_code": 0, "timed_out": False} for p in phases}, "phases": phases}
-
-
-class RQ2Tests(unittest.TestCase):
+class TemporaryTest(unittest.TestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory(prefix="rq2_test_")
-        self.directory = Path(self.temp.name)
+        self.temp = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp.name)
 
     def tearDown(self):
         self.temp.cleanup()
 
-    def prepare(self, conditions=("G",)):
-        path = self.directory / ("run_" + "".join(conditions))
-        with patch("specforge.llm.OpenAI") as api:
-            state = rq2.prepare_experiment(path, conditions=conditions)
-        api.assert_not_called()
-        return path, state
 
-    def bundle(self):
-        work = self.directory / "bundle"
-        write_fixture(work, generic_fixture(scope_fixture()))
-        save_json(work / "scope.json", scope_fixture())
-        save_json(work / "review.json", review_fixture(scope_fixture()))
-        publish_generic(work, scope_fixture(), 1)
-        return work
+class GateTests(TemporaryTest):
+    def setUp(self):
+        super().setUp()
+        self.directory = self.root / "bundle"
+        self.facts, self.scope = fixture(self.directory)
 
-    def test_archive_and_core_bytes_match_preimplementation_baseline(self):
-        archive = SUITE / "archives/legacy_20261009T152647Z"
-        self.assertTrue(read_json(archive / "VERIFIED.json")["verified"])
-        baseline = read_json(archive / "baseline_hashes.json")
-        for name, expected in baseline.items():
-            self.assertEqual(digest(ROOT / name), expected, name)
-        inventory = read_json(archive / "inventory.json")
-        original = archive / "legacy"
-        actual = {p.relative_to(original).as_posix() for p in original.rglob("*")}
-        self.assertEqual(actual, set(inventory))
-        for name, record in inventory.items():
-            path = original / name
-            self.assertEqual(stat.S_IMODE(path.lstat().st_mode), record["mode"], name)
-            if record["kind"] == "file":
-                self.assertEqual(digest(path), record["sha256"], name)
-        for name, expected in read_json(archive / "VERIFIED.json")["archives"].items():
-            self.assertEqual(digest(archive / name), expected, name)
+    def gate(self, policy, **kwargs):
+        return checks.check(self.directory, policy, facts=self.facts, scope=self.scope, **kwargs)
 
-    def test_prepare_keeps_raw_task_bytes_and_has_no_historical_sources(self):
-        path, state = self.prepare(rq2.CONDITIONS)
-        self.assertEqual((path / "control/raw/inputs/TASK.md").read_bytes(), (ROOT / "cases/mqtt_min/TASK.md").read_bytes())
-        self.assertIn("before implementing", (path / "control/raw/inputs/TASK.md").read_text())
-        self.assertNotIn("source_manifest_sha256", state)
-        self.assertEqual(len(state["trials"]), 3)
-        self.assertEqual(state["limits"], {**rq2.LIMITS, "implementation_repairs": 3, "spec_repairs": 1})
-        self.assertEqual(len(state["expected_scenarios"]), 16)
-        self.assertEqual(state["model"]["max_tokens"], 65536)
-        self.assertEqual(state["stage_models"]["design"]["max_tokens"], 131072)
-        self.assertEqual(rq2.load_frozen(path), state)
+    def mutate(self, name, callback):
+        value = read_json(self.directory / name)
+        callback(value)
+        save_json(self.directory / name, value)
 
-    def test_legacy_schema_and_control_drift_are_rejected(self):
-        path, state = self.prepare()
-        save_json(path / "experiment.json", {"schema_version": 1})
-        with self.assertRaisesRegex(ValueError, "Historical"):
-            rq2.load_frozen(path)
-        save_json(path / "experiment.json", state)
-        (path / "control/raw/inputs/TASK.md").write_text("changed")
-        with self.assertRaisesRegex(ValueError, "Frozen"):
-            rq2.load_frozen(path)
+    def test_valid_sample_and_pure_probes(self):
+        result = self.gate("V2", review=True)
+        self.assertTrue(result["passed"], result["errors"])
+        self.assertEqual(len(result["headers"]["probes"]), 2)
+        self.assertTrue(all(p["probe"] == '#include "public/engine.h"\n' for p in result["headers"]["probes"]))
 
-    def test_prepared_report_is_pending_and_does_not_create_a_model_client(self):
-        path, state = self.prepare(rq2.CONDITIONS)
-        with patch("specforge.llm.OpenAI") as api:
-            summarize_experiment(path, state)
-        api.assert_not_called()
-        self.assertIn("| G | pending | pending | pending |", (path / "summary/README.md").read_text())
-        result = read_json(path / "summary/results.json")
-        self.assertFalse(result["generation_finished"])
-        self.assertTrue(all(a["accounting"]["requests_recorded"] == 0 for a in result["trials"]))
+    def test_signature_field_and_type_mismatches_separated(self):
+        changes = [lambda v: v["HEADER"]["DATA"][0]["TYPE_SPEC"]["FIELDS"][0].update(NAME="missing"),
+                   lambda v: v["HEADER"]["DATA"][0]["TYPE_SPEC"]["FIELDS"][0].update(TYPE="int"),
+                   lambda v: v["SOURCE"]["INTERFACE"][0].update(SIGNATURE="void decode(const packet *p)")]
+        for change in changes:
+            fixture(self.directory)
+            self.mutate("files/engine.json", change)
+            for policy in ("V0", "V1"):
+                self.assertTrue(self.gate(policy)["passed"])
+            self.assertFalse(self.gate("V2")["passed"])
 
-    def test_model_budget_and_attempt_denominator_are_frozen(self):
-        path, state = self.prepare(rq2.CONDITIONS)
-        for mutate in (lambda s: s["model"].update(model="another-model"),
-                       lambda s: s["limits"].update(implementation_repairs=4),
-                       lambda s: s["stage_models"]["design"].update(max_tokens=65536),
-                       lambda s: s["trials"].pop(),
-                       lambda s: s["trials"][0].update(condition="P")):
-            changed = copy.deepcopy(state)
-            mutate(changed)
-            save_json(path / "experiment.json", changed)
-            with self.assertRaisesRegex(ValueError, "Frozen"):
-                rq2.load_frozen(path)
+    def test_broken_headers_only_mandatory_in_v1_v2(self):
+        (self.directory / "abi/public/engine.h").write_text("#error controlled_syntax_error\n")
+        self.assertTrue(self.gate("V0")["passed"])
+        for policy in ("V1", "V2"):
+            self.assertFalse(self.gate(policy)["passed"])
 
-    def test_generic_preserves_protocol_details_and_handoff_bytes(self):
-        bundle = self.bundle()
-        before = (bundle / "functions/value.spec").read_bytes()
-        descriptor = describe_bundle(bundle, "G", [r["id"] for r in scope_fixture()["requirements"]], rq2.CONTRACT, 1)
-        view = self.directory / "view"
-        copy_publication(bundle, descriptor, view)
-        self.assertEqual(before, (view / "functions/value.spec").read_bytes())
-        self.assertIn("20 02 00 00", before.decode())
-        self.assertEqual(hashes(view), descriptor["hashes"])
-        self.assertFalse((view / "facts.json").exists())
-        self.assertFalse((view / "traceability.json").exists())
+    def test_module_ownership_and_function_dependencies_only_v2(self):
+        self.mutate("module_spec.json", lambda v: v["MODULES"][0]["FILES"].append("engine.c"))
+        self.mutate("functions/main.json", lambda v: v["RELY"]["FUNC"].append({"NAME": "missing_dependency", "KIND": "CALL", "ROLE": "controlled"}))
+        self.assertTrue(self.gate("V0")["passed"])
+        self.assertTrue(self.gate("V1")["passed"])
+        self.assertFalse(self.gate("V2")["passed"])
 
-    def test_generic_invalid_signature_reference_artifact_or_section_fails(self):
-        bundle = self.bundle()
-        for mutation, expected in ((lambda: (bundle / "functions/value.spec").write_text(spec_text("int wrong(void);")), "GUARANTEE"),
-                                   (lambda: (bundle / "abi/include/g_api.h").write_text("void g_value(void);"), "ABI"),
-                                   (lambda: (bundle / "files/value.spec").unlink(), "Missing"),
-                                   (lambda: (bundle / "project.spec").write_text("[PROMPT]\nOnly one section"), "sections")):
-            with self.subTest(expected=expected):
-                shutil.rmtree(bundle)
-                bundle = self.bundle()
-                mutation()
-                result = generic_checks(bundle, scope_fixture(), review=True)
-                self.assertFalse(result["passed"])
-        shutil.rmtree(bundle)
-        bundle = self.bundle()
-        plan = read_json(bundle / "plan.json")
-        plan["functions"][0]["spec"] = "../../outside.spec"
-        save_json(bundle / "plan.json", plan)
-        self.assertFalse(generic_checks(bundle, scope_fixture())["passed"])
+    def test_common_presence_coverage_and_references(self):
+        mutations = [lambda: (self.directory / "functions/decode.json").unlink(), lambda: (self.directory / "abi/public/engine.h").unlink(),
+                     lambda: self.mutate("module_spec.json", lambda v: v["MODULES"][0]["FILES"].append("missing.c")),
+                     lambda: self.mutate("traceability.json", lambda v: v["requirements"][0].update(requirement_id="R999")),
+                     lambda: self.mutate("traceability.json", lambda v: v["requirements"][0].update(fact_ids=["F999"])),
+                     lambda: self.mutate("traceability.json", lambda v: v["requirements"][0].update(spec_refs=["functions/decode.json#/missing"])),
+                     lambda: self.mutate("traceability.json", lambda v: v["requirements"][0].update(test_ids=["functions/decode.json#/TEST_VECTORS/99"])),
+                     lambda: self.mutate("functions/decode.json", lambda v: v["TEST_VECTORS"][0].update(TRACE_REFS=["missing"])),
+                     lambda: self.mutate("functions/decode.json", lambda v: v["LOGIC"].update(ACTION=" ")),
+                     lambda: self.mutate("files/engine.json", lambda v: v["HEADER"]["DATA"][0].update(TYPE_SPEC={"TYPE_KIND": "STRUCT"})),
+                     lambda: self.mutate("files/engine.json", lambda v: v["HEADER"]["DATA"][0].update(TYPE_SPEC={"TYPE_KIND": "ALIAS", "ALIAS_OF": " "})),
+                     lambda: self.mutate("functions/main.json", lambda v: v.update(CALL_CONTRACTS=[{"NAME": "decode", "SIGNATURE": "int decode(const packet *p)"}])),
+                     lambda: self.mutate("scope.json", lambda v: v["runtime_contract"].update(binary_name="changed"))]
+        for change in mutations:
+            fixture(self.directory)
+            change()
+            for policy in ("V0", "V1", "V2"):
+                self.assertFalse(self.gate(policy)["passed"])
 
-    def test_published_mutation_and_stale_revision_fail(self):
-        bundle = self.bundle()
-        args = (bundle, "G", [r["id"] for r in scope_fixture()["requirements"]], rq2.CONTRACT)
-        with self.assertRaisesRegex(ValueError, "Stale"):
-            describe_bundle(*args, 2)
-        (bundle / "functions/value.spec").write_text(spec_text("int g_value(void);", "Changed behavior after publication"))
-        with self.assertRaisesRegex(ValueError, "changed"):
-            describe_bundle(*args, 1)
+    def test_json_pointer_array_syntax_and_object_keys(self):
+        items = {"spec.json": {"array": ["value"], "object": {"-1": "legal key", "a/b": "escaped"}}}
+        self.assertEqual(checks.resolved_reference(items, "spec.json#/object/-1"), "legal key")
+        self.assertEqual(checks.resolved_reference(items, "spec.json#/object/a~1b"), "escaped")
+        for ref in ("spec.json#/array/-1", "spec.json#/array/00", "spec.json#/object/a~2b"):
+            with self.assertRaises(ValueError):
+                checks.resolved_reference(items, ref)
 
-    def test_runtime_contract_and_requirement_identity_are_not_inherited_or_rewritten(self):
-        bundle = self.bundle()
-        ids = [r["id"] for r in scope_fixture()["requirements"]]
-        with self.assertRaisesRegex(ValueError, "runtime contract"):
-            describe_bundle(bundle, "G", ids, {"binary_name": "wrong", "argv_contract": "./wrong"}, 1)
-        with self.assertRaisesRegex(ValueError, "requirement IDs"):
-            describe_bundle(bundle, "G", ["R99"], rq2.CONTRACT, 1)
+    def test_design_does_not_require_function_specs_and_traceability(self):
+        shutil.rmtree(self.directory / "functions")
+        (self.directory / "traceability.json").unlink()
+        (self.directory / "scope.json").unlink()
+        with patch("specforge.specs.validate", side_effect=AssertionError("hidden full gate")):
+            self.assertTrue(self.gate("basic", design=True)["passed"])
 
-    def test_review_requires_all_requirements_and_no_author_claim_can_skip_job(self):
-        pipeline = GenericPipeline.new(self.directory / "planner", llm=ScriptedLLM(), stage_models={
-            "design": {**MODEL_CONFIGS["deepseek-flash"].record(), "max_tokens": 131072}})
-        case = ROOT / "cases/mqtt_min"
-        pipeline.freeze_inputs(case / "TASK.md", case / "REQUIREMENTS.md", case / "spec/mqtt-v3.1.1-os.pdf")
-        self.assertTrue(pipeline.execute("specs"))
-        self.assertEqual([j["name"].split("_", 1)[1] for j in pipeline.state["jobs"]], ["facts", "design", "specs", "spec_review"])
-        self.assertFalse((pipeline.bundle() / "WORKLOG.md").exists())
-        review = read_json(pipeline.bundle() / "review.json")
-        review["requirements"].pop()
-        save_json(pipeline.bundle() / "review.json", review)
-        self.assertFalse(generic_checks(pipeline.bundle(), scope_fixture(), review=True)["passed"])
+    def test_design_reports_missing_native_navigation_field(self):
+        self.mutate("files/engine.json", lambda v: v["SOURCE"]["INTERFACE"][0].pop("FUNCTION_TYPE"))
+        result = self.gate("basic", design=True)
+        self.assertFalse(result["passed"])
+        self.assertIn("native behavior-job navigation", str(result["errors"]))
 
-    def test_fake_llm_dgp_complete_lifecycle_with_native_p_and_equal_facts(self):
-        path, state = self.prepare(rq2.CONDITIONS)
-        model = ScriptedLLM()
-        state = rq2.generate_experiment(path, llm=model)
-        self.assertTrue(all(t["generation_passed"] for t in state["trials"]),
-                        [(t["id"], t.get("stop_reason"), t.get("error")) for t in state["trials"]])
-        self.assertEqual(model.config.record(), state["model"])
-        self.assertEqual(MODEL_CONFIGS["deepseek-flash"].max_tokens, 65536)
-        design_requests = []
-        for request_path in path.glob("trials/**/request_*.json"):
-            request = read_json(request_path)
-            role = request_path.parent.parent.name.split("_", 1)[1]
-            expected = state["stage_models"]["design"] if role == "design" else state["model"]
-            self.assertEqual(request["model_config"], expected, str(request_path))
-            if role == "design":
-                design_requests.append(request_path)
-        self.assertEqual(len(design_requests), 2)
-        facts_requests = [r for r in model.requests if "Extract scope and protocol facts" in r["messages"][1]["content"]]
-        self.assertEqual(len(facts_requests), 2)
-        self.assertEqual(facts_requests[0], facts_requests[1])
-        self.assertNotEqual(path / "trials/r01_G/planning/facts", path / "trials/r01_P/planning/facts")
-        self.assertIn("module_spec.json", hashes(path / "trials/r01_P/planning/specs/r001"))
-        self.assertTrue(validate(path / "trials/r01_P/planning/specs/r001")["passed"])
-        with patch.object(rq2, "evaluate_project", side_effect=acceptance_fixture) as evaluate, patch("specforge.llm.OpenAI") as api:
-            state = rq2.evaluate_experiment(path)
-            self.assertEqual(evaluate.call_count, 6)
-            summarize_experiment(path, state)
-        api.assert_not_called()
-        for trial in state["trials"]:
-            self.assertTrue(all(e["responses"] >= 1 for e in trial["gate_events"]))
-            account = trial_account(path, trial)
-            expected = 1 if trial["condition"] == "D" else 5
-            self.assertEqual(account["accounting"]["responses_recorded"], expected)
-            self.assertEqual(account["accounting"]["usage"]["total_tokens"], expected * 125)
-            self.assertTrue(trial["evaluation"]["passed"])
-        with self.assertRaisesRegex(ValueError, "frozen"):
-            rq2.generate_experiment(path, llm=model)
+    def test_legal_alternate_layout_and_type(self):
+        self.mutate("files/engine.json", lambda v: v["HEADER"]["DATA"][0].update(TYPE_SPEC={"TYPE_KIND": "ALIAS", "ALIAS_OF": "unsigned int"}))
+        (self.directory / "abi/public/engine.h").write_text("#ifndef ENGINE_H\n#define ENGINE_H\ntypedef unsigned int packet;\nint decode(const packet *p);\n#endif\n")
+        file = read_json(self.directory / "files/engine.json")
+        file["SOURCE"]["PATH"], file["HEADER"]["PATH"] = "src/engine.c", "api/domain/engine.h"
+        file["SOURCE"]["DEPENDENCY"] = ["api/domain/engine.h"]
+        save_json(self.directory / "files/engine.json", file)
+        self.mutate("module_spec.json", lambda v: v["MODULES"][0].update(FILES=["src/engine.c", "api/domain/engine.h"]))
+        target = self.directory / "abi/api/domain/engine.h"
+        target.parent.mkdir(parents=True)
+        shutil.move(self.directory / "abi/public/engine.h", target)
+        result = self.gate("V2")
+        self.assertTrue(result["passed"], result["errors"])
 
-    def test_g_runs_without_any_p_artifacts_and_sandbox_cannot_read_hidden_inputs(self):
-        path, state = self.prepare(("G",))
-        state = rq2.generate_experiment(path, llm=ScriptedLLM())
-        self.assertTrue(state["trials"][0]["generation_passed"])
-        self.assertFalse((path / "trials/r01_P").exists())
-        self.assertFalse(list((path / "trials/r01_G/reports").glob("handoff*")))
-        self.assertTrue((path / "trials/r01_G/handoff_r001.json").is_file())
-        trial = state["trials"][0]
-        descriptor = trial["spec_revisions"][0]
-        work = path / "trials/r01_G/project"
-        marker = self.directory / "hidden_acceptance.py"
-        marker.write_text("hidden")
-        runtime = rq2.RQ2Runtime(work, {"/specs": path / descriptor["view"], "/reports": path / "trials/r01_G/reports"},
-                                 self.directory / "commands", lambda: {"passed": True}, trial=trial)
-        for name in ("/inputs/TASK.md", "/facts/facts.json", "/harness/evaluate.py", str(marker), "/specs/../../hidden_acceptance.py"):
-            self.assertIn("error", runtime.dispatch("read_file", {"path": name}))
-        result = runtime.command(f"test ! -e {marker} && test ! -e {ROOT}/runs && test ! -e /harness && test ! -e /facts && test ! -e /inputs", timeout=10)
-        self.assertEqual(result["exit_code"], 0, result["output"])
-        self.assertEqual(set(runtime.inputs), {"/specs", "/reports"})
+    def test_package_integrity_preserves_native_spec_filename_support(self):
+        shutil.move(self.directory / "files/engine.json", self.directory / "files/engine layout.json")
+        shutil.move(self.directory / "functions/decode.json", self.directory / "functions/decode behavior.json")
+        trace = read_json(self.directory / "traceability.json")
+        trace["requirements"][0]["spec_refs"] = ["functions/decode behavior.json#/LOGIC/ACTION"]
+        trace["requirements"][0]["test_ids"] = ["functions/decode behavior.json#/TEST_VECTORS/0"]
+        save_json(self.directory / "traceability.json", trace)
+        self.assertTrue(self.gate("V2")["passed"])
+        publish(self.directory, 1)
+        with patch("specforge.specs.validate", side_effect=AssertionError("hidden check")):
+            self.assertTrue(checks.package_integrity(self.directory)["passed"])
+        (self.directory / "SUMMARY.md").write_text("modified publication")
+        self.assertFalse(checks.package_integrity(self.directory)["passed"])
 
-    def test_commands_and_edits_are_available_from_first_job_and_abi_is_readonly(self):
-        bundle = self.bundle()
-        project = self.directory / "project"
-        scaffold(bundle, project)
-        trial = {"modification_events": []}
-        runtime = rq2.RQ2Runtime(project, {}, self.directory / "logs/code/commands", lambda: {"passed": False},
-                                 readonly=[project / "include/g_api.h"], coder=True, trial=trial)
-        names = {t["function"]["name"] for t in runtime.tool_definitions()}
-        self.assertTrue({"run_command", "edit_file", "write_file"} <= names)
-        self.assertEqual(runtime.dispatch("run_command", {"command": "printf old > source.c", "timeout": 10})["exit_code"], 0)
-        result = runtime.dispatch("edit_file", {"path": "/work/source.c", "old": "old", "new": "new"})
-        self.assertNotIn("error", result)
-        self.assertEqual(len(trial["modification_events"]), 1)
-        self.assertIn("error", runtime.dispatch("write_file", {"path": "/work/include/g_api.h", "content": "bad"}))
-        self.assertNotEqual(runtime.command("printf bad > include/g_api.h", timeout=10)["exit_code"], 0)
 
-    def test_spec_repair_for_both_arms_refreshes_abi_view_review_and_budget(self):
-        for condition in ("G", "P"):
-            with self.subTest(condition=condition):
-                path, state = self.prepare((condition,))
-                model = ScriptedLLM(gap_condition=condition)
-                state = rq2.generate_experiment(path, llm=model)
-                trial = state["trials"][0]
-                self.assertTrue(trial["generation_passed"], trial.get("error"))
-                self.assertEqual(trial["implementation_repairs"], 1)
-                self.assertEqual(trial["spec_repairs"], 1)
-                self.assertEqual([j["spec_revision"] for j in trial["jobs"]], [1, 2])
-                planner = read_json(path / trial["planning_state"])
-                roles = [j["name"].split("_", 1)[1] for j in planner["jobs"]]
-                self.assertEqual(roles, ["facts", "design", "specs", "spec_review", "spec_repair", "spec_review"])
-                self.assertEqual(len(trial["spec_revisions"]), 2)
-                h = trial["spec_revisions"][1]["headers"][0]["path"]
-                self.assertIn("int flag", (path / "trials" / trial["id"] / "project" / h).read_text())
-                self.assertNotIn("int flag", (path / trial["initial_snapshot"]["path"] / h).read_text())
-                self.assertEqual(hashes(path / trial["initial_snapshot"]["path"]), trial["initial_snapshot"]["hashes"])
-                self.assertTrue((path / "trials" / trial["id"] / "snapshots/before_spec_repair/specs/bundle.json").is_file())
-                self.assertTrue(any(e["job"] == "02_repair" for e in trial["gate_events"]))
+class ControllerTests(TemporaryTest):
+    def setUp(self):
+        super().setUp()
+        self.pipeline = adapter.RQ2Pipeline.new(self.root / "run", model=CONFIG["model"]["model"]).configure(CONFIG, "basic")
+        self.facts, self.scope = fixture(self.pipeline.run / "design_work")
+        save_json(self.pipeline.run / "facts/facts.json", self.facts)
+        save_json(self.pipeline.run / "facts/scope.json", self.scope)
 
-    def test_second_spec_gap_terminates_without_extra_review_or_replacement(self):
-        path, state = self.prepare()
-        state = rq2.generate_experiment(path, llm=ScriptedLLM(gap_condition="G", second_gap=True))
-        trial = state["trials"][0]
-        self.assertEqual(trial["stop_reason"], "spec_repair_limit")
-        self.assertEqual(len(trial["jobs"]), 2)
-        self.assertEqual(trial["spec_repairs"], 1)
-        with self.assertRaisesRegex(ValueError, "must not be replaced"):
-            rq2.generate_experiment(path, llm=ScriptedLLM())
+    def published(self, policy):
+        self.pipeline.policy = policy
+        shutil.copytree(self.pipeline.run / "design_work", self.pipeline.bundle())
+        self.assertTrue(self.pipeline.publish_specs()["passed"])
 
-    def test_spec_repair_failure_remains_a_failed_attempt(self):
-        path, state = self.prepare()
-        original = GenericPipeline.do_specs
-        def fail_repair(self, repair=None):
-            return {"passed": False, "reason": "response_limit"} if repair else original(self)
-        with patch.object(GenericPipeline, "do_specs", fail_repair):
-            state = rq2.generate_experiment(path, llm=ScriptedLLM(gap_condition="G"))
-        trial = state["trials"][0]
-        self.assertEqual(trial["stop_reason"], "spec_repair_failed")
-        self.assertEqual(trial["spec_repairs"], 1)
-        self.assertEqual(len(trial["spec_revisions"]), 1)
+    def test_gpt_luna_profile_native_requests_and_scoped_registration(self):
+        self.assertEqual(self.pipeline.state["model"], CONFIG["model"])
+        self.assertNotIn("gpt-6-luna", native.MODEL_CONFIGS)
+        config = ModelConfig.from_record(self.pipeline.state["model"])
+        self.assertEqual(config, adapter.EXPERIMENT_MODEL)
+        self.assertEqual(runner.read_config(HERE / "config.json")["model"], config.record())
+        client = Mock()
+        client.chat.completions.create.return_value.model_dump.return_value = {
+            "choices": [{"message": {"role": "assistant", "content": "done"}, "finish_reason": "stop"}],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 3}}
+        result = LLM(config, client=client).complete([{"role": "user", "content": "test"}], [])
+        request = client.chat.completions.create.call_args.kwargs
+        self.assertEqual(request["model"], "gpt-6-luna")
+        self.assertEqual(request["extra_body"], {})
+        self.assertEqual((request["reasoning_effort"], request["max_tokens"], request["stream"]), ("max", 65536, False))
+        self.assertNotIn("reasoning_content", result["message"])
 
-    def test_common_code_limit_is_initial_plus_three_repairs(self):
-        path, state = self.prepare(("D",))
-        def failed_agent(llm, runtime, prefix, task, limit, logs, progress):
-            return {"passed": False, "reason": "response_limit", "responses": limit, "usage": {"requests": 0}}
-        failure = {"passed": False, "errors": ["fixture failure"], "builds": {}, "phases": {}}
-        def failed_gate(project, reports, logs, **kwargs):
-            return {**failure, "project_hashes": rq2.project_hashes(project), "report_path": str(reports / "verify_001/report.json")}
-        with patch.object(rq2, "run_agent", side_effect=failed_agent) as jobs, patch.object(rq2, "verify_project", side_effect=failed_gate):
-            state = rq2.generate_experiment(path, llm=ScriptedLLM())
-        self.assertEqual([c.args[4] for c in jobs.call_args_list], [180, 40, 40, 40])
-        self.assertEqual(state["trials"][0]["implementation_repairs"], 3)
-        self.assertEqual(state["trials"][0]["stop_reason"], "implementation_repair_limit")
+    def test_common_fresh_review_and_scoped_bindings(self):
+        work = self.pipeline.bundle()
+        model = FakeLLM(work)
+        self.pipeline.llm = model
+        (self.pipeline.run / "design_work/WORKLOG.md").write_text("author: everything reviewed")
+        original_agent, original_publish = native.run_agent, native.publish
+        with patch("specforge.specs.validate", side_effect=AssertionError("hidden full gate")):
+            result = self.pipeline.do_specs()
+        self.assertTrue(result["passed"])
+        self.assertFalse((work / "bundle.json").exists())
+        self.assertEqual(len(model.messages), 2)
+        self.assertEqual(len(model.messages[1]), 2)
+        self.assertNotIn("author: everything reviewed", str(model.messages[1]))
+        self.assertIn("180 responses", model.messages[0][1]["content"])
+        self.assertIn(f"{CONFIG['budgets']['review']} responses", model.messages[1][1]["content"])
+        self.assertIs(native.run_agent, original_agent)
+        self.assertIs(native.publish, original_publish)
+        gates = list((self.pipeline.run / "reports/rq2_gates").glob("*.json"))
+        self.assertTrue(gates)
+        self.assertTrue(all(read_json(p)["policy"] == "basic" for p in gates))
+        self.assertTrue(all("content_hashes" in read_json(p) and "elapsed_seconds" in read_json(p) for p in gates))
 
-    def test_gap_on_last_repair_cannot_buy_an_extra_planning_or_code_job(self):
-        path, state = self.prepare()
-        count = 0
-        def failed_agent(llm, runtime, prefix, task, limit, logs, progress):
-            nonlocal count
-            count += 1
-            if count == 4:
-                return {"passed": False, "reason": "spec_gap", "responses": 1, "usage": {"requests": 0},
-                        "gap": {"evidence": "/logs/unused", "spec_refs": ["project.spec#SPECIFICATION"]}}
-            return {"passed": False, "reason": "response_limit", "responses": limit, "usage": {"requests": 0}}
-        def failed_gate(project, reports, logs, **kwargs):
-            return {"passed": False, "errors": ["fixture"], "builds": {}, "phases": {},
-                    "project_hashes": rq2.project_hashes(project), "report_path": str(reports / "verify_001/report.json")}
-        with patch.object(rq2, "run_agent", side_effect=failed_agent), patch.object(rq2, "verify_project", side_effect=failed_gate):
-            state = rq2.generate_experiment(path, llm=ScriptedLLM())
-        trial = state["trials"][0]
-        self.assertEqual(count, 4)
-        self.assertEqual(trial["stop_reason"], "implementation_repair_limit")
-        self.assertEqual(trial["spec_repairs"], 0)
-        self.assertEqual(len(trial["spec_revisions"]), 1)
+    def test_two_rounds_even_on_success_or_budget_exhaustion(self):
+        shutil.copytree(self.pipeline.run / "design_work", self.pipeline.bundle())
+        self.pipeline.policy = "V0"
+        budgets, prefixes, tasks = [], [], []
+        def fake_agent(llm, runtime, prefix, task, response_limit, log_dir, on_progress):
+            budgets.append(response_limit)
+            prefixes.append(prefix)
+            tasks.append(task.split("Current check diagnostics:")[0])
+            return {"passed": len(budgets) == 2, "reason": "response_limit" if len(budgets) == 1 else "gate_passed"}
+        with patch.object(self.pipeline, "model", return_value=object()), patch.object(native, "run_agent", side_effect=fake_agent), \
+                patch("specforge.specs.validate", side_effect=AssertionError("hidden full gate")):
+            self.assertTrue(self.pipeline.precode()["passed"])
+        self.assertEqual(budgets, [40, 40])
+        self.assertEqual(prefixes[0], prefixes[1])
+        self.assertEqual(tasks[0], tasks[1])
+        self.assertEqual([j["name"] for j in self.pipeline.state["jobs"]], ["01_precode_round_1", "02_precode_round_2"])
+        self.assertTrue((self.pipeline.run / "snapshots/precode/precode_round_2/after").is_dir())
 
-    def test_interrupted_attempt_not_restarted_when_pending_arms_continue(self):
-        path, state = self.prepare(("D", "G"))
-        first = state["trials"][0]
-        first.update(status="running", jobs=[{"name": "01_code", "role": "code", "usage": {"requests": 0}}])
-        save_json(path / "experiment.json", state)
-        with patch.object(rq2, "_run_trial") as run_trial:
-            def done(run, state, trial, **kwargs):
-                trial.update(status="failed", stop_reason="fixture_stop", delivery_hashes={})
-            run_trial.side_effect = done
-            state = rq2.generate_experiment(path, llm=ScriptedLLM())
-        self.assertEqual(run_trial.call_count, 1)
-        self.assertEqual(state["trials"][0]["status"], "interrupted")
-        self.assertEqual(len(state["trials"][0]["jobs"]), 1)
+    def test_successful_first_round_still_runs_second_fresh_task(self):
+        shutil.copytree(self.pipeline.run / "design_work", self.pipeline.bundle())
+        self.pipeline.policy = "V0"
+        self.pipeline.llm = FakeLLM(self.pipeline.bundle())
+        self.assertTrue(self.pipeline.precode()["passed"])
+        self.assertEqual(len(self.pipeline.llm.messages), 2)
+        self.assertTrue(all(j["passed"] for j in self.pipeline.state["jobs"]))
+        self.assertTrue(all("40 responses" in messages[1]["content"] for messages in self.pipeline.llm.messages))
 
-    def test_fresh_g_and_p_review_wall_time_and_cost_are_separately_recorded(self):
-        path, state = self.prepare()
-        state = rq2.generate_experiment(path, llm=ScriptedLLM(gap_condition="G"))
-        account = trial_account(path, state["trials"][0])
-        for phase in ("facts", "design", "specs", "spec_review", "spec_repair", "spec_repair_review", "code", "repair"):
-            self.assertEqual(account["phases"][phase]["jobs"], 1, phase)
-            self.assertEqual(account["phases"][phase]["usage"]["total_tokens"], 125, phase)
-            self.assertGreater(account["phases"][phase]["wall_seconds"], 0, phase)
-        self.assertEqual(account["accounting"]["usage"]["total_tokens"], 1000)
+    def test_v0_v1_publish_load_code_and_evaluation_never_full_validate(self):
+        with patch("specforge.specs.validate", side_effect=AssertionError("hidden full gate")), patch("specforge.pipeline.validate", side_effect=AssertionError("hidden pipeline gate")):
+            self.published("V0")
+            self.assertTrue(checks.package_integrity(self.pipeline.bundle())["passed"])
+            seen = []
+            def fake_agent(llm, runtime, prefix, task, response_limit, log_dir, on_progress):
+                seen.append(runtime)
+                project_fixture(runtime.work, self.pipeline.bundle())
+                return {"passed": True, "reason": "gate_passed"}
+            development = {"passed": True, "errors": [], "phases": {}, "builds": {}, "project_hashes": {}, "report_path": str(self.pipeline.run / "reports/mock.json")}
+            with patch.object(native, "run_agent", side_effect=fake_agent), patch.object(self.pipeline, "model", return_value=object()), patch.object(native, "verify_project", return_value=development):
+                self.assertTrue(self.pipeline.do_code()["passed"])
+            self.assertEqual(set(seen[0].inputs), {"/specs", "/reports"})
+            self.assertTrue(all(p.is_file() for p in seen[0].readonly))
+            self.assertIn("error", seen[0].dispatch("write_file", {"path": "/work/public/engine.h", "content": "changed"}))
+            self.assertIn("error", seen[0].dispatch("read_file", {"path": "/harness/evaluate.py"}))
+            self.assertIn("error", seen[0].dispatch("read_file", {"path": "/evaluation/result.json"}))
+            with patch.object(ToolRuntime, "command", return_value={"exit_code": 1, "timed_out": False}):
+                evaluate_project(self.pipeline.run / "project", self.pipeline.bundle(), native.ROOT / "evaluation/mqtt_check.py", self.root / "evaluation")
+            self.pipeline.policy = "V1"
+            self.assertTrue(self.pipeline.spec_gate(self.pipeline.bundle(), review=True)["passed"])
+            self.assertTrue(checks.package_integrity(self.pipeline.bundle())["passed"])
 
-    def test_real_independent_evaluator_runs_copies_and_never_changes_source_snapshots(self):
-        # Exercise the real evaluator adapter/sandbox with a deterministic fake
-        # harness. Its success is lifecycle evidence, not MQTT accuracy evidence.
-        project = self.directory / "project"
-        write_fixture(project, code_fixture("D", scope_fixture()))
-        runtime_bundle = self.directory / "runtime"
-        save_json(runtime_bundle / "bundle.json", {"runtime_contract": rq2.CONTRACT})
-        harness = self.directory / "fake_evaluator.py"
-        harness.write_text("import argparse,json,pathlib\np=argparse.ArgumentParser()\np.add_argument('--binary')\np.add_argument('--out')\na=p.parse_args()\n"
-                           "o=pathlib.Path(a.out);o.mkdir(parents=True)\n(o/'report.json').write_text(json.dumps("
-                           + repr({"passed": True, "required_count": 16,
-                                   "scenarios": [{"id": name, "status": "passed"} for name in rq2.TEST_IDS]}) + "))\n")
-        before = hashes(project)
-        report = rq2.evaluate_project(project, runtime_bundle, harness, self.directory / "independent")
-        self.assertTrue(rq2.normalize_evaluation(report, list(rq2.TEST_IDS))["passed"], report["errors"])
-        self.assertEqual(hashes(project), before)
-        self.assertTrue((self.directory / "independent/project/mqtt_broker").is_file())
+    def test_gap_snapshot_precedes_failed_repair_and_final_uses_last_publication(self):
+        self.published("V0")
+        original = hashes(self.pipeline.bundle())
+        def fake_agent(llm, runtime, prefix, task, response_limit, log_dir, on_progress):
+            if runtime.coder:
+                project_fixture(runtime.work, self.pipeline.bundle())
+                (runtime.logs / "gap.log").write_text("controlled missing interface")
+                return {"passed": False, "reason": "spec_gap", "gap": {"kind": "interface", "problem": "controlled", "spec_refs": ["module_spec.json#/PROTOCOL"], "evidence": "/logs/gap.log"}}
+            self.assertTrue((self.pipeline.run / "snapshots/initial/metadata.json").is_file())
+            self.assertEqual(self.pipeline.policy, "full")
+            runtime.check_callback()
+            return {"passed": False, "reason": "response_limit"}
+        with patch.object(native, "run_agent", side_effect=fake_agent), patch.object(self.pipeline, "model", return_value=object()), patch("specforge.specs.validate", wraps=validate) as full:
+            result = self.pipeline.do_code()
+        self.assertEqual(result["reason"], "spec_repair_failed")
+        self.assertTrue(full.called)
+        self.assertEqual(self.pipeline.state["spec_revision"], 2)
+        self.pipeline.snapshot("final", result)
+        initial = read_json(self.pipeline.run / "snapshots/initial/metadata.json")
+        final = read_json(self.pipeline.run / "snapshots/final/metadata.json")
+        self.assertEqual(initial["result"]["reason"], "spec_gap")
+        self.assertEqual(final["published_revision"], "specs/r001")
+        self.assertEqual(final["spec_hashes"], original)
+        self.assertEqual(initial["spec_hashes"], original)
 
-    def test_upstream_failure_keeps_cost_and_attempt_and_does_not_call_coder(self):
-        path, state = self.prepare()
-        model = ScriptedLLM()
-        model.complete = lambda messages, tools: (_ for _ in ()).throw(RuntimeError("synthetic API error"))
-        state = rq2.generate_experiment(path, llm=model)
-        trial = state["trials"][0]
-        self.assertEqual(trial["stop_reason"], "facts_failed")
-        self.assertFalse(trial["jobs"])
-        account = trial_account(path, trial)
-        self.assertTrue(account["accounting"]["usage_unknown"])
-        self.assertIsNone(account["accounting"]["usage"]["total_tokens"])
-        self.assertEqual(account["accounting"]["known_recorded_usage"]["total_tokens"], 0)
-        self.assertEqual(account["accounting"]["requests_recorded"], 1)
-        with patch.object(rq2, "evaluate_project") as evaluator:
-            state = rq2.evaluate_experiment(path)
-        evaluator.assert_not_called()
-        self.assertFalse(state["trials"][0]["evaluation"]["passed"])
+    def test_postcode_repairs_full_gate_and_fresh_review_for_all_variants(self):
+        for variant in CONFIG["variants"]:
+            pipeline = adapter.RQ2Pipeline.new(self.root / variant, model=CONFIG["model"]["model"]).configure(CONFIG, variant)
+            fixture(pipeline.run / "design_work")
+            save_json(pipeline.run / "facts/facts.json", self.facts)
+            save_json(pipeline.run / "facts/scope.json", self.scope)
+            pipeline.state["spec_revision"] = 2
+            pipeline.llm = FakeLLM(pipeline.bundle())
+            with patch("specforge.specs.validate", wraps=validate) as full:
+                self.assertTrue(pipeline.do_specs({"problem": "controlled gap"})["passed"])
+            self.assertTrue(full.called)
+            self.assertEqual(pipeline.policy, variant)
+            self.assertEqual(pipeline.state["rq2_last_published"], "specs/r002")
+            self.assertTrue(all(read_json(p)["policy"] == "full" for p in (pipeline.run / "reports/rq2_gates").glob("*.json")))
+            self.assertEqual([j["name"].split("_", 1)[1] for j in pipeline.state["jobs"]], ["spec_repair", "spec_review"])
 
-    def test_development_gate_real_normal_and_sanitizer_preserves_publication(self):
-        bundle = self.bundle()
-        descriptor = describe_bundle(bundle, "G", [r["id"] for r in scope_fixture()["requirements"]], rq2.CONTRACT, 1)
-        project = self.directory / "project"
-        scaffold(bundle, project)
-        write_fixture(project, code_fixture("G", scope_fixture()))
-        consistency = check_delivery(project, descriptor["requirement_ids"], descriptor, bundle)
-        self.assertTrue(consistency["passed"], consistency)
-        before = hashes(bundle)
-        report = verify_project(project, self.directory / "reports", self.directory / "logs", consistency=consistency,
-                                runtime_contract=rq2.CONTRACT, readonly_headers=[project / "include/g_api.h"])
-        self.assertTrue(report["passed"], report["errors"])
-        self.assertEqual(set(report["phases"]), {"normal", "sanitize"})
-        self.assertEqual(before, hashes(bundle))
-        (project / "include/g_api.h").write_text("drift")
-        self.assertFalse(check_delivery(project, descriptor["requirement_ids"], descriptor, bundle)["passed"])
+    def test_coder_exception_snapshots_and_restores_wrapper(self):
+        self.published("V0")
+        original = native.run_agent
+        with patch.object(self.pipeline, "model", return_value=object()), patch.object(native, "run_agent", side_effect=RuntimeError("controlled")):
+            with self.assertRaisesRegex(RuntimeError, "controlled"):
+                self.pipeline.job("code", self.pipeline.run / "project", {"/specs": self.pipeline.bundle()}, "task", lambda: {}, "code", coder=True)
+        self.assertIs(native.run_agent, original)
+        self.assertEqual(read_json(self.pipeline.run / "snapshots/initial/metadata.json")["result"]["reason"], "exception")
 
-    def test_acceptance_missing_duplicate_blocked_or_skipped_never_passes(self):
-        valid = acceptance_fixture(None, None, None, self.directory / "eval")
-        self.assertTrue(rq2.normalize_evaluation(valid, list(rq2.TEST_IDS))["passed"])
-        for mutation in (lambda r: r["phases"]["normal"]["scenarios"].pop(),
-                         lambda r: r["phases"]["sanitize"]["scenarios"].append(r["phases"]["sanitize"]["scenarios"][0]),
-                         lambda r: r["phases"]["normal"]["scenarios"][0].update(status="environment_blocked"),
-                         lambda r: r["phases"]["normal"]["scenarios"][0].update(status="skipped"),
-                         lambda r: r["builds"].pop("normal")):
-            report = copy.deepcopy(valid)
-            mutation(report)
-            result = rq2.normalize_evaluation(report, list(rq2.TEST_IDS))
-            self.assertFalse(result["passed"])
-            self.assertEqual(len(result["phases"]["normal"]["scenarios"]), 16)
+    def test_initial_coder_snapshots_api_and_budget_failures(self):
+        for reason in ("api_error", "response_limit"):
+            pipeline = adapter.RQ2Pipeline.new(self.root / reason, model=CONFIG["model"]["model"]).configure(CONFIG, "V1")
+            fixture(pipeline.bundle())
+            save_json(pipeline.run / "facts/facts.json", self.facts)
+            save_json(pipeline.run / "facts/scope.json", self.scope)
+            self.assertTrue(pipeline.publish_specs()["passed"])
+            with patch.object(pipeline, "model", return_value=object()), patch.object(native, "run_agent", return_value={"passed": False, "reason": reason}):
+                pipeline.job("code", pipeline.run / "project", {"/specs": pipeline.bundle()}, "task", lambda: {}, "code", coder=True)
+            self.assertEqual(read_json(pipeline.run / "snapshots/initial/metadata.json")["result"]["reason"], reason)
 
-    def test_evaluation_after_all_generation_and_original_snapshots_unchanged(self):
-        path, state = self.prepare(("D",))
-        with self.assertRaisesRegex(ValueError, "Finish all"):
-            rq2.evaluate_experiment(path)
-        state = rq2.generate_experiment(path, llm=ScriptedLLM())
-        trial = state["trials"][0]
-        initial = path / trial["initial_snapshot"]["path"]
-        final = path / "trials/r01_D/project"
-        before = (hashes(initial), hashes(final))
-        with patch.object(rq2, "evaluate_project", side_effect=acceptance_fixture):
-            rq2.evaluate_experiment(path)
-        self.assertEqual(before, (hashes(initial), hashes(final)))
 
-    def test_truncation_counted_unknown_usage_not_zero(self):
-        api = self.directory / "api"
-        save_json(api / "request_001.json", {})
-        save_json(api / "request_002.json", {})
-        save_json(api / "response_001.json", {"finish_reason": "length", "usage": {"input_tokens": 10, "output_tokens": 5}})
-        save_json(api / "api_error_002.json", {"error": "unknown"})
-        job = job_evidence({"reason": "api_error"}, api, self.directory, "facts")
-        account = aggregate_usage([job])
-        self.assertEqual(account["truncated_responses"], 1)
-        self.assertIsNone(account["usage"]["total_tokens"])
-        self.assertEqual(account["known_recorded_usage"]["total_tokens"], 15)
-        self.assertEqual(account["requests_recorded"], 2)
+class OrchestrationTests(TemporaryTest):
+    def experiment(self):
+        experiment = self.root / "experiment"
+        common = adapter.RQ2Pipeline.new(experiment / "common/run", model=CONFIG["model"]["model"]).configure(CONFIG, "basic")
+        facts, scope = fixture(common.bundle())
+        save_json(common.run / "facts/facts.json", facts)
+        save_json(common.run / "facts/scope.json", scope)
+        for name in ("prepare", "facts", "design"):
+            common.state["stages"][name] = {"status": "passed", "artifact_hashes": common.stage_hashes(name)}
+        common.save()
+        save_json(experiment / "frozen/config.json", CONFIG)
+        shutil.copytree(common.run / "facts", experiment / "frozen/facts")
+        shutil.copytree(common.bundle(), experiment / "frozen/draft")
+        inventory = hashes(common.bundle())
+        save_json(experiment / "common/draft_inventory.json", {"files": inventory, "sha256": runner.signature(inventory)})
+        save_json(experiment / "common/result.json", {"passed": True, "reason": "common_passed", "elapsed_seconds": 4})
+        save_json(experiment / "experiment.json", {"order": ["V0", "V2", "V1"], "variant_execution": "parallel", "common_status": "passed", "variants_started": False, "attempts": {v: {"status": "registered"} for v in CONFIG["variants"]}})
+        save_json(experiment / "freeze.json", {"native_hashes": runner.protected_hashes()})
+        return experiment
+
+    def test_three_forks_byte_identical_without_shared_job_cost(self):
+        experiment = self.experiment()
+        common = hashes(experiment / "frozen/draft")
+        for variant in CONFIG["variants"]:
+            pipeline = runner.branch_pipeline(experiment, variant)
+            self.assertEqual(hashes(pipeline.bundle()), common)
+            self.assertEqual(pipeline.state["jobs"], [])
+            self.assertFalse(pipeline.state["spec_only"])
+            self.assertEqual(pipeline.state["rq2"]["initial_hashes"], common)
+
+    def test_branch_facts_come_from_frozen_approval(self):
+        experiment = self.experiment()
+        approved = read_json(experiment / "frozen/facts/facts.json")
+        save_json(experiment / "common/run/facts/facts.json", {"facts": [{"id": "changed"}]})
+        pipeline = runner.branch_pipeline(experiment, "V0")
+        self.assertEqual(read_json(pipeline.run / "facts/facts.json"), approved)
+
+    def test_frozen_inputs_rejected_before_any_new_model_request(self):
+        experiment = self.experiment()
+        runner.freeze_record(experiment, {"sha256": "test"}, runner.protected_hashes(), runner.experiment_hashes())
+        save_json(experiment / "frozen/facts/facts.json", {"facts": []})
+        with patch.object(runner, "preflight", side_effect=AssertionError("reject artifacts first")):
+            with self.assertRaisesRegex(ValueError, "Frozen inputs"):
+                runner.assert_frozen(experiment)
+
+    def test_changed_freeze_blocks_evaluation_and_records_all_six_outcomes(self):
+        experiment = self.experiment()
+        def launch(experiment, variant):
+            result = {"passed": False, "reason": "controlled"}
+            save_json(experiment / "variants" / variant / "result.json", result)
+            return result
+        with patch.object(runner, "assert_frozen", side_effect=[None, None, None, None, ValueError("changed evaluator")]), \
+                patch.object(runner, "launch", side_effect=launch), patch.object(runner, "evaluate_snapshot", side_effect=AssertionError("frozen evaluator changed")):
+            runner.variants(experiment)
+        state = read_json(experiment / "experiment.json")
+        self.assertIsNotNone(state["freeze_control_error"])
+        for variant in CONFIG["variants"]:
+            for name in ("initial", "final"):
+                result = read_json(experiment / "evaluation" / variant / name / "result.json")
+                self.assertEqual(result["reason"], "frozen_state_changed")
+
+    def test_real_worker_subprocess_stops_before_model_when_key_is_absent(self):
+        experiment = self.root / "subprocess"
+        save_json(experiment / "frozen/config.json", CONFIG)
+        for name, filename in (("task", "TASK.md"), ("requirements", "REQUIREMENTS.md"), ("standard", "protocol.pdf")):
+            target = experiment / "frozen/inputs" / filename
+            target.parent.mkdir(exist_ok=True)
+            shutil.copyfile(native.ROOT / CONFIG["inputs"][name], target)
+        with patch.dict(os.environ, {CONFIG["model"]["key_env"]: ""}):
+            result = runner.launch(experiment, None)
+        self.assertFalse(result["passed"])
+        state = read_json(experiment / "common/run/run.json")
+        self.assertEqual(state["stages"]["prepare"]["status"], "passed")
+        self.assertEqual(state["stages"]["facts"]["status"], "failed")
+        self.assertIn(f"Set {CONFIG['model']['key_env']}", state["stages"]["facts"]["result"]["error"])
+
+    def test_common_failure_three_failed_attempts_no_replacement(self):
+        experiment = self.root / "failed"
+        def launch(experiment, variant):
+            self.assertIsNone(variant)
+            result = {"passed": False, "reason": "facts_failed", "elapsed_seconds": 1}
+            save_json(experiment / "common/result.json", result)
+            return result
+        with patch.object(runner, "preflight", return_value={}), patch.object(runner, "launch", side_effect=launch) as called:
+            self.assertFalse(runner.draft(HERE / "config.json", experiment))
+        called.assert_called_once()
+        state = read_json(experiment / "experiment.json")
+        self.assertEqual(state["order"], ["V0", "V2", "V1"])
+        self.assertTrue(all(r["status"] == "failed" for r in state["attempts"].values()))
+        self.assertEqual(len(read_json(experiment / "summary.json")["rows"]), 3)
+        self.assertFalse((experiment / "frozen/draft").exists())
+        with self.assertRaisesRegex(ValueError, "new experiment"):
+            runner.draft(HERE / "config.json", experiment)
+
+    def test_parallel_branches_isolate_failure_and_evaluate_after_all_generation(self):
+        experiment = self.experiment()
+        completed = []
+        barrier = threading.Barrier(3)
+        def launch(experiment, variant):
+            barrier.wait(timeout=10)
+            completed.append(variant)
+            if variant == "V2":
+                raise RuntimeError("controlled branch launch failure")
+            result = {"passed": True, "reason": "controlled", "elapsed_seconds": 1}
+            save_json(experiment / "variants" / variant / "result.json", result)
+            return result
+        def evaluation(experiment, variant, name):
+            self.assertEqual(sorted(completed), ["V0", "V1", "V2"])
+            self.assertFalse((experiment / "evaluation").is_relative_to(experiment / "variants" / variant / "run"))
+            return {}
+        with patch.object(runner, "assert_frozen"), patch.object(runner, "launch", side_effect=launch) as called, patch.object(runner, "evaluate_snapshot", side_effect=evaluation) as evaluated:
+            runner.variants(experiment)
+        self.assertEqual(called.call_count, 3)
+        self.assertEqual(evaluated.call_count, 6)
+        self.assertFalse(barrier.broken)
+        attempts = read_json(experiment / "experiment.json")["attempts"]
+        self.assertEqual(attempts["V2"]["status"], "failed")
+        self.assertEqual(attempts["V2"]["result"]["reason"], "controller_error")
+        self.assertTrue(all(attempts[v]["status"] == "passed" for v in ("V0", "V1")))
+        with patch.object(runner, "launch") as called:
+            with self.assertRaisesRegex(ValueError, "already started"):
+                runner.variants(experiment)
+            called.assert_not_called()
+
+    def test_batch_entry_chains_common_and_variants_even_after_common_failure(self):
+        experiment = self.root / "batch"
+        for passed in (True, False):
+            events = []
+            def draft(config, out):
+                events.append("draft")
+                self.assertEqual(out, experiment)
+                return passed
+            def variants(out):
+                self.assertEqual(events, ["draft"])
+                self.assertEqual(out, experiment)
+                events.append("variants")
+            with patch.object(runner, "draft", side_effect=draft), patch.object(runner, "variants", side_effect=variants), \
+                    patch.object(sys, "argv", ["run.py", "batch", "--config", str(HERE / "config.json"), "--out", str(experiment)]):
+                self.assertEqual(runner.main(), 0)
+            self.assertEqual(events, ["draft", "variants"])
+
+    def test_code_metric_allows_failed_compile_without_delivery_gate(self):
+        bundle = self.root / "bundle"
+        fixture(bundle)
+        publish(bundle, 1)
+        project = self.root / "project"
+        project_fixture(project, bundle)
+        (project / "engine.c").write_text("controlled invalid C but complete project\n")
+        with patch("specforge.specs.delivery_checks", side_effect=AssertionError("not Code")):
+            self.assertTrue(checks.code_complete(project, bundle)["passed"])
+        (project / "test.py").unlink()
+        self.assertFalse(checks.code_complete(project, bundle)["passed"])
+
+    def test_build0_copy_and_required_binary(self):
+        experiment = self.experiment()
+        pipeline = runner.branch_pipeline(experiment, "V0")
+        pipeline.publish_specs()
+        project_fixture(pipeline.run / "project", pipeline.bundle())
+        pipeline.snapshot("initial", {"passed": True})
+        snapshot = pipeline.run / "snapshots/initial"
+        before = hashes(snapshot / "project")
+        result = runner.build_initial(experiment, "V0", snapshot)
+        self.assertTrue(result["passed"], result)
+        self.assertEqual(hashes(snapshot / "project"), before)
+
+    def test_missing_snapshot_explicitly_not_evaluated(self):
+        experiment = self.experiment()
+        with patch.object(runner, "evaluate_project", side_effect=AssertionError("no complete project")):
+            result = runner.evaluate_snapshot(experiment, "V0", "initial")
+        self.assertEqual(result["status"], "not_executed")
+        self.assertEqual(result["reason"], "snapshot_missing")
+
+    def test_independent_accept_requires_all_sixteen_in_both_modes(self):
+        experiment = self.experiment()
+        evaluator = experiment / "frozen/evaluator/mqtt_check.py"
+        evaluator.parent.mkdir()
+        shutil.copyfile(native.ROOT / "evaluation/mqtt_check.py", evaluator)
+        pipeline = runner.branch_pipeline(experiment, "V0")
+        pipeline.publish_specs()
+        project_fixture(pipeline.run / "project", pipeline.bundle())
+        pipeline.snapshot("final", {"passed": False, "reason": "controlled method failure"})
+        for missing in (False, True):
+            phase = {"passed": True, "required_count": 16, "scenarios": [{"status": "passed"} for _ in range(15 if missing else 16)]}
+            with patch.object(runner, "evaluate_project", return_value={"passed": True, "builds": {}, "phases": {"normal": copy.deepcopy(phase), "sanitize": copy.deepcopy(phase)}, "errors": []}) as evaluated:
+                result = runner.evaluate_snapshot(experiment, "V0", "final")
+            self.assertEqual(result["passed"], not missing)
+            evaluated.assert_called_once()
+            self.assertEqual(evaluated.call_args.args[2], evaluator)
+
+
+class StatisticsTests(TemporaryTest):
+    def usage(self, run, input_tokens, output_tokens):
+        usage = {"input_tokens": input_tokens, "output_tokens": output_tokens, "reasoning_tokens": 2, "cache_hit_tokens": 1, "cache_miss_tokens": input_tokens - 1, "requests": 1}
+        save_json(run / "logs/01_code/api/response_001.json", {"response": {"usage": {"prompt_tokens": input_tokens, "completion_tokens": output_tokens, "prompt_cache_hit_tokens": 1,
+            "prompt_cache_miss_tokens": input_tokens - 1, "completion_tokens_details": {"reasoning_tokens": 2}}}})
+        save_json(run / "run.json", {"jobs": [{"name": "01_code", "usage": usage}], "usage": usage})
+
+    def test_raw_crosscheck_reasoning_not_added_missing_not_zero(self):
+        self.usage(self.root / "run", 10, 5)
+        result = report.run_usage(self.root / "run")
+        self.assertEqual(result["tokens"], 15)
+        self.assertTrue(result["jobs"][0]["matches"])
+        save_json(self.root / "run/logs/01_code/api/response_002.json", {"response": {"usage": {}}})
+        result = report.run_usage(self.root / "run")
+        self.assertIsNone(result["tokens"])
+        self.assertIsNone(result["input_tokens"])
+
+    def test_request_without_returned_response_is_unknown_cost(self):
+        self.usage(self.root / "run", 10, 5)
+        save_json(self.root / "run/logs/01_code/api/request_002.json", {"messages": []})
+        result = report.run_usage(self.root / "run")
+        self.assertIsNone(result["tokens"])
+        self.assertEqual(result["known_completion_subtotal"]["tokens"], 15)
+        self.assertEqual(result["unreturned_request_count"], 1)
+
+    def test_failures_shared_cost_initial_metrics_and_pending_audit(self):
+        experiment = self.root / "experiment"
+        save_json(experiment / "experiment.json", {"order": ["V0", "V2", "V1"], "variant_execution": "parallel", "attempts": {v: {"status": "failed"} for v in CONFIG["variants"]}})
+        self.usage(experiment / "common/run", 100, 50)
+        for variant in CONFIG["variants"]:
+            self.usage(experiment / "variants" / variant / "run", 10, 5)
+            save_json(experiment / "variants" / variant / "result.json", {"passed": False, "reason": "controlled"})
+        snapshot = experiment / "variants/V0/run/snapshots/initial"
+        save_json(snapshot / "metadata.json", {"code": {"passed": True}, "result": {"reason": "response_limit"}})
+        (snapshot / "specs").mkdir()
+        (snapshot / "project").mkdir()
+        save_json(experiment / "evaluation/V0/initial/result.json", {"build0": False})
+        save_json(experiment / "evaluation/V0/final/result.json", {"passed": True})
+        with patch.object(runner, "evaluate_project", side_effect=AssertionError("report read-only")), patch("specforge.specs.validate", side_effect=AssertionError("report does not check")):
+            result = report.write_report(experiment)
+        self.assertEqual(result["registered_attempts"], 3)
+        self.assertEqual(result["variant_execution"], "parallel")
+        self.assertEqual([r["N"] for r in result["rows"]], [1, 1, 1])
+        self.assertEqual([r["comparison_usage"]["tokens"] for r in result["rows"]], [165, 165, 165])
+        self.assertEqual(result["actual_batch_usage"]["tokens"], 195)
+        self.assertEqual(result["rows"][0]["Code"], 1)
+        self.assertEqual(result["rows"][0]["Build0"], 0)
+        self.assertEqual(result["rows"][0]["Accept"], 1)
+        self.assertEqual([r["Defects"] for r in result["rows"]], ["pending", "NA", "NA"])
+        audit = experiment / "audit/V0/defects.csv"
+        audit.write_text("human entry\n")
+        report.write_report(experiment)
+        self.assertEqual(audit.read_text(), "human entry\n")
 
 
 if __name__ == "__main__":
