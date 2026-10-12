@@ -19,7 +19,7 @@ from .specs import delivery_checks, project_path, publish, scaffold, validate
 from .tools import ToolRuntime, bounded_output
 
 STAGES = ("prepare", "facts", "design", "specs", "code", "verify")
-LIMITS = {"facts": 40, "design": 100, "specs": 180, "code": 180, "repair": 40, "review": 60}
+LIMITS = {"facts": 40, "design": 100, "specs": 180, "code": 180, "repair": 40, "review": 150}
 
 
 def now() -> str:

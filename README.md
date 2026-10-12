@@ -155,7 +155,7 @@ python -m specforge code --specs assets/mqtt_reference/bundle --out runs/spec_on
 模型工具调用按原生顺序执行，截断回答中的调用不执行。每 24 次响应或输入超过
 64,000 Token，原控制器要求保存 WORKLOG 并重建上下文；最后 12 次响应保留修复窗口。
 Facts / Design / Specs / Code 的响应上限为 40 / 100 / 180 / 180；独立规格审查
-上限 60，每个实现修复 job 上限 40。最多三次实现修复、一次规格回修。
+上限 150，每个实现修复 job 上限 40。最多三次实现修复、一次规格回修。
 
 生成后 `evaluate` 对交付副本分别执行普通和 sanitizer 构建与协议验收，原项目不被改动。
 MQTT / CoAP / HTTP / SMTP 的独立套件分别有 16 / 10 / 13 / 13 个必需场景。
