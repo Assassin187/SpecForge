@@ -1,20 +1,13 @@
 # SpecForge
 
-将应用层协议的任务、需求和原始规范生成为 Linux C99 项目。`www` 的维护基线为
-本次整理后的版本，核心生成机制以
-`b8a9130d23cd57c975f2f435bb1b1c2304cfee15` 为基线，当前增加模型选择入口。
-历史实验的原始配置和记录保持不变。版本证据及历史限制见 [BASELINE.md](BASELINE.md)。
+SpecForge 将协议任务、编号需求和原始规范转换为 Linux C99 项目。系统通过
+事实提取、结构设计、行为规格和语义审查组织代码生成，交付源码、公共头文件、
+Makefile、开发测试和交付清单。
 
-SpecForge 论文实验数据统一为五轮四协议，共 20 次实验，包含最近两轮实验及完整续接记录，见
-[五轮四协议实验数据](runs/paper/README.md)。基础模型差异不参与分组统计。
+规范输入支持 UTF-8 文本和可提取文本的 PDF。项目内提供 MQTT、CoAP、HTTP/1.1
+和 SMTP 案例，以及对应的独立协议行为验收器。
 
-MetaGPT 对照实验的论文原始数据为三轮四协议，共 12 条完整实验链，见
-[MetaGPT 三轮论文原始数据](runs/metagpt_paper/README.md)。生成、续接、原生反馈修复和最终验收已关联。
-
-完整机制、能力边界及早期实验记录，见
-[SpecForge 项目说明](PROJECT_OVERVIEW.md)。
-
-核心流程：
+## 工作流程
 
 ```text
 冻结 TASK / REQUIREMENTS / 原始规范
@@ -27,143 +20,118 @@ MetaGPT 对照实验的论文原始数据为三轮四协议，共 12 条完整�
 → 单独执行隔离的协议行为验收
 ```
 
-生成器不按协议选择提示词，不提供预制实现。Coder 只读取发布的规格和开发报告；
-独立验收不参与生成修复。成功生成表示开发关卡通过，不等于全部独立行为验收通过。
+三层规格描述模块职责、文件接口和函数行为，并传递调用、状态、报文及资源约束。
+编码阶段读取已发布的规格，公共头文件保持只读；开发检查发现的问题可触发有界的
+实现修复或规格回修。
 
-## 目录
+独立验收在交付副本中执行普通与 ASan/UBSan 构建及协议测试，其结果不参与生成修复。
+生成成功表示开发关卡通过，协议行为是否通过由独立验收判断。
+
+## 环境与安装
+
+需要 Linux、Python 3.11+、GCC、Make、bubblewrap 和 pdftotext。
+Python 依赖由安装命令自动安装，版本固定为 `openai==1.97.0` 和
+`jsonschema==4.24.0`。
+
+在项目根目录执行：
+
+```sh
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install -e .
+```
+
+MQTT 互通验收还需要 `mosquitto_pub` 和 `mosquitto_sub`，CoAP 互通验收需要
+`coap-client-notls`。
+
+## 模型配置
+
+通过环境变量提供所选模型的密钥：
+
+| 模型 | 密钥环境变量 | 推理强度 |
+|---|---|---|
+| `deepseek-flash`（默认） | `DS_API` | `high` |
+| `qwen3.8-flash` | `ALI_API` | `high` |
+| `gpt-6.1-sol` | `DES_CODEX_API` | `high` |
+| `gpt-6-luna` | `DES_CODEX_API` | `max` |
+
+`run` 和 `code` 支持通过 `--model` 选择模型，`resume` 沿用任务原有配置。
+接口地址及请求参数由 [specforge/llm.py](specforge/llm.py) 中的 `MODEL_CONFIGS`
+定义；GPT 配置使用内网服务，需要能够访问对应地址。
+
+## 快速开始
+
+以下以 MQTT 为例。设置默认模型的密钥，并将 `--out` 指向一个尚不存在的输出目录：
+
+```sh
+export DS_API='你的模型密钥'
+
+python -m specforge run \
+  --task cases/mqtt_min/TASK.md \
+  --requirements cases/mqtt_min/REQUIREMENTS.md \
+  --protocol cases/mqtt_min/spec/mqtt-v3.1.1-os.pdf \
+  --out /tmp/specforge-mqtt
+```
+
+生成完成后，单独执行协议行为验收：
+
+```sh
+python -m specforge evaluate \
+  --run /tmp/specforge-mqtt \
+  --evaluator evaluation/mqtt_check.py
+```
+
+如需使用 Qwen，设置 `ALI_API`，并在生成命令后添加 `--model qwen3.8-flash`。
+
+### 协议案例
+
+| 协议 | 案例目录 | 规范文件（位于案例的 `spec/` 下） | 独立验收器 |
+|---|---|---|---|
+| MQTT 3.1.1 | `cases/mqtt_min/` | `mqtt-v3.1.1-os.pdf` | `evaluation/mqtt_check.py` |
+| CoAP | `cases/coap_min/` | `rfc7252.txt` | `evaluation/coap_check.py` |
+| HTTP/1.1 | `cases/http11_min/` | `rfc9110-rfc9112.txt` | `evaluation/http11_check.py` |
+| SMTP | `cases/smtp_min/` | `rfc5321.txt` | `evaluation/smtp_check.py` |
+
+使用其他案例时，替换生成和验收命令中的 TASK、REQUIREMENTS、规范文件和验收器。
+各案例的功能范围与排除项由对应的 REQUIREMENTS 定义，不代表完整协议合规。
+
+## 其他命令
+
+| 命令 | 用途 |
+|---|---|
+| `run` | 从任务、需求和规范开始完整生成 |
+| `resume` | 恢复尚未进入独立验收的任务 |
+| `validate` | 校验规格包的结构、引用和接口一致性 |
+| `code` | 从已有规格包生成项目 |
+| `verify` | 对已有项目执行交付检查、构建和开发自测 |
+| `evaluate` | 对完成生成的项目执行独立协议验收 |
+
+`run --until` 可选择 `prepare`、`facts`、`design`、`specs`、`code` 或 `verify`，
+默认执行至 `verify`。恢复任务要求框架和已完成的阶段产物保持一致；进入独立验收后
+不能继续恢复生成。
+
+查看完整参数：
+
+```sh
+python -m specforge --help
+python -m specforge run --help
+```
+
+## 项目结构
 
 | 目录或文件 | 用途 |
 |---|---|
-| `specforge/` | CLI、模型调用、阶段调度、工具、规格处理及独立评测 |
-| `prompts/` | 基线 Facts、Planner 和 Coder 提示词 |
+| `specforge/` | 命令行入口、模型调用、阶段调度、规格处理及独立验收 |
+| `prompts/` | Facts、Planner 和 Coder 提示词 |
 | `schemas/` | 事实、规格、溯源和交付数据约束 |
-| `cases/` | MQTT、CoAP、HTTP/1.1、SMTP 的 TASK、REQUIREMENTS 和原始规范 |
-| `evaluation/` | 四协议独立行为验收器 |
-| `tests/` | 基线框架测试 |
-| `assets/mqtt_reference/bundle/` | 框架测试必需的规格夹具；fresh 生成不使用它 |
-| `runs/cost_optimization/20261002T125031Z_json_fields/` | 历史 R3 前序实验，版本与最终基线有差异 |
-| `runs/paper/` | 五轮四协议统一数据集，包含原始数据、完整续接记录、来源审计和联合汇总 |
-| `runs/metagpt_paper/` | MetaGPT 三轮四协议论文原始数据，包含完整生成、反馈续接、最终验收及复现证据 |
-| `pyproject.toml` | Python 版本、固定依赖和 CLI 入口 |
+| `cases/` | 协议案例的任务、需求和原始规范 |
+| `evaluation/` | 独立协议行为验收器 |
+| `tests/` | 框架测试 |
+| `assets/mqtt_reference/bundle/` | 框架测试使用的规格夹具 |
+| `pyproject.toml` | Python 版本、依赖及命令行入口配置 |
 
-五轮数据按 `round_01` 至 `round_05` 统一组织，原始记录内容保持不变，
-历史位置映射保存在数据集索引中。不得将前序 R3 误记为最终基线实验；不得跨版本
-恢复旧生成任务。此前 Token 优化和其他历史资产已备份移出当前工作区。
-
-## 环境
-
-需要 Python 3.11+、GCC、Make、bubblewrap，以及处理 PDF 的 pdftotext。
-Python 依赖固定为 `openai==1.97.0` 和 `jsonschema==4.24.0`。
+## 测试
 
 ```sh
-python -m pip install -e .
-export DS_API='你的模型密钥'
 python -m unittest discover -s tests -v
 ```
-
-密钥通过环境变量提供，不写入实验记录，不挂载到 Agent 命令视图。
-默认模型为 `deepseek-flash`，使用 `DS_API`；可通过 `run` 或 `code` 的
-`--model qwen3.8-flash` 选择 Qwen3.8-Flash，使用 `ALI_API` 和阿里云百炼北京地域的
-OpenAI 兼容接口 `https://dashscope.aliyuncs.com/compatible-mode/v1`。
-`--model gpt-6.1-sol` 使用 `DES_CODEX_API` 和私有服务地址
-`http://172.16.0.160:50199/v1`。该服务已验证支持 Chat Completions 工具调用及结果回传，
-GPT 配置不发送 DeepSeek 或 Qwen 的专用思考参数。
-三者均使用 `reasoning_effort=high`、非流式和 `max_tokens=65536`；DeepSeek 和 Qwen
-额外开启思考，Qwen 的 `high` 由服务端映射为 `xhigh`。
-总 Token 为输入加输出；推理已包含在输出，缓存命中已包含在输入。
-
-例如，已设置 `ALI_API` 后可运行：
-
-```sh
-python -m specforge run \
-  --task cases/mqtt_min/TASK.md \
-  --requirements cases/mqtt_min/REQUIREMENTS.md \
-  --protocol cases/mqtt_min/spec/mqtt-v3.1.1-os.pdf \
-  --out runs/my_mqtt_qwen \
-  --model qwen3.8-flash
-```
-
-已设置 `DES_CODEX_API` 后，使用 GPT 生成 MQTT：
-
-```sh
-python -m specforge run \
-  --task cases/mqtt_min/TASK.md \
-  --requirements cases/mqtt_min/REQUIREMENTS.md \
-  --protocol cases/mqtt_min/spec/mqtt-v3.1.1-os.pdf \
-  --out runs/my_mqtt_gpt \
-  --model gpt-6.1-sol
-```
-
-选择的配置保存在 `run.json` 和模型请求日志中；`resume` 自动沿用该配置。
-后续 API 兼容模型可在 `specforge/llm.py` 的 `MODEL_CONFIGS` 中增加配置，指定模型名、
-接口地址、密钥环境变量及 `extra_body`。
-Qwen 参数说明见[阿里云官方文档](https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-chat-completions)。
-
-MQTT 的互通验收还需要 `mosquitto_pub` / `mosquitto_sub`，CoAP 需要
-`coap-client-notls`。这些工具不是基础生成入口的必要依赖；未执行或跳过的验收不能记为通过。
-
-## 四协议生成和验收
-
-每次使用新的输出目录。以下命令均执行原有完整生成流程，不复用历史中间产物。
-
-```sh
-python -m specforge run \
-  --task cases/mqtt_min/TASK.md \
-  --requirements cases/mqtt_min/REQUIREMENTS.md \
-  --protocol cases/mqtt_min/spec/mqtt-v3.1.1-os.pdf \
-  --out runs/my_mqtt
-python -m specforge evaluate --run runs/my_mqtt --evaluator evaluation/mqtt_check.py
-
-python -m specforge run \
-  --task cases/coap_min/TASK.md \
-  --requirements cases/coap_min/REQUIREMENTS.md \
-  --protocol cases/coap_min/spec/rfc7252.txt \
-  --out runs/my_coap
-python -m specforge evaluate --run runs/my_coap --evaluator evaluation/coap_check.py
-
-python -m specforge run \
-  --task cases/http11_min/TASK.md \
-  --requirements cases/http11_min/REQUIREMENTS.md \
-  --protocol cases/http11_min/spec/rfc9110-rfc9112.txt \
-  --out runs/my_http11
-python -m specforge evaluate --run runs/my_http11 --evaluator evaluation/http11_check.py
-
-python -m specforge run \
-  --task cases/smtp_min/TASK.md \
-  --requirements cases/smtp_min/REQUIREMENTS.md \
-  --protocol cases/smtp_min/spec/rfc5321.txt \
-  --out runs/my_smtp
-python -m specforge evaluate --run runs/my_smtp --evaluator evaluation/smtp_check.py
-```
-
-规范范围由各案例 REQUIREMENTS 定义，不宣称完整协议合规。协议文本支持 UTF-8 txt
-和 PDF；HTTP 单份输入保留 RFC 9110 和 RFC 9112 的完整原文及来源边界。
-
-## 其他基线入口
-
-```sh
-python -m specforge run ... --until prepare
-python -m specforge resume --run runs/my_mqtt
-python -m specforge validate --specs runs/my_mqtt/specs/r001
-python -m specforge verify --project runs/my_mqtt/project
-python -m specforge code --specs assets/mqtt_reference/bundle --out runs/spec_only
-```
-
-`--until` 也支持 facts、design、specs、code、verify。失败退出非零；resume 要求
-同版本及未修改的阶段产物。独立评测开始后项目冻结，不能再恢复生成。Spec-only 入口
-保留为既有功能，人工夹具实验不能计为 fresh 端到端生成。
-
-## 稳定机制和记录
-
-三层规格、GCC ABI 探针、只读公共头文件、溯源和 delivery.json 一致性关卡保持原样。
-模型工具调用按原生顺序执行，截断回答中的调用不执行。每 24 次响应或输入超过
-64,000 Token，原控制器要求保存 WORKLOG 并重建上下文；最后 12 次响应保留修复窗口。
-Facts / Design / Specs / Code 的响应上限为 40 / 100 / 180 / 180；独立规格审查
-上限 150，每个实现修复 job 上限 40。最多三次实现修复、一次规格回修。
-
-生成后 `evaluate` 对交付副本分别执行普通和 sanitizer 构建与协议验收，原项目不被改动。
-MQTT / CoAP / HTTP / SMTP 的独立套件分别有 16 / 10 / 13 / 13 个必需场景。
-
-运行目录包含 inputs、documents、facts、design_work、specs、project、snapshots、reports、
-logs 和 run.json。原始用量、每阶段状态、修复次数、输入及框架哈希、构建和行为结果分别记录。
-整理后的验证结果与备份说明见 [BASELINE.md](BASELINE.md)。
