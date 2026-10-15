@@ -62,7 +62,7 @@ def limits():
 def prepare(output, sources=SOURCES, round_number=None):
     output.mkdir(parents=True, exist_ok=False)
     settings = limits()
-    save(output / "batch.json", {"created_at": now(), "sources": sources, "limits": settings,
+    save(output / "batch.json", {"created_at": now(), "sources": [Path(name).name for name in sources], "limits": settings,
                                 "fresh_generation": False, "independent_acceptance_executed": False})
     reports = output / "reports"
     reports.mkdir()
@@ -71,6 +71,7 @@ def prepare(output, sources=SOURCES, round_number=None):
                    stdout=(reports / "c99-adaptation.patch").open("w"), check=True)
     for index, name in enumerate(sources):
         source = BASE / "runs" / name
+        name = source.name
         original = json.loads((source / "run.json").read_text())
         project_name = original["native_settings"]["project_name"]
         native = Path(original["native_repo"])
@@ -91,7 +92,9 @@ def prepare(output, sources=SOURCES, round_number=None):
         save(child / "run.json", {
             "source_run": str(source), "source_hashes": expected,
             "round": round_number if round_number is not None else index // 4 + 1,
-            "case": name.split("_")[0], "project_name": project_name, "model": original["model"],
+            "case": name.split("_")[0], "project_name": project_name,
+            "model": json.loads(os.environ["METAGPT_MODEL_CONFIG"]) if "METAGPT_MODEL_CONFIG" in os.environ else original["model"],
+            "original_generation_model": original.get("initial_model", original["model"]),
             "limits": settings, "status": "prepared", "created_at": now(), "fresh_generation": False,
             "original_generation_usage": original["usage"], "original_generation_seconds": original.get(
                 "generation_active_elapsed_seconds", original.get("generation_elapsed_seconds")),
@@ -373,8 +376,8 @@ def main():
     parser.add_argument("--prepare-only", action="store_true")
     parser.add_argument("--resume", action="store_true", help="Continue saved QA tests and source workspace without regeneration.")
     parser.add_argument("--jobs", type=int, choices=(1, 2, 4), default=4)
-    parser.add_argument("--sources", nargs="+", help="Names of frozen generation directories under runs/.")
-    parser.add_argument("--round", type=int, choices=(1, 2, 3), dest="round_number")
+    parser.add_argument("--sources", nargs="+", help="Names under runs/ or absolute paths of frozen generation directories.")
+    parser.add_argument("--round", type=int, choices=(1, 2, 3, 4, 5), dest="round_number")
     args = parser.parse_args()
     output = args.out.resolve()
     if args.worker:

@@ -411,3 +411,10 @@ CoAP 10/10、HTTP 0/13、SMTP 12/13；MQTT/HTTP 的交付运行文件不符合�
 [最终核对](runs/round_03_20261008T171853Z/reports/three_rounds_final_audit.json)。
 原始需求、各次原始模型请求/响应、执行 stdout/stderr、返回码、超时、
 修复快照、额外耗时与 Token 统计全部留存；自测与独立验收分别统计。
+
+论文原始数据现统一整理到 [runs/metagpt_paper](../../../runs/metagpt_paper/README.md)，
+按 `round_01`、`round_02`、`round_03` 保存十二条完整实验链。
+取数入口为[完整实验 CSV](../../../runs/metagpt_paper/complete_experiments.csv)、
+[完整实验 JSON](../../../runs/metagpt_paper/complete_experiments.json)；
+原 `runs` 中全部目录的轮次、续接及无效启动归属见[轮次索引](runs/README.md)。
+原始配置及模型响应记录的模型名均为 `deepseek-flash`；未找到 `deepseek-v4.1` 的记录。

@@ -1,0 +1,814 @@
+{
+  "definition": {
+    "unit": "implementation阶段观察到、经工件内容确认的独立矛盾义务；同一组件/契约在不同输入、重复构建、Sanitizer和重复检查中的报错只计一次。",
+    "scope": "仅interface/call契约冲突和implementation/test预期冲突；代码单独违背协议原文、一般算法缺陷、环境/编译选项、缺失未完成文件及调试脚本错误不计。",
+    "counts": "本次人工复核得到的已确认观察下界，并非对所有历史快照的穷尽静态证明；额外未标注试验值为null，不当作0。",
+    "spec_conflicts": "Coder阶段暴露的规格内部矛盾单列inherited_spec，禁止计入两组共有的implementation_incidents。",
+    "correction_cost": "仅两组共有类别(interface_call、implementation_test)的人工标注Coder修正响应用量之和；同一响应修正多项仅计一次，包含上下文与同响应其他工作；不等于全部修复因果开销，inherited_spec及Planner规格回修成本不在此量内。",
+    "annotations": "基于原始run.json、响应、命令输出、dev验证、源文件/规格复核；历史source_records中的旧路径与轮次标签未作为计数主键。",
+    "annotation_version": 1
+  },
+  "runs": [
+    {
+      "run": "runs/paper/round_01/coap_01",
+      "events": [
+        {
+          "id": "C11",
+          "category": "inherited_spec",
+          "conflict": "ACK 输入 token_len=0、编码规则要求 TKL=0，但规格向量首字节为0x62；同一输入要求0x60与0x62。",
+          "coder_corrections": [
+            "08_repair/003"
+          ],
+          "evidence": [
+            "reports/05_code_spec_gap_evidence.log",
+            "logs/08_repair/api/response_003.json"
+          ]
+        },
+        {
+          "id": "C12",
+          "category": "inherited_spec",
+          "conflict": "expire 规则只释放 age>=247000 的条目，向量却将 age=1 的第二个条目也视为过期；两个失败断言合并。",
+          "coder_corrections": [
+            "08_repair/003"
+          ],
+          "evidence": [
+            "reports/05_code_spec_gap_evidence.log",
+            "logs/08_repair/api/response_003.json"
+          ]
+        },
+        {
+          "id": "C13",
+          "category": "implementation_test",
+          "conflict": "测试把相同 endpoint/MID 的不同请求当作独立请求，实现依去重契约回放第一条响应。",
+          "coder_corrections": [
+            "05_code/106",
+            "05_code/107",
+            "05_code/108",
+            "05_code/109",
+            "05_code/110",
+            "05_code/111",
+            "05_code/112"
+          ],
+          "evidence": [
+            "logs/05_code/commands/command_0017.log",
+            "project/include/coap/dedup.h",
+            "logs/05_code/api/response_106.json",
+            "logs/05_code/api/response_107.json",
+            "logs/05_code/api/response_108.json",
+            "logs/05_code/api/response_109.json",
+            "logs/05_code/api/response_110.json",
+            "logs/05_code/api/response_111.json",
+            "logs/05_code/api/response_112.json"
+          ]
+        },
+        {
+          "id": "C14",
+          "category": "implementation_test",
+          "conflict": "空PUT响应无payload，测试期望9字节；实际头4+token2+Content-Format2为8字节。",
+          "coder_corrections": [
+            "05_code/113"
+          ],
+          "evidence": [
+            "logs/05_code/commands/command_0017.log",
+            "logs/05_code/api/response_113.json"
+          ]
+        },
+        {
+          "id": "C15",
+          "category": "interface_call",
+          "conflict": "选项解码向量前置 previous_number=12，测试经迭代器调用时没有设置该前置状态，仍期望delta2解码为14。",
+          "coder_corrections": [
+            "05_code/122"
+          ],
+          "evidence": [
+            "logs/05_code/commands/command_0020.log",
+            "logs/05_code/api/response_122.json"
+          ]
+        },
+        {
+          "id": "C16",
+          "category": "implementation_test",
+          "conflict": "测试比较 reply[0]>>4 与NON类型，未去掉Version位；实现按完整CoAP首字节编码。",
+          "coder_corrections": [
+            "05_code/122"
+          ],
+          "evidence": [
+            "logs/05_code/commands/command_0020.log",
+            "logs/05_code/api/response_122.json"
+          ]
+        },
+        {
+          "id": "C17",
+          "category": "implementation_test",
+          "conflict": "测试把响应的Message ID字节2/3当作Token检查；实现Token位于字节4/5。",
+          "coder_corrections": [
+            "05_code/122"
+          ],
+          "evidence": [
+            "logs/05_code/commands/command_0020.log",
+            "logs/05_code/api/response_122.json"
+          ]
+        },
+        {
+          "id": "C18",
+          "category": "interface_call",
+          "conflict": "store路径自身执行过期清理，测试再次调用expire却仍期望返回已在store中释放的条目数。",
+          "coder_corrections": [
+            "08_repair/007",
+            "08_repair/008"
+          ],
+          "evidence": [
+            "logs/08_repair/commands/command_0001.log",
+            "logs/08_repair/api/response_007.json",
+            "logs/08_repair/api/response_008.json"
+          ]
+        }
+      ]
+    },
+    {
+      "run": "runs/paper/round_01/http11_01",
+      "events": [
+        {
+          "id": "H11",
+          "category": "interface_call",
+          "conflict": "check定义需要condition,msg两个参数，调用只传condition。",
+          "coder_corrections": [
+            "05_code/170"
+          ],
+          "evidence": [
+            "reports/verify_006/report.json",
+            "project/tests/wire_test.py",
+            "logs/05_code/api/response_170.json"
+          ]
+        },
+        {
+          "id": "H12",
+          "category": "interface_call",
+          "conflict": "调用check_status_of_ok，定义却名为status_of_ok。",
+          "coder_corrections": [
+            "05_code/170"
+          ],
+          "evidence": [
+            "reports/verify_006/report.json",
+            "logs/05_code/api/response_170.json"
+          ]
+        },
+        {
+          "id": "H13",
+          "category": "interface_call",
+          "conflict": "调用check_status_of，测试模块没有该名字的绑定；修复为已有status检查函数的别名。",
+          "coder_corrections": [
+            "05_code/170"
+          ],
+          "evidence": [
+            "reports/verify_006/report.json",
+            "logs/05_code/api/response_170.json"
+          ]
+        },
+        {
+          "id": "H14",
+          "category": "implementation_test",
+          "conflict": "流水线第二条响应包含Connection: close，测试仍期望两个响应长度均为106，而实际为106+125。",
+          "coder_corrections": [
+            "05_code/173"
+          ],
+          "evidence": [
+            "logs/05_code/commands/command_0056.log",
+            "logs/05_code/api/response_173.json"
+          ]
+        },
+        {
+          "id": "H15",
+          "category": "implementation_test",
+          "conflict": "测试将不完整PUT的无副作用解释为/value必须为空，前序测试已写入4字节；实现正确保留旧值。",
+          "coder_corrections": [
+            "05_code/173"
+          ],
+          "evidence": [
+            "logs/05_code/commands/command_0056.log",
+            "logs/05_code/api/response_173.json"
+          ]
+        },
+        {
+          "id": "H16",
+          "category": "implementation_test",
+          "conflict": "/hello?x=1长度为10，测试期望target_len=12；实现长度为10。",
+          "coder_corrections": [
+            "05_code/175"
+          ],
+          "evidence": [
+            "logs/05_code/commands/command_0057.log",
+            "logs/05_code/api/response_175.json"
+          ]
+        },
+        {
+          "id": "H17",
+          "category": "implementation_test",
+          "conflict": "超长chunk元数据测试传入sizeof-1，恰好截掉末尾LF，仍期望完整超长元数据的431结果。",
+          "coder_corrections": [
+            "05_code/175"
+          ],
+          "evidence": [
+            "logs/05_code/commands/command_0057.log",
+            "logs/05_code/api/response_175.json"
+          ]
+        },
+        {
+          "id": "H18",
+          "category": "implementation_test",
+          "conflict": "http_response_status_for_result(HTTP_OK)契约返回0表示无需错误响应，测试期望200。",
+          "coder_corrections": [
+            "05_code/176"
+          ],
+          "evidence": [
+            "logs/05_code/commands/command_0057.log",
+            "project/src/http/response.c",
+            "logs/05_code/api/response_176.json"
+          ]
+        },
+        {
+          "id": "H19",
+          "category": "interface_call",
+          "conflict": "测试反复用init重置已有分配的http_buf，违反仅free释放存储的所有权契约，导致5处分配泄漏；同一契约合并。",
+          "coder_corrections": [
+            "05_code/177"
+          ],
+          "evidence": [
+            "logs/05_code/commands/command_0059.log",
+            "project/public/http/message.h",
+            "logs/05_code/api/response_177.json"
+          ]
+        }
+      ]
+    },
+    {
+      "run": "runs/paper/round_01/mqtt_01",
+      "events": [
+        {
+          "id": "M11",
+          "category": "interface_call",
+          "conflict": "测试入口main(void)与包含的server.h中main(int,char**)不相容，构建还将生产与测试入口一起重命名；同一入口接口耦合事件。",
+          "coder_corrections": [
+            "05_code/110",
+            "05_code/114"
+          ],
+          "evidence": [
+            "logs/05_code/commands/command_0016.log",
+            "logs/05_code/commands/command_0017.log",
+            "project/src/server.h",
+            "logs/05_code/api/response_110.json",
+            "logs/05_code/api/response_114.json"
+          ]
+        },
+        {
+          "id": "M12",
+          "category": "implementation_test",
+          "conflict": "测试认为仅有完整固定头但payload不足时仍为COMPLETE且填充输出；实现和函数契约要求INCOMPLETE且输出不变，两种报文实例合并。",
+          "coder_corrections": [
+            "05_code/118"
+          ],
+          "evidence": [
+            "logs/05_code/commands/command_0020.log",
+            "specs/r001/functions/mqtt_frame_decode.json",
+            "logs/05_code/api/response_118.json"
+          ]
+        }
+      ]
+    },
+    {
+      "run": "runs/paper/round_01/smtp_01",
+      "events": [
+        {
+          "id": "S11",
+          "category": "inherited_spec",
+          "conflict": "finish_data事件要求seq+1，同一初值的向量却分别要求+1和+2。",
+          "coder_corrections": [],
+          "evidence": [
+            "reports/05_code_spec_gap_evidence.log",
+            "specs/r001/functions/finish_data.json",
+            "specs/r002/functions/finish_data.json"
+          ]
+        },
+        {
+          "id": "S12",
+          "category": "inherited_spec",
+          "conflict": "会话seq初始0，调用capture_store直接传seq；capture_store要求首条消息使用1。",
+          "coder_corrections": [],
+          "evidence": [
+            "reports/05_code_spec_gap_evidence.log",
+            "specs/r001/abi/src/capture.h",
+            "specs/r002/functions/finish_data.json"
+          ]
+        },
+        {
+          "id": "S13",
+          "category": "implementation_test",
+          "conflict": "测试要求打印ASCII小于号必须转义为\\u003c，声明的捕获编码及实现保留可打印ASCII。",
+          "coder_corrections": [
+            "08_repair/037"
+          ],
+          "evidence": [
+            "specs/r002/functions/smtp_capture_store.json",
+            "logs/08_repair/api/response_037.json"
+          ]
+        },
+        {
+          "id": "S14",
+          "category": "interface_call",
+          "conflict": "测试在已有MAIL/RCPT事务中调用会重新发送MAIL的send_message，或错误地认为554会清空事务，期望新MAIL成功；合并为发送helper前置事务状态矛盾。",
+          "coder_corrections": [
+            "08_repair/037",
+            "09_repair/016"
+          ],
+          "evidence": [
+            "logs/08_repair/commands/command_0009.log",
+            "logs/08_repair/api/response_037.json",
+            "logs/09_repair/api/response_016.json"
+          ]
+        },
+        {
+          "id": "S15",
+          "category": "implementation_test",
+          "conflict": "测试按捕获文件名排序后假定顺序等于消息完成顺序，命名契约没有此保证；改为按mail_from关联消息。",
+          "coder_corrections": [
+            "08_repair/037",
+            "09_repair/019"
+          ],
+          "evidence": [
+            "logs/08_repair/commands/command_0005.log",
+            "specs/r002/functions/smtp_capture_store.json",
+            "logs/08_repair/api/response_037.json",
+            "logs/09_repair/api/response_019.json"
+          ]
+        },
+        {
+          "id": "S16",
+          "category": "implementation_test",
+          "conflict": "已完成DATA并回到READY的会话EOF，测试仍期待仅未完成事务才发送的421。",
+          "coder_corrections": [
+            "09_repair/016"
+          ],
+          "evidence": [
+            "specs/r002/functions/smtp_session_eof.json",
+            "logs/09_repair/api/response_016.json"
+          ]
+        },
+        {
+          "id": "S17",
+          "category": "interface_call",
+          "conflict": "测试已读220 greeting，再调用会先读greeting的greet_ehlo，造成等待一条不会重复发送的220。",
+          "coder_corrections": [
+            "09_repair/016"
+          ],
+          "evidence": [
+            "reports/verify_007/report.json",
+            "logs/09_repair/api/response_016.json"
+          ]
+        }
+      ]
+    },
+    {
+      "run": "runs/paper/round_02/coap_01",
+      "events": []
+    },
+    {
+      "run": "runs/paper/round_02/http11_01",
+      "events": [
+        {
+          "id": "H21",
+          "category": "interface_call",
+          "conflict": "二进制chunk测试使用strlen发送函数截断NUL，又在改显式长度时把C字符串终止符发入报文；测试意图的wire bytes与发送API实参不一致，连续修复合并。",
+          "coder_corrections": [
+            "05_code/130",
+            "05_code/141"
+          ],
+          "evidence": [
+            "reports/verify_006/report.json",
+            "project/tests/wire_test.c",
+            "logs/05_code/api/response_130.json",
+            "logs/05_code/api/response_141.json"
+          ]
+        },
+        {
+          "id": "H22",
+          "category": "implementation_test",
+          "conflict": "DELETE属于未实现的方法，应501，测试却期待已实现但该资源禁用方法的405。",
+          "coder_corrections": [
+            "05_code/130"
+          ],
+          "evidence": [
+            "inputs/REQUIREMENTS.md",
+            "logs/05_code/api/response_130.json"
+          ]
+        },
+        {
+          "id": "H23",
+          "category": "implementation_test",
+          "conflict": "测试称超出1024字节上限，但fixture只有1024字节，仍期望413；改为1025。",
+          "coder_corrections": [
+            "05_code/132"
+          ],
+          "evidence": [
+            "inputs/REQUIREMENTS.md",
+            "logs/05_code/api/response_132.json"
+          ]
+        }
+      ]
+    },
+    {
+      "run": "runs/paper/round_02/mqtt_01",
+      "events": [
+        {
+          "id": "M21",
+          "category": "implementation_test",
+          "conflict": "仅5字节固定头声明268435455字节body，测试期望COMPLETE并读取输出；解码器正确返回INCOMPLETE。",
+          "coder_corrections": [
+            "05_code/117"
+          ],
+          "evidence": [
+            "reports/verify_005/report.json",
+            "project/src/codec.c",
+            "logs/05_code/api/response_117.json"
+          ]
+        },
+        {
+          "id": "M22",
+          "category": "implementation_test",
+          "conflict": "Will Flag置1却不给Will Topic/Message，测试期望UNSUPPORTED，解码契约先判定结构MALFORMED。",
+          "coder_corrections": [
+            "05_code/118"
+          ],
+          "evidence": [
+            "reports/verify_005/report.json",
+            "specs/r001/functions/mqtt_parse_connect.json",
+            "logs/05_code/api/response_118.json"
+          ]
+        },
+        {
+          "id": "M23",
+          "category": "implementation_test",
+          "conflict": "QoS1 PUBLISH fixture的Remaining Length大于已给body，测试期望完整报文和UNSUPPORTED，解码器先返回INCOMPLETE。",
+          "coder_corrections": [
+            "05_code/118"
+          ],
+          "evidence": [
+            "reports/verify_005/report.json",
+            "logs/05_code/api/response_118.json"
+          ]
+        },
+        {
+          "id": "M24",
+          "category": "interface_call",
+          "conflict": "解析不同CONNECT输入时重复使用第一条输入的旧mqtt_frame，违反frame与buf必须对应同一报文的调用约定。",
+          "coder_corrections": [
+            "05_code/119"
+          ],
+          "evidence": [
+            "reports/verify_005/report.json",
+            "specs/r001/functions/mqtt_parse_connect.json",
+            "logs/05_code/api/response_119.json"
+          ]
+        },
+        {
+          "id": "M25",
+          "category": "implementation_test",
+          "conflict": "原子性检查已留下4字节CONNACK，后续测试却假定缓冲区初始为空，期望全部drained。",
+          "coder_corrections": [
+            "05_code/119"
+          ],
+          "evidence": [
+            "reports/verify_005/report.json",
+            "logs/05_code/api/response_119.json"
+          ]
+        },
+        {
+          "id": "M26",
+          "category": "implementation_test",
+          "conflict": "负例将合法PUBLISH payload字节称为trailing byte并期望断开；PUBLISH契约将剩余body均作为payload。",
+          "coder_corrections": [
+            "05_code/109",
+            "05_code/110"
+          ],
+          "evidence": [
+            "specs/r001/functions/mqtt_parse_publish.json",
+            "logs/05_code/api/response_109.json",
+            "logs/05_code/api/response_110.json"
+          ]
+        }
+      ]
+    },
+    {
+      "run": "runs/paper/round_02/smtp_01",
+      "events": [
+        {
+          "id": "S21",
+          "category": "implementation_test",
+          "conflict": "隔离测试未发送EHLO/HELO便发送MAIL，期望250；实现按会话序列规则返回503。",
+          "coder_corrections": [
+            "05_code/092"
+          ],
+          "evidence": [
+            "reports/verify_004/report.json",
+            "logs/05_code/api/response_092.json"
+          ]
+        }
+      ]
+    },
+    {
+      "run": "runs/paper/round_03/coap_01",
+      "events": [
+        {
+          "id": "C31",
+          "category": "interface_call",
+          "conflict": "coap_transport_send返回coap_transport_status，调用者却存入coap_encode_status并据此比较运输状态，两个调用点及三种构建重复报错合并。",
+          "coder_corrections": [
+            "05_code/080",
+            "05_code/081",
+            "05_code/082",
+            "05_code/086"
+          ],
+          "evidence": [
+            "logs/05_code/commands/command_0015.log",
+            "reports/verify_003/report.json",
+            "project/include/coap_transport.h",
+            "logs/05_code/api/response_080.json",
+            "logs/05_code/api/response_081.json",
+            "logs/05_code/api/response_082.json",
+            "logs/05_code/api/response_086.json"
+          ]
+        },
+        {
+          "id": "C32",
+          "category": "implementation_test",
+          "conflict": "测试将已支持的Uri-Query选项15当作未知critical option并期望4.02；改为合法Query通过，未知选项17拒绝。diag15未定义是中途修订的同一测试事件。",
+          "coder_corrections": [
+            "05_code/107"
+          ],
+          "evidence": [
+            "reports/verify_004/report.json",
+            "logs/05_code/api/response_107.json"
+          ]
+        },
+        {
+          "id": "C33",
+          "category": "implementation_test",
+          "conflict": "测试用b空串让put_value helper生成空payload marker，仍期望合法空PUT成功；无payload须传None避免非法空marker。",
+          "coder_corrections": [
+            "05_code/107"
+          ],
+          "evidence": [
+            "reports/verify_004/report.json",
+            "project/tests/dev_test.py",
+            "logs/05_code/api/response_107.json"
+          ]
+        }
+      ]
+    },
+    {
+      "run": "runs/paper/round_03/http11_01",
+      "events": [
+        {
+          "id": "H31",
+          "category": "interface_call",
+          "conflict": "main.c访问conn_t的thread_done字段，但公共connection.h只提供不透明类型和函数API。",
+          "coder_corrections": [
+            "05_code/074"
+          ],
+          "evidence": [
+            "logs/05_code/commands/command_0004.log",
+            "project/include/connection.h",
+            "logs/05_code/api/response_074.json"
+          ]
+        },
+        {
+          "id": "H32",
+          "category": "interface_call",
+          "conflict": "shell检查相对路径的http_server存在，却向Python子进程传裸名称使其按PATH查找，测试启动契约与交付路径不一致，13场景报错合并。",
+          "coder_corrections": [
+            "05_code/119"
+          ],
+          "evidence": [
+            "reports/verify_005/report.json",
+            "logs/05_code/api/response_119.json"
+          ]
+        },
+        {
+          "id": "H33",
+          "category": "interface_call",
+          "conflict": "HEAD请求调用测试request helper却沿用默认GET方法，响应解析器据Content-Length等待HEAD不存在的body。",
+          "coder_corrections": [
+            "05_code/120"
+          ],
+          "evidence": [
+            "logs/05_code/commands/command_0013.log",
+            "project/tests/dev_tests.py",
+            "logs/05_code/api/response_120.json"
+          ]
+        },
+        {
+          "id": "H34",
+          "category": "interface_call",
+          "conflict": "测试在Response对象上调用expect_eof，实际此方法属于Conn对象。",
+          "coder_corrections": [
+            "05_code/120"
+          ],
+          "evidence": [
+            "logs/05_code/commands/command_0013.log",
+            "logs/05_code/api/response_120.json"
+          ]
+        }
+      ]
+    },
+    {
+      "run": "runs/paper/round_03/mqtt_01",
+      "events": [
+        {
+          "id": "M31",
+          "category": "inherited_spec",
+          "conflict": "file级SUBACK向量授予请求QoS1/2，function LOGIC/OUTPUT及向量规定永远授予QoS0，同一输入输出矛盾。",
+          "coder_corrections": [],
+          "evidence": [
+            "reports/05_code_spec_gap_evidence.log"
+          ]
+        },
+        {
+          "id": "M32",
+          "category": "inherited_spec",
+          "conflict": "两个PUBLISH规格向量RL比实际body大1字节，EXPECT要求COMPLETE而解码逻辑要求INCOMPLETE；相同长度约束合并。",
+          "coder_corrections": [],
+          "evidence": [
+            "reports/05_code_spec_gap_evidence.log"
+          ]
+        },
+        {
+          "id": "M33",
+          "category": "implementation_test",
+          "conflict": "测试使用非UTF-8 ff fe作为非ASCII但合法client ID，期望CONNACK2；解码器须对非法UTF-8静默断开。",
+          "coder_corrections": [
+            "08_repair/040"
+          ],
+          "evidence": [
+            "logs/08_repair/commands/command_0010.log",
+            "specs/r002/functions/src_wire.c_wire_decode_connect.json",
+            "logs/08_repair/api/response_040.json"
+          ]
+        },
+        {
+          "id": "M34",
+          "category": "implementation_test",
+          "conflict": "测试发送两个PUBLISH只读取一个，随后expect_eof把第二条已排队的合法PUBLISH误认为关机失败。",
+          "coder_corrections": [
+            "09_repair/021"
+          ],
+          "evidence": [
+            "logs/09_repair/commands/command_0011.log",
+            "logs/09_repair/api/response_021.json"
+          ]
+        }
+      ]
+    },
+    {
+      "run": "runs/paper/round_03/smtp_01",
+      "events": [
+        {
+          "id": "S31",
+          "category": "interface_call",
+          "conflict": "server状态定义为struct server_state，但helper参数和局部变量使用未定义的typedef名server_state；同一类型声明/使用矛盾合并。",
+          "coder_corrections": [
+            "05_code/075",
+            "05_code/076"
+          ],
+          "evidence": [
+            "logs/05_code/commands/command_0008.log",
+            "logs/05_code/commands/command_0009.log",
+            "logs/05_code/api/response_066.json",
+            "logs/05_code/api/response_075.json",
+            "logs/05_code/api/response_076.json"
+          ]
+        },
+        {
+          "id": "S32",
+          "category": "implementation_test",
+          "conflict": "7位DATA拒绝测试给出7字节终止输入却只feedn长度6，截掉LF，仍期待事务已完成并返回554。",
+          "coder_corrections": [
+            "05_code/154"
+          ],
+          "evidence": [
+            "logs/05_code/commands/command_0025.log",
+            "logs/05_code/api/response_154.json"
+          ]
+        },
+        {
+          "id": "S33",
+          "category": "implementation_test",
+          "conflict": "捕获/EOF测试共享已有文件的目录却假定目录为空，测试文件计数与实际共享状态矛盾；多处隔离修复合并。",
+          "coder_corrections": [
+            "05_code/125",
+            "05_code/126",
+            "05_code/154"
+          ],
+          "evidence": [
+            "logs/05_code/commands/command_0046.log",
+            "logs/05_code/api/response_125.json",
+            "logs/05_code/api/response_126.json",
+            "logs/05_code/api/response_154.json"
+          ]
+        },
+        {
+          "id": "S34",
+          "category": "implementation_test",
+          "conflict": "session_ready只读取greeting便等待EHLO的250，却没有发送EHLO。",
+          "coder_corrections": [
+            "05_code/170"
+          ],
+          "evidence": [
+            "reports/verify_007/report.json",
+            "logs/05_code/api/response_170.json"
+          ]
+        },
+        {
+          "id": "S35",
+          "category": "implementation_test",
+          "conflict": "测试两次提交相同RCPT后仍期望JSON只出现一次，实现及要求保留重复收件人。",
+          "coder_corrections": [
+            "05_code/170"
+          ],
+          "evidence": [
+            "logs/05_code/commands/command_0055.log",
+            "inputs/REQUIREMENTS.md",
+            "logs/05_code/api/response_170.json"
+          ]
+        },
+        {
+          "id": "S36",
+          "category": "implementation_test",
+          "conflict": "带不支持MAIL参数的负例同时处于错误会话状态，测试期望503；函数契约先检查参数，要求555。",
+          "coder_corrections": [
+            "05_code/170"
+          ],
+          "evidence": [
+            "reports/verify_007/report.json",
+            "logs/05_code/api/response_170.json"
+          ]
+        },
+        {
+          "id": "S37",
+          "category": "implementation_test",
+          "conflict": "EHLO非IPv4括号literal的测试期望555，但函数契约与实现将此分类为参数语法错误501。",
+          "coder_corrections": [
+            "05_code/170"
+          ],
+          "evidence": [
+            "reports/verify_007/report.json",
+            "logs/05_code/api/response_170.json"
+          ]
+        }
+      ]
+    },
+    {
+      "run": "expriments/RQ2/runs/mqtt_gpt6_luna_max_20261012074057Z/mqtt",
+      "events": [
+        {
+          "id": "N01",
+          "category": "implementation_test",
+          "conflict": "bad_flags负例用0x82的合法SUBSCRIBE固定头flags，却要求仅检查frame/flags的decoder返回INVALID；改用0x80。此处不声称空body是合法完整SUBSCRIBE。",
+          "coder_corrections": [
+            "01_code/027"
+          ],
+          "evidence": [
+            "logs/01_code/commands/command_0003.log",
+            "documents/page_040.txt",
+            "project/src/protocol.c",
+            "logs/01_code/api/response_027.json"
+          ]
+        },
+        {
+          "id": "N02",
+          "category": "implementation_test",
+          "conflict": "测试期望单层+匹配两层空level的topic /；实现和协议原文均只允许+匹配单个level。",
+          "coder_corrections": [
+            "01_code/031"
+          ],
+          "evidence": [
+            "logs/01_code/commands/command_0004.log",
+            "documents/page_057.txt",
+            "documents/page_058.txt",
+            "logs/01_code/api/response_031.json"
+          ]
+        }
+      ],
+      "repair_windows": [
+        {
+          "job": "01_code",
+          "first_response": 25,
+          "last_response": 32,
+          "event_ids": [
+            "N01",
+            "N02"
+          ],
+          "accounting": "首次单测失败后的下一响应至两项单测均通过，闭区间；包含checkpoint、读文件及复测等其他活动，不能解释为纯增量修复开销。"
+        }
+      ]
+    }
+  ]
+}

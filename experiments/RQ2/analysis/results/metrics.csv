@@ -1,0 +1,14 @@
+run,system,protocol,model,audit_status,entered_code,generation_passed,evaluation_passed,coder_responses,implementation_repairs,spec_repairs,interface_call,implementation_test,inherited_spec,implementation_incidents,all_incidents,coder_correction_responses,coder_correction_response_share,coder_correction_token_share
+expriments/RQ2/runs/mqtt_gpt6_luna_max_20261012074057Z/mqtt,NoSpec,mqtt,gpt-6-luna,observed_lower_bound,True,True,True,43,0,0,0,2,0,2,2,2,0.046511627906976744,0.011093498668405722
+runs/paper/round_01/coap_01,SpecForge,coap,deepseek-flash,observed_lower_bound,True,True,True,153,1,1,2,4,2,6,8,11,0.0718954248366013,0.10192752226094802
+runs/paper/round_01/http11_01,SpecForge,http11,deepseek-flash,observed_lower_bound,True,True,False,179,0,0,4,5,0,9,9,5,0.027932960893854747,0.06507743279442486
+runs/paper/round_01/mqtt_01,SpecForge,mqtt,deepseek-flash,observed_lower_bound,True,True,True,129,0,0,1,1,0,2,2,3,0.023255813953488372,0.020801271486015984
+runs/paper/round_01/smtp_01,SpecForge,smtp,deepseek-flash,observed_lower_bound,True,True,False,171,3,1,2,3,2,5,7,3,0.017543859649122806,0.02996363813142381
+runs/paper/round_02/coap_01,SpecForge,coap,deepseek-flash,not_entered_code,False,False,,0,0,0,,,,,,,,
+runs/paper/round_02/http11_01,SpecForge,http11,deepseek-flash,observed_lower_bound,True,True,True,154,0,0,1,2,0,3,3,3,0.01948051948051948,0.015750000143909215
+runs/paper/round_02/mqtt_01,SpecForge,mqtt,deepseek-flash,observed_lower_bound,True,True,True,130,0,0,1,5,0,6,6,5,0.038461538461538464,0.03302307437880437
+runs/paper/round_02/smtp_01,SpecForge,smtp,deepseek-flash,observed_lower_bound,True,True,False,113,0,0,0,1,0,1,1,1,0.008849557522123894,0.007218857615537899
+runs/paper/round_03/coap_01,SpecForge,coap,deepseek-flash,observed_lower_bound,True,True,True,126,0,0,1,2,0,3,3,5,0.03968253968253968,0.047534580230145236
+runs/paper/round_03/http11_01,SpecForge,http11,deepseek-flash,observed_lower_bound,True,True,True,138,0,0,4,0,0,4,4,3,0.021739130434782608,0.023698923279809735
+runs/paper/round_03/mqtt_01,SpecForge,mqtt,deepseek-flash,observed_lower_bound,True,True,True,116,2,1,0,2,2,2,4,2,0.017241379310344827,0.029409763109721418
+runs/paper/round_03/smtp_01,SpecForge,smtp,deepseek-flash,observed_lower_bound,True,True,False,176,0,0,1,6,0,7,7,6,0.03409090909090909,0.04557209129217305

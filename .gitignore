@@ -9,13 +9,7 @@ dist/
 *.so
 *.a
 .DS_Store
-runs/*
-!runs/paper/
-runs/paper/*
-!runs/paper/README.md
-!runs/paper/summary.json
-!runs/paper/runs.csv
-!runs/paper/stages.csv
-/expriments/**/runs/
-/expriments/**/output/
-/expriments/RQ1/metagpt/paper_data/
+/runs/
+/experiments/**/runs/
+/experiments/**/output/
+/experiments/RQ1/metagpt/paper_data/

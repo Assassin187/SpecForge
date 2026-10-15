@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import contextvars
 import functools
 import hashlib
@@ -53,9 +54,16 @@ def summarize_usage(attempts):
         and result["input_tokens"] is not None and result["output_tokens"] is not None else None
     )
     result["elapsed_seconds"] = round(sum(item.get("elapsed_seconds", 0) for item in attempts), 3)
-    if entries and result["input_tokens"] is not None and result["output_tokens"] is not None:
-        rates = PRICING["peak_usd_per_million"]
-        field = "estimated_usd_reference" if MODEL.model == "gpt-6-luna" else "estimated_usd_upper_bound"
+    models = {item.get("model_config", MODEL.record())["model"] for item in attempts}
+    if len(models) > 1:
+        result["by_model"] = {
+            model: summarize_usage([item for item in attempts if item.get("model_config", MODEL.record())["model"] == model])
+            for model in sorted(models)
+        }
+    elif entries and result["input_tokens"] is not None and result["output_tokens"] is not None:
+        rates = entries[0].get("pricing", PRICING)["peak_usd_per_million"]
+        model = entries[0].get("model_config", MODEL.record())["model"]
+        field = "estimated_usd_reference" if model == "gpt-6-luna" else "estimated_usd_upper_bound"
         result[field] = round(
             (result["input_tokens"] * rates["input_cache_miss"] + result["output_tokens"] * rates["output"]) / 1_000_000, 9
         )
@@ -67,6 +75,7 @@ def main():
     parser.add_argument("--case", choices=("mqtt", "coap", "http11", "smtp"), default="mqtt")
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--prepare-only", action="store_true", help="Freeze and check input evidence without LLM calls.")
+    parser.add_argument("--resume", action="store_true", help="Continue the existing native Team checkpoint; preserve prior evidence.")
     args = parser.parse_args()
     case = args.case
     case_root = SPECFORGE / "cases" / f"{case}_min"
@@ -79,11 +88,11 @@ def main():
     protocol_end_label = {"mqtt": "MQTT v3.1.1 standard PDF", "coap": "CoAP RFC 7252",
                           "http11": "HTTP/1.1 RFC 9110 and RFC 9112", "smtp": "SMTP RFC 5321"}[case]
     run = args.out.resolve()
-    if run.exists():
+    if run.exists() and not args.resume:
         raise SystemExit("Use a new experiment output directory.")
-    run.mkdir(parents=True)
+    run.mkdir(parents=True, exist_ok=args.resume)
     for name in ("logs", "snapshots", "reports", "workspace"):
-        (run / name).mkdir()
+        (run / name).mkdir(exist_ok=args.resume)
     created = now()
     settings = {
         "investment": 3.0, "n_round": 5, "code_review": True, "run_tests": False,
@@ -109,6 +118,46 @@ def main():
         "pricing": PRICING,
     }
 
+    continuation = None
+    completed_files = {}
+    reusable_code = {}
+    previous_elapsed = 0
+    if args.resume:
+        state = read_json(run / "run.json")
+        settings = state["native_settings"]
+        checkpoint = run / "workspace/storage/team/team.json"
+        assert checkpoint.is_file(), "Native generation continuation requires the existing Team checkpoint."
+        continuation = run / "reports" / f"generation_continuation_{len(list((run / 'reports').glob('generation_continuation_*'))) + 1:02d}"
+        continuation.mkdir()
+        shutil.copyfile(run / "run.json", continuation / "run_before_resume.json")
+        shutil.copyfile(checkpoint, continuation / "team_before_resume.json")
+        shutil.copyfile(__file__, continuation / "generation_entrypoint.py")
+        for request in state["http_requests"]:
+            request.setdefault("model_config", state["model"])
+            request.setdefault("pricing", state["pricing"])
+        if state["model"] != MODEL.record():
+            state.setdefault("initial_model", state["model"])
+            state.setdefault("model_transitions", []).append({
+                "at": now(), "from": state["model"], "to": MODEL.record(),
+                "before_evidence": str(continuation.relative_to(run)),
+            })
+            state.update(model=MODEL.record(), pricing=PRICING)
+        completed_files = hashes(Path(state["native_project"]))
+        if (run / "project").exists():
+            shutil.move(run / "project", continuation / "project_before_resume")
+        for job in state["jobs"]:
+            if job["action"] == "WriteCode" and job["status"] == "completed" and job["filename"] not in completed_files:
+                reusable_code[job["filename"]] = read_json(run / "logs" / job["name"] / "result.json")
+        previous_elapsed = state.get("generation_elapsed_seconds", 0)
+        state.setdefault("generation_continuations", []).append({
+            "started_at": now(), "checkpoint": str(checkpoint.relative_to(run)),
+            "before_evidence": str(continuation.relative_to(run)),
+            "already_saved_files_skipped": list(completed_files),
+            "completed_write_code_results_reused": list(reusable_code),
+            "new_requirement_published": False,
+        })
+        state.update(resumed=True, native_pipeline_completed=False)
+
     def persist():
         state["updated_at"] = now()
         state["usage"] = summarize_usage(state["http_requests"])
@@ -116,78 +165,84 @@ def main():
             job["usage"] = summarize_usage([item for item in state["http_requests"] if item.get("job") == job["name"]])
         save_json(run / "run.json", state)
 
-    persist()
-    prepared = prepare(run, case_root / "TASK.md", case_root / "REQUIREMENTS.md", case_root / "spec" / protocol_name)
-    state["input_hashes"] = prepared["inputs"]
-    state["document_hashes"] = prepared["documents"]
-    pages = [item["path"] for item in read_json(run / "documents/index.json")["chunks"]]
-    protocol_text = ("\f".join((run / "documents" / filename).read_text() for filename in pages)
-                     if case == "mqtt" else (run / "inputs/protocol.txt").read_text())
-    (run / "documents/protocol_full.txt").write_text(protocol_text)
-    state["document_hashes"]["protocol_full.txt"] = digest(run / "documents/protocol_full.txt")
-    idea = (
-        "[BEGIN TASK.md]\n" + (run / "inputs/TASK.md").read_text() + "\n[END TASK.md]\n\n"
-        "[BEGIN REQUIREMENTS.md]\n" + (run / "inputs/REQUIREMENTS.md").read_text() + "\n[END REQUIREMENTS.md]\n\n"
-        f"[BEGIN {protocol_label}]\n" + protocol_text
-        + f"\n[END {protocol_end_label}]\n"
-    )
-    (run / "inputs/idea.txt").write_text(idea)
-    state["idea"] = {"path": "inputs/idea.txt", "sha256": digest(run / "inputs/idea.txt"),
-                     "bytes": len(idea.encode()), "protocol_pages": len(pages) if case == "mqtt" else None,
-                     "protocol_chunks": len(pages), "truncated": False,
-                     "assembly": "Filename delimiters plus unchanged TASK, REQUIREMENTS and complete protocol text."}
-    references = {}
-    for ref in sorted((SPECFORGE / "runs/paper").glob(f"round_*/{case}_01/run.json")):
-        spec_state = read_json(ref)
-        assert spec_state["input_hashes"] == prepared["inputs"], str(ref)
-        assert all(digest(ref.parent / "documents" / name) == digest(run / "documents" / name) for name in pages), str(ref)
-        references[str(ref.relative_to(SPECFORGE))] = {
-            "raw_input_hashes_equal": True, "all_document_chunk_hashes_equal": True,
-            "document_chunks": len(pages), "model_config_equal": spec_state["model"] == state["model"],
-        }
-    assert references, f"No {case.upper()} SpecForge frozen input evidence found."
-    state["input_equivalence"] = references
-    checkout = BASE / "MetaGPT"
-    source_files = sorted((checkout / "metagpt").rglob("*.py"))
-    source_files += sorted((checkout / "config").glob("*.yaml"))
-    source_files += [checkout / "setup.py", checkout / "requirements.txt"]
-    state["framework_hashes"] = {str(path.relative_to(checkout)): digest(path) for path in source_files}
-    state["adapter_hashes"] = {name: digest(BASE / name) for name in (
-        "run.py", "mqtt_experiment.py", "config/config2.yaml", "requirements.lock", "upstream-requirements.patch"
-    )}
-    shutil.copyfile(Path(__file__), run / "reports/generation_entrypoint.py")
-    state["generation_entrypoint"] = "reports/generation_entrypoint.py"
-    state["specforge_recording_source_hashes"] = {name: digest(SPECFORGE / name) for name in (
-        "specforge/llm.py", "specforge/agent.py", "specforge/documents.py", "specforge/pipeline.py", "specforge/tools.py",
-        "specforge/evaluation.py", f"evaluation/{case}_check.py"
-    )}
-    state["upstream_commit"] = subprocess.check_output(["git", "-C", str(checkout), "rev-parse", "HEAD"], text=True).strip()
-    state["upstream_diff"] = subprocess.check_output(["git", "-C", str(checkout), "diff"], text=True)
-    state["specforge_commit"] = subprocess.check_output(["git", "-C", str(SPECFORGE), "rev-parse", "HEAD"], text=True).strip()
-    state["versions"] = {name: importlib.metadata.version(name) for name in ("metagpt", "openai", "jsonschema", "pydantic", "httpx")}
-    state["versions"]["python"] = sys.version
-    tool_names = ("gcc", "make", "pdftotext", "bwrap") + (
-        ("mosquitto_pub", "mosquitto_sub") if case == "mqtt" else ("coap-client-notls",) if case == "coap" else ()
-    )
-    for name in tool_names:
-        flag = "-v" if name == "pdftotext" else "--help" if name.startswith("mosquitto_") else "--version"
-        command = [name] if name == "coap-client-notls" else [name, flag]
-        version = subprocess.run(command, text=True, capture_output=True, timeout=10)
-        state["versions"][name] = {"path": shutil.which(name), "version": (version.stdout + version.stderr).splitlines()[0]}
-    state["stages"]["prepare"] = {"status": "completed", "finished_at": now(), "result": prepared}
-    state["status"] = "prepared"
-    persist()
-    print(f"INPUTS VERIFIED: {case.upper()} complete protocol; {len(pages)} document chunks; "
-          f"{len(references)} SpecForge inputs match; model {MODEL.model}, effort {MODEL.reasoning_effort}.", flush=True)
-    if args.prepare_only:
-        state["stop_reason"] = "prepare_only_zero_llm_requests"
+    if not args.resume:
         persist()
-        return 0
+        prepared = prepare(run, case_root / "TASK.md", case_root / "REQUIREMENTS.md", case_root / "spec" / protocol_name)
+        state["input_hashes"] = prepared["inputs"]
+        state["document_hashes"] = prepared["documents"]
+        pages = [item["path"] for item in read_json(run / "documents/index.json")["chunks"]]
+        protocol_text = ("\f".join((run / "documents" / filename).read_text() for filename in pages)
+                         if case == "mqtt" else (run / "inputs/protocol.txt").read_text())
+        (run / "documents/protocol_full.txt").write_text(protocol_text)
+        state["document_hashes"]["protocol_full.txt"] = digest(run / "documents/protocol_full.txt")
+        idea = (
+            "[BEGIN TASK.md]\n" + (run / "inputs/TASK.md").read_text() + "\n[END TASK.md]\n\n"
+            "[BEGIN REQUIREMENTS.md]\n" + (run / "inputs/REQUIREMENTS.md").read_text() + "\n[END REQUIREMENTS.md]\n\n"
+            f"[BEGIN {protocol_label}]\n" + protocol_text
+            + f"\n[END {protocol_end_label}]\n"
+        )
+        (run / "inputs/idea.txt").write_text(idea)
+        state["idea"] = {"path": "inputs/idea.txt", "sha256": digest(run / "inputs/idea.txt"),
+                         "bytes": len(idea.encode()), "protocol_pages": len(pages) if case == "mqtt" else None,
+                         "protocol_chunks": len(pages), "truncated": False,
+                         "assembly": "Filename delimiters plus unchanged TASK, REQUIREMENTS and complete protocol text."}
+        references = {}
+        for ref in sorted((SPECFORGE / "runs/paper").glob(f"round_*/{case}_01/run.json")):
+            spec_state = read_json(ref)
+            assert spec_state["input_hashes"] == prepared["inputs"], str(ref)
+            assert all(digest(ref.parent / "documents" / name) == digest(run / "documents" / name) for name in pages), str(ref)
+            references[str(ref.relative_to(SPECFORGE))] = {
+                "raw_input_hashes_equal": True, "all_document_chunk_hashes_equal": True,
+                "document_chunks": len(pages), "model_config_equal": spec_state["model"] == state["model"],
+            }
+        assert references, f"No {case.upper()} SpecForge frozen input evidence found."
+        state["input_equivalence"] = references
+        checkout = BASE / "MetaGPT"
+        source_files = sorted((checkout / "metagpt").rglob("*.py"))
+        source_files += sorted((checkout / "config").glob("*.yaml"))
+        source_files += [checkout / "setup.py", checkout / "requirements.txt"]
+        state["framework_hashes"] = {str(path.relative_to(checkout)): digest(path) for path in source_files}
+        state["adapter_hashes"] = {name: digest(BASE / name) for name in (
+            "run.py", "mqtt_experiment.py", "config/config2.yaml", "requirements.lock", "upstream-requirements.patch"
+        )}
+        shutil.copyfile(Path(__file__), run / "reports/generation_entrypoint.py")
+        state["generation_entrypoint"] = "reports/generation_entrypoint.py"
+        state["specforge_recording_source_hashes"] = {name: digest(SPECFORGE / name) for name in (
+            "specforge/llm.py", "specforge/agent.py", "specforge/documents.py", "specforge/pipeline.py", "specforge/tools.py",
+            "specforge/evaluation.py", f"evaluation/{case}_check.py"
+        )}
+        state["upstream_commit"] = subprocess.check_output(["git", "-C", str(checkout), "rev-parse", "HEAD"], text=True).strip()
+        state["upstream_diff"] = subprocess.check_output(["git", "-C", str(checkout), "diff"], text=True)
+        state["specforge_commit"] = subprocess.check_output(["git", "-C", str(SPECFORGE), "rev-parse", "HEAD"], text=True).strip()
+        state["versions"] = {name: importlib.metadata.version(name) for name in ("metagpt", "openai", "jsonschema", "pydantic", "httpx")}
+        state["versions"]["python"] = sys.version
+        tool_names = ("gcc", "make", "pdftotext", "bwrap") + (
+            ("mosquitto_pub", "mosquitto_sub") if case == "mqtt" else ("coap-client-notls",) if case == "coap" else ()
+        )
+        for name in tool_names:
+            flag = "-v" if name == "pdftotext" else "--help" if name.startswith("mosquitto_") else "--version"
+            command = [name] if name == "coap-client-notls" else [name, flag]
+            version = subprocess.run(command, text=True, capture_output=True, timeout=10)
+            state["versions"][name] = {"path": shutil.which(name), "version": (version.stdout + version.stderr).splitlines()[0]}
+        state["stages"]["prepare"] = {"status": "completed", "finished_at": now(), "result": prepared}
+        state["status"] = "prepared"
+        persist()
+        print(f"INPUTS VERIFIED: {case.upper()} complete protocol; {len(pages)} document chunks; "
+              f"{len(references)} SpecForge inputs match; model {MODEL.model}, effort {MODEL.reasoning_effort}.", flush=True)
+        if args.prepare_only:
+            state["stop_reason"] = "prepare_only_zero_llm_requests"
+            persist()
+            return 0
+
+    idea = (run / "inputs/idea.txt").read_text()
 
     spec = importlib.util.spec_from_file_location("metagpt_model_setup", BASE / "run.py")
     runner = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(runner)
     runner.config.workspace.path = run / "workspace"
+    if args.resume:
+        runner.config.update_via_cli(settings["project_path"], settings["project_name"], settings["inc"],
+                                     settings["reqa_file"], settings["max_auto_summarize_code"])
     from loguru import logger
     logger.remove()
     logger.add(sys.stderr, level="WARNING", backtrace=False, diagnose=False)
@@ -198,6 +253,10 @@ def main():
     from metagpt.actions.prepare_documents import PrepareDocuments
     from metagpt.actions.summarize_code import SummarizeCode
     from metagpt.roles.role import Role
+    from metagpt.roles.engineer import Engineer
+    from metagpt.schema import CodingContext
+    from metagpt.context import Context
+    from metagpt.team import Team
     from metagpt.software_company import generate_repo
     from metagpt.utils.file_repository import FileRepository
     from pydantic import BaseModel
@@ -212,7 +271,8 @@ def main():
         request.extensions["rq1_request_number"] = number
         record = {"number": number, "started_at": now(), "status": "sent", "role": role_scope.get(),
                   "job": action_scope.get(), "sdk_retry_count": request.headers.get("x-stainless-retry-count"),
-                  "path": str(request.url), "request": f"logs/llm/request_{number:04d}.json"}
+                  "path": str(request.url), "request": f"logs/llm/request_{number:04d}.json",
+                  "model_config": MODEL.record(), "pricing": PRICING}
         state["http_requests"].append(record)
         request_started[number] = time.monotonic()
         path = run / record["request"]
@@ -263,6 +323,16 @@ def main():
 
     runner.SpecForgeLLM._make_client_kwargs = observed_client_kwargs
 
+    if args.resume:
+        original_new_code_actions = Engineer._new_code_actions
+
+        async def remaining_code_actions(self):
+            await original_new_code_actions(self)
+            self.code_todos = [todo for todo in self.code_todos if todo.i_context.filename not in completed_files]
+            self.set_todo(self.code_todos[0] if self.code_todos else None)
+
+        Engineer._new_code_actions = remaining_code_actions
+
     def serialize_output(result):
         if isinstance(result, ActionOutput):
             return {"content": result.content, "instruct_content": result.instruct_content.model_dump(mode="json")}
@@ -287,7 +357,11 @@ def main():
             persist()
             print(f"ACTION START: {name}" + (f" ({filename})" if filename else ""), flush=True)
             try:
-                result = await original(self, *args, **kwargs)
+                if action_type is WriteCode and filename in reusable_code:
+                    result = CodingContext(**reusable_code.pop(filename))
+                    job["reused_completed_native_result"] = True
+                else:
+                    result = await original(self, *args, **kwargs)
                 save_json(run / "logs" / name / "result.json", serialize_output(result))
                 job["status"] = "completed"
                 return result
@@ -361,25 +435,51 @@ def main():
     for operation in ("get", "save", "delete"):
         observe_file_operation(operation)
 
-    state.update(status="running", started_at=now(), current_stage="native_software_company")
+    state.update(status="running", current_stage="native_software_company")
+    if not args.resume:
+        state["started_at"] = now()
     persist()
     started = time.monotonic()
     try:
-        repo = generate_repo(idea, **settings)
-        state["native_pipeline_completed"] = True
+        if args.resume:
+            context = Context(config=runner.config)
+            checkpoint = run / "workspace/storage/team"
+            saved_context = read_json(checkpoint / "team.json")["context"]
+            # Upstream Context.deserialize validates this field but does not
+            # assign the returned manager. Preserve the cumulative budget.
+            context.cost_manager = type(context.cost_manager).model_validate_json(saved_context["cost_manager"])
+            context.cost_manager.token_costs[MODEL.model] = runner.TOKEN_COSTS[MODEL.model]
+            company = Team.deserialize(stg_path=checkpoint, context=context)
+            company.env.add_roles(company.env.roles.values())
+            for role in company.env.roles.values():
+                if role.latest_observed_msg:
+                    role.put_message(role.latest_observed_msg)
+            assert not company.env.is_idle, "Recovered native pending messages must enter the scheduler."
+            native_result = asyncio.run(company.run(n_round=settings["n_round"]))
+            repo = context.repo
+            state["native_pipeline_completed"] = native_result is not None
+        else:
+            repo = generate_repo(idea, **settings)
+            state["native_pipeline_completed"] = True
         state["native_repo"] = str(repo.workdir)
         source = repo.workdir / repo.src_relative_path
         state["native_project"] = str(source)
         shutil.copytree(source, run / "project")
         state["project_hashes"] = hashes(run / "project")
         state["native_action_counts"] = dict(Counter(job["action"] for job in state["jobs"]))
-        state.update(status="generated", stop_reason="native_generate_repo_returned")
+        state.update(status="generated" if state["native_pipeline_completed"] else "generation_failed",
+                     stop_reason="native_checkpoint_resumed" if args.resume and state["native_pipeline_completed"]
+                     else "native_framework_exception" if args.resume else "native_generate_repo_returned")
     except BaseException as error:
         state.update(status="generation_failed", stop_reason="native_exception", error=f"{type(error).__name__}: {error}")
         save_json(run / "reports/generation_error.json", {"error": state["error"], "traceback": traceback.format_exc()})
         print(f"GENERATION FAILED: {type(error).__name__}; see reports/generation_error.json", flush=True)
     finally:
-        state.update(generation_elapsed_seconds=round(time.monotonic() - started, 3), generation_finished_at=now())
+        segment_elapsed = round(time.monotonic() - started, 3)
+        state.update(generation_elapsed_seconds=round(previous_elapsed + segment_elapsed, 3), generation_finished_at=now())
+        if args.resume:
+            state["generation_continuations"][-1].update(finished_at=now(), elapsed_seconds=segment_elapsed,
+                                                        status=state["status"], usage_after=state["usage"])
         persist()
     print(f"GENERATION FINISHED: {state['status']}; {state['usage']}", flush=True)
     return 0 if state["status"] == "generated" else 1
